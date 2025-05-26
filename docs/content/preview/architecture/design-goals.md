@@ -56,7 +56,7 @@ YugabyteDB supports single-row linearizable writes. Linearizability is one of th
 
 YugabyteDB supports multi-row transactions with three isolation levels: Serializable, Snapshot (also known as repeatable read), and Read Committed isolation.
 
-- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation {{<tags/feature/ea>}} using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [Isolation levels](#transaction-isolation-levels).
+- The [YSQL API](../../api/ysql/) supports Serializable, Snapshot (default), and Read Committed isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. For more details, see [Isolation levels](#transaction-isolation-levels).
 - The [YCQL API](../../api/ycql/) supports only Snapshot isolation (default) using the [BEGIN TRANSACTION](../../api/ycql/dml_transaction/) syntax.
 
 ## Partition Tolerance - CAP
@@ -97,7 +97,7 @@ Depending on the use case, the database may need to support diverse workloads, s
 
 Transaction isolation is foundational to handling concurrent transactions in databases. YugabyteDB supports three strict transaction isolation levels in [YSQL](../../api/ysql/).
 
-- [Read Committed](../transactions/read-committed/) {{<tags/feature/ea>}}, which maps to the SQL isolation level of the same name
+- [Read Committed](../transactions/read-committed/), which maps to the SQL isolation level of the same name
 - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), which maps to the SQL isolation level of the same name
 - [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation), which maps to the SQL Repeatable Read isolation level
 

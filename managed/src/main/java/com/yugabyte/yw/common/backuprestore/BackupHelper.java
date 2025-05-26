@@ -118,7 +118,7 @@ public class BackupHelper {
   private NodeUniverseManager nodeUniverseManager;
   private YbcBackupUtil ybcBackupUtil;
   private SoftwareUpgradeHelper softwareUpgradeHelper;
-  @Inject Commissioner commissioner;
+  private Commissioner commissioner;
 
   @Inject
   public BackupHelper(
@@ -127,7 +127,7 @@ public class BackupHelper {
       CustomerConfigService customerConfigService,
       RuntimeConfGetter confGetter,
       StorageUtilFactory storageUtilFactory,
-      Commissioner commisssioner,
+      Commissioner commissioner,
       ValidateReplicationInfo validateReplicationInfo,
       NodeUniverseManager nodeUniverseManager,
       YbcBackupUtil ybcBackupUtil,
@@ -141,7 +141,7 @@ public class BackupHelper {
     this.nodeUniverseManager = nodeUniverseManager;
     this.ybcBackupUtil = ybcBackupUtil;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
-    // this.commissioner = commissioner;
+    this.commissioner = commissioner;
   }
 
   public String getValidOwnerRegex() {
@@ -297,6 +297,7 @@ public class BackupHelper {
     if (!isSkipConfigBasedPreflightValidation(universe)) {
       validateStorageConfig(customerConfig);
     }
+
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     log.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
     CustomerTask.create(
@@ -378,6 +379,17 @@ public class BackupHelper {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore the ybc backup as ybc is not installed on the universe");
     }
+
+    // Set error management flags based on runtime config
+    Boolean ignoreErrors =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ignoreRestoreErrors);
+    log.debug(
+        "Configured ignoreErrors: {}, errorIfRolesExists: {}, errorIfTablespacesExists: {}",
+        ignoreErrors);
+    for (BackupStorageInfo backupStorageInfo : taskParams.backupStorageInfoList) {
+      backupStorageInfo.setIgnoreErrors(ignoreErrors || backupStorageInfo.getIgnoreErrors());
+    }
+
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
     CustomerTask.create(
         customer,
@@ -1352,6 +1364,42 @@ public class BackupHelper {
   public boolean isSkipConfigBasedPreflightValidation(Universe universe) {
     return confGetter.getConfForScope(
         universe, UniverseConfKeys.skipConfigBasedPreflightValidation);
+  }
+
+  public void maybeSetBackupRevertToPreRolesBehaviour(BackupTableParams params, Universe universe) {
+    // If revert to pre roles behaviour is true, we dont' need further checks.
+    if (params.getRevertToPreRolesBehaviour()) {
+      log.debug("Revert to pre roles behaviour is true, skipping further checks.");
+      return;
+    }
+
+    // Runtime config to always use rever to pre roles behaviour.
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.revertToPreRolesBehaviour)) {
+      params.setRevertToPreRolesBehaviour(true);
+      log.debug("runtime config for 'revert to pre roles behaviour' is true");
+      return;
+    }
+
+    // Set to false by default
+    params.setRevertToPreRolesBehaviour(false);
+  }
+
+  public void maybeSetRestoreRevertToPreRolesBehaviour(
+      RestoreBackupParams params, Universe universe) {
+    for (BackupStorageInfo storageInfo : params.backupStorageInfoList) {
+      if (storageInfo.getRevertToPreRolesBehaviour()) {
+        log.debug("Revert to pre roles behaviour is true, skipping further checks.");
+        continue;
+      }
+      // Runtime config to always use rever to pre roles behaviour.
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.revertToPreRolesBehaviour)) {
+        storageInfo.setRevertToPreRolesBehaviour(true);
+        log.debug("runtime config for 'revert to pre roles behaviour' is true");
+        continue;
+      }
+      // Set to false by default
+      storageInfo.setRevertToPreRolesBehaviour(false);
+    }
   }
 
   /* ---- Restorable objects preflight validation ---- */

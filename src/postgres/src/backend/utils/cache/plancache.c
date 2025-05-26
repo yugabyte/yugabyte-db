@@ -128,13 +128,13 @@ static void PlanCacheSysCallback(Datum arg, int cacheid, uint32 hashvalue);
 int			plan_cache_mode;
 
 /*
- * For prepared statements, generate custom plans for at least the first 5 runs
- * (arbitrary)
+ * YB: For prepared statements, generate custom plans for at least the first 5
+ * runs (arbitrary)
  */
 int			yb_test_planner_custom_plan_threshold = 5;
 
 /*
- * Prefer custom plan over generic plan for prepared statement if more
+ * YB: Prefer custom plan over generic plan for prepared statement if more
  * partitions are pruned using a custom plan.
  */
 bool		enable_choose_custom_plan_for_partition_pruning = true;
@@ -450,7 +450,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->fixed_result = fixed_result;
 	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
 
-	/* If the planner txn uses a pg relation, so will the execution txn */
+	/* YB: If the planner txn uses a pg relation, so will the execution txn */
 	plansource->usesPostgresRel = YbGetPgOpsInCurrentTxn() & YB_TXN_USES_TEMPORARY_RELATIONS;
 
 	MemoryContextSwitchTo(oldcxt);
@@ -1068,15 +1068,15 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 		return true;
 
 	/*
-	 * Generate custom plans until we have done at least
+	 * YB: Generate custom plans until we have done at least
 	 * 'yb_test_planner_custom_plan_threshold' runs.
 	 */
 	if (plansource->num_custom_plans < yb_test_planner_custom_plan_threshold)
 		return true;
 
 	/*
-	 * For single row modify operations, use a custom plan so as to push down
-	 * the update to the DocDB without performing the read. This involves
+	 * YB: For single row modify operations, use a custom plan so as to push
+	 * down the update to the DocDB without performing the read. This involves
 	 * faking the read results in postgres. However the boundParams needs to
 	 * be passed for the creation of the plan and hence we would need to
 	 * enforce a custom plan.
@@ -1095,9 +1095,9 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	avg_custom_cost = plansource->total_custom_cost / plansource->num_custom_plans;
 
 	/*
-	 * If generic plan is present, then choose custom plan if partition pruning
-	 * or constraint exclusion has pruned more relations for custom plan over
-	 * generic plan.
+	 * YB: If generic plan is present, then choose custom plan if partition
+	 * pruning or constraint exclusion has pruned more relations for custom
+	 * plan over generic plan.
 	 */
 	if (enable_choose_custom_plan_for_partition_pruning && plansource->gplan &&
 		(plansource->yb_custom_max_num_referenced_rels <

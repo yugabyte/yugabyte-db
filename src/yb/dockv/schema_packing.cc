@@ -727,16 +727,82 @@ Status PackedRowDecoder::Apply(Slice value, void* context, const PackedRowScope&
   return Status(chain->decoder.router(&router_data, value.data(), num_key_columns_, chain));
 }
 
-SchemaPackingStorage::SchemaPackingStorage(TableType table_type) : table_type_(table_type) {}
+SchemaPackingRegistry::SchemaPackingRegistry(const std::string& log_prefix)
+    : log_prefix_(log_prefix) {
+  VLOG_WITH_PREFIX(3) << "New registry";
+}
+
+SchemaPackingRegistry::~SchemaPackingRegistry() {
+  VLOG_WITH_PREFIX(3) << "Registry destroyed";
+  LOG_IF_WITH_PREFIX(DFATAL, !versions_.empty()) << "versions: " << AsString(versions_);
+}
+
+void SchemaPackingRegistry::Register(
+     std::optional<SchemaVersion> old_version, std::optional<SchemaVersion> new_version) {
+  VLOG_WITH_PREFIX_AND_FUNC(4)
+      << "old version: " << AsString(old_version) << ", new version: " << AsString(new_version);
+  std::lock_guard lock(mutex_);
+  if (old_version) {
+    auto it = versions_.find(*old_version);
+    if (it != versions_.end()) {
+      versions_.erase(it);
+    } else {
+      LOG_WITH_PREFIX_AND_FUNC(DFATAL)
+          << "version: " << *old_version << ", versions: " << AsString(versions_);
+    }
+  }
+  if (new_version) {
+    versions_.insert(*new_version);
+  }
+}
+
+std::optional<SchemaVersion> SchemaPackingRegistry::MinActiveVersion() const {
+  std::lock_guard lock(mutex_);
+  auto it = versions_.begin();
+  if (it == versions_.end()) {
+    return std::nullopt;
+  }
+  return *it;
+}
+
+SchemaPackingStorage::SchemaPackingStorage(TableType table_type, SchemaPackingRegistryPtr registry)
+    : table_type_(table_type), registry_(DCHECK_NOTNULL(std::move(registry))) {
+}
 
 SchemaPackingStorage::SchemaPackingStorage(
     const SchemaPackingStorage& rhs, SchemaVersion min_schema_version)
-    : table_type_(rhs.table_type_) {
+    : table_type_(rhs.table_type_), registry_(rhs.registry_) {
+  std::optional<SchemaVersion> max_schema_version;
   for (const auto& [version, packing] : rhs.version_to_schema_packing_) {
     if (version < min_schema_version) {
       continue;
     }
+    if (!max_schema_version || *max_schema_version < version) {
+      max_schema_version = version;
+    }
     version_to_schema_packing_.emplace(version, packing);
+  }
+  UpdateMaxSchemaVersion(max_schema_version);
+}
+
+SchemaPackingStorage::SchemaPackingStorage(const SchemaPackingStorage& rhs)
+    : table_type_(rhs.table_type_), version_to_schema_packing_(rhs.version_to_schema_packing_),
+      registry_(rhs.registry_) {
+  UpdateMaxSchemaVersion(rhs.max_schema_version_);
+}
+
+SchemaPackingStorage::~SchemaPackingStorage() {
+  UpdateMaxSchemaVersion(std::nullopt);
+}
+
+void SchemaPackingStorage::UpdateMaxSchemaVersion(std::optional<SchemaVersion> version) {
+  registry_->Register(max_schema_version_, version);
+  max_schema_version_ = version;
+}
+
+void SchemaPackingStorage::UpdateMaxSchemaVersionIfNecessary(std::optional<SchemaVersion> version) {
+  if (version && (!max_schema_version_ || *max_schema_version_ < version)) {
+    UpdateMaxSchemaVersion(version);
   }
 }
 
@@ -764,6 +830,7 @@ Result<const SchemaPacking&> SchemaPackingStorage::GetPacking(Slice* packed_row)
 
 void SchemaPackingStorage::AddSchema(SchemaVersion version, const Schema& schema) {
   AddSchema(table_type_, version, schema, &version_to_schema_packing_);
+  UpdateMaxSchemaVersionIfNecessary(version);
 }
 
 void SchemaPackingStorage::AddSchema(
@@ -818,7 +885,7 @@ SchemaPackingStorage::GetMergedSchemaPackings(
     const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
     OverwriteSchemaPacking overwrite) const {
   auto new_packings = version_to_schema_packing_;
-  RETURN_NOT_OK(InsertSchemas(schemas, true, overwrite, &new_packings));
+  RETURN_NOT_OK(DoInsertSchemas(schemas, true, overwrite, &new_packings));
   if (overwrite) {
     new_packings.erase(schema_version);
   }
@@ -839,12 +906,15 @@ SchemaPackingStorage::GetMergedSchemaPackings(
 Status SchemaPackingStorage::InsertSchemas(
     const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
     bool could_present, OverwriteSchemaPacking overwrite) {
-  return InsertSchemas(schemas, could_present, overwrite, &version_to_schema_packing_);
+  UpdateMaxSchemaVersionIfNecessary(VERIFY_RESULT(DoInsertSchemas(
+      schemas, could_present, overwrite, &version_to_schema_packing_)));
+  return Status::OK();
 }
 
-Status SchemaPackingStorage::InsertSchemas(
+Result<std::optional<SchemaVersion>> SchemaPackingStorage::DoInsertSchemas(
     const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
     OverwriteSchemaPacking overwrite, std::unordered_map<SchemaVersion, SchemaPacking>* out) {
+  std::optional<SchemaVersion> max_schema_version;
   for (const auto& entry : schemas) {
     if (overwrite) {
       out->erase(entry.schema_version());
@@ -855,8 +925,11 @@ Status SchemaPackingStorage::InsertSchemas(
     RSTATUS_DCHECK(
         could_present || inserted, Corruption,
         Format("Duplicate schema version: $0", entry.schema_version()));
+    if (!max_schema_version || entry.schema_version() > *max_schema_version) {
+      max_schema_version = entry.schema_version();
+    }
   }
-  return Status::OK();
+  return max_schema_version;
 }
 
 void SchemaPackingStorage::ToPB(
@@ -892,7 +965,12 @@ std::string SchemaPackingStorage::VersionsToString() const {
 }
 
 std::string SchemaPackingStorage::ToString() const {
-  return YB_CLASS_TO_STRING(table_type, version_to_schema_packing);
+  return YB_CLASS_TO_STRING(table_type, version_to_schema_packing, max_schema_version);
+}
+
+bool SchemaPackingStorage::TEST_Equals(const SchemaPackingStorage& rhs) const {
+  const auto& lhs = *this;
+  return YB_CLASS_EQUALS(table_type, version_to_schema_packing, max_schema_version);
 }
 
 std::optional<SchemaVersion> SchemaPackingStorage::SingleSchemaVersion() const {

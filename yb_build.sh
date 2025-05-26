@@ -695,6 +695,11 @@ if [[ $should_build_clangd_index == "true" && ! ${YB_COMPILER_TYPE} =~ ^clang[0-
         "Use a version of Clang that includes clangd-indexer (specify --clang<version>)."
 fi
 
+if [[ ${YB_COMPILER_TYPE} == gcc* ]]; then
+  # YB controller does not work on GCC.
+  YB_TEST_YB_CONTROLLER=0
+fi
+
 if [[ -n ${cxx_test_filter_regex} ]]; then
   if [[ ${reset_cxx_test_filter} == "true" ]]; then
     fatal "--cxx-test-filter-regex is incompatible with --reset-cxx-filter-regex"

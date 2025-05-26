@@ -331,10 +331,16 @@ scoped_refptr<Trace> Trace::MaybeGetNewTrace() {
 }
 
 bool Trace::must_print() const {
-  std::lock_guard l(lock_);
-  return must_print_ || std::any_of(
-                            child_traces_.begin(), child_traces_.end(),
-                            [](const auto& child_trace) { return child_trace->must_print(); });
+  decltype(child_traces_) child_traces;
+  {
+    std::lock_guard l(lock_);
+    if (must_print_) {
+      return true;
+    }
+    child_traces = child_traces_;
+  }
+  return std::ranges::any_of(child_traces,
+                             [](const auto& child_trace) { return child_trace->must_print(); });
 }
 
 scoped_refptr<Trace>  Trace::MaybeGetNewTraceForParent(Trace* parent) {
@@ -383,7 +389,8 @@ TraceEntry* Trace::NewEntry(
   size_t size = offsetof(TraceEntry, message) + msg_len;
   void* dst = arena->AllocateBytesAligned(size, alignof(TraceEntry));
   if (dst == nullptr) {
-    LOG(ERROR) << "NewEntry(msg_len, " << file_path << ", " << line_number
+    LOG(DFATAL)
+        << "NewEntry(msg_len, " << file_path << ", " << line_number
         << ") received nullptr from AllocateBytes.\n So far:" << DumpToString(true);
     return nullptr;
   }

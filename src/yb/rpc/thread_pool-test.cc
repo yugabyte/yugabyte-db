@@ -197,7 +197,6 @@ TEST_F(ThreadPoolTest, TestQueueOverflow) {
   for (size_t i = 0; i != kProducers; ++i) {
     size_t end = kTotalTasks * (i + 1) / kProducers;
     threads.emplace_back([&pool, &latch, &tasks, &enqueue_failed, begin, end] {
-      CDSAttacher attacher;
       for (size_t i = begin; i != end; ++i) {
         tasks[i].SetLatch(&latch);
         if(!pool.Enqueue(&tasks[i])) {
@@ -237,7 +236,6 @@ TEST_F(ThreadPoolTest, TestShutdown) {
   for (size_t i = 0; i != kProducers; ++i) {
     size_t end = kTotalTasks * (i + 1) / kProducers;
     threads.emplace_back([&pool, &latch, &tasks, begin, end] {
-      CDSAttacher attacher;
       for (size_t i = begin; i != end; ++i) {
         tasks[i].SetLatch(&latch);
         pool.Enqueue(&tasks[i]);
@@ -296,6 +294,57 @@ TEST_F(ThreadPoolTest, TestOwns) {
   pool.Enqueue(&task);
   task.Wait();
   ASSERT_TRUE(pool.Owns(task.thread()));
+}
+
+TEST_F(ThreadPoolTest, MassEnqueue) {
+  constexpr size_t kTotalThreads = 64;
+  CountDownLatch wait_threads_latch(kTotalThreads);
+  CountDownLatch enqueue_tasks_latch(1);
+  CountDownLatch task_run_latch{kTotalThreads};
+
+  class TestTask : public ThreadPoolTask {
+   public:
+    explicit TestTask(CountDownLatch& latch) : latch_(latch) {
+    }
+
+    void Run() override {
+      latch_.CountDown();
+    }
+
+    void Done(const Status& status) override {
+    }
+
+    void Wait() {
+      latch_.Wait();
+    }
+   private:
+    CountDownLatch& latch_;
+  };
+
+  std::vector<TestTask> tasks(kTotalThreads, TestTask(task_run_latch));
+
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "test",
+    .max_workers = kTotalThreads,
+  });
+
+  TestThreadHolder threads;
+
+  for (size_t i = 0; i != kTotalThreads; ++i) {
+    threads.AddThreadFunctor([&wait_threads_latch, &enqueue_tasks_latch, &pool,  &task = tasks[i]] {
+      wait_threads_latch.CountDown();
+      enqueue_tasks_latch.Wait();
+      pool.Enqueue(&task);
+      task.Wait();
+    });
+  }
+
+  wait_threads_latch.Wait();
+  auto start = MonoTime::Now();;
+  enqueue_tasks_latch.CountDown();
+  task_run_latch.Wait();
+  auto stop = MonoTime::Now();
+  LOG(INFO) << "Passed: " << (stop - start).ToPrettyString();
 }
 
 namespace strand {
@@ -436,7 +485,6 @@ TEST_F(ThreadPoolTest, SubPool) {
   std::vector<TestTask> tasks(kTotalTasks);
   TestThreadHolder holder;
   holder.AddThread(std::thread([&tasks, &subpool_data_vec] {
-    CDSAttacher attacher;
     std::vector<bool> subpool_operational(kNumSubPools, true);
     auto start_time = MonoTime::Now();
     for (size_t task_index = 0; task_index < kTotalTasks; ++task_index) {

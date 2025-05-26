@@ -14,10 +14,12 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/tablespace_parser.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/tools/yb-admin_client.h"
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/tsan_util.h"
@@ -46,6 +48,8 @@ const auto kWaitLeaderDistributionTimeout = MonoDelta::FromMilliseconds(270000);
 
 } // namespace
 
+enum class WildCardTestOption { kCloud, kRegion, kZone };
+
 class PlacementBlock {
  public:
     std::string cloud;
@@ -59,7 +63,9 @@ class PlacementBlock {
     PlacementBlock(std::string cloud, std::string region, std::string zone, size_t minNumReplicas,
                    std::optional<size_t> leaderPreference = std::nullopt)
         : cloud(std::move(cloud)), region(std::move(region)), zone(std::move(zone)),
-          minNumReplicas(minNumReplicas), leaderPreference(leaderPreference) {}
+          minNumReplicas(minNumReplicas), leaderPreference(leaderPreference) {
+            json = generateJson();
+          }
 
     // Creates a placement block with the given region ID. For the purposes of this test, the cloud
     // is always "cloud0" and the zone is always "zone". The region is "rack<regionId>".
@@ -77,9 +83,13 @@ class PlacementBlock {
 
   // Checks if the cloud, region, and zone match those of a CloudInfo protobuf.
   bool MatchesReplica(const CloudInfoPB& replica_cloud_info) const {
-    return replica_cloud_info.placement_cloud() == cloud &&
-           replica_cloud_info.placement_region() == region &&
-           replica_cloud_info.placement_zone() == zone;
+    return
+      (replica_cloud_info.placement_cloud() == cloud ||
+        cloud == TablespaceParser::kWildcardPlacement) &&
+      (replica_cloud_info.placement_region() == region ||
+        region == TablespaceParser::kWildcardPlacement) &&
+      (replica_cloud_info.placement_zone() == zone ||
+        zone == TablespaceParser::kWildcardPlacement);
   }
 
  private:
@@ -154,16 +164,20 @@ class Tablespace {
     */
     std::string generateJson() const {
         std::ostringstream os;
-        os << "{\"num_replicas\":" << numReplicas << ",\"placement_blocks\":[";
+        os << "{\"num_replicas\":" << numReplicas;
 
-        for (size_t i = 0; i < placementBlocks.size(); ++i) {
-            os << placementBlocks[i].toJson();
-            if (i < placementBlocks.size() - 1) {
-                os << ",";
-            }
+        if (!placementBlocks.empty()) {
+          os << ",\"placement_blocks\":[";
+
+          for (size_t i = 0; i < placementBlocks.size(); ++i) {
+              os << placementBlocks[i].toJson();
+              if (i < placementBlocks.size() - 1) {
+                  os << ",";
+              }
+          }
+          os << "]";
         }
-
-        os << "]}";
+        os << "}";
         return os.str();
     }
 
@@ -219,14 +233,19 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
 
   // Given a table name and a list of placement blocks, verify that the tablets satisfy
   // the minimum number of replicas in each placement block and no replicas outside of the blocks.
-  void VerifyMinNumReplicas(const std::string& table_name,
-                            const std::vector<PlacementBlock>& placement_blocks) {
+  void VerifyTablePlacement(
+    const std::string& table_name,
+    const std::vector<PlacementBlock>& placement_blocks,
+    size_t total_num_replicas) {
     auto tablets = ASSERT_RESULT(GetTabletsForTable(table_name));
     for (const auto& tablet : tablets) {
       std::vector<CloudInfoPB> replica_cloud_infos;
       for (const auto& replica : tablet.replicas()) {
         replica_cloud_infos.push_back(replica.ts_info().cloud_info());
       }
+      ASSERT_EQ(total_num_replicas, replica_cloud_infos.size())
+        << "Tablet of table " << table_name << " has " << replica_cloud_infos.size()
+        << " replicas, expected total replica count is " << total_num_replicas;
 
       for (const auto& placement_block : placement_blocks) {
         int64_t num_matching_replicas = CountMatchingReplicas(replica_cloud_infos, placement_block);
@@ -234,28 +253,136 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
             << "Not enough replicas with placement: " << placement_block.toJson()
             << " for table: " << table_name;
       }
-
-      // Verify that there are no replicas outside of the given placement blocks.
-      for (const auto& cloud_info : replica_cloud_infos) {
-        bool replica_matches_placement_block =
-            std::any_of(placement_blocks.begin(), placement_blocks.end(),
-                        [&cloud_info](const auto& placement_block) {
-                            return placement_block.MatchesReplica(cloud_info);
-                        });
-
-        ASSERT_TRUE(replica_matches_placement_block)
-          << "Found replica for table: " << table_name
-          << " that does not match the required placement. "
-          << "Replica has placement: " << cloud_info.ShortDebugString();
-      }
     }
   }
 
   // Verifies that the table, index, and matview are placed according to placement_blocks.
-  void VerifyObjectPlacement(const std::vector<PlacementBlock>& placement_blocks) {
-    VerifyMinNumReplicas(kTablePrefix + "_tbl", placement_blocks);
-    VerifyMinNumReplicas(kTablePrefix + "_idx", placement_blocks);
-    VerifyMinNumReplicas(kTablePrefix + "_mv", placement_blocks);
+  void VerifyObjectPlacement(
+    const std::vector<PlacementBlock>& placement_blocks, size_t total_num_replicas) {
+    VerifyTablePlacement(kTablePrefix + "_tbl", placement_blocks, total_num_replicas);
+    VerifyTablePlacement(kTablePrefix + "_idx", placement_blocks, total_num_replicas);
+    VerifyTablePlacement(kTablePrefix + "_mv", placement_blocks, total_num_replicas);
+  }
+
+  void GeneratePlacementBlocks(
+      WildCardTestOption wildcard_opt, int num_replicas,
+      std::vector<PlacementBlock>* placement_blocks) {
+    placement_blocks->clear();
+    switch (wildcard_opt) {
+      case WildCardTestOption::kCloud:
+        // No placement blocks means any cloud/region/zone is ok.
+        break;
+      case WildCardTestOption::kRegion:
+        placement_blocks->push_back(PlacementBlock("cloud0", "*", "*", num_replicas));
+        break;
+
+      case WildCardTestOption::kZone:
+        placement_blocks->push_back(PlacementBlock("cloud0", "rack1", "*", 2));
+        if (num_replicas > 2)
+          placement_blocks->push_back(PlacementBlock("cloud0", "rack2", "*", 1));
+        break;
+
+      default:
+        LOG(FATAL) << "Invalid wildcard option " << int(wildcard_opt);
+        break;
+    };
+  }
+
+  std::string GetWildcardYbAdminString(
+      const std::vector<PlacementBlock>& placement_blocks) {
+    std::stringstream ss;
+    for (size_t i = 0; i < placement_blocks.size(); ++i) {
+      ss << placement_blocks[i].cloud << "." << placement_blocks[i].region << "."
+         << placement_blocks[i].zone << ":" << placement_blocks[i].minNumReplicas;
+      if (i < placement_blocks.size() - 1) {
+        ss << ",";
+      }
+    }
+    return ss.str();
+  }
+
+  void TestWildcardPlacement(bool use_yb_admin, WildCardTestOption wildcard_opt) {
+    /* The base test creates tservers with
+      (cloud0, rack1, zone),
+      (cloud0, rack2, zone),
+      (cloud0, rack3, zone)
+     We are adding two tservers afterwards
+      (cloud0, rack1, zone1)
+      (cloud0, rack1, zone2)
+     */
+    std::unique_ptr<tools::ClusterAdminClient> yb_admin_client;
+    if (use_yb_admin) {
+      std::string master_addrs = cluster_->GetMasterAddresses();
+      yb_admin_client = std::make_unique<tools::ClusterAdminClient>(
+        master_addrs,
+         MonoDelta::FromSeconds(20));
+      ASSERT_TRUE(yb_admin_client);
+      ASSERT_OK(yb_admin_client->Init());
+    }
+
+    auto options = EXPECT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+    options.SetPlacement("cloud0", "rack1", "zone1");
+    ASSERT_OK(cluster_->AddTabletServer(options));
+
+    options.SetPlacement("cloud0", "rack1", "zone2");
+    ASSERT_OK(cluster_->AddTabletServer(options));
+
+    static constexpr auto kTableName = "test_table";
+    static constexpr auto kTablespace1 = "ts1";
+    static constexpr auto kTablespace2 = "ts2";
+
+    /* Create a RF2 wildcard placement table, verify simple SQL cmds */
+    std::vector<PlacementBlock> placement_blocks;
+    int num_replicas = 2;
+    GeneratePlacementBlocks(wildcard_opt, num_replicas, &placement_blocks);
+    if (!use_yb_admin) {
+      Tablespace tablespace(kTablespace1, num_replicas, placement_blocks);
+      auto conn = ASSERT_RESULT(Connect());
+      auto create_cmd = tablespace.getCreateCmd();
+      LOG(INFO) << "Creating tablespace using " << create_cmd;
+      ASSERT_OK(conn.Execute(create_cmd));
+    } else {
+      ASSERT_OK(
+        yb_admin_client->ModifyPlacementInfo(
+          GetWildcardYbAdminString(placement_blocks),
+          num_replicas, "" /*optional uuid*/));
+    }
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (k INT PRIMARY KEY) $1 $2", kTableName,
+        (use_yb_admin ? "" : "TABLESPACE "), (use_yb_admin ? "" : kTablespace1)));
+
+    VerifyTablePlacement(kTableName, placement_blocks, num_replicas);
+
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+    auto rows = ASSERT_RESULT(
+        conn.FetchRows<int32_t>(yb::Format("SELECT k FROM $0 ORDER BY k", kTableName)));
+    ASSERT_EQ(rows, std::vector({1}));
+
+    /* Change the table to RF3 wildcard placement, verify simple SQL cmds */
+    num_replicas = 3;
+    GeneratePlacementBlocks(wildcard_opt, num_replicas, &placement_blocks);
+    if (!use_yb_admin) {
+      Tablespace tablespace(kTablespace2, num_replicas, placement_blocks);
+      auto conn = ASSERT_RESULT(Connect());
+      auto create_cmd = tablespace.getCreateCmd();
+      LOG(INFO) << "Creating tablespace using " << create_cmd;
+      ASSERT_OK(conn.Execute(create_cmd));
+      ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE $1", kTableName, kTablespace2));
+    } else {
+      ASSERT_OK(
+        yb_admin_client->ModifyPlacementInfo(
+          GetWildcardYbAdminString(placement_blocks),
+          num_replicas, "" /*optional uuid*/));
+    }
+    WaitForLoadBalanceCompletion();
+
+    VerifyTablePlacement(kTableName, placement_blocks, num_replicas);
+
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2)", kTableName));
+    rows = ASSERT_RESULT(
+        conn.FetchRows<int32_t>(yb::Format("SELECT k FROM $0 ORDER BY k", kTableName)));
+    ASSERT_EQ(rows, std::vector({1, 2}));
   }
 };
 
@@ -385,7 +512,7 @@ TEST_F(PgTablespacesTest, TestAlterTableMajority) {
   SetupObjects(&conn, "valid_ts");
 
   // Verify that the replicas for the table are distributed in valid_ts.
-  VerifyObjectPlacement(valid_placement_blocks);
+  VerifyObjectPlacement(valid_placement_blocks, total_num_replicas);
 
   // This ALTER TABLE should succeed because the majority (2/3)
   // of the placement blocks are available.
@@ -395,7 +522,7 @@ TEST_F(PgTablespacesTest, TestAlterTableMajority) {
 
   // Even though we have moved the table to majority_ts, the replicas should still be in the
   // valid_placement_blocks because there are only 2 valid placement blocks in majority_ts.
-  VerifyObjectPlacement(valid_placement_blocks);
+  VerifyObjectPlacement(valid_placement_blocks, total_num_replicas);
 }
 
 // Tests the following:
@@ -431,7 +558,7 @@ TEST_F(PgTablespacesTest, TestAlterTableScaling) {
   WaitForLoadBalanceCompletion();
 
   // Verify that the replicas for the table are distributed in ts.
-  VerifyObjectPlacement(placement_blocks);
+  VerifyObjectPlacement(placement_blocks, total_num_replicas);
 
   // Remove the node in the last region.
   int shutdown_region = static_cast<int>(NumRegions());
@@ -444,7 +571,7 @@ TEST_F(PgTablespacesTest, TestAlterTableScaling) {
 
   WaitForLoadBalanceCompletion();
 
-  VerifyObjectPlacement(placement_blocks);
+  VerifyObjectPlacement(placement_blocks, total_num_replicas);
 }
 
 TEST_F(PgTablespacesTest, TombstonedTabletInYbLocalTablets) {
@@ -478,6 +605,30 @@ TEST_F(PgTablespacesTest, TombstonedTabletInYbLocalTablets) {
   auto new_tablet_state = ASSERT_RESULT(
       conn.FetchRow<std::string>(tablet_state_query));
   ASSERT_STR_EQ(new_tablet_state, "TABLET_DATA_TOMBSTONED");
+}
+
+TEST_F(PgTablespacesTest, TestWildcardCloudTablespace) {
+  TestWildcardPlacement(false, WildCardTestOption::kCloud);
+}
+
+TEST_F(PgTablespacesTest, TestWildcardCloudYbAdmin) {
+  TestWildcardPlacement(true, WildCardTestOption::kCloud);
+}
+
+TEST_F(PgTablespacesTest, TestWildcardRegionTablespace) {
+  TestWildcardPlacement(false, WildCardTestOption::kRegion);
+}
+
+TEST_F(PgTablespacesTest, TestWildcardRegionYbAdmin) {
+  TestWildcardPlacement(true, WildCardTestOption::kRegion);
+}
+
+TEST_F(PgTablespacesTest, TestWildcardZoneTablespace) {
+  TestWildcardPlacement(false, WildCardTestOption::kZone);
+}
+
+TEST_F(PgTablespacesTest, TestWildcardZoneYbAdmin) {
+  TestWildcardPlacement(true, WildCardTestOption::kZone);
 }
 
 } // namespace client

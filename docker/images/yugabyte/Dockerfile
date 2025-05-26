@@ -80,21 +80,18 @@ RUN set -x; \
 # We need to explicitly remove the old pip wheel file to avoid tripping vulnerability scans
 RUN set -x ; \
    $yum_install  \
-      python38-devel \
-      python38-pip \
-      python38-psutil \
+      python3.11-devel \
+      python3.11-pip \
     && pip3 install --upgrade pip \
     && pip3 install --upgrade lxml \
     && pip3 install --upgrade s3cmd \
-    && if [[ "$(uname -m)" == "x86_64" ]]; then \
-      pip3 install --upgrade psutil; \
-    fi \
+    && pip3 install --upgrade psutil \
     && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
     && rm -rf ~/.cache \
     && yum clean all && rm -rf /var/cache/yum
 
 # Install required packages that are universal across RHEL versions
-RUN $yum_install -y \
+RUN $yum_install \
       bind-utils \
       diffutils \
       gettext \
@@ -114,8 +111,8 @@ RUN $yum_install -y \
       sysstat \
       tcpdump \
       which \
-    && alternatives --set python3 /usr/bin/python3.8 \
-    && alternatives --set python /usr/bin/python3.8 \
+    && alternatives --set python3 /usr/bin/python3.11 \
+    && alternatives --set python /usr/bin/python3.11 \
     && yum clean all && rm -rf /var/cache/yum
 
 RUN set -x; \
@@ -164,7 +161,7 @@ RUN mkdir /licenses && \
       -o /licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 # Install azcopy
-ARG AZV=10.28.0
+ARG AZV=10.28.1
 RUN set -x; \
     [[ "$(uname -m)" == "aarch64" ]] && arch='arm64' || arch='amd64'; \
     pkg_name="azcopy_linux_${arch}_${AZV}"; \

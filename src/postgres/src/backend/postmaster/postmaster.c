@@ -154,6 +154,7 @@
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
 
+
 /*
  * Possible types of a backend. Beyond being the possible bkend_type values in
  * struct bkend, these are OR-able request flag bits for SignalSomeChildren()
@@ -419,7 +420,6 @@ static void process_startup_packet_die(SIGNAL_ARGS);
 static void dummy_handler(SIGNAL_ARGS);
 static void StartupPacketTimeoutHandler(void);
 static void CleanupBackend(int pid, int exitstatus);
-static bool CleanupKilledProcess(PGPROC *proc);
 static bool CleanupBackgroundWorker(int pid, int exitstatus);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
@@ -451,6 +451,9 @@ static pid_t StartChildProcess(AuxProcType type);
 static void StartAutovacuumWorker(void);
 static void MaybeStartWalReceiver(void);
 static void InitPostmasterDeathWatchHandle(void);
+
+/* YB declarations */
+static bool CleanupKilledProcess(PGPROC *proc);
 
 /*
  * Archiver is allowed to start up at the current postmaster state?
@@ -1876,7 +1879,7 @@ ServerLoop(void)
 			int			i;
 
 #ifdef __APPLE__
-			/* If STDIN is closed, it means that parent did exit */
+			/* YB: If STDIN is closed, it means that parent did exit */
 			if (yb_enabled && FD_ISSET(STDIN_FILENO, &rmask))
 			{
 				return STATUS_OK;
@@ -2105,7 +2108,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	MemoryContext oldcontext;
 
 	/*
-	 * The remote host of the client that has connected to the connection
+	 * YB: The remote host of the client that has connected to the connection
 	 * manager. The connection manager connects to the auth-backend for
 	 * authentication but to match hba rules correctly, we need the remote host
 	 * of the actual client. This information is passed by the connection
@@ -2326,18 +2329,6 @@ retry1:
 		List	   *unrecognized_protocol_options = NIL;
 
 		/*
-		 * At this point we should have no data already buffered.  If we do,
-		 * it was received before we performed the SSL handshake, so it wasn't
-		 * encrypted and indeed may have been injected by a man-in-the-middle.
-		 * We report this case to the client.
-		 */
-		if (pq_buffer_has_data())
-			ereport(FATAL,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("received unencrypted data after SSL request"),
-					 errdetail("This could be either a client-software bug or evidence of an attempted man-in-the-middle attack.")));
-
-		/*
 		 * Scan packet body for name/option pairs.  We can assume any string
 		 * beginning within the packet body is null-terminated, thanks to
 		 * zeroing extra byte above.
@@ -2458,18 +2449,6 @@ retry1:
 			}
 			offset = valoffset + strlen(valptr) + 1;
 		}
-
-		/*
-		 * At this point we should have no data already buffered.  If we do,
-		 * it was received before we performed the GSS handshake, so it wasn't
-		 * encrypted and indeed may have been injected by a man-in-the-middle.
-		 * We report this case to the client.
-		 */
-		if (pq_buffer_has_data())
-			ereport(FATAL,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("received unencrypted data after GSSAPI encryption request"),
-					 errdetail("This could be either a client-software bug or evidence of an attempted man-in-the-middle attack.")));
 
 		/*
 		 * If we didn't find a packet terminator exactly at the end of the
@@ -2622,7 +2601,7 @@ retry1:
 					 errmsg("the database system is in recovery mode")));
 			break;
 		case CAC_TOOMANY:
-			/* increment rejection counter */
+			/* YB: increment rejection counter */
 			(*yb_too_many_conn)++;
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
@@ -2935,6 +2914,7 @@ InitProcessGlobals(void)
 			((uint64) MyStartTimestamp << 12) ^
 			((uint64) MyStartTimestamp >> 20);
 #endif
+
 		pg_prng_seed(&pg_global_prng_state, rseed);
 	}
 
@@ -3215,8 +3195,11 @@ reaper(SIGNAL_ARGS)
 
 	while ((pid = waitpid(-1, &exitstatus, WNOHANG)) > 0)
 	{
+		int			i;
+		bool		foundProcStruct = false;
+
 		/*
-		 * We perform the following tasks when a process crashes
+		 * YB: We perform the following tasks when a process crashes
 		 * 1. If the killed process held no locks during a crash, we avoid
 		 *    postmaster restarts.
 		 * 2. If the killed process has acquired or is in the process acquiring
@@ -3226,10 +3209,6 @@ reaper(SIGNAL_ARGS)
 		 *    Examples of spinlocks accessed during process creation are:
 		 *    XLogCtl->info_lck, ProcStructLock.
 		 */
-
-		int			i;
-		bool		foundProcStruct = false;
-
 		for (i = 0; i < ProcGlobal->allProcCount; i++)
 		{
 			PGPROC	   *proc = &ProcGlobal->allProcs[i];
@@ -3602,12 +3581,14 @@ reaper(SIGNAL_ARGS)
 		/*
 		 * Else do standard backend child cleanup.
 		 *
-		 * If there is no proc struct (and the crash is unexpected), restart.
-		 * We need to check for an unexpected exit because if a connection attempt is made while the
-		 * database system is starting up, that backend will fail. We do not want to restart the
-		 * postmaster in those cases because the postmaster may end up in a restart loop.
-		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the process responding to a
-		 * termination request or terminating with a FATAL.
+		 * YB: If there is no proc struct (and the crash is unexpected),
+		 * restart. We need to check for an unexpected exit because if a
+		 * connection attempt is made while the database system is starting up,
+		 * that backend will fail. We do not want to restart the postmaster in
+		 * those cases because the postmaster may end up in a restart loop.
+		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the
+		 * process responding to a termination request or terminating with a
+		 * FATAL.
 		 */
 		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 		{
@@ -3969,7 +3950,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			 */
 			if (take_action)
 			{
-				ereport(INFO,
+				ereport(INFO,	/* YB: change level */
 						(errmsg_internal("sending %s to process %d",
 										 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 										 (int) rw->rw_pid)));
@@ -4857,12 +4838,8 @@ BackendInitialize(Port *port)
 	 * Save remote_host and remote_port in port structure (after this, they
 	 * will appear in log_line_prefix data for log messages).
 	 */
-	/*
-	 * YB: Allocate memory in the context using pstrdup so that with auth-backend
-	 * where the backend is closed after authentication, the memory is automatically freed.
-	 */
-	port->remote_host = pstrdup(remote_host);
-	port->remote_port = pstrdup(remote_port);
+	port->remote_host = strdup(remote_host);
+	port->remote_port = strdup(remote_port);
 
 	/* And now we can issue the Log_connections message, if wanted */
 	if (Log_connections)
@@ -6381,11 +6358,13 @@ bgworker_should_start_now(BgWorkerStartTime start_time)
 		case PM_RUN:
 			if (start_time == BgWorkerStart_RecoveryFinished)
 				return true;
+			/* fall through */
 			yb_switch_fallthrough();
 
 		case PM_HOT_STANDBY:
 			if (start_time == BgWorkerStart_ConsistentState)
 				return true;
+			/* fall through */
 			yb_switch_fallthrough();
 
 		case PM_RECOVERY:

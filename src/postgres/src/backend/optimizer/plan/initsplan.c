@@ -44,6 +44,7 @@
 /* These parameters are set by GUC */
 int			from_collapse_limit;
 int			join_collapse_limit;
+
 extern int	yb_bnl_batch_size;
 
 
@@ -85,8 +86,10 @@ static bool check_equivalence_delay(PlannerInfo *root,
 static bool check_redundant_nullability_qual(PlannerInfo *root, Node *clause);
 static void check_mergejoinable(RestrictInfo *restrictinfo);
 static void check_hashjoinable(RestrictInfo *restrictinfo);
-static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static void check_memoizable(RestrictInfo *restrictinfo);
+
+/* YB declarations */
+static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static ListCell *yb_find_wholerow_of_record_type(List *expr);
 
 

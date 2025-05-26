@@ -232,11 +232,13 @@ public class AlertControllerTest extends FakeDBApplication {
           .put(
               YSQL_OP_AVG_LATENCY,
               "Average YSQL operations latency for universe 'Test Universe'"
-                  + " is above 10000 ms. Current value is 10001 ms")
+                  + " is above 10000 ms. Current value is 10001 ms."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               YCQL_OP_AVG_LATENCY,
               "Average YCQL operations latency for universe 'Test Universe'"
-                  + " is above 10000 ms. Current value is 10001 ms")
+                  + " is above 10000 ms. Current value is 10001 ms."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               YSQL_OP_P99_LATENCY,
               "YSQL P99 latency for universe 'Test Universe'"

@@ -1777,17 +1777,6 @@ CreateCast(CreateCastStmt *stmt)
 	return myself;
 }
 
-#ifdef NEIL
-Oid
-get_cast_oid(Oid sourcetypeid, Oid targettypeid, bool missing_ok)
-{
-}
-
-void
-DropCastById(Oid castOid)
-{
-}
-#endif
 
 static void
 check_transform_function(Form_pg_proc procstruct)
@@ -2043,14 +2032,6 @@ get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok)
 						get_language_name(lang_id, false))));
 	return oid;
 }
-
-
-#ifdef NEIL
-void
-DropTransformById(Oid transformOid)
-{
-}
-#endif
 
 
 /*

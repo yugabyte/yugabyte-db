@@ -101,9 +101,11 @@ static void generate_mergejoin_paths(PlannerInfo *root,
 									 List *merge_pathkeys,
 									 bool is_partial);
 
+/* YB declarations */
 static bool yb_has_non_evaluable_bnl_clauses(Path *outer_path,
 											 Path *inner_path,
 											 List *rinfos);
+
 
 /*
  * add_paths_to_joinrel
@@ -145,7 +147,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		ereport(DEBUG1,
 				(errmsg("\n%s BEGIN add_paths_to_joinrel Level %d\n", ybMsgBuf,
@@ -224,9 +227,11 @@ add_paths_to_joinrel(PlannerInfo *root,
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		ybBuildRelidsString(root, innerrel->relids, &buf);
 		ereport(DEBUG1,
@@ -391,7 +396,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
-		char ybMsgBuf[30];
+		char		ybMsgBuf[30];
+
 		sprintf(ybMsgBuf, "(UID %u) ", ybGetNextUid(root->glob));
 		ereport(DEBUG1,
 				(errmsg("\n%s END add_paths_to_joinrel\n", ybMsgBuf)));

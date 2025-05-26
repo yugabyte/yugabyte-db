@@ -129,8 +129,6 @@ extern void execTuplesHashPrepare(int numCols,
 								  Oid **eqFuncOids,
 								  FmgrInfo **leftHashFunctions,
 								  FmgrInfo **rightHashFunctions);
-extern ExprState *ybPrepareOuterExprsEqualFn(List *outer_exprs,
-											 Oid *eqOps, PlanState *parent);
 extern TupleHashTable BuildTupleHashTable(PlanState *parent,
 										  TupleDesc inputDesc,
 										  int numCols, AttrNumber *keyColIdx,
@@ -140,18 +138,6 @@ extern TupleHashTable BuildTupleHashTable(PlanState *parent,
 										  long nbuckets, Size additionalsize,
 										  MemoryContext tablecxt,
 										  MemoryContext tempcxt, bool use_variable_hash_iv);
-extern TupleHashTable YbBuildTupleHashTableExt(PlanState *parent,
-											   TupleDesc inputDesc,
-											   int numCols, ExprState **keyColExprs,
-											   ExprState *eqExpr,
-											   Oid *eqfuncoids,
-											   FmgrInfo *hashfunctions,
-											   long nbuckets, Size additionalsize,
-											   MemoryContext metacxt,
-											   MemoryContext tablecxt,
-											   MemoryContext tempcxt,
-											   ExprContext *expr_cxt,
-											   bool use_variable_hash_iv);
 extern TupleHashTable BuildTupleHashTableExt(PlanState *parent,
 											 TupleDesc inputDesc,
 											 int numCols, AttrNumber *keyColIdx,
@@ -233,8 +219,7 @@ extern ResultRelInfo *ExecGetTriggerResultRel(EState *estate, Oid relid,
 											  ResultRelInfo *rootRelInfo);
 extern List *ExecGetAncestorResultRels(EState *estate, ResultRelInfo *resultRelInfo);
 extern void ExecConstraints(ResultRelInfo *resultRelInfo,
-							TupleTableSlot *slot,
-							EState *estate,
+							TupleTableSlot *slot, EState *estate,
 							ModifyTableState *mstate);
 extern bool ExecPartitionCheck(ResultRelInfo *resultRelInfo,
 							   TupleTableSlot *slot, EState *estate, bool emitError);
@@ -657,17 +642,6 @@ extern void check_exclusion_constraint(Relation heap, Relation index,
 									   ItemPointer tupleid,
 									   Datum *values, bool *isnull,
 									   EState *estate, bool newIndex);
-extern void ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple,
-								  EState *estate);
-extern List *YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
-									 TupleTableSlot *slot,
-									 Datum ybctid,
-									 HeapTuple oldtuple,
-									 ItemPointer tupleid,
-									 EState *estate,
-									 Bitmapset *updatedCols,
-									 bool is_pk_updated,
-									 bool is_inplace_update_enabled);
 
 /*
  * prototypes from functions in execReplication.c
@@ -703,6 +677,32 @@ extern ResultRelInfo *ExecLookupResultRelByOid(ModifyTableState *node,
 											   bool missing_ok,
 											   bool update_cache);
 
+/* YB */
+extern ExprState *ybPrepareOuterExprsEqualFn(List *outer_exprs,
+											 Oid *eqOps, PlanState *parent);
+extern TupleHashTable YbBuildTupleHashTableExt(PlanState *parent,
+											   TupleDesc inputDesc,
+											   int numCols, ExprState **keyColExprs,
+											   ExprState *eqExpr,
+											   Oid *eqfuncoids,
+											   FmgrInfo *hashfunctions,
+											   long nbuckets, Size additionalsize,
+											   MemoryContext metacxt,
+											   MemoryContext tablecxt,
+											   MemoryContext tempcxt,
+											   ExprContext *expr_cxt,
+											   bool use_variable_hash_iv);
+extern void ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple,
+								  EState *estate);
+extern List *YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
+									 TupleTableSlot *slot,
+									 Datum ybctid,
+									 HeapTuple oldtuple,
+									 ItemPointer tupleid,
+									 EState *estate,
+									 Bitmapset *updatedCols,
+									 bool is_pk_updated,
+									 bool is_inplace_update_enabled);
 extern void YbBatchFetchConflictingRows(ResultRelInfo *resultRelInfo,
 										YbInsertOnConflictBatchState *yb_ioc_state,
 										EState *estate,

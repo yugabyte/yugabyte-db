@@ -1,6 +1,10 @@
 
 
+-- YB: Set the hard coded oid.
+SET yb_binary_restore TO true;
+SELECT binary_upgrade_set_next_pg_type_oid(8095);
 CREATE TYPE __CORE_SCHEMA__.bson;
+SET yb_binary_restore TO false;
 
 CREATE OR REPLACE FUNCTION __CORE_SCHEMA__.bson_in(cstring)
  RETURNS __CORE_SCHEMA__.bson

@@ -24,7 +24,7 @@ yb-admin \
     [ -master_addresses <master-addresses> ]  \
     [ -init_master_addrs <master-address> ]  \
     [ -timeout_ms <millisec> ] \
-    [ -certs_dir_name <dir_name> ] \
+    [ -certs_dir_name <dir-name> ] \
     <command> [ command_flags ]
 ```
 
@@ -288,7 +288,7 @@ Splits the specified hash-sharded tablet and computes the split point as the mid
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    split_tablet -master_addresses <master-addresses> <tablet-id-to-split>
+    split_tablet <tablet-id-to-split>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
@@ -439,7 +439,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values include ysql and ycql.
+* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to compact.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
@@ -491,8 +491,8 @@ Modifies the placement information (cloud, region, and zone) for a table.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    modify_table_placement_info <keyspace> <table_name> <placement_info> <replication_factor> \
-    [ <placement_id> ]
+    modify_table_placement_info <keyspace> <table-name> <placement-info> <replication-factor> \
+    [ <placement-id> ]
 ```
 
 or alternatively:
@@ -501,7 +501,7 @@ or alternatively:
 yb-admin \
     -master_addresses <master-addresses> \
     modify_table_placement_info tableid.<table-id> <placement-info> <replication-factor> \
-    [ <placement_id> ]
+    [ <placement-id> ]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
@@ -510,7 +510,7 @@ yb-admin \
 * *table-id*: The unique UUID associated with the table whose placement policy is being changed.
 * *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`.
 * *replication-factor*: The number of replicas for each tablet.
-* *placement-id*: Identifier of the primary cluster. Optional. If set, it has to match the `placement_id` specified for the primary cluster in the cluster configuration.
+* *placement-id*: Identifier of the primary cluster. Optional. If set, it has to match the placement ID specified for the primary cluster in the cluster configuration.
 
 **Example**
 
@@ -615,7 +615,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values include ysql and ycql.
+* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default is `20`.
@@ -1723,13 +1723,13 @@ This feature is {{<tags/feature/tp>}}. Use the [yb_enable_cdc_consistent_snapsho
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace-name> EXPLICIT CHANGE USE_SNAPSHOT
+    create_change_data_stream ysql.<namespace-name> [EXPLICIT] [<before-image-mode>] [USE_SNAPSHOT | NOEXPORT_SNAPSHOT]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
-* EXPLICIT: Checkpointing type on the server.
-* CHANGE: Record type indicating to the server that the stream should send only the new values of the changed columns.
+* EXPLICIT: Checkpointing type on the server. See [Creating stream in EXPLICIT checkpointing mode](#creating-stream-in-explicit-checkpointing-mode).
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. See [Enabling before image](#enabling-before-image).
 * USE_SNAPSHOT: Snapshot option indicating intention of client to consume the snapshot. If you don't want the client to consume the snapshot, use the NOEXPORT_SNAPSHOT option.
 
 For example:
@@ -1749,13 +1749,13 @@ To create a change data capture (CDC) DB stream which also supports sending the 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace-name> EXPLICIT <before-image-mode>
+    create_change_data_stream ysql.<namespace-name> [EXPLICIT] <before-image-mode>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *namespace-name*: The namespace on which the DB stream ID is to be created.
-* EXPLICIT: Checkpointing type on the server.
-* *before-image-mode*: Record type indicating the stream should include the before image.
+* EXPLICIT: Checkpointing type on the server. See [Creating stream in EXPLICIT checkpointing mode](#creating-stream-in-explicit-checkpointing-mode).
+* *before-image-mode*: Record type indicating to the server that the stream should send only the new values of the changed columns. Refer to [Before image modes](../../develop/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
 
 A successful operation of the above command returns a message with a DB stream ID:
 
@@ -1913,7 +1913,7 @@ Successfully deleted CDC DB Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 
 ### xCluster Replication Commands
 
-For detailed step-by-step instructions on deploying xCluster, refer to the [Deploy xCluster](../../deploy/multi-dc/async-replication). For monitoring xCluster, refer to the [Monitor xCluster](../../launch-and-manage/monitor-and-alert/xcluster-monitor).
+For detailed step-by-step instructions on deploying xCluster, refer to the [Deploy xCluster](../../deploy/multi-dc/async-replication). For monitoring xCluster, refer to [Monitor xCluster](../../launch-and-manage/monitor-and-alert/xcluster-monitor).
 
 #### setup_universe_replication
 
@@ -1935,7 +1935,6 @@ yb-admin \
 ```
 
 * *target-master-addresses*: Comma-separated list of target YB-Master hosts and ports. Default is `localhost:7100`.
-* *source-universe-uuid*: The UUID of the source universe.
 * *replication-group-id*: The replication group identifier.
 * *source-master-addresses*: Comma-separated list of the source master addresses.
 * *source-table-ids*: Comma-separated list of source universe table identifiers (`table_id`).
@@ -2118,7 +2117,7 @@ yb-admin \
 
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *stream-ids*: Comma-separated list of stream IDs.
-* timestamp: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
+* *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
 * `minus <interval>`: The same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [restore_snapshot_schedule](#restore-snapshot-schedule).
 
 **Example**
@@ -2219,7 +2218,7 @@ table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9e
 ```
 
 {{< note title="Note" >}}
-The xCluster bootstrap ids are the ones that should be used with [setup_universe_replication](#setup-universe-replication) and [alter_universe_replication](#alter-universe-replication).
+The xCluster bootstrap IDs are the ones that should be used with [setup_universe_replication](#setup-universe-replication) and [alter_universe_replication](#alter-universe-replication).
 {{< /note >}}
 
 #### get_replication_status
@@ -2390,7 +2389,7 @@ yb-admin \
 
 #### list_xcluster_outbound_replication_groups
 
-List The replication group identifiers for all outbound xCluster replications. If namespace_id is provided, only the replication groups for that namespace will be returned.
+List The replication group identifiers for all outbound xCluster replications. If namespace-id is provided, only the replication groups for that namespace will be returned.
 
 **Syntax**
 

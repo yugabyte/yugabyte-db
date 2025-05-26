@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) YugaByte, Inc.
+ */
+
 package group
 
 import (
@@ -35,7 +39,7 @@ var UpdateGroupCmd = &cobra.Command{
 			(len(roleResuorceDefinitionsToAdd) > 0 || len(rolesToRemove) > 0) {
 			logrus.Warnln(
 				formatter.Colorize(
-					"Using --role-resource-definition will ignore --add-role-resource-definition and --remove-roles.",
+					"Ignoring --add-role-resource-definition and --remove-roles flags since --role-resource-definition is set.\n",
 					formatter.YellowColor,
 				),
 			)
@@ -79,7 +83,8 @@ func init() {
 		 resource-uuid=<resource-uuid1>,<resource-uuid2>,<resource-uuid3>
 		 --role-resource-definition
 		 role-uuid=<role-uuid2>::resource-type=<resource-type2>::
-		 resource-uuid=<resource-uuid1>,<resource-uuid2>,<resource-uuid3>`)
+		 resource-uuid=<resource-uuid1>,<resource-uuid2>,<resource-uuid3>.
+		 Setting this will ignore add-role-resource-definition and remove-roles flags.`)
 
 	UpdateGroupCmd.Flags().StringArray("add-role-resource-definition", []string{},
 		`[Optional] Add one or more role-resource-definitions to the group.
@@ -91,5 +96,5 @@ func init() {
 
 	UpdateGroupCmd.Flags().StringSlice("remove-roles", []string{},
 		"[Optional] Remove one or more roles from the group. \n"+
-			"Example: --remove-roles role1,role2 or --remove-roles role1 --remove-roles role2.")
+			"Example: --remove-roles role1_uuid,role2_uuid or --remove-roles role1_uuid --remove-roles role2_uuid.")
 }

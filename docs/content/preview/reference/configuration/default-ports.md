@@ -3,6 +3,7 @@ title: Default ports reference
 headerTitle: Default ports
 linkTitle: Default ports
 description: Default ports for YugabyteDB including client APIs, RPC communication, and monitoring.
+headContent: Port settings for YugabyteDB deployments
 menu:
   preview:
     identifier: default-ports
@@ -10,6 +11,15 @@ menu:
     weight: 3100
 type: docs
 ---
+
+{{< page-finder/head text="Port Requirements" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/prepare/networking/" >}}
+{{< /page-finder/head >}}
+
+{{< note title="YugabyteDB Anywhere port requirements" >}}
+For information on port requirements for YugabyteDB Anywhere and universes deployed using YugabyteDB Anywhere, refer to [Networking requirements](../../../yugabyte-platform/prepare/networking/).
+{{< /note >}}
 
 ## Client APIs
 
@@ -31,16 +41,15 @@ Internode (server-to-server or node-to-node) communication, including xCluster, 
 
 To enable login to the machines running these servers, the SSH port 22 should be opened.
 
-xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes. Note that YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
+xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes.
 
-Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB software on YugabyteDB Anywhere, the following ports must be open on all YugabyteDB nodes, and be reachable from YugabyteDB Anywhere nodes:
+Port 7000 (to access the [admin UI](#admin-web-server)) should also be open to all nodes, as requests made to the Master UI of a non-leader Master are internally redirected to the leader Master's 7000 port.
+
+The YB Controller service manages backup and restore operations. If you are using YB Controller, open the following port on all YugabyteDB nodes:
 
 | Service       | Port  |
 | ------------- | ----- |
 | YB Controller | 18018 |
-| [Node agent](../../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#install-node-agent) | 9070 |
-
-For more information on networking in YugabyteDB Anywhere, refer to [Networking](../../../yugabyte-platform/prepare/networking/).
 
 ## Admin web server
 

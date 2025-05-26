@@ -148,7 +148,6 @@ message PgsqlPartitionBound {
   optional bool is_inclusive = 2;
 }
 
-// YB_TODO(upgrade): Handle in pg15 upgrade path.
 message PgsqlRandState {
   required uint64 s0 = 1;
   required uint64 s1 = 2;
@@ -316,6 +315,9 @@ message PgsqlWriteRequestPB {
   // data. Bypass this check when we know its safe.
   // Valid cases are InitDB, pg_upgrade, and temp tables.
   optional bool force_catalog_modifications = 27;
+
+  // What metric changes to return in response.
+  optional PgsqlMetricsCaptureType metrics_capture = 28;
 }
 
 //--------------------------------------------------------------------------------------------------

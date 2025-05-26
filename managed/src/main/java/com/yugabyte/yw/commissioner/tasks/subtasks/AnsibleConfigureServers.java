@@ -15,13 +15,17 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.Params;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -34,6 +38,7 @@ import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
@@ -43,10 +48,14 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
+  private static final String DEFAULT_CONFIGURE_USER = "yugabyte";
+  private final NodeAgentRpcPayload nodeAgentRpcPayload;
 
   @Inject
-  protected AnsibleConfigureServers(BaseTaskDependencies baseTaskDependencies) {
+  protected AnsibleConfigureServers(
+      BaseTaskDependencies baseTaskDependencies, NodeAgentRpcPayload nodeAgentRpcPayload) {
     super(baseTaskDependencies);
+    this.nodeAgentRpcPayload = nodeAgentRpcPayload;
   }
 
   public static class Params extends NodeTaskParams {
@@ -104,6 +113,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean overrideNodePorts = false;
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
     public int cgroupSize = 0;
+    // If configured will skip install-package role in ansible and use node-agent rpc instead.
+    public boolean skipDownloadSoftware = false;
     // Supplier for master addresses override which is invoked only when the subtask starts
     // execution.
     @JsonIgnore @Nullable public Supplier<String> masterAddrsOverride;
@@ -129,6 +140,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public void run() {
     log.debug("AnsibleConfigureServers run called for {}", taskParams().getUniverseUUID());
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
     taskParams().useSystemd =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     String processType = taskParams().getProperty("processType");
@@ -138,12 +150,12 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         && ServerType.MASTER.toString().equalsIgnoreCase(processType)) {
       // The check for flag isMasterInShellMode also makes sure that this node is intended
       // to join an existing cluster.
-      NodeDetails node = universe.getNode(taskParams().nodeName);
-      if (node.masterState != MasterState.Configured) {
+      if (nodeDetails.masterState != MasterState.Configured) {
         // Reset may be set only if node is not a master.
         // Once isMaster is set, it can be tied to a cluster.
         resetMasterState =
-            isChangeMasterConfigDone(universe, node, false, node.cloudInfo.private_ip);
+            isChangeMasterConfigDone(
+                universe, nodeDetails, false, nodeDetails.cloudInfo.private_ip);
       }
     }
 
@@ -153,11 +165,69 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         universe.getUniverseUUID(),
         taskParams().resetMasterState);
     taskParams().resetMasterState = resetMasterState;
+    Optional<NodeAgent> optional =
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)
+            ? nodeUniverseManager.maybeGetNodeAgent(
+                getUniverse(), nodeDetails, true /*check feature flag*/)
+            : Optional.empty();
+    taskParams().skipDownloadSoftware = optional.isPresent();
+    if (optional.isPresent()
+        && (taskParams().type == UpgradeTaskType.GFlags
+            || taskParams().type == UpgradeTaskType.YbcGFlags)) {
+      log.info("Updating gflags using node agent {}", optional.get());
+      nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
+          optional.get(), universe, nodeDetails, taskParams());
+      return;
+    }
     // Execute the ansible command.
     ShellResponse response =
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
+    if (optional.isPresent()
+        && (taskParams().type == UpgradeTaskType.Everything
+            || taskParams().type == UpgradeTaskType.Software)) {
+      log.info("Installing software using node agent {}", optional.get());
+      nodeAgentClient.runConfigureServer(
+          optional.get(),
+          nodeAgentRpcPayload.setUpConfigureServerBits(
+              universe, nodeDetails, taskParams(), optional.get()),
+          DEFAULT_CONFIGURE_USER);
+      nodeAgentClient.runInstallSoftware(
+          optional.get(),
+          nodeAgentRpcPayload.setupInstallSoftwareBits(
+              universe, nodeDetails, taskParams(), optional.get()),
+          DEFAULT_CONFIGURE_USER);
+
+      if (taskParams().isEnableYbc()) {
+        log.info("Installing YBC using node agent {}", optional.get());
+        nodeAgentClient.runInstallYbcSoftware(
+            optional.get(),
+            nodeAgentRpcPayload.setupInstallYbcSoftwareBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            DEFAULT_CONFIGURE_USER);
+        nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
+            optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
+      }
+      if (taskParams().otelCollectorEnabled && taskParams().auditLogConfig != null) {
+        AuditLogConfig config = taskParams().auditLogConfig;
+        if (!((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
+            && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled()))) {
+          nodeAgentClient.runInstallOtelCollector(
+              optional.get(),
+              nodeAgentRpcPayload.setupInstallOtelCollectorBits(
+                  universe, nodeDetails, taskParams(), optional.get()),
+              DEFAULT_CONFIGURE_USER);
+        }
+      }
+      if (taskParams().cgroupSize > 0) {
+        nodeAgentClient.runSetupCGroupInput(
+            optional.get(),
+            nodeAgentRpcPayload.setupSetupCGroupBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            DEFAULT_CONFIGURE_USER);
+      }
+    }
 
     if (taskParams().type == UpgradeTaskType.Everything && !taskParams().updateMasterAddrsOnly) {
       // Check cronjob status if installing software.

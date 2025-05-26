@@ -51,7 +51,6 @@ typedef struct YBTableSpaceOpts
 	int			placement_offset;
 } YBTableSpaceOpts;
 
-extern void validatePlacementConfiguration(const char *value);
 extern Oid	CreateTableSpace(CreateTableSpaceStmt *stmt);
 extern void DropTableSpace(DropTableSpaceStmt *stmt);
 extern ObjectAddress RenameTableSpace(const char *oldname, const char *newname);
@@ -65,8 +64,6 @@ extern void PrepareTempTablespaces(void);
 
 extern Oid	get_tablespace_oid(const char *tablespacename, bool missing_ok);
 extern char *get_tablespace_name(Oid spc_oid);
-extern void yb_get_tablespace_options(Datum **options, int *num_options,
-									  Oid spc_oid);
 
 extern bool directory_is_empty(const char *path);
 extern void remove_tablespace_symlink(const char *linkloc);
@@ -74,5 +71,10 @@ extern void remove_tablespace_symlink(const char *linkloc);
 extern void tblspc_redo(XLogReaderState *rptr);
 extern void tblspc_desc(StringInfo buf, XLogReaderState *rptr);
 extern const char *tblspc_identify(uint8 info);
+
+/* YB */
+extern void validatePlacementConfiguration(const char *value);
+extern void yb_get_tablespace_options(Datum **options, int *num_options,
+									  Oid spc_oid);
 
 #endif							/* TABLESPACE_H */

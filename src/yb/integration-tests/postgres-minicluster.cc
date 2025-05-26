@@ -47,21 +47,17 @@ Status PostgresMiniCluster::InitPostgres(size_t pg_ts_idx, uint16_t pg_port) {
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
             << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-  pg_supervisor_ =
-      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
-  RETURN_NOT_OK(pg_supervisor_->Start());
-
-  pg_ts->SetPgServerHandlers(
-      [this] { return InitPostgres(pg_ts_idx_, pg_port_); },
-      [this] { ShutdownPostgres(); });
+  pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
+  RETURN_NOT_OK(pg_supervisor_->StartAndMaybePause());
 
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  pg_ts->SetPgServerHandlers(
+      [this] { return InitPostgres(pg_ts_idx_, pg_port_); }, [this] { ShutdownPostgres(); },
+      [this] { return CreatePgConnSettings(); });
   return Status::OK();
 }
 
-void PostgresMiniCluster::ShutdownPostgres() {
-  pg_supervisor_->Stop();
-}
+void PostgresMiniCluster::ShutdownPostgres() { pg_supervisor_->Stop(); }
 
 Result<pgwrapper::PGConn> PostgresMiniCluster::Connect() {
   return ConnectToDB(std::string() /* dbname */);
@@ -69,6 +65,8 @@ Result<pgwrapper::PGConn> PostgresMiniCluster::Connect() {
 
 Result<pgwrapper::PGConn> PostgresMiniCluster::ConnectToDB(
     const std::string& dbname, bool simple_query_protocol) {
+  auto settings = CreatePgConnSettings();
+  settings.dbname = dbname;
   return pgwrapper::PGConnBuilder(
              {.host = pg_host_port_.host(), .port = pg_host_port_.port(), .dbname = dbname})
       .Connect(simple_query_protocol);
@@ -76,13 +74,17 @@ Result<pgwrapper::PGConn> PostgresMiniCluster::ConnectToDB(
 
 Result<pgwrapper::PGConn> PostgresMiniCluster::ConnectToDBWithReplication(
     const std::string& dbname) {
-  return pgwrapper::PGConnBuilder({
-                                      .host = pg_host_port_.host(),
-                                      .port = pg_host_port_.port(),
-                                      .dbname = dbname,
-                                      .replication = "database",
-                                  })
-      .Connect(/*simple_query_protocol=*/true);
+  auto settings = CreatePgConnSettings();
+  settings.dbname = dbname;
+  settings.replication = "database";
+  return pgwrapper::PGConnBuilder(std::move(settings)).Connect(/*simple_query_protocol=*/true);
+}
+
+pgwrapper::PGConnSettings PostgresMiniCluster::CreatePgConnSettings() {
+  pgwrapper::PGConnSettings settings;
+  settings.host = pg_host_port_.host();
+  settings.port = pg_host_port_.port();
+  return settings;
 }
 
 }  // namespace yb

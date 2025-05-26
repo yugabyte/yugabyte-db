@@ -204,11 +204,13 @@ expand_planner_arrays(PlannerInfo *root, int add_size)
 bool
 ybFindHintAlias(List *ybPlanHintsAliasMapping, char *hintAlias)
 {
-	ListCell *lc;
-	bool found = false;
+	ListCell   *lc;
+	bool		found = false;
+
 	foreach(lc, ybPlanHintsAliasMapping)
 	{
-		char *existingAlias = (char *) lfirst(lc);
+		char	   *existingAlias = (char *) lfirst(lc);
+
 		if (existingAlias != NULL && strcmp(hintAlias, existingAlias) == 0)
 		{
 			found = true;
@@ -433,10 +435,10 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 			/*
 			 * Start with the existing rel alias.
 			 */
-			char *hintAlias = rte->eref->aliasname;
+			char	   *hintAlias = rte->eref->aliasname;
 
-			int aliasSuffix = 1;
-			StringInfo buf = NULL;
+			int			aliasSuffix = 1;
+			StringInfo	buf = NULL;
 
 			/*
 			 * Loop as long as the alias is found in the global list (across all blocks).
@@ -1140,7 +1142,7 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 		{
 			/* UPDATE/DELETE/MERGE row identity vars are always needed */
 			RowIdentityVarInfo *ridinfo = (RowIdentityVarInfo *)
-			list_nth(root->row_identity_vars, var->varattno - 1);
+				list_nth(root->row_identity_vars, var->varattno - 1);
 
 			joinrel->reltarget->exprs = lappend(joinrel->reltarget->exprs,
 												var);
@@ -1467,6 +1469,9 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	}
 	else
 	{
+		/*
+		 * If we already have a PPI for this parameterization, just return it
+		 */
 		if ((ppi = find_param_path_info(baserel, required_outer)))
 			return ppi;
 	}
@@ -1484,9 +1489,7 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 		if (join_clause_is_movable_into(rinfo,
 										baserel->relids,
 										joinrelids))
-		{
 			pclauses = lappend(pclauses, rinfo);
-		}
 	}
 
 	/*
@@ -1599,7 +1602,7 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 
 	Assert(!bms_overlap(joinrel->relids, required_outer));
 
-	/* Compute batched and unbatched relids. */
+	/* YB: Compute batched and unbatched relids. */
 	Relids		req_batchedids = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
 										   YB_PATH_REQ_OUTER_BATCHED(inner_path));
 

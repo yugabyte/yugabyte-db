@@ -34,6 +34,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -715,18 +716,40 @@ Status Subprocess::Call(string* output, string* error) {
   }
 
   char buf[1024];
-  ssize_t n;
-  for (const auto fd_type : read_fds) {
-    int fd = CheckAndOffer(std::to_underlying(fd_type));
-    auto* stream = (fd_type == StdFdType::kOut) ? output : error;
-    do {
-      n = read(fd, buf, arraysize(buf));
-      if (n < 0) {
-        if (errno == EINTR) continue;
-        return STATUS(IOError, "IO error reading from " + argv_[0], Errno(errno));
+
+  if (read_fds.Any()) {
+    std::vector<pollfd> pollfds;
+    std::vector<std::string*> streams;
+    for (const auto fd_type : read_fds) {
+      int fd = CheckAndOffer(std::to_underlying(fd_type));
+      pollfds.push_back(pollfd {
+        .fd = fd,
+        .events = POLLIN,
+        .revents = 0,
+      });
+      streams.push_back(fd_type == StdFdType::kOut ? output : error);
+    }
+
+    bool done = false;
+    while (!done) {
+      int res = poll(pollfds.data(), static_cast<nfds_t>(pollfds.size()), /* timeout= */ -1);
+      if (res <= 0) {
+        LOG_IF(WARNING, res < 0) << "Poll failed: " << strerror(errno);
+        continue;
       }
-      stream->append(buf, n);
-    } while (n != 0);
+      done = true;
+      for (size_t i = 0; i != pollfds.size(); ++i) {
+        if (pollfds[i].revents & (POLLHUP | POLLIN)) {
+          auto n = read(pollfds[i].fd, buf, arraysize(buf));
+          if (n < 0) {
+            if (errno == EINTR) continue;
+            return STATUS(IOError, "IO error reading from " + argv_[0], Errno(errno));
+          }
+          done = done && n == 0;
+          streams[i]->append(buf, n);
+        }
+      }
+    }
   }
 
   int retcode = 0;

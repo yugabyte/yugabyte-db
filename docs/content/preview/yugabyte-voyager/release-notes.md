@@ -13,6 +13,67 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## Versioning
+
+Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
+
+## v2025.5.2 - May 20, 2025
+
+### New features
+
+- Added support for using a config file to manage parameters in offline migration using `yb-voyager`.
+
+### Enhancements
+
+- If you run `export schema` without first running `assess-migration`, Voyager will now automatically run assess the migration before exporting the schema for PostgreSQL source databases.
+- Performance optimizations are now reported only in assessment reports, not in schema analysis reports.
+- Assessment Report
+  - The assessment report now includes detailed recommendations related to index design to help you identify potential uneven distribution or hotspot issues in YugabyteDB. This includes:
+    - Indexes on low-cardinality columns (for example, `BOOLEAN` or `ENUM`)
+    - Indexes on columns with a high percentage of `NULL` values
+    - Indexes on columns with a high frequency of a particular value
+- Import Data
+  - The `import-data` command now monitors replication (CDC/xCluster) only for the target database specified in the migration. This avoids false positives caused by replication streams on other databases.
+
+### Bug fixes
+
+- Fixed an issue where left-padded zeros in PostgreSQL `BIT VARYING` columns were incorrectly omitted during live migration.
+
+## v1.8.17 - May 6, 2025
+
+### New feature
+
+- New Command: `finalize-schema-post-data-import`
+    This command is used to re-add NOT VALID constraints and refresh materialized views after import, and replaces the use of `import schema` with the `--post-snapshot-import true` and `--refresh-mviews` flags; both of these flags are now deprecated in import schema.
+
+### Enhancements
+
+- Sizing Recommendations in Assessment Reports
+  - Improved the accuracy of the estimated data load time mentioned in the assessment report by incorporating the `target-db-version` specified during the `assess-migration` command.
+  - Removed `Parallel jobs` recommendations as the Adaptive Parallelism feature now dynamically adjusts parallelism based on cluster load.
+- Schema Recommendations in Assessment and Schema Analysis Reports
+  - The assessment and schema analysis reports now include recommendations for performance optimization by identifying and suggesting the removal of redundant indexes present in the source schema.
+- Improved Assessment HTML Report
+  - The HTML report generated during the `assess-migration` command now features a cleaner, more user-friendly design for better readability and usability.
+
+## v1.8.16 - April 22, 2025
+
+### New features
+
+- Regularly monitor the YugabyteDB cluster during data import to ensure good health and prevent suboptimal configurations.
+  - If a YugabyteDB node goes down, the terminal UI notifies the user, and Voyager automatically shifts the load to the remaining nodes.
+  - Voyager aborts the import process if replication (CDC/xCluster) is detected. Bulk data loads with replication enabled are not recommended, as they can significantly increase WAL file sizes. To bypass this check, use the `--skip-replication-checks` flag.
+- Enhanced assessment and schema analysis reports now include schema change recommendations to optimize performance. Specifically, range-sharded indexes on timestamp columns that can cause hotspots are detected and reported with recommended workarounds.
+
+### Enhancements
+
+- Improved user experience in import schema in case of an error, by making the user aware of the `--continue-on-error` and `ignore-exist` flags.
+- Added a prompt to the `yb-voyager-pg-grant-migration-permissions.sql` script for live migrations to notify users about the change in table ownership.
+
+### Bug fixes
+
+- Fixed a bug where certain data types supported in newer YugabyteDB versions (e.g., 2.25) were incorrectly flagged as issues in the assessment report.
+
 ## v1.8.15 - April 8, 2025
 
 ### Enhancements
@@ -50,7 +111,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 - Merged the ALTER TABLE ADD constraints DDL (Primary Key, Unique Key, and Check Constraints) with the CREATE TABLE statement, reducing the number of DDLs to analyze/review and improving overall import schema performance.
 - Introduced a guardrails check to ensure live migration uses a single, fixed table list throughout the migration, preventing any changes to the table list after the migration has started.
 
-### Bug Fixes
+### Bug fixes
 
 - Fixed an issue where the `iops-capture-interval` flag in the assess-migration command did not honor the user-defined value and always defaulted to its preset.
 - Fixed an issue in the IOPs calculation logic, ensuring it counts the number of scans (both sequential and index) instead of using `seq_tup_read` for read statistics.
@@ -167,14 +228,14 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 - Miscellaneous
   - Enhanced guardrail checks in import-schema for YugabyteDB Aeon.
 
-### Bug Fixes
+### Bug fixes
 
 - Skip Unsupported Query Constructs detection if `pg_stat_statements` is not loaded via `shared_preloaded_libraries`.
 - Prevent Voyager from panicking/erroring out in case of `analyze-schema` and `import data` when `export-dir` is empty.
 
 ## v1.8.7 - December 10, 2024
 
-### New Features
+### New features
 
 - Introduced a framework in the `assess-migration` and `analyze-schema` commands to accept the target database version (`--target-db-version` flag) as input and use it for reporting issues not supported in that target version for the source schema.
 
@@ -196,7 +257,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ## v1.8.6 - November 26, 2024
 
-### New Features
+### New features
 
 - Unsupported PL/pgSQL objects detection. Migration assessment and schema analysis commands can now detect and report SQL features and constructs in PL/pgSQL objects in the source schema that are not supported by YugabyteDB. This includes detecting advisory locks, system columns, and XML functions. Voyager reports individual queries in these objects that contain unsupported constructs, such as queries in PL/pgSQL blocks for functions and procedures, or select statements in views and materialized views.
 
@@ -317,7 +378,7 @@ To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CON
 
 ## v1.8 - September 3, 2024
 
-### New Features
+### New features
 
 - Introduced the notion of Migration complexity in assessment and analyze-schema reports, which range from LOW to MEDIUM to HIGH. For PostgreSQL source, this depends on the number and complexity of the PostgreSQL features present in the schema that are unsupported in YugabyteDB.
 - Introduced a bulk assessment command (`assess-migration-bulk`) for Oracle which allows you to assess multiple schemas in one or more database instances simultaneously.
@@ -373,7 +434,7 @@ To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CON
 
 ## v1.7.1 - May 28, 2024
 
-### Bug Fixes
+### Bug fixes
 
 - Fixed a bug where [export data](../reference/data-migration/export-data/) command ([live migration](../migrate/live-migrate/)) from Oracle source fails with a "table already exists" error, when stopped and re-run (resuming CDC phase of export-data).
 - Fixed a known issue in the dockerized version of yb-voyager where commands [get data-migration-report](../reference/data-migration/import-data/#get-data-migration-report) and [end migration](../reference/end-migration/) did not work if you had previously passed ssl-cert/ssl-key/ssl-root-cert in [export data](../reference/data-migration/export-data/) or [import data](../reference/data-migration/import-data/) or [import data to source replica](../reference/data-migration/import-data/#import-data-to-source-replica) commands.
@@ -454,7 +515,7 @@ To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CON
 
 ## v1.6 - November 30, 2023
 
-### New Features
+### New features
 
 - Live migration
 

@@ -448,11 +448,9 @@ class Metrics {
     const auto result = ts.GetMetricFromHost<int64>(
         host_port, &METRIC_ENTITY_server, entity_id, CHECK_NOTNULL(metric_proto), "total_count");
 
-    if (!result.ok()) {
-      LOG(ERROR) << "Failed to get metric " << metric_proto->name() << " from TS"
-          << ts_index << ": " << host_port << " with error " << result.status();
-    }
-    ASSERT_OK(result);
+    ASSERT_TRUE(result.ok())
+        << "Failed to get metric " << metric_proto->name() << " from TS"
+        << ts_index << ": " << host_port << " with error " << result.status();
     *CHECK_NOTNULL(value) = *result;
   }
 
@@ -1635,7 +1633,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDrive
                   "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
     } else {
-      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+      LOG(WARNING) << "Deleting & Inserting failed for " << i;
     }
   }
 
@@ -1658,7 +1656,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDrive
                   "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
     } else {
-      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+      LOG(WARNING) << "Deleting & Inserting failed for " << i;
     }
   }
 
@@ -1716,7 +1714,7 @@ TEST_F_EX(
           "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
     } else {
-      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+      LOG(WARNING) << "Deleting & Inserting failed for " << i;
     }
   }
 
@@ -1740,7 +1738,7 @@ TEST_F_EX(
           "Overwrite failed");
       SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
     } else {
-      LOG(ERROR) << "Deleting & Inserting failed for " << i;
+      LOG(WARNING) << "Deleting & Inserting failed for " << i;
     }
   }
 
@@ -2369,8 +2367,8 @@ void DoTestCreateUniqueIndexWithOnlineWrites(CppCassandraDriverTestIndex* test,
     if (!duplicate_insert_failed) {
       LOG(INFO) << "Successfully inserted the duplicate value";
     } else {
-      LOG(ERROR) << "Giving up on inserting the duplicate value after "
-                 << kMaxRetries << " tries.";
+      LOG(WARNING) << "Giving up on inserting the duplicate value after "
+                   << kMaxRetries << " tries.";
     }
 
     LOG(INFO) << "Waited on the Create Index to finish. Status  = "
@@ -2624,7 +2622,6 @@ TEST_F_EX(CppCassandraDriverTest, TestDeleteAndCreateIndex, CppCassandraDriverTe
       "Request timed out");
 
   std::thread write_thread([this, table, &stop] {
-    CDSAttacher attacher;
     auto session = CHECK_RESULT(driver_->CreateSession());
     auto prepared = ASSERT_RESULT(table.PrepareInsert(&session, 10s));
     int32_t key = 0;

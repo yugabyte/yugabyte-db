@@ -29,7 +29,6 @@
 #include "yb/master/master_error.h"
 
 #include "yb/tserver/tserver_service.pb.h"
-#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -65,10 +64,8 @@ const auto kPhase = "phase"s;
 const auto kPhaseBackfilling = "backfilling"s;
 const auto kPhaseInitializing = "initializing"s;
 const client::YBTableName kYBTableName(YQLDatabase::YQL_DATABASE_PGSQL, kDatabaseName, kTableName);
-constexpr auto kBackfillSleepSec = 10 * kTimeMultiplier;
-constexpr auto kWaitForYsqlLeaseSec = 10 * kTimeMultiplier;
 
-} // namespace
+}  // namespace
 
 YB_DEFINE_ENUM(IndexStateFlag, (kIndIsLive)(kIndIsReady)(kIndIsValid));
 typedef EnumBitSet<IndexStateFlag> IndexStateFlags;
@@ -77,17 +74,10 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
  public:
   void SetUp() override {
     LibPqTestBase::SetUp();
-    // TODO(bkolagani): Remove once https://github.com/yugabyte/yugabyte-db/issues/26522 is fixed.
-    if (EnableTableLocks()) {
-      ASSERT_OK(cluster_->WaitForTabletServersToAcquireYSQLLeases(
-          MonoTime::Now() + 1s * kWaitForYsqlLeaseSec));
-    }
     conn_ = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
   }
 
-  bool EnableTableLocks() const {
-    return GetParam();
-  }
+  bool EnableTableLocks() const { return GetParam(); }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
@@ -96,15 +86,13 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
     options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
-    options->extra_tserver_flags.push_back(
-        Format("--TEST_sleep_before_vector_index_backfill_seconds=$0", kBackfillSleepSec));
 
     if (EnableTableLocks()) {
       options->extra_master_flags.push_back("--TEST_enable_object_locking_for_table_locks=true");
-      options->extra_master_flags.push_back("--TEST_enable_ysql_operation_lease=true");
+      options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 
       options->extra_tserver_flags.push_back("--TEST_enable_object_locking_for_table_locks=true");
-      options->extra_tserver_flags.push_back("--TEST_enable_ysql_operation_lease=true");
+      options->extra_tserver_flags.push_back("--enable_ysql_operation_lease=true");
       options->extra_tserver_flags.push_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     }
   }
@@ -921,6 +909,7 @@ TEST_P(PgIndexBackfillTestSimultaneously, CreateIndexSimultaneously) {
       // TODO (#19975): Enable read committed isolation
       PGConn create_conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
           ConnectToDB(kDatabaseName), IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(create_conn.Execute("SET yb_force_early_ddl_serialization=false"));
       statuses[i] = MoveStatus(create_conn.ExecuteFormat(
           "CREATE INDEX $0 ON $1 (i)",
           kIndexName, kTableName));
@@ -1868,6 +1857,9 @@ TEST_P(PgIndexBackfillFastClientTimeout, DropWhileBackfilling) {
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create thread";
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    // We don't want the DROP INDEX to face a serialization error when acquiring the FOR UPDATE lock
+    // on the catalog version row.
+    ASSERT_OK(create_conn.Execute("SET yb_force_early_ddl_serialization=false"));
     Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
     // Expect timeout because
     // DROP INDEX is currently not online and removes the index info from the indexed table
@@ -2448,6 +2440,9 @@ TEST_P(PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill, CatVerBumps) {
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create index thread";
     auto create_idx_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    // We don't want the catalog version increments to conflict with the FOR UPDATE lock on the
+    // catalog version row.
+    ASSERT_OK(create_idx_conn.Execute("SET yb_force_early_ddl_serialization=false"));
     ASSERT_OK(create_idx_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
     LOG(INFO) << "End create index thread";
   });
@@ -2580,164 +2575,21 @@ TEST_P(PgIndexBackfill1kRowsPerSec, ConcurrentDelete) {
   thread_holder_.JoinAll();
 }
 
-struct VectorIndexWriter {
-  static constexpr int kBig = 100000000;
-
-  std::atomic<int> counter = 0;
-  std::atomic<int> extra_values_counter = kBig * 2;
-  std::atomic<CoarseTimePoint> last_write;
-  std::atomic<MonoDelta> max_time_without_inserts = MonoDelta::FromNanoseconds(0);
-  std::atomic<bool> failure = false;
-
-  void Perform(PGConn& conn) {
-    std::vector<int> values;
-    for (int i = RandomUniformInt(3, 6); i > 0; --i) {
-      values.push_back(++counter);
-    }
-    size_t keep_values = values.size();
-    for (int i = RandomUniformInt(0, 2); i > 0; --i) {
-      values.push_back(++extra_values_counter);
-    }
-    bool use_2_steps = RandomUniformBool();
-
-    int offset = use_2_steps ? kBig : 0;
-    ASSERT_NO_FATALS(Insert(conn, values, offset));
-    if (use_2_steps || keep_values != values.size()) {
-      ASSERT_NO_FATALS(UpdateAndDelete(conn, values, keep_values));
-    }
-  }
-
-  void Insert(PGConn& conn, const std::vector<int>& values, int offset) {
-    for (;;) {
-      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-      bool failed = false;
-      for (auto value : values) {
-        auto res = conn.ExecuteFormat(
-            "INSERT INTO test VALUES ($0, '[$1.0]')", value, value + offset);
-        if (!res.ok()) {
-          ASSERT_OK(conn.RollbackTransaction());
-          LOG(INFO) << "Insert " << value << " failed: " << res;
-          ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
-          failed = true;
-          break;
-        }
-      }
-      if (!failed) {
-        ASSERT_OK(conn.CommitTransaction());
-        auto now = CoarseMonoClock::Now();
-        auto prev_last_write = last_write.exchange(now);
-        if (prev_last_write != CoarseTimePoint()) {
-          MonoDelta new_value(now - prev_last_write);
-          if (MakeAtLeast(max_time_without_inserts, new_value)) {
-            LOG(INFO) << "Update max time without inserts: " << new_value;
-          }
-        }
-        std::this_thread::sleep_for(100ms);
-        break;
-      }
-    }
-  }
-
-  void UpdateAndDelete(PGConn& conn, const std::vector<int>& values, size_t keep_values) {
-    for (;;) {
-      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-      bool failed = false;
-      for (size_t i = 0; i != values.size(); ++i) {
-        auto value = values[i];
-        Status res;
-        if (i < keep_values) {
-          res = conn.ExecuteFormat(
-              "UPDATE test SET embedding = '[$0.0]' WHERE id = $0", value);
-        } else {
-          res = conn.ExecuteFormat("DELETE FROM test WHERE id = $0", value);
-        }
-        if (!res.ok()) {
-          ASSERT_OK(conn.RollbackTransaction());
-          LOG(INFO) <<
-              (i < keep_values ? "Update " : "Delete " ) << value << " failed: " << res;
-          ASSERT_STR_CONTAINS(res.message().ToBuffer(), "schema version mismatch");
-          failed = true;
-          break;
-        }
-      }
-      if (!failed) {
-        ASSERT_OK(conn.CommitTransaction());
-        std::this_thread::sleep_for(100ms);
-        break;
-      }
-    }
-  }
-
-  void WaitWritten(int num_rows) {
-    auto limit = counter.load() + num_rows;
-    while (counter.load() < limit && !failure) {
-      std::this_thread::sleep_for(10ms);
-    }
-  }
-
-  void Verify(PGConn& conn) {
-    int num_bad_results = 0;
-    for (int i = 2; i < counter.load(); ++i) {
-      auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
-          "SELECT id FROM test ORDER BY embedding <-> '[$0]' LIMIT 3", i * 1.0 - 0.01)));
-      auto expected = Format("$0; $1; $2", i, i - 1, i + 1);
-      if (rows != expected) {
-        LOG(INFO) << "Bad result: " << rows << " vs " << expected;
-        ++num_bad_results;
-      }
-    }
-    // Expect recall 98% or better.
-    ASSERT_LE(num_bad_results, counter.load() / 50);
+class PgSerializeBackfillTest : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_default_transaction_isolation='serializable'");
   }
 };
 
-TEST_P(PgIndexBackfillTest, VectorIndex) {
-  ASSERT_OK(conn_->Execute("CREATE EXTENSION vector"));
-  ASSERT_OK(conn_->ExecuteFormat(
-      "CREATE TABLE test (id INT PRIMARY KEY, embedding vector(1))"));
-  TestThreadHolder thread_holder;
-  VectorIndexWriter writer;
-  for (int i = 0; i != 8; ++i) {
-    thread_holder.AddThreadFunctor(
-        [this, &stop_flag = thread_holder.stop_flag(), &writer] {
-      bool done = false;
-      auto se = ScopeExit([&done, &writer] {
-        if (!done) {
-          writer.failure = true;
-        }
-      });
-      auto conn = ASSERT_RESULT(Connect());
-      while (!stop_flag.load()) {
-        ASSERT_NO_FATALS(writer.Perform(conn));
-      }
-      done = true;
-    });
-  }
-  writer.WaitWritten(32);
-  LOG(INFO) << "Started to create index";
-  // TODO(vector_index) Switch to using CONCURRENT index creation when it will be ready.
-  ASSERT_OK(conn_->Execute(
-      "CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
-  LOG(INFO) << "Finished to create index";
-  writer.WaitWritten(32);
-  thread_holder.Stop();
-  LOG(INFO) << "Max time without inserts: " << writer.max_time_without_inserts;
-  ASSERT_LT(writer.max_time_without_inserts, 1s * kBackfillSleepSec);
-  SCOPED_TRACE(Format("Total rows: $0", writer.counter.load()));
+INSTANTIATE_TEST_CASE_P(, PgSerializeBackfillTest, ::testing::Bool());
 
-  // VerifyVectorIndexes does not take intents into account, so could produce false failure.
-  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
-
-  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    tserver::VerifyVectorIndexesRequestPB req;
-    tserver::VerifyVectorIndexesResponsePB resp;
-    rpc::RpcController controller;
-    controller.set_timeout(30s);
-    auto proxy = cluster_->tablet_server(i)->Proxy<tserver::TabletServerServiceProxy>();
-    ASSERT_OK(proxy->VerifyVectorIndexes(req, &resp, &controller));
-    ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
-  }
-  writer.Verify(*conn_);
+TEST_P(PgSerializeBackfillTest, BackfillRead) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (i int)"));
+  // Run backfill.
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t(i)"));
 }
 
 } // namespace yb::pgwrapper

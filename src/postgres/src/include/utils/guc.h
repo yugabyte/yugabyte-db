@@ -271,7 +271,6 @@ extern PGDLLIMPORT int log_parameter_max_length_on_error;
 extern PGDLLIMPORT int log_min_error_statement;
 extern PGDLLIMPORT int log_min_messages;
 extern PGDLLIMPORT int client_min_messages;
-
 extern PGDLLIMPORT int log_min_duration_sample;
 extern PGDLLIMPORT int log_min_duration_statement;
 extern PGDLLIMPORT int log_temp_files;
@@ -301,6 +300,7 @@ extern PGDLLIMPORT int tcp_user_timeout;
 extern PGDLLIMPORT bool trace_sort;
 #endif
 
+/* YB */
 extern PGDLLIMPORT bool yb_enable_memory_tracking;
 extern PGDLLIMPORT int yb_bnl_batch_size;
 extern PGDLLIMPORT bool yb_bnl_optimize_first_batch;
@@ -309,10 +309,9 @@ extern PGDLLIMPORT int yb_explicit_row_locking_batch_size;
 extern PGDLLIMPORT bool yb_lock_pk_single_rpc;
 extern PGDLLIMPORT int yb_toast_catcache_threshold;
 extern PGDLLIMPORT bool yb_enable_fkey_catcache;
-extern PGDLLIMPORT bool	yb_index_checker;
-
+extern PGDLLIMPORT bool yb_index_checker;
 extern PGDLLIMPORT bool yb_enable_planner_trace;
-extern PGDLLIMPORT char	*yb_hinted_uids;
+extern PGDLLIMPORT char *yb_hinted_uids;
 
 /*
  * Functions exported by guc.c

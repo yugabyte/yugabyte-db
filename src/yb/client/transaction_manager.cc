@@ -15,6 +15,8 @@
 
 #include "yb/client/transaction_manager.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
@@ -192,8 +194,8 @@ class LoadStatusTabletsTask {
     // TODO(dtxn) async
     auto tablets = GetTransactionStatusTablets();
     if (!tablets.ok()) {
-      YB_LOG_EVERY_N_SECS(ERROR, 1) << "Failed to get tablets of txn status tables: "
-                                    << tablets.status();
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Failed to get tablets of txn status tables: "
+                                      << tablets.status();
       if (callback_) {
         callback_(tablets.status());
       }
@@ -290,8 +292,8 @@ class TransactionManager::Impl {
     }
 
     if (!tasks_pool_.Enqueue(&thread_pool_, client_, &table_state_, version, std::move(cb))) {
-      YB_LOG_EVERY_N_SECS(ERROR, 1) << "Update tasks overflow, number of tasks: "
-                                    << tasks_pool_.size();
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Update tasks overflow, number of tasks: "
+                                      << tasks_pool_.size();
       if (callback) {
         callback(STATUS_FORMAT(ServiceUnavailable,
                                "Update tasks queue overflow, number of tasks: $0",
@@ -304,18 +306,26 @@ class TransactionManager::Impl {
     if (table_state_.IsInitialized()) {
       if (ThreadRestrictions::IsWaitAllowed()) {
         table_state_.InvokeCallback(callback, locality);
-      } else if (!invoke_callback_tasks_.Enqueue(
-            &thread_pool_, &table_state_, callback, locality)) {
-        callback(STATUS_FORMAT(ServiceUnavailable,
-                               "Invoke callback queue overflow, number of tasks: $0",
-                               invoke_callback_tasks_.size()));
+      } else {
+        ASH_ENABLE_CONCURRENT_UPDATES();
+        SET_WAIT_STATUS(OnCpu_Passive);
+        if (!invoke_callback_tasks_.Enqueue(
+          &thread_pool_, &table_state_, callback, locality)) {
+          SCOPED_WAIT_STATUS(OnCpu_Active);
+          callback(STATUS_FORMAT(ServiceUnavailable,
+                                 "Invoke callback queue overflow, number of tasks: $0",
+                                 invoke_callback_tasks_.size()));
+        }
       }
       return;
     }
 
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(OnCpu_Passive);
     if (!tasks_pool_.Enqueue(
-        &thread_pool_, client_, &table_state_, 0 /* version */, callback,
-        locality)) {
+      &thread_pool_, client_, &table_state_, 0 /* version */, callback,
+      locality)) {
+      SCOPED_WAIT_STATUS(OnCpu_Active);
       callback(STATUS_FORMAT(ServiceUnavailable, "Tasks overflow, exists: $0", tasks_pool_.size()));
     }
   }

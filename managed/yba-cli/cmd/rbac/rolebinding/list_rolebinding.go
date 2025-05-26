@@ -51,7 +51,7 @@ var listRoleBindingCmd = &cobra.Command{
 
 			r := make([]ybaclient.UserWithFeatures, 0)
 			for _, user := range rUsers {
-				if strings.Compare(user.GetEmail(), email) == 0 {
+				if strings.EqualFold(user.GetEmail(), email) {
 					r = append(r, user)
 				}
 			}

@@ -29,8 +29,25 @@ ADD_YB_LIBRARY(docdb_proto
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
+set(DOCDB_SHARED_SRCS
+        lock_util.cc
+        )
+
+set(DOCDB_SHARED_DEPS
+        yb_dockv
+        yb_ash
+        yb_util
+        yb_common
+        docdb_proto
+        )
+
+ADD_YB_LIBRARY(yb_docdb_shared
+        SRCS ${DOCDB_SHARED_SRCS}
+        DEPS ${DOCDB_SHARED_DEPS})
+
 set(DOCDB_SRCS
         bounded_rocksdb_iterator.cc
+        compaction_file_filter.cc
         conflict_data.cc
         conflict_resolution.cc
         consensus_frontier.cc
@@ -46,11 +63,12 @@ set(DOCDB_SRCS
         doc_read_context.cc
         doc_reader.cc
         doc_reader_redis.cc
-        doc_rowwise_iterator_base.cc
         doc_rowwise_iterator.cc
+        doc_rowwise_iterator_base.cc
         doc_vector_index.cc
-        doc_write_batch_cache.cc
         doc_write_batch.cc
+        doc_write_batch_cache.cc
+        docdb-internal.cc
         docdb.cc
         docdb_compaction_context.cc
         docdb_compaction_filter_intents.cc
@@ -60,8 +78,6 @@ set(DOCDB_SRCS
         docdb_rocksdb_util.cc
         docdb_statistics.cc
         docdb_util.cc
-        docdb-internal.cc
-        compaction_file_filter.cc
         intent_aware_iterator.cc
         intent_iterator.cc
         iter_util.cc
@@ -69,7 +85,6 @@ set(DOCDB_SRCS
         kv_debug.cc
         local_waiting_txn_registry.cc
         lock_batch.cc
-        lock_util.cc
         object_lock_manager.cc
         pgsql_operation.cc
         ql_rocksdb_storage.cc
@@ -91,6 +106,7 @@ set(DOCDB_DEPS
         yb_rocksutil
         yb_common
         docdb_proto
+        yb_docdb_shared
         server_common
         rpc_introspection_proto
         yb_pggate_util
@@ -107,7 +123,7 @@ ADD_YB_LIBRARY(yb_docdb
 
 # Ensure protobuf headers we depend on are generated prior to building DocDB.
 add_dependencies(
-        yb_docdb
+        yb_docdb_shared
         gen_src_yb_master_master_types_proto
         gen_src_yb_rpc_rpc_header_proto
         gen_src_yb_tablet_metadata_proto

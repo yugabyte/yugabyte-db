@@ -686,10 +686,6 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
     TaskInfo taskInfo =
         waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));
-    System.out.println("AAAAA");
-    System.out.println(taskInfo.getTaskState());
-    System.out.println(taskInfo.getErrorMessage());
-    System.out.println("BBBBB");
     verifyUniverseTaskSuccess(taskInfo);
     Universe result = Universe.getOrBadRequest(universeResp.universeUUID);
     assertEquals(
@@ -1149,6 +1145,11 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       for (NodeDetails node : u.getNodes()) {
         for (UniverseTaskBase.ServerType serverType : node.getAllProcesses()) {
           localNodeManager.dumpProcessOutput(u, node.getNodeName(), serverType);
+        }
+        if (u.isYbcEnabled()) {
+          // Dump YBC logs as well.
+          localNodeManager.dumpProcessOutput(
+              u, node.getNodeName(), UniverseTaskBase.ServerType.CONTROLLER);
         }
       }
     }

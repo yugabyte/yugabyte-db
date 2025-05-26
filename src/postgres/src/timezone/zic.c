@@ -904,16 +904,16 @@ namecheck(const char *name)
 
 	/* Benign characters in a portable file name.  */
 	static char const benign[] =
-	"-/_"
-	"abcdefghijklmnopqrstuvwxyz"
-	"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+		"-/_"
+		"abcdefghijklmnopqrstuvwxyz"
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 	/*
 	 * Non-control chars in the POSIX portable character set, excluding the
 	 * benign characters.
 	 */
 	static char const printable_and_not_benign[] =
-	" !\"#$%&'()*+,.0123456789:;<=>?@[\\]^`{|}~";
+		" !\"#$%&'()*+,.0123456789:;<=>?@[\\]^`{|}~";
 
 	char const *component = name;
 
@@ -1393,18 +1393,22 @@ gethms(char const *string, char const *errstring)
 			break;
 		case 8:
 			ok = '0' <= xr && xr <= '9';
+			/* fallthrough */
 			yb_switch_fallthrough();
 		case 7:
 			ok &= ssx == '.';
 			if (ok && noise)
 				warning(_("fractional seconds rejected by"
 						  " pre-2018 versions of zic"));
+			/* fallthrough */
 			yb_switch_fallthrough();
 		case 5:
 			ok &= mmx == ':';
+			/* fallthrough */
 			yb_switch_fallthrough();
 		case 3:
 			ok &= hhx == ':';
+			/* fallthrough */
 			yb_switch_fallthrough();
 		case 1:
 			break;
@@ -3201,7 +3205,7 @@ outzone(const struct zone *zpfirst, ptrdiff_t zonecount)
 						else if (jtime == ktime)
 						{
 							char const *dup_rules_msg =
-							_("two rules for same instant");
+								_("two rules for same instant");
 
 							eats(zp->z_filename, zp->z_linenum,
 								 rp->r_filename, rp->r_linenum);

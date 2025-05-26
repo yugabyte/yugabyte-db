@@ -82,7 +82,6 @@ public class TestYsqlDump extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Turn off sequence cache.
     flagMap.put("ysql_sequence_cache_minval", "0");
-    flagMap.put("ysql_enable_inheritance", "true");
     return flagMap;
   }
 
@@ -106,8 +105,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpWithYbMetadata() throws Exception {
-
-    markClusterNeedsRecreation();
     restartCluster();
 
     ysqlDumpTester(
@@ -134,8 +131,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpWithDumpRoleChecks() throws Exception {
-
-    markClusterNeedsRecreation();
     restartCluster();
 
     ysqlDumpTester(
@@ -294,7 +289,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpColocatedTablesWithTablespaces() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithClusterBuilder(cb -> {
       cb.addCommonFlag("ysql_enable_colocated_tables_with_tablespaces", "true");
       cb.addCommonTServerFlag("placement_cloud", "testCloud");
@@ -336,7 +330,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpLegacyColocatedDB() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());

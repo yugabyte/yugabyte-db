@@ -31,6 +31,7 @@
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 
+
 /*
  * CatalogOpenIndexes - open the indexes on a system catalog.
  *

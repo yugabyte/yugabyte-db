@@ -188,23 +188,12 @@ extern bool errstart(int elevel, const char *domain);
 extern pg_attribute_cold bool errstart_cold(int elevel, const char *domain);
 extern void errfinish(const char *filename, int lineno, const char *funcname);
 
-/* YB_TODO (amartsinchyk)
- * These function needs review and modifications to match Pg15.
- */
-extern bool yb_errstart(int elevel);
-extern pg_attribute_cold bool yb_errstart_cold(int elevel);
-extern void yb_errfinish(const char *filename, int lineno, const char *funcname);
-
 extern int	errcode(int sqlerrcode);
-extern int	yb_external_errcode(int sqlerrcode);
 
 extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
 
 extern int	errmsg(const char *fmt,...) pg_attribute_printf(1, 2);
-extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args);
-extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args);
-extern void yb_set_pallocd_error_file_and_func(const char *filename, const char *funcname);
 extern int	errmsg_internal(const char *fmt,...) pg_attribute_printf(1, 2);
 
 extern int	errmsg_plural(const char *fmt_singular, const char *fmt_plural,
@@ -257,6 +246,7 @@ extern int	geterrcode(void);
 extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
 
+
 /*----------
  * Old-style error reporting API: to be used in this way:
  *		elog(ERROR, "portal \"%s\" not found", stmt->portalname);
@@ -264,6 +254,7 @@ extern int	getinternalerrposition(void);
  */
 #define elog(elevel, ...)  \
 	ereport(elevel, errmsg_internal(__VA_ARGS__))
+
 
 /* Support for constructing error strings separately from ereport() calls */
 
@@ -434,9 +425,6 @@ typedef struct ErrorData
 	bool		yb_owns_file_and_func;	/* Whether we own filename/funcname. */
 } ErrorData;
 
-extern sigjmp_buf *yb_get_exception_stack(void);
-extern void yb_set_exception_stack(sigjmp_buf *new_sigjmp_buf);
-extern void yb_reset_error_status(void);
 extern void EmitErrorReport(void);
 extern ErrorData *CopyErrorData(void);
 extern void FreeErrorData(ErrorData *edata);
@@ -509,5 +497,21 @@ extern void write_stderr(const char *fmt,...) pg_attribute_printf(1, 2);
  * be used to safely emit a message from a signal handler.
  */
 extern void write_stderr_signal_safe(const char *fmt);
+
+/* YB */
+/* YB_TODO (amartsinchyk)
+ * These function needs review and modifications to match Pg15.
+ */
+extern bool yb_errstart(int elevel);
+extern pg_attribute_cold bool yb_errstart_cold(int elevel);
+extern void yb_errfinish(const char *filename, int lineno, const char *funcname);
+extern int	yb_external_errcode(int sqlerrcode);
+extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args);
+extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args);
+extern int	yb_errdetail_log_from_status(const char *fmt, const size_t nargs, const char **args);
+extern void yb_errlocation_from_status(const char *filename, int lineno, const char *funcname);
+extern sigjmp_buf *yb_get_exception_stack(void);
+extern void yb_set_exception_stack(sigjmp_buf *new_sigjmp_buf);
+extern void yb_reset_error_status(void);
 
 #endif							/* ELOG_H */

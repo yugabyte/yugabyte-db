@@ -9,7 +9,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.102-SNAPSHOT</version>
+    <version>0.8.104-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-multiapi</artifactId>

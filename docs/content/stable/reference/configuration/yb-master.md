@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: yb-master
     parent: configuration
-    weight: 2450
+    weight: 2000
 type: docs
 ---
 
@@ -202,6 +202,12 @@ Default: `true`
 Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
 
 Default: `false`
+
+##### --ysql_follower_reads_avoid_waiting_for_safe_time
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+Default: `true`
 
 ## Logging flags
 

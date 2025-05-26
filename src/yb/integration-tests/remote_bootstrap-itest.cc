@@ -1554,21 +1554,16 @@ void RemoteBootstrapITest::BootstrapSourceCrashesWhileFetchingData() {
   // crash_test_leader_index_ starts from 0
   std::string tserver4_zone = crash_test_leader_index_ != 2 ? tserver2_zone : tserver3_zone;
   AddTServerInZone(tserver4_zone);
-  ASSERT_OK(cluster_->WaitForTabletServerCount(4, MonoDelta::FromSeconds(20)));
-  ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(3));
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(3, crash_test_tablet_id_, TABLET_DATA_READY));
 
   // will cause the rbs source to crash
   std::string tserver5_zone = tserver4_zone == "z1" ? "z2" : "z1";
   int rbs_source_index = tserver5_zone == "z1" ? 1 : 2;
   ASSERT_OK(cluster_->SetFlag(
-      cluster_->tablet_server(rbs_source_index),
-      "TEST_fault_crash_on_handle_rb_fetch_data",
+      cluster_->tablet_server(rbs_source_index), "TEST_fault_crash_on_handle_rb_fetch_data",
       "1.0"));
 
   AddTServerInZone(tserver5_zone);
-  ASSERT_OK(cluster_->WaitForTabletServerCount(5, MonoDelta::FromSeconds(20)));
-  ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(4));
   std::string rbs_source_uuid = cluster_->tablet_server(rbs_source_index)->uuid();
   std::string new_ts_uuid = cluster_->tablet_server(4)->uuid();
 
@@ -1813,8 +1808,7 @@ TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFromClosestPeer) {
   // Run Log GC on the leader peer and check that the follower is still able to serve as rbs source.
   // The follower would request to remotely anchor the log on the last received op id.
   auto leader_ts = cluster_->tablet_server(crash_test_leader_index_);
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
-      leader_ts, {crash_test_tablet_id_}, tserver::FlushTabletsRequestPB::LOG_GC));
+  ASSERT_OK(leader_ts->LogGC({crash_test_tablet_id_}, false));
 
   ASSERT_NE(crash_test_leader_index_, 2);
   AddTServerInZone("z2");
@@ -1901,8 +1895,8 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
   TServerDetails* ts = ts_map_[cluster_->tablet_server(ts_idx_to_bootstrap)->uuid()].get();
 
-  // Wait for 4 tablets - 3 transactions related and 1 user created colocated tablet.
-  ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 4, timeout, &tablets));
+  // 1 user created colocated tablet.
+  ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 1, timeout, &tablets));
   vector<string> user_tablet_ids;
   for (auto tablet : tablets) {
     if (tablet.tablet_status().table_name().ends_with("parent.tablename")) {
@@ -2016,6 +2010,9 @@ RemoteBootstrapITest::FindTablet(
 }
 
 TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
+  vector<string> master_flags;
+  master_flags.push_back("--TEST_system_table_num_tablets=3");
+
   vector<string> ts_flags;
   // Enable lazy superblock flush.
   ts_flags.push_back("--lazily_flush_superblock=true");
@@ -2038,7 +2035,7 @@ TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   ts_flags.push_back("--TEST_skip_force_superblock_flush=true");
 
   ASSERT_NO_FATALS(StartCluster(
-      ts_flags, /* master_flags = */ {}, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
+      ts_flags, master_flags, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
   RBSWithLazySuperblockFlush(/* num_tables */ 20);
 }
 

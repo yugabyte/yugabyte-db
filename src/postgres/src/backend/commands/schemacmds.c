@@ -264,13 +264,6 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	return namespaceId;
 }
 
-#ifdef NEIL
-/* Pg11 API */
-void
-RemoveSchemaById(Oid schemaOid)
-{
-}
-#endif
 
 /*
  * Rename schema

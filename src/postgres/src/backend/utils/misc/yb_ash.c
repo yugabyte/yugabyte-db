@@ -107,7 +107,8 @@ static int	yb_ash_cb_max_entries(void);
 static void YbAshSetQueryId(uint64 query_id);
 static void YbAshResetQueryId(uint64 query_id);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
-									  int query_location);
+									  int query_location,
+									  bool is_sensitive_stmt);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
 static bool YbAshNestedQueryIdStackPush(uint64 query_id);
@@ -321,7 +322,8 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 					queryDesc->plannedstmt->queryId :
 					yb_ash_utility_query_id(queryDesc->sourceText,
 											queryDesc->plannedstmt->stmt_len,
-											queryDesc->plannedstmt->stmt_location));
+											queryDesc->plannedstmt->stmt_location,
+											false /* is_sensitive_stmt */ ));
 		YbAshSetQueryId(query_id);
 	}
 
@@ -438,11 +440,16 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	{
 		if (yb_enable_ash)
 		{
+			/*
+			 * UTILITY statements can have password tokens that require
+			 * redaction
+			 */
 			query_id = (pstmt->queryId != 0 ?
 						pstmt->queryId :
 						yb_ash_utility_query_id(queryString,
 												pstmt->stmt_len,
-												pstmt->stmt_location));
+												pstmt->stmt_location,
+												true /* is_sensitive_stmt */ ));
 			YbAshSetQueryId(query_id);
 		}
 		++nested_level;
@@ -626,11 +633,10 @@ YbAshSetMetadataForBgworkers(void)
  * from pg_stat_statements.
  */
 static uint64
-yb_ash_utility_query_id(const char *query, int query_len, int query_location)
-{
-	const char *redacted_query;
-	int			redacted_query_len;
+yb_ash_utility_query_id(const char *query, int query_len, int query_location,
+						bool is_sensitive_stmt)
 
+{
 	Assert(query != NULL);
 
 	if (query_location >= 0)
@@ -659,11 +665,17 @@ yb_ash_utility_query_id(const char *query, int query_len, int query_location)
 	while (query_len > 0 && scanner_isspace(query[query_len - 1]))
 		query_len--;
 
-	/* Use the redacted query for checking purposes. */
-	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
+	/*
+	 * Use the redacted query for checking purposes.
+	 * The query string may include multiple statements, so consider only the
+	 * substring that we are interested in for redaction. Note that the
+	 * substring in question does not contain a semi-colon at the end.
+	 */
+	if (is_sensitive_stmt)
+		query = YbGetRedactedQueryString(pnstrdup(query, query_len), &query_len);
 
-	return DatumGetUInt64(hash_any_extended((const unsigned char *) redacted_query,
-											redacted_query_len, 0));
+	return DatumGetUInt64(hash_any_extended((const unsigned char *) query,
+											query_len, 0));
 }
 
 static void

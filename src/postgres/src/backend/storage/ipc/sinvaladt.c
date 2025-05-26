@@ -137,8 +137,6 @@
 #define SIG_THRESHOLD (MAXNUMMESSAGES / 2)
 #define WRITE_QUANTUM 64
 
-struct SISeg *shmInvalBuffer;	/* pointer to the shared inval buffer */
-
 /* Per-backend state in shared invalidation structure */
 typedef struct ProcState
 {
@@ -192,6 +190,8 @@ typedef struct SISeg
 	 */
 	ProcState	procState[FLEXIBLE_ARRAY_MEMBER];
 } SISeg;
+
+struct SISeg *shmInvalBuffer;	/* pointer to the shared inval buffer */
 
 
 static LocalTransactionId nextLocalTransactionId;

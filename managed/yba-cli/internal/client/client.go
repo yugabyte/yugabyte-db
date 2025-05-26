@@ -104,12 +104,10 @@ func NewAuthAPIClient() (*AuthAPIClient, error) {
 func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, error) {
 
 	cfg := ybaclient.NewConfiguration()
-	cfgV2 := ybav2client.NewConfiguration()
 	restAPIClient := &RestAPIClient{
 		Client: &http.Client{Timeout: 30 * time.Second},
 		Host:   url.Host,
 	}
-
 	cfg.Host = url.Host
 	cfg.Scheme = url.Scheme
 	if url.Scheme == util.HTTPSURLScheme {
@@ -130,21 +128,28 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 		cfg.Scheme = util.HTTPURLScheme
 		restAPIClient.Scheme = util.HTTPURLScheme
 	}
-	cfgV2.Host = url.Host
-	cfgV2.Scheme = url.Scheme
-	if url.Scheme == "https" {
-		cfgV2.Scheme = "https"
-		restAPIClient.Scheme = "https"
-		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-		cfgV2.HTTPClient = &http.Client{Transport: tr}
-	} else {
-		cfgV2.Scheme = "http"
-	}
-
 	cfg.DefaultHeader = map[string]string{
 		"X-AUTH-YW-API-TOKEN": apiToken,
 	}
 
+	cfgV2 := ybav2client.NewConfiguration()
+	cfgV2.Host = url.Host
+	cfgV2.Scheme = url.Scheme
+	if url.Scheme == util.HTTPSURLScheme {
+		cfgV2.Scheme = util.HTTPSURLScheme
+		tr, err := getConnectionTransport()
+		if err != nil {
+			return nil, err
+		}
+		cfgV2.HTTPClient = &http.Client{Transport: tr}
+	} else {
+		if !viper.GetBool("insecure") {
+			errMessage := "Invalid or missing value provided for 'insecure'. Setting it to 'true'.\n"
+			logrus.Error(formatter.Colorize(errMessage, formatter.YellowColor))
+			viper.Set("insecure", true)
+		}
+		cfgV2.Scheme = util.HTTPURLScheme
+	}
 	cfgV2.DefaultHeader = map[string]string{
 		"X-AUTH-YW-API-TOKEN": apiToken,
 	}

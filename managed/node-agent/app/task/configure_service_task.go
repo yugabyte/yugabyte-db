@@ -7,7 +7,6 @@ import (
 	"fmt"
 	pb "node-agent/generated/service"
 	"node-agent/util"
-	"strings"
 )
 
 // PreflightCheckHandler implements task.AsyncTask.
@@ -81,8 +80,9 @@ func (handler *ConfigureServiceHandler) Handle(
 		command,
 		options,
 	)
-	argsList := strings.Join(handler.shellTask.args, " ")
-	util.FileLogger().Infof(ctx, "Starting install/configure earlyoom handler with %s", argsList)
+
+	util.FileLogger().
+		Infof(ctx, "Starting install/configure earlyoom handler with %v", handler.shellTask.cmdInfo.RedactCommandArgs())
 
 	output, err := handler.shellTask.Process(ctx)
 	if err != nil {

@@ -312,6 +312,11 @@ Status PgTxnManager::SetReadOnlyStmt(bool read_only_stmt) {
 }
 
 uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requirement) {
+  VLOG(1) << "txn_priority_requirement: " << txn_priority_requirement
+          << " txn_priority_highpri_lower_bound: " << txn_priority_highpri_lower_bound
+          << " txn_priority_highpri_upper_bound: " << txn_priority_highpri_upper_bound
+          << " txn_priority_regular_lower_bound: " << txn_priority_regular_lower_bound
+          << " txn_priority_regular_upper_bound: " << txn_priority_regular_upper_bound;
   if (txn_priority_requirement == kHighestPriority) {
     return yb::kHighPriTxnUpperBound;
   }
@@ -330,6 +335,8 @@ Status PgTxnManager::CalculateIsolation(
   if (FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction()
                                                        : IsDdlMode()) {
     VLOG_TXN_STATE(2);
+    if (!priority_.has_value())
+      priority_ = NewPriority(txn_priority_requirement);
     return Status::OK();
   }
 
@@ -366,7 +373,23 @@ Status PgTxnManager::CalculateIsolation(
           : (pg_isolation_level_ == PgIsolationLevel::READ_COMMITTED
               ? IsolationLevel::READ_COMMITTED
               : IsolationLevel::SNAPSHOT_ISOLATION);
-  const bool defer = read_only_ && deferrable_;
+  // Users can use the deferrable mode via:
+  // (1) DEFERRABLE READ ONLY setting in transaction blocks
+  // (2) SET yb_read_after_commit_visibility = 'deferred';
+  //
+  // The feature doesn't take affect for non-read only serializable isolation txns
+  // and fast-path transactions because they don't face read restart errors in the first place.
+  //
+  // (1) Serializable isolation txns don't face read restart errors because
+  //    they use the latest timestamp for reading.
+  // (2) Fast-path txns don't face read restart errors because
+  //    they pick a read time after conflict resolution.
+  // We already skip (2) because CalculateIsolation is not called for fast-path
+  //    (i.e., NON_TRANSACTIONAL).
+  need_defer_read_point_ =
+      ((read_only_ && deferrable_)
+        || yb_read_after_commit_visibility == YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY)
+      && docdb_isolation != IsolationLevel::SERIALIZABLE_ISOLATION;
 
   VLOG_TXN_STATE(2) << "DocDB isolation level: " << IsolationLevel_Name(docdb_isolation);
 
@@ -384,22 +407,20 @@ Status PgTxnManager::CalculateIsolation(
              (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
               docdb_isolation == IsolationLevel::READ_COMMITTED) &&
              (!FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled || !IsDdlMode())) {
-    if (defer) {
-      need_defer_read_point_ = true;
-    }
+    // Preserves isolation_level_ as NON_TRANSACTIONAL
   } else {
     if (IsDdlMode()) {
       DCHECK(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled)
           << "Unexpected DDL state found in plain transaction";
     }
 
-    if (!use_saved_priority_) {
+    if (!use_saved_priority_ && !priority_.has_value()) {
       priority_ = NewPriority(txn_priority_requirement);
     }
     isolation_level_ = docdb_isolation;
 
     VLOG_TXN_STATE(2) << "effective isolation level: " << IsolationLevel_Name(docdb_isolation)
-                      << " priority_: " << priority_
+                      << " priority_: " << (priority_ ? std::to_string(*priority_) : "nullopt")
                       << "; transaction started successfully.";
   }
 
@@ -526,7 +547,7 @@ Status PgTxnManager::FinishPlainTransaction(
 void PgTxnManager::ResetTxnAndSession() {
   txn_in_progress_ = false;
   isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
-  priority_ = 0;
+  priority_ = std::nullopt;
   IncTxnSerialNo();
 
   enable_follower_reads_ = false;
@@ -536,6 +557,7 @@ void PgTxnManager::ResetTxnAndSession() {
   snapshot_read_time_is_used_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
+  need_defer_read_point_ = false;
 }
 
 Status PgTxnManager::SetDdlStateInPlainTransaction() {
@@ -657,16 +679,21 @@ Status PgTxnManager::SetupPerformOptions(
 
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);
-  } else {
-    options->set_priority(priority_);
+  } else if (priority_) {
+    options->set_priority(*priority_);
   }
   if (need_restart_) {
     options->set_restart_transaction(true);
     need_restart_ = false;
   }
+  // Two ways to defer read point:
+  // 1. SET TRANSACTION READ ONLY DEFERRABLE
+  // 2. SET yb_read_after_commit_visibility = 'deferred'
   if (need_defer_read_point_) {
     options->set_defer_read_point(true);
-    need_defer_read_point_ = false;
+    // Setting read point at pg client. Reset other time manipulations.
+    ensure_read_time = EnsureReadTimeIsSet::kFalse;
+    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   }
   if (!IsDdlModeWithSeparateTransaction()) {
     // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
@@ -681,7 +708,7 @@ Status PgTxnManager::SetupPerformOptions(
     // Do not clamp in the serializable case since
     // - SERIALIZABLE reads do not pick read time until later.
     // - SERIALIZABLE reads do not observe read restarts anyways.
-    if (yb_read_after_commit_visibility
+    if (!IsDdlMode() && yb_read_after_commit_visibility
           == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
         && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION)
       // We clamp uncertainty window when
@@ -699,22 +726,26 @@ Status PgTxnManager::SetupPerformOptions(
 }
 
 double PgTxnManager::GetTransactionPriority() const {
-  if (priority_ <= yb::kRegularTxnUpperBound) {
-    return ToTxnPriority(priority_,
+  if (!priority_.has_value()) {
+    return 0.0;
+  }
+
+  if (*priority_ <= yb::kRegularTxnUpperBound) {
+    return ToTxnPriority(*priority_,
                          yb::kRegularTxnLowerBound,
                          yb::kRegularTxnUpperBound);
   }
 
-  return ToTxnPriority(priority_,
+  return ToTxnPriority(*priority_,
                        yb::kHighPriTxnLowerBound,
                        yb::kHighPriTxnUpperBound);
 }
 
 YbcTxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
-  if (priority_ <= yb::kRegularTxnUpperBound) {
+  if (!priority_.has_value() || (*priority_ <= yb::kRegularTxnUpperBound)) {
     return kLowerPriorityRange;
   }
-  if (priority_ < yb::kHighPriTxnUpperBound) {
+  if (*priority_ < yb::kHighPriTxnUpperBound) {
     return kHigherPriorityRange;
   }
   return kHighestPriority;
@@ -809,8 +840,8 @@ Status PgTxnManager::CheckSnapshotTimeConflict() const {
   SCHECK_EQ(
       yb_read_time, 0, NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_time' in the same transaction.");
-  SCHECK_NE(
-      yb_read_after_commit_visibility, YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, NotSupported,
+  SCHECK_EQ(
+      yb_read_after_commit_visibility, YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_after_commit_visibility' in the same "
       "transaction.");
   SCHECK(!IsDdlMode(), NotSupported, "Cannot run DDL with exported/imported snapshot.");
@@ -846,7 +877,8 @@ Status PgTxnManager::RollbackToSubTransaction(SubTransactionId id) {
 
 Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
   if (!PREDICT_FALSE(enable_table_locking_)) {
-    // Locking is handled separately by YugaByte.
+    // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
+    // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     return Status::OK();
   }
   RETURN_NOT_OK(CalculateIsolation(
@@ -854,8 +886,11 @@ Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObject
       isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));
   tserver::PgAcquireObjectLockRequestPB req;
   RETURN_NOT_OK(SetupPerformOptions(req.mutable_options()));
-  req.set_database_oid(lock_id.db_oid);
-  req.set_object_oid(lock_id.object_oid);
+  auto* lock_oid = req.mutable_lock_oid();
+  lock_oid->set_database_oid(lock_id.db_oid);
+  lock_oid->set_relation_oid(lock_id.relation_oid);
+  lock_oid->set_object_oid(lock_id.object_oid);
+  lock_oid->set_object_sub_oid(lock_id.object_sub_oid);
   req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
   return client_->AcquireObjectLock(&req, CoarseTimePoint());
 }

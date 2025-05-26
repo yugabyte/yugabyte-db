@@ -609,7 +609,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 
 		/*
 		 * Emit the completed stats rows into pg_statistic, replacing any
-		 * previous statistics for the target columns. (If there are stats in
+		 * previous statistics for the target columns.  (If there are stats in
 		 * pg_statistic for columns we didn't process, we leave them alone.)
 		 */
 		update_attstats(RelationGetRelid(onerel), inh,
@@ -1483,8 +1483,8 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 			 * value of relpages for the parent is always set to -1 by
 			 * `do_analyze_rel`.
 			 */
-			relpages = (childrel->rd_rel->reltuples < 0?
-						YBC_DEFAULT_NUM_ROWS: childrel->rd_rel->reltuples);
+			relpages = (childrel->rd_rel->reltuples < 0 ?
+						YBC_DEFAULT_NUM_ROWS : childrel->rd_rel->reltuples);
 		}
 		else if (childrel->rd_rel->relkind == RELKIND_RELATION ||
 				 childrel->rd_rel->relkind == RELKIND_MATVIEW)

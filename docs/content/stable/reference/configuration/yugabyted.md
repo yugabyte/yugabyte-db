@@ -3,21 +3,20 @@ title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to deploy YugabyteDB clusters.
+headcontent: Utility for deploying and managing YugabyteDB
 menu:
   stable:
     identifier: yugabyted
     parent: configuration
-    weight: 2451
+    weight: 100
 type: docs
 rightNav:
   hideH4: true
 ---
 
-YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB, you can use yugabyted. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+Use yugabyted to launch and manage YugabyteDB universes locally on your laptop, or on VMs for production deployments.
 
 {{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
-
-The yugabyted executable file is located in the YugabyteDB home `bin` directory.
 
 For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
@@ -25,10 +24,38 @@ For examples of using yugabyted to deploy single- and multi-node clusters, see [
 You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
 
+## Installation
+
+The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
+
+For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+
+After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install YB Controller. For example, if you installed v{{< yb-version version="stable" format="short">}}, do the following:
+
+1. Download the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the `share` folder of your YugabyteDB installation.
+
+    ```sh
+    cd yugabyte-{{< yb-version version="stable" >}}/share
+    wget https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz
+    ```
+
+1. Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `yugabytedb/ybc` folder as follows:
+
+    ```sh
+    cd yugabyte-{{< yb-version version="stable" >}}
+    mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+
+To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
+
+```sh
+./bin/yugabyted start --backup_daemon=true
+```
+
 {{% note title="Running on macOS" %}}
 
 Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
 
+Note that YB Controller is not supported on macOS.
 {{% /note %}}
 
 ## Syntax
@@ -64,6 +91,26 @@ For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For e
 $ ./bin/yugabyted start -h
 ```
 
+## Base directory
+
+By default, yugabyted uses the `$HOME/var` directory to store data, configurations, and logs.
+
+You can change the base directory when starting a cluster using the `--base_dir` flag.
+
+For example, you can override the base directory when starting the yugabyted node as follows:
+
+```sh
+./bin/yugabyted start --base_dir /home/user/node1
+```
+
+ If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster. For example, to obtain the status of the cluster, you would enter the following:
+
+```sh
+./bin/yugabyted status --base_dir  /home/user/node1
+```
+
+When simulating running a multi-node cluster on your desktop machine (for testing and development, and running examples), you must specify a different base directory for each node (see [Create a local multi-node cluster](#create-a-local-multi-node-cluster) for an example). When running subsequent commands on local multi-node clusters, you must also specify the `--base-dir` flag.
+
 ## Commands
 
 The following commands are available:
@@ -91,6 +138,8 @@ The following commands are available:
 Use the `yugabyted backup` command to take a backup of a YugabyteDB database into a network file storage directory or public cloud object storage.
 
 To use `backup`, the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. See the [start](#start) command.
+
+Note that backup and restore are not supported on macOS.
 
 #### Syntax
 
@@ -124,7 +173,7 @@ Determine the status of a backup task:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --cloud_storage_uri *cloud_storage_location*
 : Cloud location to store the backup data files.
@@ -175,7 +224,7 @@ For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0
 : Hostnames of the nodes to be added in the cluster. Mandatory flag.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) for the yugabyted server.
 
 -----
 
@@ -198,7 +247,7 @@ Usage: yugabyted collect_logs [flags]
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose logs are desired.
+: The [base directory](#base-directory) of the yugabyted server whose logs are desired.
 
 -----
 
@@ -251,7 +300,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 #### encrypt_at_rest
 
@@ -283,7 +332,7 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 #### point_in_time_recovery
 
@@ -333,7 +382,7 @@ Display point-in-time schedules configured on the cluster:
 : Display point-in-time recovery status for a YugabyteDB cluster.
 
 --base_dir *base-directory*
-: The base directory of the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 #### admin_operation
 
@@ -351,7 +400,7 @@ For example, get the YugabyteDB universe configuration:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory of the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --command *yb-admin-command*
 : Specify the yb-admin command to be executed on the YugabyteDB cluster.
@@ -397,7 +446,7 @@ For example, to create a new read replica cluster, execute the following command
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --rf *read-replica-replication-factor*
 : Replication factor for the read replica cluster.
@@ -431,7 +480,7 @@ Change the replication factor and also specify the placement constraint:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --rf *read-replica-replication-factor*
 : Replication factor for the read replica cluster.
@@ -455,7 +504,7 @@ For example, delete a read replica cluster using the following command:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 -----
 
@@ -495,7 +544,7 @@ Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysql
 : Name of the YSQL database to connect to.
 
 --base_dir *base-directory*
-: The base directory of the yugabyted server to connect to.
+: The [base directory](#base-directory) of the yugabyted server to connect to.
 
 #### ycql
 
@@ -516,7 +565,7 @@ Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycql
 : Name of the YCQL keyspace to connect to.
 
 --base_dir *base-directory*
-: The base directory of the yugabyted server to connect to.
+: The [base directory](#base-directory) of the yugabyted server to connect to.
 
 -----
 
@@ -539,7 +588,7 @@ The following sub-commands are available for the `yugabyted demo` command:
 
 #### connect
 
-Use the `yugabyted demo connect` sub-command to load the  [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the `ysqlsh` prompt for the same database.
+Use the `yugabyted demo connect` sub-command to load the  [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the ysqlsh prompt for the same database.
 
 #### destroy
 
@@ -551,7 +600,7 @@ Use the `yugabyted demo destroy` sub-command to shut down the yugabyted single-n
 : Print the help message and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server to connect to or destroy.
+: The [base directory](#base-directory) of the yugabyted server to connect to or destroy.
 
 -----
 
@@ -573,7 +622,7 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that needs to be destroyed.
+: The [base directory](#base-directory) of the yugabyted server that needs to be destroyed.
 
 -----
 
@@ -599,7 +648,7 @@ yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --upgrade_ysql_timeout *upgrade_timeout_in_ms*
 : Custom timeout for the YSQL upgrade in milliseconds. Default timeout is 60 seconds.
@@ -611,6 +660,8 @@ yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 Use the `yugabyted restore` command to restore a database in the YugabyteDB cluster from a network file storage directory or from public cloud object storage.
 
 To use `restore`, the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. See the [start](#start) command.
+
+Note that backup and restore are not supported on macOS.
 
 #### Syntax
 
@@ -652,7 +703,7 @@ Determine the status of a restore task:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --cloud_storage_uri *cloud_storage_location*
 : Cloud location to store the backup data files.
@@ -677,7 +728,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster for run
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 
-If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent. You also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} release directory.
+If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent YB Controller. (YB Controller must be installed; refer to [Installation](#installation).)
 
 #### Syntax
 
@@ -728,7 +779,7 @@ For more advanced examples, see [Examples](#examples).
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
-: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default base directory is `$HOME/var`.
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default [base directory](#base-directory) is `$HOME/var`.
 
 --background *bool*
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
@@ -759,7 +810,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 --backup_daemon *backup-daemon-process*
 : Enable or disable the backup daemon with yugabyted start. Default: `false`
-: If you start a cluster using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} release directory.
+: Using the `--backup_daemon` flag requires YB Controller; see [Installation](#installation).
 
 --enable_pg_parity_early_access *PostgreSQL-compatibilty*
 : Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
@@ -799,7 +850,7 @@ The advanced flags supported by the `start` command are as follows:
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `<base_dir>/logs`.
 
 --certs_dir *certs-directory*
-: The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `~/<base_dir>/certs`.
+: The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `<base_dir>/certs`.
 
 --master_flags *master_flags*
 : Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
@@ -876,7 +927,7 @@ Usage: yugabyted status [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose status is desired.
+: The [base directory](#base-directory) of the yugabyted server that you want to get the status of.
 
 -----
 
@@ -896,7 +947,8 @@ Usage: yugabyted stop [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that needs to be stopped.
+: The [base directory](#base-directory) of the yugabyted server that needs to be stopped.
+
 
 -----
 
@@ -916,7 +968,7 @@ Usage: yugabyted version [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose version is desired.
+: The [base directory](#base-directory) of the yugabyted server that you want to get the status of.
 
 ### xcluster
 
@@ -962,7 +1014,7 @@ The `create_checkpoint` command outputs directions for bootstrapping the databas
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --databases *xcluster-databases*
 : Comma-separated list of databases to be added to the replication.
@@ -982,7 +1034,7 @@ For example, to add new databases to xCluster replication, first checkpoint them
     --databases <comma_separated_database_names>
 ```
 
-The `add_to_checkpoint` command takes a snapshot of the database and determines whether any of the databases to added to the replication need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)).
+The `add_to_checkpoint` command takes a snapshot of the database and determines whether any of the databases to be added to the replication need to be copied to the target ([bootstrapped](#bootstrap-databases-for-xcluster)).
 
 The `add_to_checkpoint` command outputs directions for bootstrapping the databases that you included.
 
@@ -992,13 +1044,13 @@ The `add_to_checkpoint` command outputs directions for bootstrapping the databas
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --databases *xcluster-databases*
 : Comma separated list of databases to be added to existing replication.
 
 --replication_id *xcluster-replication-id*
-: Replication ID of the xCluster replication to which database(s) is to be added.
+: Replication ID of the xCluster replication that you are adding databases to.
 
 #### set_up
 
@@ -1019,7 +1071,7 @@ For example, to set up xCluster replication between two clusters, run the follow
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1033,7 +1085,7 @@ For example, to set up xCluster replication between two clusters, run the follow
 
 #### add_to_replication
 
-Use the sub-command `yugabyted xcluster add_to_replication` to add databases to an existing xCluster replication between two clusters. Run this command from the source cluster of the replication.
+Use the sub-command `yugabyted xcluster add_to_replication` to add databases to an existing xCluster replication. Run this command from the source cluster of the replication.
 
 For example, to add new databases to an existing xCluster replication between two clusters, run the following command from a node on the source cluster:
 
@@ -1051,7 +1103,7 @@ For example, to add new databases to an existing xCluster replication between tw
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1088,7 +1140,7 @@ To display the status of a specific xCluster replication, run the following comm
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --replication_id *xcluster-replication-id*
 : The replication ID of the xCluster replication whose status you want to output.
@@ -1112,7 +1164,7 @@ For example, delete an xCluster replication using the following command:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1140,7 +1192,7 @@ For example, remove a database from an xCluster replication using the following 
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1235,6 +1287,8 @@ To deploy any type of secure cluster (that is, using the `--secure` flag) or use
 
 ### Running on macOS
 
+YB Controller (and by extension, backup and restore commands) is not supported on macOS.
+
 #### Port conflicts
 
 macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
@@ -1266,32 +1320,32 @@ To destroy a local single-node cluster, use the [destroy](#destroy-1) command as
 ./bin/yugabyted destroy
 ```
 
-To destroy a local multi-node cluster, use the `destroy` command with the `--base_dir` flag set to the base directory path of each of the nodes. For example, for a three node cluster, you would execute commands similar to the following:
+To destroy a local multi-node cluster, use the `destroy` command with the `--base_dir` flag set to the [base directory](#base-directory) path of each of the nodes. For example, for a three node cluster, you would execute commands similar to the following:
 
 {{%cluster/cmd op="destroy" nodes="1,2,3"%}}
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
 ```
 
 If the cluster has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
 
 ### Create a single-node cluster
 
-Create a single-node cluster with a given base directory. Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
+Create a single-node cluster with a given [base directory](#base-directory). Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
 To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
 
 ```sh
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
 When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
@@ -1311,9 +1365,9 @@ Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` direct
 Copy the certificates to the respective node's `<base_dir>/certs` directory:
 
 ```sh
-cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node1/certs
-cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node2/certs
-cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node3/certs
+cp $HOME/var/generated_certs/127.0.0.1/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node1/certs
+cp $HOME/var/generated_certs/127.0.0.2/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node2/certs
+cp $HOME/var/generated_certs/127.0.0.3/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node3/certs
 ```
 
 ### Create a local multi-node cluster
@@ -1330,7 +1384,7 @@ To create the cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
         --cloud_location=aws.us-east-1.us-east-1a
     ```
 
@@ -1346,11 +1400,11 @@ To create the cluster, do the following:
     ```sh
     ./bin/yugabyted start --secure --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
         --cloud_location=aws.us-east-1.us-east-1b
     ./bin/yugabyted start --secure --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
         --cloud_location=aws.us-east-1.us-east-1c
     ```
 
@@ -1599,21 +1653,21 @@ docker network create yb-network
 docker run -d --name yugabytedb-node1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node2 --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} \
     bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
@@ -1639,11 +1693,11 @@ To create a secure read replica cluster, generate and copy the certificates for 
 Copy the certificates to the respective read replica nodes in the `<base_dir>/certs` directory:
 
 ```sh
-cp $HOME/var/generated_certs/127.0.0.4/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node4/certs
-cp $HOME/var/generated_certs/127.0.0.5/* $HOME/yugabyte-{{< yb-version version="preview" >}}/nod45/certs
-cp $HOME/var/generated_certs/127.0.0.6/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node6/certs
-cp $HOME/var/generated_certs/127.0.0.7/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node7/certs
-cp $HOME/var/generated_certs/127.0.0.8/* $HOME/yugabyte-{{< yb-version version="preview" >}}/node8/certs
+cp $HOME/var/generated_certs/127.0.0.4/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node4/certs
+cp $HOME/var/generated_certs/127.0.0.5/* $HOME/yugabyte-{{< yb-version version="stable" >}}/nod45/certs
+cp $HOME/var/generated_certs/127.0.0.6/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node6/certs
+cp $HOME/var/generated_certs/127.0.0.7/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node7/certs
+cp $HOME/var/generated_certs/127.0.0.8/* $HOME/yugabyte-{{< yb-version version="stable" >}}/node8/certs
 ```
 
 To create the read replica cluster, do the following:
@@ -1665,7 +1719,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=127.0.0.4 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node4 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node4 \
         --cloud_location=aws.us-east-1.us-east-1d \
         --read_replica
 
@@ -1673,7 +1727,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=127.0.0.5 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node5 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node5 \
         --cloud_location=aws.us-east-1.us-east-1d \
         --read_replica
 
@@ -1681,7 +1735,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=127.0.0.6 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node6 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node6 \
         --cloud_location=aws.us-east-1.us-east-1e \
         --read_replica
 
@@ -1689,7 +1743,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=127.0.0.7 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node7 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node7 \
         --cloud_location=aws.us-east-1.us-east-1f \
         --read_replica
 
@@ -1697,7 +1751,7 @@ To create the read replica cluster, do the following:
         --secure \
         --advertise_address=127.0.0.8 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node8 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node8 \
         --cloud_location=aws.us-east-1.us-east-1f \
         --read_replica
     ```
@@ -1724,35 +1778,35 @@ To create the read replica cluster, do the following:
     ./bin/yugabyted start \
         --advertise_address=127.0.0.4 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node4 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node4 \
         --cloud_location=aws.us-east-1.us-east-1d \
         --read_replica
 
     ./bin/yugabyted start \
         --advertise_address=127.0.0.5 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node5 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node5 \
         --cloud_location=aws.us-east-1.us-east-1d \
         --read_replica
 
     ./bin/yugabyted start \
         --advertise_address=127.0.0.6 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node6 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node6 \
         --cloud_location=aws.us-east-1.us-east-1e \
         --read_replica
 
     ./bin/yugabyted start \
         --advertise_address=127.0.0.7 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node7 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node7 \
         --cloud_location=aws.us-east-1.us-east-1f \
         --read_replica
 
     ./bin/yugabyted start \
         --advertise_address=127.0.0.8 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node8 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node8 \
         --cloud_location=aws.us-east-1.us-east-1f \
         --read_replica
     ```
@@ -1826,17 +1880,17 @@ When specifying new `--data_placement_constraint` or `--rf` values, the same rul
 To delete a read replica cluster, destroy all read replica nodes using the `destroy` command:
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node4
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node5
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node6
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node7
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node8
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node4
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node5
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node6
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node7
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node8
 ```
 
 After destroying the nodes, run the `configure_read_replica delete` command to delete the read replica configuration:
 
 ```sh
-./bin/yugabyted configure_read_replica delete --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+./bin/yugabyted configure_read_replica delete --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
 ```
 
 ### Enable and disable encryption at rest
@@ -1846,7 +1900,7 @@ To enable [encryption at rest](../../../secure/encryption-at-rest/) in a deploye
 ```sh
 ./bin/yugabyted configure encrypt_at_rest \
     --enable \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+    --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
 ```
 
 To enable encryption at rest in a deployed multi-zone or multi-region cluster, run the following command from any VM:
@@ -1860,7 +1914,7 @@ To disable encryption at rest in a local cluster with encryption at rest enabled
 ```sh
 ./bin/yugabyted configure encrypt_at_rest \
     --disable \
-    --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+    --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
 ```
 
 To disable encryption at rest in a multi-zone or multi-region cluster with this type of encryption enabled, run the following command from any VM:
@@ -2074,7 +2128,7 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
     ./bin/yugabyted finalize_upgrade --base_dir <path_to_base_dir> --upgrade_ysql_timeout 10000
     ```
 
-### Upgrade a cluster from single to multi zone
+## Scale a cluster from single to multi zone
 
 The following steps assume that you have a running YugabyteDB cluster deployed using yugabyted, and have downloaded the update:
 
@@ -2092,7 +2146,7 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
       --fault_tolerance=zone
     ```
 
-1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the base directory for each node using the `--base-dir` flag.
+1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the [base directory](#base-directory) for each node using the `--base-dir` flag.
 
 1. After starting all nodes, specify the data placement constraint on the cluster using the following command:
 

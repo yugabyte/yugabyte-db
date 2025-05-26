@@ -16,38 +16,31 @@
 #include "yb/yql/pggate/pg_session.h"
 
 #include <algorithm>
-#include <future>
 #include <optional>
 #include <utility>
 
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/tablespace_parser.h"
-#include "yb/qlexpr/ql_expr.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
-#include "yb/common/transaction_error.h"
+#include "yb/common/tablespace_parser.h"
 
 #include "yb/gutil/casts.h"
-
-#include "yb/tserver/pg_client.messages.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
 
@@ -275,6 +268,40 @@ void AdvisoryLockRequestInitCommon(
 
 }
 
+YbcTxnPriorityRequirement GetTxnPriorityRequirement(
+    bool is_ddl_mode, PgIsolationLevel isolation_level, RowMarkType row_mark_type) {
+  YbcTxnPriorityRequirement txn_priority_requirement;
+  if (is_ddl_mode) {
+    // DDLs acquire object locks to serialize conflicting concurrent DDLs. Concurrent DDLs that
+    // don't conflict can make progress without blocking each other.
+    //
+    // However, if object locks are disabled, concurrent DDLs are disallowed for safety.
+    // This is done by relying on conflicting increments to the catalog version (most DDLs do this
+    // except some like CREATE TABLE). Note that global DDLs (those that affect catalog tables
+    // shared across databases) conflict with all other DDLs since they increment all per-db
+    // catalog versions.
+    //
+    // For detecting and resolving these conflicts, DDLs use Fail-on-Conflict concurrency
+    // control (system catalog table doesn't have wait queues enabled). All DDLs except
+    // Auto-ANALYZEs use kHighestPriority priority to mimic first-come-first-serve behavior. We
+    // want to give Auto-ANALYZEs a lower priority to ensure they don't abort already running
+    // user DDLs. Also, user DDLs should preempt Auto-ANALYZEs.
+    //
+    // With object level locking, priorities are meaningless since DDLs don't rely on DocDB's
+    // conflict resolution for concurrent DDLs.
+    if (!yb_use_internal_auto_analyze_service_conn)
+      txn_priority_requirement = kHighestPriority;
+    else
+      txn_priority_requirement = kHigherPriorityRange;
+  } else {
+    txn_priority_requirement =
+        isolation_level == PgIsolationLevel::READ_COMMITTED ? kHighestPriority :
+            (RowMarkNeedsHigherPriority(row_mark_type) ?
+                kHigherPriorityRange : kLowerPriorityRange);
+  }
+  return txn_priority_requirement;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -383,13 +410,13 @@ class PgSession::RunHelper {
       return Status::OK();
     }
 
-    const auto txn_priority_requirement =
-      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED
-        ? kHighestPriority :
-          (RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange);
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
-    return pg_session_.pg_txn_manager_->CalculateIsolation(read_only, txn_priority_requirement);
+    return pg_session_.pg_txn_manager_->CalculateIsolation(
+        read_only,
+        GetTxnPriorityRequirement(
+            pg_session_.pg_txn_manager_->IsDdlMode(), pg_session_.GetIsolationLevel(),
+            row_mark_type));
   }
 
   Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
@@ -496,6 +523,10 @@ Status PgSession::DropDatabase(const std::string& database_name, PgOid database_
 Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
   *version = VERIFY_RESULT(pg_client_.GetCatalogMasterVersion());
   return Status::OK();
+}
+
+Result<int> PgSession::GetXClusterRole(uint32_t db_oid) {
+  return pg_client_.GetXClusterRole(db_oid);
 }
 
 Status PgSession::CancelTransaction(const unsigned char* transaction_id) {
@@ -734,12 +765,10 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, boo
   }
 
   if (transactional) {
-    const auto txn_priority_requirement =
-        GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED
-            ? kHighestPriority : kLowerPriorityRange;
-
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-        false /* read_only */, txn_priority_requirement));
+        false /* read_only */,
+        GetTxnPriorityRequirement(
+            pg_txn_manager_->IsDdlMode(), GetIsolationLevel(), RowMarkType::ROW_MARK_ABSENT)));
   }
 
   // When YSQL is flushing a pipeline of Perform rpcs asynchronously i.e., without waiting for
@@ -993,12 +1022,12 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   return status;
 }
 
-void PgSession::ResetHasWriteOperationsInDdlMode() {
-  has_write_ops_in_ddl_mode_ = false;
+void PgSession::ResetHasCatalogWriteOperationsInDdlMode() {
+  has_catalog_write_ops_in_ddl_mode_ = false;
 }
 
-bool PgSession::HasWriteOperationsInDdlMode() const {
-  return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
+bool PgSession::HasCatalogWriteOperationsInDdlMode() const {
+  return has_catalog_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
 void PgSession::SetDdlHasSyscatalogChanges() {
@@ -1059,12 +1088,18 @@ Result<PerformFuture> PgSession::DoRunAsync(
         RSTATUS_DCHECK_EQ(
             session_type, group_session_type,
             IllegalState, "Operations on different sessions can't be mixed");
-        if (force_catalog_modification &&
-            table.schema().table_properties().is_ysql_catalog_table()) {
+        const bool is_ysql_catalog_table =
+            table.schema().table_properties().is_ysql_catalog_table();
+        if (force_catalog_modification && is_ysql_catalog_table) {
           ApplyForceCatalogModification(*op);
         }
-        has_write_ops_in_ddl_mode_ =
-            has_write_ops_in_ddl_mode_ || (is_ddl && !IsReadOnly(*op));
+        // We can have a DDL event trigger that writes to a user table instead of ysql
+        // catalog table. The DDL itself may be a no-op (e.g., GRANT a privilege to a
+        // user that already has that privilege). We do not want to account this case
+        // as writing to ysql catalog so we can avoid incrementing the catalog version.
+        has_catalog_write_ops_in_ddl_mode_ =
+            has_catalog_write_ops_in_ddl_mode_ ||
+            (is_ddl && op->is_write() && is_ysql_catalog_table);
         return runner.Apply(table, op);
     };
   RETURN_NOT_OK(processor(first_table_op));

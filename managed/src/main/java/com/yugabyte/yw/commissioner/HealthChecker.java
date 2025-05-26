@@ -59,6 +59,7 @@ import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import jakarta.mail.MessagingException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -734,6 +735,16 @@ public class HealthChecker {
       Map<UUID, NodeInstance> nodeInstanceMap =
           NodeInstance.listByUuids(nodeUuids).stream()
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
+      boolean earlyoomEnabled =
+          details.additionalServicesStateData != null
+              && details.additionalServicesStateData.getEarlyoomConfig() != null
+              && details.additionalServicesStateData.getEarlyoomConfig().isEnabled();
+      int topKOtherProcesses =
+          confGetter.getConfForScope(
+              params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesCount);
+      int topKMemThresholdPercent =
+          confGetter.getConfForScope(
+              params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesMemThreshold);
       for (NodeDetails nodeDetails : sortedDetails) {
         NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
         String nodeIdentifier = StringUtils.EMPTY;
@@ -761,6 +772,9 @@ public class HealthChecker {
                 .setTestYsqlshConnectivity(testYsqlshConnectivity)
                 .setTestCqlshConnectivity(testCqlshConnectivity)
                 .setUniverseUuid(params.universe.getUniverseUUID())
+                .setEarlyoomEnabled(earlyoomEnabled)
+                .setTopKOtherProcesses(topKOtherProcesses)
+                .setTopKMemThresholdPercent(topKMemThresholdPercent)
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
           nodeInfo
@@ -832,6 +846,11 @@ public class HealthChecker {
                       : nodeInfo.getYbHomeDir());
         }
         nodeInfo.setOtelCollectorEnabled(params.universe.getUniverseDetails().otelCollectorEnabled);
+        // Check if audit log export was ever enabled and disabled.
+        AuditLogConfig auditLogConfig = cluster.userIntent.auditLogConfig;
+        if (auditLogConfig != null) {
+          nodeInfo.setOtelCollectorEnabled(auditLogConfig.isExportActive());
+        }
         nodeInfo.setClockboundEnabled(
             params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
         nodeMetadata.add(nodeInfo);
@@ -1115,12 +1134,13 @@ public class HealthChecker {
             .traceLogging(true)
             .timeoutSecs(nodeCheckContext.getTimeoutSec())
             .build();
-    if (uploadedInfo == null && !nodeInfo.isK8s()) {
-      // Only upload it once for new node, as it only depends on yb home dir.
-      // Also skip upload for k8s as no one will call it on k8s pod.
+    if ((uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) && !nodeInfo.isK8s()) {
+      // Node IP change means node name was reused and underlying node is a fresh one.
+      // Skip upload for k8s as no one will call it on k8s pod.
       String generatedScriptPath =
           generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
 
+      log.info("Uploading metrics collection script to node {}", nodeInfo.getNodeName());
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
       nodeUniverseManager.uploadFileToNode(
           nodeInfo.nodeDetails,
@@ -1301,7 +1321,11 @@ public class HealthChecker {
     private boolean otelCollectorEnabled;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
+
+    private int topKOtherProcesses;
+    private int topKMemThresholdPercent;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
+    private boolean earlyoomEnabled = false;
   }
 
   @Data

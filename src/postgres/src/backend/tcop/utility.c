@@ -81,11 +81,9 @@
 #include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
-
-/* local function declarations */
 /*
- * Setting YBProcessUtilityDefaultHook directly guaranties it will be the first one.
- * It will be called after all plugins hooks.
+ * YB: Setting YBProcessUtilityDefaultHook directly guaranties it will be the
+ * first one. It will be called after all plugins hooks.
  */
 static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 										const char *queryString,
@@ -97,6 +95,7 @@ static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 										QueryCompletion *qc);
 ProcessUtility_hook_type ProcessUtility_hook = &YBProcessUtilityDefaultHook;
 
+/* local function declarations */
 static int	ClassifyUtilityCommandAsReadOnly(Node *parsetree);
 static void ProcessUtilitySlow(ParseState *pstate,
 							   PlannedStmt *pstmt,
@@ -1147,7 +1146,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 	}
 
-	/* Account for stats collected during the execution of utility command */
+	/*
+	 * YB: Account for stats collected during the execution of utility command
+	 */
 	YbRefreshSessionStatsDuringExecution();
 
 	free_parsestate(pstate);
@@ -1576,8 +1577,8 @@ ProcessUtilitySlow(ParseState *pstate,
 					 * eventually be needed here, so the lockmode calculation
 					 * needs to match what DefineIndex() does.
 					 */
-					lockmode = (stmt->concurrent != YB_CONCURRENCY_DISABLED)
-						? ShareUpdateExclusiveLock : ShareLock;
+					lockmode = (stmt->concurrent != YB_CONCURRENCY_DISABLED) ? ShareUpdateExclusiveLock
+						: ShareLock;
 					relid =
 						RangeVarGetRelidExtended(stmt->relation, lockmode,
 												 0,
@@ -1593,7 +1594,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					 * partitions are something we can put an index on, to
 					 * avoid building some indexes only to fail later.
 					 *
-					 * We also transparently make it nonconcurrent.
+					 * YB: We also transparently make it nonconcurrent.
 					 */
 					if (stmt->relation->inh &&
 						get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
@@ -1625,6 +1626,7 @@ ProcessUtilitySlow(ParseState *pstate,
 						list_free(inheritors);
 					}
 
+					/* YB: handle concurrent for partitioned tables */
 					if (get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
 					{
 						/*
@@ -2119,6 +2121,7 @@ ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 			if (stmt->concurrent)
 				PreventInTransactionBlock(isTopLevel,
 										  "DROP INDEX CONCURRENTLY");
+			/* fall through */
 			yb_switch_fallthrough();
 
 		case OBJECT_TABLE:

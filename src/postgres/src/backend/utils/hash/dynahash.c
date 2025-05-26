@@ -1087,6 +1087,7 @@ hash_search_with_hash_value(HTAB *hashp,
 		case HASH_ENTER_NULL:
 			/* ENTER_NULL does not work with palloc-based allocator */
 			Assert(hashp->alloc != DynaHashAlloc);
+			/* FALL THRU */
 			yb_switch_fallthrough();
 
 		case HASH_ENTER:
@@ -1897,6 +1898,7 @@ AtEOXact_HashTables(bool isCommit)
 
 		for (i = 0; i < num_seq_scans; i++)
 		{
+			/* YB: add table name to errmsg */
 			elog(WARNING, "leaked hash_seq_search scan for hash table %p %s",
 				 seq_scan_tables[i], seq_scan_tables[i]->tabname);
 		}

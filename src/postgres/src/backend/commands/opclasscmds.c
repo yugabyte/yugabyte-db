@@ -1827,14 +1827,6 @@ dropProcedures(List *opfamilyname, Oid amoid, Oid opfamilyoid,
 	}
 }
 
-#ifdef NEIL
-/* Pg11 OID interface */
-void		RemoveOpFamilyById(Oid opfamilyOid);
-void		RemoveOpClassById(Oid opclassOid);
-void		RemoveAmOpEntryById(Oid entryOid);
-void		RemoveAmProcEntryById(Oid entryOid);
-#endif
-
 /*
  * Subroutine for ALTER OPERATOR CLASS SET SCHEMA/RENAME
  *

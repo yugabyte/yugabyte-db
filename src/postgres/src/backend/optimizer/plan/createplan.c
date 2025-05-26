@@ -86,6 +86,7 @@
 #define CP_LABEL_TLIST		0x0004	/* tlist must contain sortgrouprefs */
 #define CP_IGNORE_TLIST		0x0008	/* caller will replace tlist */
 
+
 static Plan *create_plan_recurse(PlannerInfo *root, Path *best_path,
 								 int flags);
 static Plan *create_scan_plan(PlannerInfo *root, Path *best_path,
@@ -214,8 +215,8 @@ static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 								 List *yb_rel_pushdown_colrefs, List *yb_rel_pushdown_quals,
 								 List *yb_idx_pushdown_colrefs, List *yb_idx_pushdown_quals,
-								 Index scanrelid, Oid indexid,
-								 List *indexqual, List *indexqualorig,
+								 Index scanrelid,
+								 Oid indexid, List *indexqual, List *indexqualorig,
 								 List *indexorderby, List *indexorderbyorig,
 								 List *indexorderbyops, List *indextlist,
 								 ScanDirection indexscandir, YbPlanInfo yb_plan_info,
@@ -373,10 +374,12 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 									 List *mergeActionList, int epqParam);
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
+
 static void yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan);
 
 extern int	yb_bnl_batch_size;
 bool		yb_bnl_optimize_first_batch;
+
 
 /*
  * create_plan
@@ -720,7 +723,9 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 	switch (best_path->pathtype)
 	{
 		case T_SeqScan:
-			plan = (Plan *) create_seqscan_plan(root, best_path, tlist,
+			plan = (Plan *) create_seqscan_plan(root,
+												best_path,
+												tlist,
 												scan_clauses);
 			break;
 
@@ -1212,7 +1217,7 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 				{
 					int			attno = ((Var *) expr)->varattno;
 
-					attno -= (rel->min_attr - 1);
+					attno -= (rel->min_attr - 1);	/* YB modified */
 					if (bms_is_member(attno, sortgroupatts))
 						return false;
 					sortgroupatts = bms_add_member(sortgroupatts, attno);
@@ -1595,6 +1600,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 				Sort	   *sort = make_sort(subplan, numsortkeys,
 											 sortColIdx, sortOperators,
 											 collations, nullsFirst);
+
 				yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 				label_sort_with_costsize(root, sort, best_path->limit_tuples);
@@ -1774,6 +1780,7 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 			Sort	   *sort = make_sort(subplan, numsortkeys,
 										 sortColIdx, sortOperators,
 										 collations, nullsFirst);
+
 			yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 			label_sort_with_costsize(root, sort, best_path->limit_tuples);
@@ -3545,7 +3552,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * are affected by a trigger, so we should update all indexes.
 			 */
 			if ((TupleDescAttr(tupDesc, resno - 1)->attnotnull &&
-				 relation->rd_id != YBCatalogVersionRelationId) ||
+				 (relation->rd_id != YBCatalogVersionRelationId ||
+				  !yb_is_calling_internal_sql_for_ddl)) ||
 				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, &colrefs, relid))
 			{
@@ -3734,7 +3742,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		expr = (Expr *) get_rightop(clause);
 
 		/* Check if leftop is a Var. */
-		Node *leftop = get_leftop(clause);
+		Node	   *leftop = get_leftop(clause);
+
 		if (!IsA(leftop, Var))
 		{
 			RelationClose(relation);
@@ -4003,7 +4012,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
 	/*
-	 * TODO(kramanathan): Evaluate whether the equivalent of "is single row
+	 * YB: TODO(kramanathan): Evaluate whether the equivalent of "is single row
 	 * update" is need for ON CONFLICT DO UPDATE.
 	 */
 	if (YbIsUpdateOptimizationEnabled() &&
@@ -4167,7 +4176,7 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	if (best_path->parent->is_yb_relation)
 		yb_extract_pushdown_clauses(scan_clauses, NULL,
-									false, /* is_bitmap_index_scan */
+									false,	/* is_bitmap_index_scan */
 									&local_quals, &remote_quals, &colrefs, NULL,
 									NULL,
 									planner_rt_fetch(scan_relid, root)->relid);
@@ -4325,6 +4334,11 @@ create_indexscan_plan(PlannerInfo *root,
 
 		if (rinfo->pseudoconstant)
 			continue;			/* we may drop pseudoconstants here */
+		/*
+		 * YB: Ignore if this clause was already contained in indexqualorig. It
+		 * is possible for a clause to be in indexqualorig/stripped_indexquals
+		 * but only have its batched version be in indexclauses.
+		 */
 		if (list_member_ptr(stripped_indexquals, rinfo->clause))
 			continue;
 		if (is_redundant_with_indexclauses(rinfo, indexclauses))
@@ -4394,9 +4408,9 @@ create_indexscan_plan(PlannerInfo *root,
 		if (bitmapindex)
 			yb_extract_pushdown_clauses(best_path->yb_bitmap_idx_pushdowns,
 										best_path->indexinfo, bitmapindex,
-										NULL, /* local_quals */
-										NULL, /* rel_remote_quals */
-										NULL, /* rel_colrefs */
+										NULL,	/* local_quals */
+										NULL,	/* rel_remote_quals */
+										NULL,	/* rel_colrefs */
 										&idx_remote_quals, &idx_colrefs,
 										planner_rt_fetch(baserelid, root)->relid);
 
@@ -4734,11 +4748,11 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	List	   *rel_remote_quals = NIL;
 	List	   *rel_colrefs = NIL;
 
-	yb_extract_pushdown_clauses(qpqual, NULL, /* index_info */
+	yb_extract_pushdown_clauses(qpqual, NULL,	/* index_info */
 								false, /* bitmapindex */ &local_quals,
 								&rel_remote_quals, &rel_colrefs,
-								NULL, /* idx_remote_quals */
-								NULL, /* idx_colrefs */
+								NULL,	/* idx_remote_quals */
+								NULL,	/* idx_colrefs */
 								planner_rt_fetch(baserelid, root)->relid);
 
 	YbPushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
@@ -4790,8 +4804,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	yb_extract_pushdown_clauses(scan_clauses, NULL, /* index_info */
 								false, /* bitmapindex */ &fallback_local_quals,
 								&fallback_remote_quals, &fallback_colrefs,
-								NULL, /* idx_remote_quals */
-								NULL, /* idx_colrefs */
+								NULL,	/* idx_remote_quals */
+								NULL,	/* idx_colrefs */
 								planner_rt_fetch(baserelid, root)->relid);
 
 	YbPushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
@@ -6018,11 +6032,12 @@ create_nestloop_plan(PlannerInfo *root,
 			replace_nestloop_params(root, (Node *) otherclauses);
 	}
 
-	nestParams = identify_current_nestloop_params(root, outerrelids);
 	/*
 	 * Identify any nestloop parameters that should be supplied by this join
 	 * node, and remove them from root->curOuterParams.
 	 */
+	nestParams = identify_current_nestloop_params(root, outerrelids);
+
 	if (yb_is_batched)
 	{
 		YbBatchedNestLoop *bnl_plan = make_YbBatchedNestLoop(tlist,
@@ -6160,6 +6175,7 @@ create_mergejoin_plan(PlannerInfo *root,
 		Sort	   *sort = make_sort_from_pathkeys(outer_plan,
 												   best_path->outersortkeys,
 												   outer_relids);
+
 		yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 		label_sort_with_costsize(root, sort, -1.0);
@@ -6175,6 +6191,7 @@ create_mergejoin_plan(PlannerInfo *root,
 		Sort	   *sort = make_sort_from_pathkeys(inner_plan,
 												   best_path->innersortkeys,
 												   inner_relids);
+
 		yb_assign_unique_plan_node_id(root, (Plan *) sort);
 
 		label_sort_with_costsize(root, sort, -1.0);

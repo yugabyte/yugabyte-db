@@ -14,6 +14,7 @@
 
 #include "yb/consensus/consensus.pb.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 
@@ -159,7 +160,12 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
 
   void AbortTask(const Status& status);
 
-  virtual MonoTime ComputeDeadline();
+  // Theorethical max deadline, should be used as an upperbound deadline for a single attempt.
+  MonoTime UnresponsiveDeadline() const;
+
+  // A deadline for a single retry/attempt.
+  virtual MonoTime ComputeDeadline() const;
+
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
   void RpcCallback();
 
@@ -188,6 +194,8 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
                      const std::string& metric_type);
 
   MonoTime attempt_start_ts_;
+
+  // Task's overall deadline, which covers all retries/attempts.
   MonoTime deadline_;
 
   int attempt_ = 0;
@@ -307,7 +315,7 @@ class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
   RetrySpecificTSRpcTask(Master* master,
                          ThreadPool* callback_pool,
                          const std::string& permanent_uuid,
-                         AsyncTaskThrottlerBase* async_task_throttler)
+                         AsyncTaskThrottlerBase* async_task_throttler = nullptr)
     : RetryingTSRpcTask(master,
                         callback_pool,
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
@@ -355,7 +363,7 @@ class RetrySpecificTSRpcTaskWithTable : public RetryingTSRpcTaskWithTable {
     const std::string& permanent_uuid,
     scoped_refptr<TableInfo> table,
     LeaderEpoch epoch,
-    AsyncTaskThrottlerBase* async_task_throttler)
+    AsyncTaskThrottlerBase* async_task_throttler = nullptr)
     : RetryingTSRpcTaskWithTable(master,
         callback_pool, std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
         table, std::move(epoch), async_task_throttler),

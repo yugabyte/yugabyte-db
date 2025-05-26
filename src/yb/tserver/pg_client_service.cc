@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <mutex>
 #include <queue>
-#include <regex>
 #include <unordered_set>
 #include <vector>
 
@@ -35,7 +34,6 @@
 #include "yb/client/schema.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
 #include "yb/client/table.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
@@ -45,28 +43,22 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/dockv/partition.h"
-
 #include "yb/master/master_admin.proxy.h"
-#include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
-#include "yb/rocksdb/db/db_impl.h"
-
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/scheduler.h"
-#include "yb/rpc/tasks_pool.h"
 
 #include "yb/server/server_base.h"
 
-#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/pg_client_service_util.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_response_cache.h"
@@ -75,17 +67,15 @@
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/tablet_server_interface.h"
-#include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
-#include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
-#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
@@ -150,6 +140,10 @@ TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
 DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultiplier,
     "Idle timeout interval in milliseconds used by shared memory exchange thread pool.");
+
+DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
+                 "Whether tservers should monitor their ysql op lease and kill their hosted pg "
+                 "sessions when it expires. Only available as a flag for tests.");
 
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -424,8 +418,6 @@ bool ShouldUseSecondarySpace(
   return xcluster_context && xcluster_context->IsTargetAndInAutomaticMode(namespace_id);
 }
 
-}  // namespace
-
 template <class Extractor>
 class ApplyToValue {
  public:
@@ -440,7 +432,96 @@ class ApplyToValue {
   Extractor extractor_;
 };
 
-class PgClientServiceImpl::Impl {
+class SessionProvider {
+ public:
+  virtual ~SessionProvider() = default;
+  virtual Result<PgClientSessionLocker> GetSession(uint64_t session_id) = 0;
+  virtual rpc::Messenger& Messenger() = 0;
+};
+
+class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public rpc::ThreadPoolTask,
+                     public PgTablesQueryListener {
+ public:
+  using ContextHolder = rpc::TypedPBRpcContextHolder<PgPerformRequestPB, PgPerformResponsePB>;
+
+  PerformQuery(
+      SessionProvider& provider, ContextHolder&& context)
+      : provider_(provider), context_(std::move(context)), tid_(Thread::UniqueThreadId()) {
+  }
+
+  void Ready() override {
+    if (Thread::UniqueThreadId() == tid_) {
+      Run();
+    } else {
+      retained_self_ = shared_from_this();
+      provider_.Messenger().ThreadPool().Enqueue(this);
+    }
+  }
+
+  PgTablesQueryResult& tables() {
+    return tables_;
+  }
+
+ private:
+  PgPerformRequestPB& req() {
+    return context_.req();
+  }
+
+  PgPerformResponsePB& resp() {
+    return context_.resp();
+  }
+
+  void Run() override {
+    auto session = provider_.GetSession(req().session_id());
+    auto status = session.ok()
+        ? (*session)->Perform(&req(), &resp(), &context_.context(), tables_) : session.status();
+    if (!status.ok()) {
+      Respond(status, &resp(), &context_.context());
+    }
+  }
+
+  void Done(const Status& status) override {
+    retained_self_ = nullptr;
+  }
+
+  SessionProvider& provider_;
+  rpc::TypedPBRpcContextHolder<PgPerformRequestPB, PgPerformResponsePB> context_;
+  const int64_t tid_;
+  PgTablesQueryResult tables_;
+  std::shared_ptr<PerformQuery> retained_self_;
+};
+
+class OpenTableQuery : public PgTablesQueryListener {
+ public:
+  using ContextHolder = rpc::TypedPBRpcContextHolder<PgOpenTableRequestPB, PgOpenTableResponsePB>;
+
+  explicit OpenTableQuery(ContextHolder&& context) : context_(std::move(context)) {
+  }
+
+  PgTablesQueryResult& tables() {
+    return tables_;
+  }
+
+  void Ready() override {
+    auto res = tables_.GetInfo(context_.req().table_id());
+    auto& resp = context_.resp();
+    if (!res.ok()) {
+      Respond(res.status(), &resp, &context_.context());
+      return;
+    }
+    *resp.mutable_info() = *res->schema;
+    GetTablePartitionList(res->table, resp.mutable_partitions());
+    context_->RespondSuccess();
+  }
+
+ private:
+  ContextHolder context_;
+  PgTablesQueryResult tables_;
+};
+
+}  // namespace
+
+class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProvider {
  public:
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
@@ -458,6 +539,7 @@ class PgClientServiceImpl::Impl {
         table_cache_(client_future_),
         check_expired_sessions_("check_expired_sessions", &messenger->scheduler()),
         check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
+        check_ysql_lease_("check_ysql_lease_liveness", &messenger->scheduler()),
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
@@ -490,6 +572,8 @@ class PgClientServiceImpl::Impl {
             }) {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
+    ScheduleCheckObjectIdAllocators();
+    ScheduleCheckYsqlLeaseWithNoLease();
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
     }
@@ -515,9 +599,20 @@ class PgClientServiceImpl::Impl {
     sessions.clear();
     check_expired_sessions_.Shutdown();
     check_object_id_allocators_.Shutdown();
+    check_ysql_lease_.Shutdown();
     if (exchange_thread_pool_) {
       exchange_thread_pool_->Shutdown();
     }
+  }
+
+  uint64_t lease_epoch() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return lease_epoch_;
+  }
+
+  bool IsLeaseValid(uint64_t lease_epoch) override EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return lease_epoch == lease_epoch_;
   }
 
   Status Heartbeat(
@@ -531,15 +626,10 @@ class PgClientServiceImpl::Impl {
     }
 
     auto session_id = ++session_serial_no_;
-    uint64_t lease_epoch;
-    {
-      std::lock_guard lock(mutex_);
-      lease_epoch = lease_epoch_;
-    }
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
-        session_context_, session_id, lease_epoch, tablet_server_.ts_local_lock_manager(),
+        session_context_, session_id, lease_epoch(), this, tablet_server_.ts_local_lock_manager(),
         messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
@@ -577,7 +667,7 @@ class PgClientServiceImpl::Impl {
 
     std::lock_guard lock(mutex_);
     auto it = sessions_.insert(std::move(session_info)).first;
-    session_expiration_queue_.push({(**it).session().expiration(), session_id});
+    session_expiration_queue_.emplace((**it).session().expiration(), session_id);
     return Status::OK();
   }
 
@@ -593,23 +683,21 @@ class PgClientServiceImpl::Impl {
       return;
     }
     (**it).session().SetExpiration(now);
-    session_expiration_queue_.push({now, session_id});
+    session_expiration_queue_.emplace(now, session_id);
     ScheduleCheckExpiredSessions(now);
   }
 
-  Status OpenTable(
-      const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
-    client::YBTablePtr table;
+  void OpenTable(
+      const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext context) {
     PgTableCacheGetOptions options = {
-      req.reopen(),
-      req.ysql_catalog_version(),
-      master::IncludeHidden(req.include_hidden())
+      .reopen = req.reopen(),
+      .min_ysql_catalog_version = req.ysql_catalog_version(),
+      .include_hidden = master::IncludeHidden(req.include_hidden()),
     };
-    RETURN_NOT_OK(table_cache_.GetInfo(
-        req.table_id(), options, &table,
-        resp->mutable_info()));
-    tserver::GetTablePartitionList(table, resp->mutable_partitions());
-    return Status::OK();
+    auto query = std::make_shared<OpenTableQuery>(
+        MakeTypedPBRpcContextHolder(req, resp, std::move(context)));
+    table_cache_.GetTables(
+        std::span(&req.table_id(), 1), options, query->tables(), query);
   }
 
   Status GetTablePartitionList(
@@ -789,6 +877,19 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetXClusterRole(
+      const PgGetXClusterRoleRequestPB& req, PgGetXClusterRoleResponsePB* resp,
+      rpc::RpcContext* context) {
+    NamespaceId namespace_id = GetPgsqlNamespaceId(req.db_oid());
+    const auto* xcluster_context = session_context_.xcluster_context;
+    int32_t role = XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+    if (xcluster_context) {
+      role = xcluster_context->GetXClusterRole(namespace_id);
+    }
+    resp->set_xcluster_role(role);
+    return Status::OK();
+  }
+
   Status CreateSequencesDataTable(
       const PgCreateSequencesDataTableRequestPB& req,
       PgCreateSequencesDataTableResponsePB* resp,
@@ -798,7 +899,7 @@ class PgClientServiceImpl::Impl {
 
   std::future<Result<OldTxnsRespInfo>> DoGetOldTransactionsForTablet(
       const uint32_t min_txn_age_ms, const uint32_t max_num_txns,
-      const std::shared_ptr<TabletServerServiceProxy>& proxy, const TabletId& tablet_id) {
+      const RemoteTabletServerPtr& remote_ts, const TabletId& tablet_id) {
     auto req = std::make_shared<tserver::GetOldTransactionsRequestPB>();
     req->set_tablet_id(tablet_id);
     req->set_min_txn_age_ms(min_txn_age_ms);
@@ -807,13 +908,14 @@ class PgClientServiceImpl::Impl {
     return MakeFuture<Result<OldTxnsRespInfo>>([&](auto callback) {
       auto resp = std::make_shared<GetOldTransactionsResponsePB>();
       std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
-      proxy->GetOldTransactionsAsync(
+      remote_ts->proxy()->GetOldTransactionsAsync(
           *req.get(), resp.get(), controller.get(),
-          [req, callback, controller, resp] {
+          [req, callback, controller, resp, remote_ts] {
         auto s = controller->status();
         if (!s.ok()) {
-          s = s.CloneAndPrepend(
-              Format("GetOldTransactions request for tablet $0 failed: ", req->tablet_id()));
+          s = s.CloneAndPrepend(Format(
+              "GetOldTransactions request for tablet $0 to tserver $1 failed: ",
+              req->tablet_id(), remote_ts->permanent_uuid()));
           return callback(s);
         }
         callback(OldTxnsRespInfo {
@@ -826,7 +928,7 @@ class PgClientServiceImpl::Impl {
 
   std::future<Result<OldTxnsRespInfo>> DoGetOldSingleShardWaiters(
       const uint32_t min_txn_age_ms, const uint32_t max_num_txns,
-      const std::shared_ptr<TabletServerServiceProxy>& proxy) {
+      const RemoteTabletServerPtr& remote_ts) {
     auto req = std::make_shared<tserver::GetOldSingleShardWaitersRequestPB>();
     req->set_min_txn_age_ms(min_txn_age_ms);
     req->set_max_num_txns(max_num_txns);
@@ -834,12 +936,14 @@ class PgClientServiceImpl::Impl {
     return MakeFuture<Result<OldTxnsRespInfo>>([&](auto callback) {
       auto resp = std::make_shared<GetOldSingleShardWaitersResponsePB>();
       std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
-      proxy->GetOldSingleShardWaitersAsync(
+      remote_ts->proxy()->GetOldSingleShardWaitersAsync(
           *req.get(), resp.get(), controller.get(),
-          [req, callback, controller, resp] {
+          [req, callback, controller, resp, remote_ts] {
         auto s = controller->status();
         if (!s.ok()) {
-          s = s.CloneAndPrepend("GetOldSingleShardWaiters request failed: ");
+          s = s.CloneAndPrepend(Format(
+              "GetOldSingleShardWaiters request to tserver $0 failed: ",
+              remote_ts->permanent_uuid()));
           return callback(s);
         }
         callback(OldTxnsRespInfo {
@@ -942,9 +1046,13 @@ class PgClientServiceImpl::Impl {
       // only one transaction id in PgGetLockStatusRequestPB for now.
       // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
       // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
+      //
+      // TODO: Support specific transaction id filtering for getting object lock status
+      // https://github.com/yugabyte/yugabyte-db/issues/27331
       lock_status_req.add_transaction_ids(req.transaction_id());
       return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
+    RETURN_NOT_OK(GetObjectLockStatus(remote_tservers, resp));
     const auto& min_txn_age_ms = req.min_txn_age_ms();
     const auto& max_num_txns = req.max_num_txns();
     RSTATUS_DCHECK(max_num_txns > 0, InvalidArgument,
@@ -969,17 +1077,17 @@ class PgClientServiceImpl::Impl {
       auto proxy = remote_tserver->proxy();
       for (const auto& tablet : txn_status_tablets.global_tablets) {
         res_futures.push_back(
-            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, proxy, tablet));
+            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, remote_tserver, tablet));
         status_tablet_ids.insert(tablet);
       }
       for (const auto& tablet : txn_status_tablets.placement_local_tablets) {
         res_futures.push_back(
-            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, proxy, tablet));
+            DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, remote_tserver, tablet));
         status_tablet_ids.insert(tablet);
       }
       // Query for oldest single shard waiting transactions as well.
       res_futures.push_back(
-          DoGetOldSingleShardWaiters(min_txn_age_ms, max_num_txns, proxy));
+          DoGetOldSingleShardWaiters(min_txn_age_ms, max_num_txns, remote_tserver));
     }
     // Limit num transactions to max_num_txns for which lock status is being queried.
     //
@@ -991,10 +1099,13 @@ class PgClientServiceImpl::Impl {
                         OldTxnMetadataVariantComparator> old_txns_pq;
     StatusToPB(Status::OK(), resp->mutable_status());
     for (auto it = res_futures.begin();
-         it != res_futures.end() && resp->status().code() == AppStatusPB::OK; ) {
+         it != res_futures.end() && resp->status().code() == AppStatusPB::OK; ++it) {
       auto res = it->get();
       if (!res.ok()) {
-        return res.status();
+        // A node could be unavailable. We need not fail the pg_locks query if we see at least one
+        // response for all of the status tablets.
+        LOG(INFO) << res.status();
+        continue;
       }
 
       std::visit([&](auto&& old_txns_resp) {
@@ -1002,7 +1113,6 @@ class PgClientServiceImpl::Impl {
           // Ignore leadership and NOT_FOUND errors as we broadcast the request to all tservers.
           if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER ||
               old_txns_resp->error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
-            it = res_futures.erase(it);
             return;
           }
           const auto& s = StatusFromPB(old_txns_resp->error().status());
@@ -1022,7 +1132,6 @@ class PgClientServiceImpl::Impl {
             old_txns_pq.pop();
           }
         }
-        it++;
       }, res->resp_ptr);
     }
     if (resp->status().code() != AppStatusPB::OK) {
@@ -1092,6 +1201,157 @@ class PgClientServiceImpl::Impl {
     for (auto i = 0 ; i < src->node_locks_size() ; i++) {
       dest->add_node_locks()->Swap(src->mutable_node_locks(i));
     }
+    return Status::OK();
+  }
+
+  // Get object lock status from all tablet servers and the master.
+  //
+  // The function first collects object lock status from all tablet servers.
+  // Then, to accurately determine the state of global locks (those that span across
+  // the master and all tablet servers), it collects lock status from the master.
+  // A global lock is considered GRANTED only if all participants(the master and
+  // every tablet server) report it as GRANTED. If any participant reports it as WAITING,
+  // or if any participant is missing, the global lock is treated as WAITING.
+  Status GetObjectLockStatus(
+      const std::vector<RemoteTabletServerPtr>& remote_tservers,
+      PgGetLockStatusResponsePB* resp) {
+    if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+      return Status::OK();
+    }
+
+    using LockInfoWithCounter = std::pair<ObjectLockInfoPB, size_t>;
+    std::unordered_map<ObjectLockContext, LockInfoWithCounter> object_lock_info_map;
+
+    // Collect object lock infos from all tservers.
+    GetObjectLockStatusRequestPB req;
+    std::vector<std::future<Status>> status_futures;
+    status_futures.reserve(remote_tservers.size());
+    std::vector<std::shared_ptr<GetObjectLockStatusResponsePB>> node_responses;
+    node_responses.reserve(remote_tservers.size());
+    for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+      auto proxy = remote_tserver->proxy();
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<GetObjectLockStatusResponsePB>();
+      node_responses.push_back(node_resp);
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      proxy->GetObjectLockStatusAsync(
+          req, node_resp.get(), controller.get(), [controller, status_promise] {
+            status_promise->set_value(controller->status());
+          });
+    }
+
+    // Collect global object lock infos from master.
+    // There may be some global locks , waiting on the master, are not yet be visible to TServers.
+    // Also ensures accurate wait_start timestamps, since master observes the earliest wait times.
+    auto master_proxy = std::make_shared<master::MasterDdlProxy>(
+        &client().proxy_cache(), client().GetMasterLeaderAddress());
+    master::GetObjectLockStatusRequestPB master_req;
+    master::GetObjectLockStatusResponsePB master_resp;
+    auto master_controller = std::make_shared<rpc::RpcController>();
+    auto master_promise = std::make_shared<std::promise<Status>>();
+    master_proxy->GetObjectLockStatusAsync(
+        master_req, &master_resp, master_controller.get(),
+        [master_controller, master_promise] {
+          master_promise->set_value(master_controller->status());
+        });
+
+    // Process responses from tservers
+    for (size_t i = 0; i < status_futures.size(); i++) {
+      auto& node_resp = node_responses[i];
+      auto s = status_futures[i].get();
+      if (!s.ok()) {
+        return s;
+      }
+      if (node_resp->has_error()) {
+        *resp->mutable_status() = node_resp->error().status();
+        return Status::OK();
+      }
+      VLOG(4) << "Processing GetObjectLockStatusResponsePB from tserver: "
+              << node_resp->ShortDebugString();
+      for (int j = 0; j < node_resp->object_lock_infos_size(); j++) {
+        auto* lock_infos = node_resp->mutable_object_lock_infos(j);
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
+        auto [it, inserted] = object_lock_info_map.try_emplace(
+          ObjectLockContext{
+            txn_id,
+            lock_infos->subtransaction_id(),
+            lock_infos->database_oid(),
+            lock_infos->relation_oid(),
+            lock_infos->object_oid(),
+            lock_infos->object_sub_oid(),
+            lock_infos->mode()
+          },
+          LockInfoWithCounter{ObjectLockInfoPB(), 1});
+        auto& existing_lock_info = it->second.first;
+        if (inserted) {
+          // First time seeing this lock
+          existing_lock_info.Swap(lock_infos);
+          continue;
+        }
+        // We've seen this lock before, increment counter
+        it->second.second++;
+        // If existing lock is GRANTED but current one is WAITING, replace with WAITING
+        // (A globally acquired lock is only truly granted if all servers grant it)
+        if (existing_lock_info.lock_state() == ObjectLockState::GRANTED &&
+            lock_infos->lock_state() == ObjectLockState::WAITING) {
+          VLOG(4) << "Replacing GRANTED lock with WAITING lock for txn_id: " << txn_id
+                  << ", subtxn_id: " << lock_infos->subtransaction_id()
+                  << ", object_oid: " << lock_infos->object_oid()
+                  << ", database_oid: " << lock_infos->database_oid()
+                  << ", lock_type: " << TableLockType_Name(lock_infos->mode());
+          existing_lock_info.Swap(lock_infos);
+        }
+      }
+    }
+
+    // Process responses from master
+    // A global lock is treated GRANTED only if it's granted on the master AND all tablet servers.
+    auto s = master_promise->get_future().get();
+    if (!s.ok()) {
+      return s;
+    }
+    if (master_resp.has_error()) {
+      *resp->mutable_status() = master_resp.error().status();
+      return Status::OK();
+    }
+    VLOG(4) << "Processing GetObjectLockStatusResponsePB from master: "
+            << master_resp.ShortDebugString();
+    for (int i = 0; i < master_resp.object_lock_infos_size(); i++) {
+      auto* lock_infos = master_resp.mutable_object_lock_infos(i);
+      auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
+      auto [it, inserted] = object_lock_info_map.try_emplace(
+        ObjectLockContext{
+          txn_id,
+          lock_infos->subtransaction_id(),
+          lock_infos->database_oid(),
+          lock_infos->relation_oid(),
+          lock_infos->object_oid(),
+          lock_infos->object_sub_oid(),
+          lock_infos->mode()
+        },
+        LockInfoWithCounter{ObjectLockInfoPB(), 1});
+      auto& existing_lock_info = it->second.first;
+      auto tserver_count = it->second.second;
+      if (!inserted && tserver_count == remote_tservers.size() &&
+          existing_lock_info.lock_state() == ObjectLockState::GRANTED) {
+        continue;
+      }
+      // If the lock was not reported by all tablet servers as GRANTED, treat the
+      // global lock as WAITING.
+      // Note: The wait_start timestamp will be from the master(first lock acquisition)
+      lock_infos->set_lock_state(ObjectLockState::WAITING);
+      existing_lock_info.Swap(lock_infos);
+    }
+
+    // Populate the response with consolidated lock info.
+    for (auto& [_, object_lock_info] : object_lock_info_map) {
+      resp->add_object_lock_infos()->Swap(&object_lock_info.first);
+    }
+
+    VLOG(4) << "Added " << resp->object_lock_infos_size() << " object locks to response";
+
     return Status::OK();
   }
 
@@ -1690,7 +1950,7 @@ class PgClientServiceImpl::Impl {
       }
       MaybeIncludeSample(resp, wait_state_pb, sample_size, samples_considered);
     }
-    VLOG(2) << "Tracker call sending " << resp->DebugString();
+    VLOG_IF(2, resp->wait_states_size() > 0) << "Tracker call sending " << resp->DebugString();
   }
 
   Status ActiveSessionHistory(
@@ -1775,6 +2035,21 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status SetTserverCatalogMessageList(
+      const PgSetTserverCatalogMessageListRequestPB& req,
+      PgSetTserverCatalogMessageListResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto db_oid = req.db_oid();
+    const auto is_breaking_change = req.is_breaking_change();
+    const auto new_catalog_version = req.new_catalog_version();
+    std::optional<std::string> message_list;
+    if (req.message_list().has_message_list()) {
+      message_list = req.message_list().message_list();
+    }
+    return const_cast<TabletServerIf&>(tablet_server_).SetTserverCatalogMessageList(
+        db_oid, is_breaking_change, new_catalog_version, message_list);
+  }
+
   Status IsObjectPartOfXRepl(
     const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
     rpc::RpcContext* context) {
@@ -1788,10 +2063,11 @@ class PgClientServiceImpl::Impl {
   }
 
   void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-    auto status = DoPerform(req, resp, context);
-    if (!status.ok()) {
-      Respond(status, resp, context);
-    }
+    boost::container::small_vector<TableId, 4> table_ids;
+    PreparePgTablesQuery(*req, table_ids);
+    auto query = std::make_shared<PerformQuery>(
+      *this, MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
+    table_cache_.GetTables(table_ids, {}, query->tables(), query);
   }
 
   void InvalidateTableCache() {
@@ -1804,32 +2080,96 @@ class PgClientServiceImpl::Impl {
     table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
   }
 
-  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
-    std::vector<SessionInfoPtr> sessions;
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
     {
       std::lock_guard lock(mutex_);
-      last_lease_refresh_time_ = time;
-      if (lease_refresh_info.new_lease()) {
+      lease_expiry_time_ =
+          CoarseTimePoint{std::chrono::milliseconds(lease_refresh_info.lease_expiry_time_ms())};
+      if (lease_expiry_time_ < CoarseMonoClock::Now()) {
+        // This function is passed the timestamp from before the RefreshYsqlLeaseRpc is sent.  So it
+        // is possible the RPC takes longer than the lease TTL the master gave us, in which case
+        // this tserver still does not have a live lease.
+        return;
+      }
+      bool had_live_lease = ysql_lease_is_live_;
+      ysql_lease_is_live_ = true;
+      if (lease_refresh_info.new_lease() || lease_epoch_ != lease_refresh_info.lease_epoch()) {
         LOG(INFO) << Format(
             "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
             lease_refresh_info.lease_epoch());
         lease_epoch_ = lease_refresh_info.lease_epoch();
-        sessions.assign(sessions_.begin(), sessions_.end());
-        sessions_.clear();
+      } else if (!had_live_lease) {
+        LOG(INFO) << Format(
+            "Master leader refreshed our lease for epoch $0. We thought this lease had "
+            "expired but it hadn't. Restarting pg.",
+            lease_epoch_);
+      } else {
+        // Lease was live and is live after this update. The epoch didn't change. Nothing left to
+        // do.
+        return;
       }
     }
-    CleanupSessions(std::move(sessions), CoarseMonoClock::now());
+    // No need to hold lock while restarting the pg process.
+    WARN_NOT_OK(tablet_server_.RestartPG(), "Failed to restart PG postmaster.");
   }
 
   YSQLLeaseInfo GetYSQLLeaseInfo() {
     SharedLock lock(mutex_);
     YSQLLeaseInfo lease_info;
-    // todo(zdrudi): For now just return is live if we've ever received a lease.
-    lease_info.is_live = last_lease_refresh_time_.Initialized();
+    lease_info.is_live = ysql_lease_is_live_;
     if (lease_info.is_live) {
       lease_info.lease_epoch = lease_epoch_;
     }
     return lease_info;
+  }
+
+  void ScheduleCheckYsqlLeaseWithNoLease() {
+    ScheduleCheckYsqlLease(CoarseMonoClock::now() + 1s);
+  }
+
+  void ScheduleCheckYsqlLease(CoarseTimePoint next_check_time) {
+    check_ysql_lease_.Schedule(
+        [this, next_check_time](const Status& status) {
+          if (!status.ok()) {
+            return;
+          }
+          if (CoarseMonoClock::now() < next_check_time) {
+            ScheduleCheckYsqlLease(next_check_time);
+            return;
+          }
+          CheckYsqlLeaseStatus();
+        },
+        next_check_time - CoarseMonoClock::now());
+  }
+
+  std::optional<CoarseTimePoint> CheckYsqlLeaseStatusInner() {
+    {
+      std::lock_guard lock(mutex_);
+      if (!ysql_lease_is_live_) {
+        return {};
+      }
+      if (CoarseMonoClock::now() < lease_expiry_time_) {
+        return lease_expiry_time_;
+      }
+      ysql_lease_is_live_ = false;
+      LOG(INFO) << "Lease has expired, killing pg sessions.";
+    }
+    // todo(zdrudi): make this a fatal?
+    WARN_NOT_OK(tablet_server_.KillPg(), "Couldn't stop PG");
+    return {};
+  }
+
+  void CheckYsqlLeaseStatus() {
+    if (PREDICT_FALSE(!FLAGS_TEST_enable_ysql_operation_lease_expiry_check)) {
+      ScheduleCheckYsqlLeaseWithNoLease();
+      return;
+    }
+    auto lease_expiry = CheckYsqlLeaseStatusInner();
+    if (lease_expiry) {
+      ScheduleCheckYsqlLease(*lease_expiry);
+    } else {
+      ScheduleCheckYsqlLeaseWithNoLease();
+    }
   }
 
   void CleanupSessions(
@@ -2177,8 +2517,12 @@ class PgClientServiceImpl::Impl {
     return result;
   }
 
-  Result<PgClientSessionLocker> GetSession(uint64_t session_id) {
+  Result<PgClientSessionLocker> GetSession(uint64_t session_id) override {
     return PgClientSessionLocker(VERIFY_RESULT(DoGetSession(session_id)));
+  }
+
+  rpc::Messenger& Messenger() override {
+    return messenger_;
   }
 
   void ScheduleCheckExpiredSessions(CoarseTimePoint now) REQUIRES(mutex_) {
@@ -2218,7 +2562,7 @@ class PgClientServiceImpl::Impl {
         if (it != sessions_.end()) {
           auto current_expiration = (**it).session().expiration();
           if (current_expiration > now) {
-            session_expiration_queue_.push({current_expiration, id});
+            session_expiration_queue_.emplace(current_expiration, id);
           } else {
             expired_sessions.push_back(*it);
             sessions_.erase(it);
@@ -2243,10 +2587,6 @@ class PgClientServiceImpl::Impl {
       session->session().CompleteShutdown();
     }
     CleanupSessions(std::move(expired_sessions), now);
-  }
-
-  Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-    return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(
@@ -2340,6 +2680,7 @@ class PgClientServiceImpl::Impl {
   rpc::ScheduledTaskTracker check_expired_sessions_ GUARDED_BY(mutex_);
   CoarseTimePoint check_expired_sessions_time_ GUARDED_BY(mutex_);
   rpc::ScheduledTaskTracker check_object_id_allocators_;
+  rpc::ScheduledTaskTracker check_ysql_lease_;
 
   PgResponseCache response_cache_;
 
@@ -2373,8 +2714,9 @@ class PgClientServiceImpl::Impl {
   std::optional<cdc::CDCStateTable> cdc_state_table_;
   PgTxnSnapshotManager txn_snapshot_manager_;
 
-  MonoTime last_lease_refresh_time_ GUARDED_BY(mutex_);
-  uint64_t lease_epoch_ GUARDED_BY(mutex_);
+  CoarseTimePoint lease_expiry_time_ GUARDED_BY(mutex_);
+  bool ysql_lease_is_live_ GUARDED_BY(mutex_) {false};
+  uint64_t lease_epoch_ GUARDED_BY(mutex_) = 0;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -2414,9 +2756,9 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
   return impl_->GetLocalPgTxnSnapshot(snapshot_id);
 }
 
-void PgClientServiceImpl::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB&
-                                             lease_refresh_info, MonoTime time) {
-  impl_->ProcessLeaseUpdate(lease_refresh_info, time);
+void PgClientServiceImpl::ProcessLeaseUpdate(
+    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
+  impl_->ProcessLeaseUpdate(lease_refresh_info);
 }
 
 YSQLLeaseInfo PgClientServiceImpl::GetYSQLLeaseInfo() const {

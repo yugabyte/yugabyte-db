@@ -3,34 +3,55 @@ title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to deploy YugabyteDB clusters.
+headcontent: Utility for deploying and managing YugabyteDB
 aliases:
   - /preview/deploy/docker/
 menu:
   preview:
     identifier: yugabyted
     parent: configuration
-    weight: 2451
+    weight: 100
 type: docs
 rightNav:
   hideH4: true
 ---
 
-YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB, you can use yugabyted. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+Use yugabyted to launch and manage YugabyteDB universes locally on your laptop, or on VMs for production deployments.
 
 {{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
-
-The yugabyted executable file is located in the YugabyteDB home `bin` directory.
 
 For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
 {{<note title="Production deployments">}}
-You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
+You can use yugabyted for production deployments. You can also administer [YB-TServer](../yb-tserver/) and [YB-Master](../yb-master/) servers directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
+
+## Installation
+
+The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
+
+For information on installing YugabyteDB, see [Use a local cluster](/preview/tutorials/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+
+After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
+
+For example, if you installed v{{< yb-version version="preview"  format="short">}}, extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
+
+```sh
+cd yugabyte-{{< yb-version version="preview" >}}
+mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+```
+
+To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
+
+```sh
+./bin/yugabyted start --backup_daemon=true
+```
 
 {{% note title="Running on macOS" %}}
 
 Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
 
+Note that YB Controller is not supported on macOS.
 {{% /note %}}
 
 ## Syntax
@@ -66,6 +87,26 @@ For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For e
 $ ./bin/yugabyted start -h
 ```
 
+## Base directory
+
+By default, yugabyted uses the `$HOME/var` directory to store data, configurations, and logs.
+
+You can change the base directory when starting a cluster using the `--base_dir` flag.
+
+For example, you can override the base directory when starting the yugabyted node as follows:
+
+```sh
+./bin/yugabyted start --base_dir /home/user/node1
+```
+
+ If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster. For example, to obtain the status of the cluster, you would enter the following:
+
+```sh
+./bin/yugabyted status --base_dir  /home/user/node1
+```
+
+When simulating running a multi-node cluster on your desktop machine (for testing and development, and running examples), you must specify a different base directory for each node (see [Create a local multi-node cluster](#create-a-local-multi-node-cluster) for an example). When running subsequent commands on local multi-node clusters, you must also specify the `--base-dir` flag.
+
 ## Commands
 
 The following commands are available:
@@ -94,6 +135,8 @@ The following commands are available:
 Use the `yugabyted backup` command to take a backup of a YugabyteDB database into a network file storage directory or public cloud object storage.
 
 To use `backup`, the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. See the [start](#start) command.
+
+Note that backup and restore are not supported on macOS.
 
 #### Syntax
 
@@ -127,7 +170,7 @@ Determine the status of a backup task:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --cloud_storage_uri *cloud_storage_location*
 : Cloud location to store the backup data files.
@@ -178,7 +221,7 @@ For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0
 : Hostnames of the nodes to be added in the cluster. Mandatory flag.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) for the yugabyted server.
 
 -----
 
@@ -201,7 +244,7 @@ Usage: yugabyted collect_logs [flags]
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose logs are desired.
+: The [base directory](#base-directory) of the yugabyted server whose logs are desired.
 
 -----
 
@@ -254,7 +297,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 #### encrypt_at_rest
 
@@ -286,7 +329,7 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 #### point_in_time_recovery
 
@@ -336,7 +379,7 @@ Display point-in-time schedules configured on the cluster:
 : Display point-in-time recovery status for a YugabyteDB cluster.
 
 --base_dir *base-directory*
-: The base directory of the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 #### admin_operation
 
@@ -354,7 +397,7 @@ For example, get the YugabyteDB universe configuration:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory of the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --command *yb-admin-command*
 : Specify the yb-admin command to be executed on the YugabyteDB cluster.
@@ -400,7 +443,7 @@ For example, to create a new read replica cluster, execute the following command
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --rf *read-replica-replication-factor*
 : Replication factor for the read replica cluster.
@@ -434,7 +477,7 @@ Change the replication factor and also specify the placement constraint:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --rf *read-replica-replication-factor*
 : Replication factor for the read replica cluster.
@@ -458,7 +501,7 @@ For example, delete a read replica cluster using the following command:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 -----
 
@@ -498,7 +541,7 @@ Use the `yugabyted connect ysql` sub-command to connect to YugabyteDB with [ysql
 : Name of the YSQL database to connect to.
 
 --base_dir *base-directory*
-: The base directory of the yugabyted server to connect to.
+: The [base directory](#base-directory) of the yugabyted server to connect to.
 
 #### ycql
 
@@ -519,7 +562,7 @@ Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycql
 : Name of the YCQL keyspace to connect to.
 
 --base_dir *base-directory*
-: The base directory of the yugabyted server to connect to.
+: The [base directory](#base-directory) of the yugabyted server to connect to.
 
 -----
 
@@ -554,7 +597,7 @@ Use the `yugabyted demo destroy` sub-command to shut down the yugabyted single-n
 : Print the help message and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server to connect to or destroy.
+: The [base directory](#base-directory) of the yugabyted server to connect to or destroy.
 
 -----
 
@@ -576,7 +619,7 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that needs to be destroyed.
+: The [base directory](#base-directory) of the yugabyted server that needs to be destroyed.
 
 -----
 
@@ -606,7 +649,7 @@ yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --upgrade_ysql_timeout *upgrade_timeout_in_ms*
 : Custom timeout for the YSQL upgrade in milliseconds. Default timeout is 60 seconds.
@@ -618,6 +661,8 @@ yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 Use the `yugabyted restore` command to restore a database in the YugabyteDB cluster from a network file storage directory or from public cloud object storage.
 
 To use `restore`, the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. See the [start](#start) command.
+
+Note that backup and restore are not supported on macOS.
 
 #### Syntax
 
@@ -659,7 +704,7 @@ Determine the status of a restore task:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --cloud_storage_uri *cloud_storage_location*
 : Cloud location to store the backup data files.
@@ -684,7 +729,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster for run
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 
-If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent. You also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} release directory.
+If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent YB Controller. (YB Controller must be installed; refer to [Installation](#installation).)
 
 #### Syntax
 
@@ -735,7 +780,7 @@ For more advanced examples, see [Examples](#examples).
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
 
 --base_dir *base-directory*
-: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default base directory is `$HOME/var`.
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path. By default [base directory](#base-directory) is `$HOME/var`.
 
 --background *bool*
 : Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`
@@ -766,7 +811,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 --backup_daemon *backup-daemon-process*
 : Enable or disable the backup daemon with yugabyted start. Default: `false`
-: If you start a cluster using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} release directory.
+: Using the `--backup_daemon` flag requires YB Controller; see [Installation](#installation).
 
 --enable_pg_parity_early_access *PostgreSQL-compatibilty*
 : Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
@@ -806,7 +851,7 @@ The advanced flags supported by the `start` command are as follows:
 : The directory to store yugabyted logs. Must be an absolute path. This flag controls where the logs of the YugabyteDB nodes are stored. By default, logs are written to `<base_dir>/logs`.
 
 --certs_dir *certs-directory*
-: The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `~/<base_dir>/certs`.
+: The path to the directory which has the certificates to be used for secure deployment. Must be an absolute path. Default path is `<base_dir>/certs`.
 
 --master_flags *master_flags*
 : Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
@@ -847,11 +892,11 @@ You can set advanced flags using a configuration file, specified using the `--co
         "master_webserver_port": 7100,
         "tserver_webserver_port": 9100,
         "master_flags": "ysql_enable_packed_row=true,ysql_beta_features=true",
-        "Tserver_flags": "ysql_enable_packed_row=true,ysql_beta_features=true,yb_enable_read_committed_isolation=true,enable_deadlock_detection=true,enable_wait_queues=true"
+        "tserver_flags": "ysql_enable_packed_row=true,ysql_beta_features=true,yb_enable_read_committed_isolation=true,enable_deadlock_detection=true,enable_wait_queues=true"
     }
     ```
 
-1. Start the node using the config flag.
+1. Start the node using the `--config` flag.
 
     ```sh
     ./bin/yugabyted start --config ~/yugabyted.conf
@@ -883,7 +928,7 @@ Usage: yugabyted status [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose status is desired.
+: The [base directory](#base-directory) of the yugabyted server that you want to get the status of.
 
 -----
 
@@ -903,7 +948,7 @@ Usage: yugabyted stop [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server that needs to be stopped.
+: The [base directory](#base-directory) of the yugabyted server that needs to be stopped.
 
 --upgrade *bool*
 :  Stop the node for version upgrade. Default: `false`.
@@ -943,7 +988,7 @@ For example, to upgrade the YSQL catalog of a cluster, you would execute the fol
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the YSQL catalog upgrade in milliseconds.
@@ -965,7 +1010,7 @@ For example, to finalize an upgrade to a cluster, you would execute the followin
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the upgrade finalize operation in milliseconds.
@@ -986,7 +1031,7 @@ For example, to verify the compatibility of a cluster with a new version, you wo
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --timeout *timeout*
 : Custom timeout for the version check in milliseconds.
@@ -1009,7 +1054,7 @@ Usage: yugabyted version [flags]
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server whose version is desired.
+: The [base directory](#base-directory) of the yugabyted server that you want to get the status of.
 
 ### xcluster
 
@@ -1056,7 +1101,7 @@ The `create_checkpoint` command outputs directions for bootstrapping the databas
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --databases *xcluster-databases*
 : Comma-separated list of databases to be added to the replication.
@@ -1089,7 +1134,7 @@ The `add_to_checkpoint` command outputs directions for bootstrapping the databas
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --databases *xcluster-databases*
 : Comma separated list of databases to be added to existing replication.
@@ -1116,7 +1161,7 @@ For example, to set up xCluster replication between two clusters, run the follow
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1148,7 +1193,7 @@ For example, to add new databases to an existing xCluster replication between tw
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1185,7 +1230,7 @@ To display the status of a specific xCluster replication, run the following comm
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --replication_id *xcluster-replication-id*
 : The replication ID of the xCluster replication whose status you want to output.
@@ -1209,7 +1254,7 @@ For example, delete an xCluster replication using the following command:
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1237,7 +1282,7 @@ For example, remove a database from an xCluster replication using the following 
 : Print the command-line help and exit.
 
 --base_dir *base-directory*
-: The base directory for the yugabyted server.
+: The [base directory](#base-directory) of the yugabyted server.
 
 --target_address *xcluster-target-address*
 : IP address of a node in the target cluster.
@@ -1332,6 +1377,8 @@ To deploy any type of secure cluster (that is, using the `--secure` flag) or use
 
 ### Running on macOS
 
+YB Controller (and by extension, backup and restore commands) is not supported on macOS.
+
 #### Port conflicts
 
 macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
@@ -1363,7 +1410,7 @@ To destroy a local single-node cluster, use the [destroy](#destroy-1) command as
 ./bin/yugabyted destroy
 ```
 
-To destroy a local multi-node cluster, use the `destroy` command with the `--base_dir` flag set to the base directory path of each of the nodes. For example, for a three node cluster, you would execute commands similar to the following:
+To destroy a local multi-node cluster, use the `destroy` command with the `--base_dir` flag set to the [base directory](#base-directory) path of each of the nodes. For example, for a three node cluster, you would execute commands similar to the following:
 
 {{%cluster/cmd op="destroy" nodes="1,2,3"%}}
 
@@ -1377,7 +1424,7 @@ If the cluster has more than three nodes, execute a `destroy --base_dir=<path to
 
 ### Create a single-node cluster
 
-Create a single-node cluster with a given base directory. Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
+Create a single-node cluster with a given [base directory](#base-directory). Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
@@ -2064,7 +2111,7 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
       --fault_tolerance=zone
     ```
 
-1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the base directory for each node using the `--base-dir` flag.
+1. Repeat the previous step on all the nodes of the cluster, one node at a time. If you are deploying the cluster on your local computer, specify the [base directory](#base-directory) for each node using the `--base-dir` flag.
 
 1. After starting all nodes, specify the data placement constraint on the cluster using the following command:
 

@@ -120,6 +120,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tsan_util.h"
 
@@ -1998,15 +1999,13 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::AcquireObjectLocksGlobalAsync(
     const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-    MonoDelta rpc_timeout) {
-  auto deadline = CoarseMonoClock::Now() + rpc_timeout;
+    CoarseTimePoint deadline) {
   data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback);
 }
 
 void YBClient::ReleaseObjectLocksGlobalAsync(
     const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-    MonoDelta rpc_timeout) {
-  auto deadline = CoarseMonoClock::Now() + rpc_timeout;
+    CoarseTimePoint deadline) {
   data_->ReleaseObjectLocksGlobalAsync(this, request, deadline, callback);
 }
 
@@ -2528,7 +2527,7 @@ Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>*
   master_uuids->clear();
   for (const ServerEntryPB& master : resp.masters()) {
     if (master.has_error()) {
-      LOG_WITH_PREFIX(ERROR) << "Master " << master.ShortDebugString() << " hit error "
+      LOG_WITH_PREFIX(WARNING) << "Master " << master.ShortDebugString() << " hit error "
         << master.error().ShortDebugString();
       return StatusFromPB(master.error());
     }

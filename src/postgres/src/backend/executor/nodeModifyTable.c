@@ -99,6 +99,7 @@
 #include "pg_yb_utils.h"
 #include "utils/typcache.h"
 
+
 typedef struct MTTargetRelLookup
 {
 	Oid			relationOid;	/* hash key, must be first */
@@ -156,7 +157,7 @@ typedef struct UpdateContext
 } UpdateContext;
 
 /*
- * An enum to indicate the phase of the INSERT ... ON CONFLICT operation.
+ * YB: An enum to indicate the phase of the INSERT ... ON CONFLICT operation.
  * The DO UPDATE action has two phases: one corresponding to the the insertionn
  * of the row, and the other corresponding to the update of the row.
  * The DO NOTHING action does not make this distinction and is represented by a
@@ -279,8 +280,6 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 		Form_pg_attribute attr;
 
 		Assert(!tle->resjunk);	/* caller removed junk items already */
-		if (tle->resjunk)
-			continue;			/* ignore junk tlist items */
 
 		if (attno >= resultDesc->natts)
 			ereport(ERROR,
@@ -1070,7 +1069,7 @@ YbExecInsertAct(ModifyTableContext *context,
 			{
 				TupleDesc	tdesc = CreateTupleDescCopy(slot->tts_tupleDescriptor);
 				TupleDesc	plan_tdesc =
-				CreateTupleDescCopy(planSlot->tts_tupleDescriptor);
+					CreateTupleDescCopy(planSlot->tts_tupleDescriptor);
 
 				resultRelInfo->ri_Slots[resultRelInfo->ri_NumSlots] =
 					MakeSingleTupleTableSlot(tdesc, slot->tts_ops);
@@ -1590,6 +1589,32 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			  ItemPointer tupleid, bool changingPart)
 {
 	EState	   *estate = context->estate;
+	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
+
+	if (IsYBRelation(resultRelationDesc))
+	{
+		bool		row_found = YBCExecuteDelete(resultRelationDesc,
+												 context->planSlot,
+												 ((ModifyTable *) context->mtstate->ps.plan)->ybReturningColumns,
+												 context->mtstate->yb_fetch_target_tuple,
+												 (estate->yb_es_is_single_row_modify_txn ?
+												  YB_SINGLE_SHARD_TRANSACTION :
+												  YB_TRANSACTIONAL),
+												 changingPart,
+												 estate);
+
+		/*
+		 * Vanilla postgres does not have the equivalent of "no matching tuple"
+		 * in its visibility state enum. YugabyteDB currently does not apply
+		 * tuple visibility semantics within the same transaction
+		 * (command counter). So, when a tuple is not found, hard code the
+		 * return value to TM_Invisible.
+		 */
+		if (!row_found)
+			return TM_Invisible;
+
+		return TM_Ok;
+	}
 
 	return table_tuple_delete(resultRelInfo->ri_RelationDesc, tupleid,
 							  estate->es_output_cid,
@@ -1614,6 +1639,15 @@ ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	ModifyTableState *mtstate = context->mtstate;
 	EState	   *estate = context->estate;
 	TransitionCaptureState *ar_delete_trig_tcs;
+
+	if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+		YBCRelInfoHasSecondaryIndices(resultRelInfo))
+	{
+		Datum		ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
+
+		/* Delete index entries of the old tuple */
+		ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple, estate);
+	}
 
 	/*
 	 * If this delete is the result of a partition key update that moved the
@@ -1731,35 +1765,6 @@ ExecDelete(ModifyTableContext *context,
 
 		slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYBRelation(resultRelationDesc))
-	{
-		bool		row_found = YBCExecuteDelete(resultRelationDesc,
-												 context->planSlot,
-												 ((ModifyTable *) context->mtstate->ps.plan)->ybReturningColumns,
-												 context->mtstate->yb_fetch_target_tuple,
-												 (estate->yb_es_is_single_row_modify_txn ?
-												  YB_SINGLE_SHARD_TRANSACTION :
-												  YB_TRANSACTIONAL),
-												 changingPart,
-												 estate);
-
-		if (!row_found)
-		{
-			/*
-			 * No row was found. This is possible if it's a single row txn
-			 * and there is no row to delete (since we do not first do a scan).
-			 */
-			return NULL;
-		}
-
-		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
-		{
-			Datum		ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
-
-			/* Delete index entries of the old tuple */
-			ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple, estate);
-		}
-	}
 	else
 	{
 		/*
@@ -1776,6 +1781,15 @@ ldelete:;
 
 		if (tmresult)
 			*tmresult = result;
+
+		if (IsYBRelation(resultRelationDesc) && result == TM_Invisible)
+		{
+			/*
+			 * No row was found. This is possible if it's a single row txn
+			 * and there is no row to delete (since we do not first do a scan).
+			 */
+			return NULL;
+		}
 
 		switch (result)
 		{
@@ -2264,7 +2278,8 @@ ExecUpdatePrepareSlot(ResultRelInfo *resultRelInfo,
 static TM_Result
 ExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			  ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
-			  bool canSetTag, UpdateContext *updateCxt)
+			  bool canSetTag, UpdateContext *updateCxt,
+			  Bitmapset **yb_cols_marked_for_update, bool *yb_is_pk_updated)
 {
 	EState	   *estate = context->estate;
 	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
@@ -2310,159 +2325,6 @@ lreplace:
 	}
 
 	/*
-	 * If a partition check failed, try to move the row into the right
-	 * partition.
-	 */
-	if (partition_constraint_failed)
-	{
-		TupleTableSlot *inserted_tuple,
-				   *retry_slot;
-		ResultRelInfo *insert_destrel = NULL;
-
-		/*
-		 * ExecCrossPartitionUpdate will first DELETE the row from the
-		 * partition it's currently in and then insert it back into the root
-		 * table, which will re-route it to the correct partition.  However,
-		 * if the tuple has been concurrently updated, a retry is needed.
-		 */
-		if (ExecCrossPartitionUpdate(context, resultRelInfo,
-									 tupleid, oldtuple, slot,
-									 canSetTag, updateCxt,
-									 &result,
-									 &retry_slot,
-									 &inserted_tuple,
-									 &insert_destrel))
-		{
-			/* success! */
-			updateCxt->updated = true;
-			updateCxt->crossPartUpdate = true;
-
-			/*
-			 * If the partitioned table being updated is referenced in foreign
-			 * keys, queue up trigger events to check that none of them were
-			 * violated.  No special treatment is needed in
-			 * non-cross-partition update situations, because the leaf
-			 * partition's AR update triggers will take care of that.  During
-			 * cross-partition updates implemented as delete on the source
-			 * partition followed by insert on the destination partition,
-			 * AR-UPDATE triggers of the root table (that is, the table
-			 * mentioned in the query) must be fired.
-			 *
-			 * NULL insert_destrel means that the move failed to occur, that
-			 * is, the update failed, so no need to anything in that case.
-			 */
-			if (insert_destrel &&
-				resultRelInfo->ri_TrigDesc &&
-				resultRelInfo->ri_TrigDesc->trig_update_after_row)
-				ExecCrossPartitionUpdateForeignKey(context,
-												   resultRelInfo,
-												   insert_destrel,
-												   tupleid, slot,
-												   inserted_tuple,
-												   NULL);
-
-			return TM_Ok;
-		}
-
-		/*
-		 * No luck, a retry is needed.  If running MERGE, we do not do so
-		 * here; instead let it handle that on its own rules.
-		 */
-		if (context->relaction != NULL)
-			return result;
-
-		/*
-		 * ExecCrossPartitionUpdate installed an updated version of the new
-		 * tuple in the retry slot; start over.
-		 */
-		slot = retry_slot;
-		goto lreplace;
-	}
-
-	/*
-	 * Check the constraints of the tuple.  We've already checked the
-	 * partition constraint above; however, we must still ensure the tuple
-	 * passes all other constraints, so we will call ExecConstraints() and
-	 * have it validate all remaining checks.
-	 */
-	if (resultRelationDesc->rd_att->constr)
-		ExecConstraints(resultRelInfo, slot, estate, context->mtstate);
-
-	/*
-	 * replace the heap tuple
-	 *
-	 * Note: if es_crosscheck_snapshot isn't InvalidSnapshot, we check that
-	 * the row to be updated is visible to that snapshot, and throw a
-	 * can't-serialize error if not. This is a special-case behavior needed
-	 * for referential integrity updates in transaction-snapshot mode
-	 * transactions.
-	 */
-	result = table_tuple_update(resultRelationDesc, tupleid, slot,
-								estate->es_output_cid,
-								estate->es_snapshot,
-								estate->es_crosscheck_snapshot,
-								true /* wait for commit */ ,
-								&context->tmfd, &updateCxt->lockmode,
-								&updateCxt->updateIndexes);
-	if (result == TM_Ok)
-		updateCxt->updated = true;
-
-	return result;
-}
-
-/* YB_TODO(arpan): Deduplicate code between YBExecUpdateAct and ExecUpdateAct */
-/* YB_TODO(review) Revisit later. */
-/* YB_TODO(kramanathan): Evaluate use of ExecFetchSlotHeapTuple */
-static bool
-YBExecUpdateAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
-				ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
-				bool canSetTag, UpdateContext *updateCxt,
-				Bitmapset **cols_marked_for_update, bool *is_pk_updated)
-{
-	EState	   *estate = context->estate;
-	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
-	bool		partition_constraint_failed;
-	TM_Result	result;
-
-	updateCxt->crossPartUpdate = false;
-
-	/*
-	 * If we move the tuple to a new partition, we loop back here to recompute
-	 * GENERATED values (which are allowed to be different across partitions)
-	 * and recheck any RLS policies and constraints.  We do not fire any
-	 * BEFORE triggers of the new partition, however.
-	 */
-yb_lreplace:;
-	/* Fill in GENERATEd columns */
-	ExecUpdatePrepareSlot(resultRelInfo, slot, estate);
-
-	/* ensure slot is independent, consider e.g. EPQ */
-	HeapTuple	tuple = ExecFetchSlotHeapTuple(slot, true /* materialize */ , NULL);
-
-	/*
-	 * If partition constraint fails, this row might get moved to another
-	 * partition, in which case we should check the RLS CHECK policy just
-	 * before inserting into the new partition, rather than doing it here.
-	 * This is because a trigger on that partition might again change the row.
-	 * So skip the WCO checks if the partition constraint fails.
-	 */
-	partition_constraint_failed =
-		resultRelationDesc->rd_rel->relispartition &&
-		!ExecPartitionCheck(resultRelInfo, slot, estate, false /* emitError */ );
-
-	/* Check any RLS UPDATE WITH CHECK policies */
-	if (!partition_constraint_failed &&
-		resultRelInfo->ri_WithCheckOptions != NIL)
-	{
-		/*
-		 * ExecWithCheckOptions() will skip any WCOs which are not of the kind
-		 * we are looking for at this point.
-		 */
-		ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK,
-							 resultRelInfo, slot, estate);
-	}
-
-	/*
 	 * YB: For an ON CONFLICT DO UPDATE query with read batching enabled, insert the
 	 * keys corresponding to the arbiter indexes into the intent cache. Since
 	 * the DO UPDATE clause can modify the index keys that it conflicts on, the
@@ -2472,7 +2334,8 @@ yb_lreplace:;
 	 * arbiter index, which is notable for expression indexes.
 	 * TODO(kramanathan): Optimize this by forming the tuple ID from the slot.
 	 */
-	if (resultRelInfo->ri_ybIocBatchingPossible &&
+	if (IsYBRelation(resultRelationDesc) &&
+		resultRelInfo->ri_ybIocBatchingPossible &&
 		context->mtstate->yb_ioc_state)
 	{
 		ItemPointerData unusedConflictTid;
@@ -2536,25 +2399,27 @@ yb_lreplace:;
 												   inserted_tuple,
 												   oldtuple);
 
-			return true;
+			return TM_Ok;
 		}
 
-#ifdef YB_TODO
-		/* Handle MERGE */
 		/*
 		 * No luck, a retry is needed.  If running MERGE, we do not do so
 		 * here; instead let it handle that on its own rules.
 		 */
 		if (context->relaction != NULL)
+		{
+			if (IsYBRelation(resultRelationDesc))
+				elog(ERROR, "Cross partition update via MERGE is not supported");
+
 			return result;
-#endif
+		}
 
 		/*
 		 * ExecCrossPartitionUpdate installed an updated version of the new
 		 * tuple in the retry slot; start over.
 		 */
 		slot = retry_slot;
-		goto yb_lreplace;
+		goto lreplace;
 	}
 
 	/*
@@ -2566,88 +2431,127 @@ yb_lreplace:;
 	if (resultRelationDesc->rd_att->constr)
 		ExecConstraints(resultRelInfo, slot, estate, context->mtstate);
 
-	bool		row_found = false;
-	bool		beforeRowUpdateTriggerFired = (resultRelInfo->ri_TrigDesc &&
-											   resultRelInfo->ri_TrigDesc->trig_update_before_row);
-
-	/*
-	 * A bitmapset of columns whose values are written to the main table.
-	 * This is initialized to the set of columns marked for update at
-	 * planning time. This set is updated as follows:
-	 * - Columns modified by before row triggers are added.
-	 * - Primary key columns in the setlist that are unmodified are removed.
-	 *
-	 * Maintaining this bitmapset allows us to continue writing out
-	 * unmodified columns to the main table as a safety guardrail, while
-	 * selectively skipping index updates and constraint checks.
-	 * This guardrail may be removed in the future. This also helps avoid
-	 * having a dependency on row locking.
-	 */
-	*cols_marked_for_update = YbFetchColumnsMarkedForUpdate(context,
-															resultRelInfo);
-
-	if (resultRelInfo->ri_NumGeneratedNeeded > 0)
+	if (IsYBRelation(resultRelationDesc))
 	{
+		Assert(yb_cols_marked_for_update);
+		Assert(yb_is_pk_updated);
+
+		bool		row_found = false;
+		bool		beforeRowUpdateTriggerFired = (resultRelInfo->ri_TrigDesc &&
+												   resultRelInfo->ri_TrigDesc->trig_update_before_row);
+
 		/*
-		 * Include any affected generated columns. Note that generated columns
-		 * are, conceptually, updated after BEFORE triggers have run.
+		 * A bitmapset of columns whose values are written to the main table.
+		 * This is initialized to the set of columns marked for update at
+		 * planning time. This set is updated as follows:
+		 * - Columns modified by before row triggers are added.
+		 * - Primary key columns in the setlist that are unmodified are removed.
+		 *
+		 * Maintaining this bitmapset allows us to continue writing out
+		 * unmodified columns to the main table as a safety guardrail, while
+		 * selectively skipping index updates and constraint checks.
+		 * This guardrail may be removed in the future. This also helps avoid
+		 * having a dependency on row locking.
 		 */
-		Bitmapset  *generatedCols = ExecGetExtraUpdatedCols(resultRelInfo,
-															estate);
+		*yb_cols_marked_for_update = YbFetchColumnsMarkedForUpdate(context,
+																   resultRelInfo);
 
-		Assert(!bms_is_empty(generatedCols));
-		*cols_marked_for_update = bms_union(*cols_marked_for_update,
-											generatedCols);
+		if (resultRelInfo->ri_NumGeneratedNeeded > 0)
+		{
+			/*
+			 * Include any affected generated columns. Note that generated columns
+			 * are, conceptually, updated after BEFORE triggers have run.
+			 */
+			Bitmapset  *generatedCols = ExecGetExtraUpdatedCols(resultRelInfo,
+																estate);
+
+			Assert(!bms_is_empty(generatedCols));
+			*yb_cols_marked_for_update = bms_union(*yb_cols_marked_for_update,
+												   generatedCols);
+		}
+
+		ModifyTable *plan = (ModifyTable *) context->mtstate->ps.plan;
+
+		YbCopySkippableEntities(&estate->yb_skip_entities, plan->yb_skip_entities);
+
+		/*
+		 * If an update is a "single row transaction", then we have already
+		 * confirmed at planning time that it has no secondary indexes or
+		 * triggers or foreign key constraints. Such an update does not
+		 * benefit from optimizations that skip constraint checking or index
+		 * updates.
+		 * While it may seem that a single row, distributed transaction can be
+		 * transformed into a single row, non-distributed transaction, this is
+		 * not the case. It is likely that the row to be updated has been read
+		 * from the storage layer already, thus violating the non-distributed
+		 * transaction semantics.
+		 */
+		if (!estate->yb_es_is_single_row_modify_txn)
+		{
+			YbComputeModifiedColumnsAndSkippableEntities(context->mtstate,
+														 resultRelInfo, estate,
+														 oldtuple, slot,
+														 yb_cols_marked_for_update,
+														 beforeRowUpdateTriggerFired);
+		}
+
+		/*
+		 * Irrespective of whether the optimization is enabled or not, we have
+		 * to check if the primary key is updated. It could be that the columns
+		 * making up the primary key are not a part of the target list but are
+		 * updated by a before row trigger.
+		 */
+		*yb_is_pk_updated = YbIsPrimaryKeyUpdated(resultRelationDesc,
+												  *yb_cols_marked_for_update);
+
+		if (*yb_is_pk_updated)
+		{
+			YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, slot, estate);
+			row_found = true;
+		}
+		else
+			row_found = YBCExecuteUpdate(resultRelInfo, context->planSlot, slot,
+										 oldtuple, estate, plan,
+										 context->mtstate->yb_fetch_target_tuple,
+										 (estate->yb_es_is_single_row_modify_txn ?
+										  YB_SINGLE_SHARD_TRANSACTION :
+										  YB_TRANSACTIONAL),
+										 *yb_cols_marked_for_update, canSetTag);
+
+		/*
+		 * Vanilla postgres does not have the equivalent of "no matching tuple"
+		 * in its visibility state enum. YugabyteDB currently does not apply
+		 * tuple visibility semantics within the same transaction
+		 * (command counter). So, when a tuple is not found, hard code the
+		 * return value to TM_Invisible.
+		 */
+		if (!row_found)
+			return TM_Invisible;
+
+		updateCxt->updated = true;
+		return TM_Ok;
 	}
-
-	ModifyTable *plan = (ModifyTable *) context->mtstate->ps.plan;
-
-	YbCopySkippableEntities(&estate->yb_skip_entities, plan->yb_skip_entities);
 
 	/*
-	 * If an update is a "single row transaction", then we have already
-	 * confirmed at planning time that it has no secondary indexes or
-	 * triggers or foreign key constraints. Such an update does not
-	 * benefit from optimizations that skip constraint checking or index
-	 * updates.
-	 * While it may seem that a single row, distributed transaction can be
-	 * transformed into a single row, non-distributed transaction, this is
-	 * not the case. It is likely that the row to be updated has been read
-	 * from the storage layer already, thus violating the non-distributed
-	 * transaction semantics.
+	 * replace the heap tuple
+	 *
+	 * Note: if es_crosscheck_snapshot isn't InvalidSnapshot, we check that
+	 * the row to be updated is visible to that snapshot, and throw a
+	 * can't-serialize error if not. This is a special-case behavior needed
+	 * for referential integrity updates in transaction-snapshot mode
+	 * transactions.
 	 */
-	if (!estate->yb_es_is_single_row_modify_txn)
-	{
-		YbComputeModifiedColumnsAndSkippableEntities(context->mtstate,
-													 resultRelInfo, estate,
-													 oldtuple, tuple,
-													 cols_marked_for_update,
-													 beforeRowUpdateTriggerFired);
-	}
+	result = table_tuple_update(resultRelationDesc, tupleid, slot,
+								estate->es_output_cid,
+								estate->es_snapshot,
+								estate->es_crosscheck_snapshot,
+								true /* wait for commit */ ,
+								&context->tmfd, &updateCxt->lockmode,
+								&updateCxt->updateIndexes);
+	if (result == TM_Ok)
+		updateCxt->updated = true;
 
-	/*
-	 * Irrespective of whether the optimization is enabled or not, we have
-	 * to check if the primary key is updated. It could be that the columns
-	 * making up the primary key are not a part of the target list but are
-	 * updated by a before row trigger.
-	 */
-	*is_pk_updated = YbIsPrimaryKeyUpdated(resultRelationDesc,
-										   *cols_marked_for_update);
-	if (*is_pk_updated)
-	{
-		YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, slot, estate);
-		row_found = true;
-	}
-	else
-		row_found = YBCExecuteUpdate(resultRelInfo, context->planSlot, slot,
-									 oldtuple, estate, plan,
-									 context->mtstate->yb_fetch_target_tuple,
-									 (estate->yb_es_is_single_row_modify_txn ?
-									  YB_SINGLE_SHARD_TRANSACTION :
-									  YB_TRANSACTIONAL),
-									 *cols_marked_for_update, canSetTag);
-
-	return row_found;
+	return result;
 }
 
 /*
@@ -2656,7 +2560,6 @@ yb_lreplace:;
  * Closing steps of updating a tuple.  Must be called if ExecUpdateAct
  * returns indicating that the tuple was updated.
  */
-/* YB_TODO(review) Revisit later. */
 static void
 ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 				   ResultRelInfo *resultRelInfo, ItemPointer tupleid,
@@ -2825,7 +2728,6 @@ ExecCrossPartitionUpdateForeignKey(ModifyTableContext *context,
  *		actually updated after EvalPlanQual.
  * ----------------------------------------------------------------
  */
-/* YB_TODO(review) Revisit later. */
 static TupleTableSlot *
 ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		   ItemPointer tupleid, HeapTuple oldtuple, TupleTableSlot *slot,
@@ -2835,8 +2737,8 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 	UpdateContext updateCxt = {0};
 	TM_Result	result;
-	Bitmapset  *cols_marked_for_update = NULL;
-	bool		pk_is_updated = false;
+	Bitmapset  *yb_cols_marked_for_update = NULL;
+	bool		yb_pk_is_updated = false;
 
 	/*
 	 * abort the operation if not running transactions
@@ -2882,28 +2784,6 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		 */
 		slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYBRelation(resultRelationDesc))
-	{
-		/* Fill in the slot appropriately */
-		ExecUpdatePrepareSlot(resultRelInfo, slot, estate);
-		if (!YBExecUpdateAct(context, resultRelInfo, tupleid, oldtuple, slot,
-							 canSetTag, &updateCxt, &cols_marked_for_update,
-							 &pk_is_updated))
-		{
-			/*
-			 * No row was found. This is possible if it's a single row txn
-			 * and there is no row to update (since we do not first do a scan).
-			 */
-			return NULL;
-		}
-		/*
-		 * If ExecUpdateAct reports that a cross-partition update was done,
-		 * then the RETURNING tuple (if any) has been projected and there's
-		 * nothing else for us to do.
-		 */
-		if (updateCxt.crossPartUpdate)
-			return context->cpUpdateReturningSlot;
-	}
 	else
 	{
 		ItemPointerData lockedtid;
@@ -2916,9 +2796,21 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		 * to do them again.)
 		 */
 redo_act:
-		lockedtid = *tupleid;
+		if (!IsYBRelation(resultRelationDesc))
+			lockedtid = *tupleid;
+
 		result = ExecUpdateAct(context, resultRelInfo, tupleid, oldtuple, slot,
-							   canSetTag, &updateCxt);
+							   canSetTag, &updateCxt, &yb_cols_marked_for_update,
+							   &yb_pk_is_updated);
+
+		if (IsYBRelation(resultRelationDesc) && result == TM_Invisible)
+		{
+			/*
+			 * No row was found. This is possible if it's a single row txn
+			 * and there is no row to update (since we do not first do a scan).
+			 */
+			return NULL;
+		}
 
 		/*
 		 * If ExecUpdateAct reports that a cross-partition update was done,
@@ -3084,10 +2976,10 @@ redo_act:
 		(estate->es_processed)++;
 
 	ExecUpdateEpilogue(context, &updateCxt, resultRelInfo, tupleid, oldtuple,
-					   slot, cols_marked_for_update, pk_is_updated);
+					   slot, yb_cols_marked_for_update, yb_pk_is_updated);
 
 	YbClearSkippableEntities(&estate->yb_skip_entities);
-	bms_free(cols_marked_for_update);
+	bms_free(yb_cols_marked_for_update);
 
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
@@ -3139,7 +3031,7 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	Assert(!resultRelInfo->ri_needLockTagTuple);
 
 	/*
-	 * This routine selects data and check with indexes for conflicts.
+	 * YB: This routine selects data and check with indexes for conflicts.
 	 * - When selecting data from disk, Postgres prepares a heap buffer to hold the selected row
 	 *   and performs transaction-control locking operations on the selected row.
 	 * - YugaByte usually uses Postgres heap buffer after selecting data from storage (DocDB).
@@ -3574,7 +3466,9 @@ lmerge_matched:;
 					break;		/* concurrent update/delete */
 				}
 				result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
-									   newslot, canSetTag, &updateCxt);
+									   newslot, canSetTag, &updateCxt,
+									   NULL /* yb_cols_marked_for_update */ ,
+									   NULL /* yb_is_pk_updated */ );
 
 				/*
 				 * As in ExecUpdate(), if ExecUpdateAct() reports that a
@@ -4272,10 +4166,10 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 	}
 
 	/*
-	 * For a partitioned relation, table constraints (such as FK) are visible on a
-	 * target partition rather than an original insert target.
-	 * As such, we should reevaluate single-row transaction constraints after
-	 * we determine the concrete partition.
+	 * YB: For a partitioned relation, table constraints (such as FK) are
+	 * visible on a target partition rather than an original insert target. As
+	 * such, we should reevaluate single-row transaction constraints after we
+	 * determine the concrete partition.
 	 */
 	if (estate->yb_es_is_single_row_modify_txn)
 	{
@@ -4572,8 +4466,10 @@ ExecModifyTable(PlanState *pstate)
 						ExecMerge(&context, node->resultRelInfo, NULL, node->canSetTag);
 						continue;	/* no RETURNING support yet */
 					}
+
 					elog(ERROR, "ctid is NULL");
 				}
+
 				tupleid = (ItemPointer) DatumGetPointer(datum);
 				tuple_ctid = *tupleid;	/* be sure we don't free ctid!! */
 				tupleid = &tuple_ctid;
@@ -4874,8 +4770,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	}
 
 	/*
-	 * Check if the planner has passed down any optimization info for UPDATEs.
-	 * There are two scenarios where this may be NULL:
+	 * YB: Check if the planner has passed down any optimization info for
+	 * UPDATEs. There are two scenarios where this may be NULL:
 	 * - There is nothing to optimize.
 	 * - Optimization(s) have been disabled.
 	 * Additionally, lookup the relevant GUCs. The GUCs may have been disabled
@@ -5361,7 +5257,7 @@ ExecEndModifyTable(ModifyTableState *node)
 	int			i;
 
 	/*
-	 * Free up the insert on conflict state which exists when INSERT ON
+	 * YB: Free up the insert on conflict state which exists when INSERT ON
 	 * CONFLICT batching happens.
 	 */
 	if (node->yb_ioc_state)

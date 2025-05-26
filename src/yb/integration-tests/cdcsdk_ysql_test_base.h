@@ -84,7 +84,7 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
-DECLARE_int32(cdc_max_stream_intent_records);
+DECLARE_uint64(cdc_max_stream_intent_records);
 DECLARE_bool(enable_single_record_update);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
@@ -135,6 +135,9 @@ DECLARE_bool(cdc_use_byte_threshold_for_vwal_changes);
 DECLARE_bool(ysql_enable_pg_export_snapshot);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_uint64(cdcsdk_update_restart_time_interval_secs);
+DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_bool(save_index_into_wal_segments);
+DECLARE_bool(TEST_skip_process_apply);
 
 namespace yb {
 
@@ -570,7 +573,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t& session_id = kVWALSessionId1);
+      uint64_t session_id = kVWALSessionId1);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -815,6 +818,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void TestCreateReplicationSlotWithLsnTypeParam(const std::string lsn_type);
 
   void TestCreateReplicationSlotWithOrderingMode(const std::string ordering_mode);
+
+  void TestCreateReplicationSlotWithOrderingModeParam(
+      const ReplicationSlotOrderingMode ordering_mode);
 
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 

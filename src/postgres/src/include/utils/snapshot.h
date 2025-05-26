@@ -22,6 +22,7 @@
 /* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+
 /*
  * The different snapshot types.  We use SnapshotData structures to represent
  * both "regular" (MVCC) snapshots and "special" snapshots that have non-MVCC
@@ -126,7 +127,7 @@ typedef struct SnapshotData *Snapshot;
 
 typedef struct YbOptionalReadPointHandle
 {
-	bool has_value;
+	bool		has_value;
 	YbcReadPointHandle value;
 } YbOptionalReadPointHandle;
 

@@ -18,9 +18,9 @@
 #include "utils/relcache.h"
 
 /*
- * This OID corresponds to the last used OID in the block of OIDs that are used
- * by YB specific catalog additions, starting at 8000. When making changes to
- * the catalog by adding a new OID in 'pg_*.dat', 'pg_*.h', 'toasting.h', or
+ * YB: This OID corresponds to the last used OID in the block of OIDs that are
+ * used by YB specific catalog additions, starting at 8000. When making changes
+ * to the catalog by adding a new OID in 'pg_*.dat', 'pg_*.h', 'toasting.h', or
  * 'indexing.h', make sure to increment this value. Additionally, the script
  * 'catalog/unused_oids' will help by outputting the blocks of unused OIDs to
  * validate that this value is up to date.
@@ -29,7 +29,7 @@
  * If you increment it, make sure you didn't forget to add a new SQL migration
  * (see pg_yb_migration.dat and src/yb/yql/pgwrapper/ysql_migrations/README.md)
  */
-#define YB_LAST_USED_OID 8095
+#define YB_LAST_USED_OID 8096
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);
@@ -56,18 +56,13 @@ extern Oid	GetNewOidWithIndex(Relation relation, Oid indexId,
 extern Oid	GetNewRelFileNode(Oid reltablespace, Relation pg_class,
 							  char relpersistence);
 
-/* TODO: Rename according to new style guide */
+/* YB: TODO: Rename according to new style guide */
 extern bool YbIsCatalogNamespaceByName(const char *namespace_name);
-
 extern Oid	GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
 									  char relpersistence);
-
 extern Oid	GetRowTypeOidFromRelOptions(List *relOptions);
-
 extern Oid	YbGetColocationIdFromRelOptions(List *relOptions);
-
 extern bool YbGetUseInitdbAclFromRelOptions(List *options);
-
 extern bool YbIsSysCatalogTabletRelation(Relation rel);
 extern bool YbIsSysCatalogTabletRelationByIds(Oid relationId, Oid namespaceId,
 											  char *namespace_name);

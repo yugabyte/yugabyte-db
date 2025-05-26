@@ -125,6 +125,8 @@ static void status(const char *fmt,...) pg_attribute_printf(1, 2);
 static StringInfo psql_start_command(void);
 static void psql_add_command(StringInfo buf, const char *query,...) pg_attribute_printf(2, 3);
 static void psql_end_command(StringInfo buf, const char *database);
+
+/* YB */
 static void yb_postprocess_output(const char *filename);
 
 /*

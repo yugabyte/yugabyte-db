@@ -97,6 +97,7 @@ int8recv(PG_FUNCTION_ARGS)
 Datum
 int8send(PG_FUNCTION_ARGS)
 {
+	/* YB: rewrite entire function */
 	uint64		arg1 = pg_hton64(PG_GETARG_INT64(0));
 
 	bytea	   *data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
@@ -842,7 +843,7 @@ int8inc_support(PG_FUNCTION_ARGS)
 
 		if (list_length(wfunc->args) == 1)
 		{
-			Node *expr = eval_const_expressions(NULL, linitial(wfunc->args));
+			Node	   *expr = eval_const_expressions(NULL, linitial(wfunc->args));
 
 			/*
 			 * Due to the Node representation of WindowClause runConditions in

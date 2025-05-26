@@ -265,13 +265,6 @@ if(NOT INCLUDE_COMPILER_INFO_EARLY)
   include(CompilerInfo)
 endif()
 
-# libcds checks is_lock_free() to see if we have 128-bit atomic support. Unforunately, this
-# returns false on GCC/libstdc++, even with -mcx16 and even though the atomics are indeed lock-free.
-# Use boost::atomic instead, which does not have this problem.
-if (IS_GCC)
-  ADD_CXX_FLAGS("-DCDS_USE_BOOST_ATOMIC")
-endif()
-
 if(NOT DEFINED YB_LTO_ENABLED)
   message(FATAL_ERROR "YB_LTO_ENABLED is not defined")
 endif()
@@ -296,6 +289,14 @@ elseif ("$ENV{YB_RUN_AFFECTED_TESTS_ONLY}" STREQUAL "1")
   set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 else()
   message("CMake will not export the compilation database")
+endif()
+
+# DocumentDB extension is not available in aarch64 and arm64(#26954) builds.
+# (#26948): Builds like those on ubuntu22.04 do not have libpcre2, which this extension depends on.
+find_library(PCRE2_LIB libpcre2-posix.so)
+if(PCRE2_LIB AND NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$" )
+  set(YB_ENABLE_YSQL_DOCUMENTDB_EXT TRUE)
+  ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
 endif()
 
 # -------------------------------------------------------------------------------------------------
@@ -896,6 +897,7 @@ set(YB_SUBDIR_NAMES
     fs
     gen_yrpc
     gutil
+    hnsw
     integration-tests
     master
     qlexpr

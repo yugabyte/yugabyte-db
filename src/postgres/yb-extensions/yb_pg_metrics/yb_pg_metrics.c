@@ -49,7 +49,9 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 
-#define YSQL_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
+#define YSQL_METRIC_PREFIX "yb_ysqlserver_"
+#define YSQL_LATENCY_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
+
 #define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)
 
 PG_MODULE_MAGIC;
@@ -211,6 +213,9 @@ typedef enum YbStatementType
 	CatCacheTableMisses_49,
 	CatCacheTableMisses_50,
 	CatCacheTableMisses_End = CatCacheTableMisses_50,
+	HintCacheRefresh,
+	HintCacheHits,
+	HintCacheMisses,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -257,6 +262,10 @@ static long last_catcache_delta_refresh_val = 0;
 static long last_cache_misses_val = 0;
 static long last_cache_id_misses_val[SysCacheSize] = {0};
 static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
+
+static long last_hint_cache_refreshes_val = 0;
+static long last_hint_cache_hits_val = 0;
+static long last_hint_cache_misses_val = 0;
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -345,22 +354,22 @@ set_metric_names(void)
 		ybpgm_table[i].sum_help[0] = '\0';
 	}
 
-	strcpy(ybpgm_table[Select].name, YSQL_METRIC_PREFIX "SelectStmt");
-	strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
-	strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
-	strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
-	strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
-	strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
-	strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
-	strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
+	strcpy(ybpgm_table[Select].name, YSQL_LATENCY_METRIC_PREFIX "SelectStmt");
+	strcpy(ybpgm_table[Insert].name, YSQL_LATENCY_METRIC_PREFIX "InsertStmt");
+	strcpy(ybpgm_table[Delete].name, YSQL_LATENCY_METRIC_PREFIX "DeleteStmt");
+	strcpy(ybpgm_table[Update].name, YSQL_LATENCY_METRIC_PREFIX "UpdateStmt");
+	strcpy(ybpgm_table[Begin].name, YSQL_LATENCY_METRIC_PREFIX "BeginStmt");
+	strcpy(ybpgm_table[Commit].name, YSQL_LATENCY_METRIC_PREFIX "CommitStmt");
+	strcpy(ybpgm_table[Rollback].name, YSQL_LATENCY_METRIC_PREFIX "RollbackStmt");
+	strcpy(ybpgm_table[Other].name, YSQL_LATENCY_METRIC_PREFIX "OtherStmts");
 	/* Deprecated. Names with "_"s may cause confusion to metric consumers. */
 	strcpy(ybpgm_table[Single_Shard_Transaction].name,
-		   YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+		   YSQL_LATENCY_METRIC_PREFIX "Single_Shard_Transactions");
 	strcpy(ybpgm_table[SingleShardTransaction].name,
-		   YSQL_METRIC_PREFIX "SingleShardTransactions");
-	strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
+		   YSQL_LATENCY_METRIC_PREFIX "SingleShardTransactions");
+	strcpy(ybpgm_table[Transaction].name, YSQL_LATENCY_METRIC_PREFIX "Transactions");
 	strcpy(ybpgm_table[AggregatePushdown].name,
-		   YSQL_METRIC_PREFIX "AggregatePushdowns");
+		   YSQL_LATENCY_METRIC_PREFIX "AggregatePushdowns");
 	strcpy(ybpgm_table[CatCacheRefresh].name,
 		   YSQL_METRIC_PREFIX "CatCacheRefresh");
 	strcpy(ybpgm_table[CatCacheDeltaRefresh].name,
@@ -389,6 +398,13 @@ set_metric_names(void)
 		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
 				 table_name);
 	}
+
+	strcpy(ybpgm_table[HintCacheRefresh].name,
+		   YSQL_METRIC_PREFIX "HintCacheRefresh");
+	strcpy(ybpgm_table[HintCacheHits].name,
+		   YSQL_METRIC_PREFIX "HintCacheHits");
+	strcpy(ybpgm_table[HintCacheMisses].name,
+		   YSQL_METRIC_PREFIX "HintCacheMisses");
 
 	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
@@ -478,6 +494,18 @@ set_metric_names(void)
 				 ybpgm_table[i].table_name);
 		strcpy(ybpgm_table[i].sum_help, "Not applicable");
 	}
+
+	strcpy(ybpgm_table[HintCacheRefresh].count_help,
+		   "Number of hint cache refreshes");
+	strcpy(ybpgm_table[HintCacheRefresh].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[HintCacheHits].count_help,
+		   "Number of hint cache hits");
+	strcpy(ybpgm_table[HintCacheHits].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[HintCacheMisses].count_help,
+		   "Number of hint cache misses");
+	strcpy(ybpgm_table[HintCacheMisses].sum_help, "Not applicable");
 }
 
 /*
@@ -1051,6 +1079,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 
 		long		current_count = YbGetCatCacheRefreshes();
 		long		total_delta = current_count - last_catcache_refresh_val;
+
 		last_catcache_refresh_val = current_count;
 		/* Set the time parameter to 0 as we don't have metrics for that. */
 		ybpgm_StoreCount(CatCacheRefresh, 0, total_delta);
@@ -1096,6 +1125,25 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 							  last_cache_table_misses_val[j]));
 			last_cache_table_misses_val[j] = current_cache_table_misses[j];
 		}
+
+		/* Hint cache metrics */
+		long		current_hint_cache_refreshes = YbGetHintCacheRefreshes();
+
+		total_delta = current_hint_cache_refreshes - last_hint_cache_refreshes_val;
+		last_hint_cache_refreshes_val = current_hint_cache_refreshes;
+		ybpgm_StoreCount(HintCacheRefresh, 0, total_delta);
+
+		long		current_hint_cache_hits = YbGetHintCacheHits();
+
+		total_delta = current_hint_cache_hits - last_hint_cache_hits_val;
+		last_hint_cache_hits_val = current_hint_cache_hits;
+		ybpgm_StoreCount(HintCacheHits, 0, total_delta);
+
+		long		current_hint_cache_misses = YbGetHintCacheMisses();
+
+		total_delta = current_hint_cache_misses - last_hint_cache_misses_val;
+		last_hint_cache_misses_val = current_hint_cache_misses;
+		ybpgm_StoreCount(HintCacheMisses, 0, total_delta);
 	}
 
 	IncStatementNestingLevel();

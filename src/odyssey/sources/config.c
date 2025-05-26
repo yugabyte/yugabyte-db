@@ -64,6 +64,7 @@ void od_config_init(od_config_t *config)
 	config->yb_enable_multi_route_pool = true;
 	// Same default as the value of ysql_max_connections.
 	config->yb_ysql_max_connections = 300;
+	config->yb_optimized_session_parameters = true;
 	config->yb_max_pools = YSQL_CONN_MGR_MAX_POOLS;
 
 	od_list_init(&config->listen);
@@ -345,6 +346,9 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 
 	od_log(logger, "config", NULL, NULL, "yb_ysql_max_connections     %d",
 	       config->yb_ysql_max_connections);
+
+	od_log(logger, "config", NULL, NULL, "yb_optimized_session_parameters %s",
+	       od_config_yes_no(config->yb_optimized_session_parameters));
 	
 	od_log(logger, "config", NULL, NULL, "yb_max_pools     %s",
 	       od_config_yes_no(config->yb_max_pools));

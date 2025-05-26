@@ -4,6 +4,7 @@
 # This testsuite contains testcases related to YSQL table partitioning added by
 # yugabyte.
 ###############################################################################
+test: yb.orig.partition_aggregate
 test: yb.orig.partition_fk
 test: yb.orig.partition_pk
 test: yb.orig.partition_alter

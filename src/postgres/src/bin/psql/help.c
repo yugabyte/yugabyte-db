@@ -702,28 +702,31 @@ helpSQL(const char *topic, unsigned short int pager)
 					strcmp(topic, "*") == 0)
 				{
 					PQExpBufferData buffer;
-
-					/* YB: exclude links to postgres documentation. */
-					/* char	   *url; */
+					char	   *url;
 
 					initPQExpBuffer(&buffer);
 					QL_HELP[i].syntaxfunc(&buffer);
-
-					/*
-					 *	url = psprintf("https://www.postgresql.org/docs/%s/%s.html",
-					 *				   strstr(PG_VERSION, "devel") ? "devel" : PG_MAJORVERSION,
-					 *				   QL_HELP[i].docbook_id);
-					 */
+					url = psprintf("https://www.postgresql.org/docs/%s/%s.html",
+								   strstr(PG_VERSION, "devel") ? "devel" : PG_MAJORVERSION,
+								   QL_HELP[i].docbook_id);
 					/* # of newlines in format must match constant above! */
 					fprintf(output, _("Command:     %s\n"
 									  "Description: %s\n"
+#ifdef YB_DISABLED				/* Exclude links to postgres documentation */
+									  "Syntax:\n%s\n\n"
+									  "URL: %s\n\n"),
+#else
 									  "Syntax:\n%s\n\n"),
-					/* "URL: %s\n\n"), */
+#endif
 							QL_HELP[i].cmd,
 							_(QL_HELP[i].help),
+#ifdef YB_DISABLED
+							buffer.data,
+							url);
+#else
 							buffer.data);
-					/* url); */
-					/* free(url); */
+#endif
+					free(url);
 					termPQExpBuffer(&buffer);
 
 					/* If we have an exact match, exit.  Fixes \h SELECT */

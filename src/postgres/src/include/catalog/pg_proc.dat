@@ -10889,10 +10889,10 @@
 { oid => '3786', descr => 'set up a logical replication slot',
   proname => 'pg_create_logical_replication_slot', provolatile => 'v',
   proparallel => 'u', prorettype => 'record',
-  proargtypes => 'name name bool bool name',
-  proallargtypes => '{name,name,bool,bool,name,name,pg_lsn}',
-  proargmodes => '{i,i,i,i,i,o,o}',
-  proargnames => '{slot_name,plugin,temporary,twophase,yb_lsn_type,slot_name,lsn}',
+  proargtypes => 'name name bool bool name name',
+  proallargtypes => '{name,name,bool,bool,name,name,name,pg_lsn}',
+  proargmodes => '{i,i,i,i,i,i,o,o}',
+  proargnames => '{slot_name,plugin,temporary,twophase,yb_lsn_type,yb_ordering_mode,slot_name,lsn}',
   prosrc => 'pg_create_logical_replication_slot' },
 { oid => '4222',
   descr => 'copy a logical replication slot, changing temporality and plugin',
@@ -11959,6 +11959,15 @@
   proparallel => 'r', prorettype => 'int8', proargtypes => 'int4',
   prosrc => 'yb_pg_stat_get_backend_catalog_version' },
 
+{ oid => '8096',
+  descr => 'statistics: datid and local_catalog_version of backends',
+  proname => 'yb_pg_stat_get_backend_local_catalog_version', prorows => '100',
+  proisstrict => 'f', proretset => 't', provolatile => 's', proparallel => 'r',
+  prorettype => 'record', proargtypes => 'int4',
+  proallargtypes => '{int4,oid,int8}', proargmodes => '{i,o,o}',
+  proargnames => '{pid,datid,local_catalog_version}',
+  prosrc => 'yb_pg_stat_get_backend_local_catalog_version' },
+
 { oid => '8042', descr => 'get the region of the currently connected node',
   proname => 'yb_server_region', provolatile => 's',
   prorettype => 'varchar', proargtypes => '',
@@ -12169,7 +12178,6 @@
   proname => 'yb_index_check', provolatile => 's',
   prorettype => 'void', proargtypes => 'oid',
   prosrc => 'yb_index_check' },
-]
 
 # Statistics Import
 { oid => '8091',
@@ -12185,8 +12193,8 @@
   descr => 'clear statistics on relation',
   proname => 'pg_clear_relation_stats', provolatile => 'v', proisstrict => 'f',
   proparallel => 'u', prorettype => 'void',
-  proargtypes => 'regclass',
-  proargnames => '{relation}',
+  proargtypes => 'text text',
+  proargnames => '{schemaname,relname}',
   prosrc => 'pg_clear_relation_stats' },
 { oid => '8093',
   descr => 'restore statistics on attribute',
@@ -12201,6 +12209,8 @@
   descr => 'clear statistics on attribute',
   proname => 'pg_clear_attribute_stats', provolatile => 'v', proisstrict => 'f',
   proparallel => 'u', prorettype => 'void',
-  proargtypes => 'regclass name bool',
-  proargnames => '{relation,attname,inherited}',
+  proargtypes => 'text text text bool',
+  proargnames => '{schemaname,relname,attname,inherited}',
   prosrc => 'pg_clear_attribute_stats' },
+
+]

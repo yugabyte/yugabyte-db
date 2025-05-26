@@ -24,7 +24,6 @@
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_rowwise_iterator_base.h"
 #include "yb/docdb/intent_aware_iterator.h"
@@ -75,7 +74,7 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   // verify the row exists.
   bool LivenessColumnExists() const;
 
-  Result<HybridTime> RestartReadHt() override;
+  Result<ReadRestartData> GetReadRestartData() override;
 
   void UpdateFilterKey(Slice user_key_for_filter) override;
   void Seek(Slice key) override;

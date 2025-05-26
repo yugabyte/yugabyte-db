@@ -47,22 +47,18 @@
 
 #include "yb/dockv/partition.h"
 
-#include "yb/gutil/map-util.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master_util.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/format.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
-#include "yb/util/flags/auto_flags.h"
 
 using std::string;
 
@@ -515,11 +511,11 @@ Result<Schema> TableInfo::GetSchema() const {
 }
 
 bool TableInfo::has_pgschema_name() const {
-  return LockForRead()->schema().has_pgschema_name();
+  return LockForRead()->schema().has_deprecated_pgschema_name();
 }
 
 const string TableInfo::pgschema_name() const {
-  return LockForRead()->schema().pgschema_name();
+  return LockForRead()->schema().deprecated_pgschema_name();
 }
 
 bool TableInfo::has_pg_type_oid() const {
@@ -620,7 +616,8 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
     dockv::Partition::FromPB(metadata->pb.partition(), &partition);
     auto result = dockv::PartitionSchema::SplitHashPartitionForStatusTablet(partition);
     if (result) {
-      return TabletWithSplitPartitions{tablet, result->first, result->second};
+      return TabletWithSplitPartitions{
+          .tablet = tablet, .left = result->first, .right = result->second};
     }
   }
 
@@ -1214,13 +1211,13 @@ Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
 
 bool PersistentTableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLQueueTableName;
 }
 
 bool PersistentTableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLReplicatedTableName;
 }
 
@@ -1354,8 +1351,8 @@ std::string DdlLogEntry::id() const {
 // ObjectLockInfo
 // ================================================================================================
 
-std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLease(
-    const NodeInstancePB& instance) {
+std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance) {
   auto l = LockForWrite();
   {
     std::lock_guard l(mutex_);
@@ -1363,7 +1360,7 @@ std::optional<ObjectLockInfo::WriteLock> ObjectLockInfo::RefreshYsqlOperationLea
   }
   if (l->pb.lease_info().live_lease() &&
       l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
-    return std::nullopt;
+    return l->pb.lease_info();
   }
   auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
   lease_info.set_live_lease(true);

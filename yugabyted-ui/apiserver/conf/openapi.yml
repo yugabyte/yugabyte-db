@@ -37,7 +37,44 @@ tags:
     description: APIs for getting information about Voyager migrations
   - name: voyager-metrics
     description: APIs for getting Voyager data migrations metrics
+  - name: xCluster
+    description: APIs for getting xCluster metrics
 paths:
+  /xcluster_metrics:
+    get:
+      summary: Get list of all xCluster replication group ids
+      description: >-
+        Retrieve the list of databases on which restore is run in the YugabyteDB
+        cluster.
+      operationId: getXclusterReplicationIDs
+      responses:
+        '200':
+          $ref: '#/components/responses/xClusterResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /xcluster_namespace_details/{replication_id}:
+    get:
+      summary: Get list of all xCluster replication group namespace and table details
+      description: >-
+        Retrieve the list of namespaces and tables involved in the replication
+        group identified by the given replication ID.
+      operationId: getXclusterReplicationNamespacesInfo
+      parameters:
+        - name: replication_id
+          in: path
+          description: Unique identifier for the replication group
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/xClusterNamespaceResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
   /migrations:
     get:
       summary: Get the list of Voyager migrations
@@ -655,6 +692,214 @@ paths:
           $ref: '#/components/responses/ApiError'
 components:
   schemas:
+    xClusterInboundGroup:
+      title: Get xCluster replication group ids list.
+      description: Schema for xCluster replication group details.
+      type: object
+      properties:
+        replication_group_id:
+          type: string
+          description: Unique identifier for the replication group.
+        state:
+          type: string
+          description: The current status of the replication group.
+        target_cluster_node_ips:
+          type: array
+          description: List of target-side node IPs involved in replication.
+          uniqueItems: true
+          items:
+            type: string
+        source_cluster_node_ips:
+          type: array
+          description: List of source-side node IPs involved in replication.
+          uniqueItems: true
+          items:
+            type: string
+        source_universe_uuid:
+          type: string
+          description: UUID of the source universe for the replication group.
+        target_universe_uuid:
+          type: string
+          description: UUID of the target universe for the replication group.
+      required:
+        - replication_group_id
+        - state
+        - namespace
+        - current_cluster_ip_address
+        - source_leader_host
+    TableReplicationLagDetailsOutbound:
+      title: >-
+        Table information for a namespace in the replication group and per table
+        level lag time.
+      description: Schema for table details and namespace in replication.
+      type: object
+      properties:
+        namespace:
+          type: string
+          description: Namespace to which the current table belongs.
+        table_uuid:
+          type: string
+          description: Unique identifier for the table.
+        table_name:
+          type: string
+          description: Name of the table.
+        is_checkpointing:
+          type: boolean
+          description: Indicates whether the table is currently checkpointing.
+        is_part_of_initial_bootstrap:
+          type: boolean
+          description: >-
+            Indicates whether the table is part of the initial bootstrap
+            process.
+        async_replication_sent_lag_micros:
+          type: integer
+          description: The lag time in microseconds for sent replication data.
+          format: int64
+        async_replication_committed_lag_micros:
+          type: integer
+          description: The lag time in microseconds for committed replication data.
+          format: int64
+      required:
+        - table_uuid
+        - table_name
+        - stream_id
+        - state
+        - keyspace
+        - is_checkpointing
+        - is_part_of_initial_bootstrap
+        - async_replication_committed_lag_micros
+        - async_replication_sent_lag_micros
+    xClusterOutboundGroup:
+      title: Get xCluster replication group ids list.
+      description: Schema for xCluster replication group details.
+      type: object
+      properties:
+        replication_group_id:
+          type: string
+          description: Unique identifier for the replication group.
+        state:
+          type: string
+          description: >-
+            The current status of the replication group (e.g., 'active',
+            'inactive').
+        replication_cluster_node_ips:
+          type: array
+          description: The list of IP addresses of the nodes involved in the replication.
+          uniqueItems: true
+          items:
+            type: string
+        source_universe_uuid:
+          type: string
+          description: UUID of the source universe for the replication group.
+        target_universe_uuid:
+          type: string
+          description: UUID of the target universe for the replication group.
+        tables_list_with_lag:
+          type: array
+          description: List of namespaces from outbound and lag of each table
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/TableReplicationLagDetailsOutbound'
+      required:
+        - replication_group_id
+        - state
+        - namespace
+        - current_cluster_ip_address
+        - target_universe_uuid
+    ApiError:
+      title: API Error
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            detail:
+              description: Error message
+              type: string
+            status:
+              description: Error code
+              type: integer
+    xClusterTableInfoInbound:
+      title: Table information for a namespace in the replication group.
+      description: Schema for table details in xCluster replication.
+      type: object
+      properties:
+        table_uuid:
+          type: string
+          description: Unique identifier for the table.
+        namespace_id:
+          type: string
+          description: Unique identifier for the namespace.
+        table_name:
+          type: string
+          description: Name of the table.
+        stream_id:
+          type: string
+          description: Stream ID associated with the table for replication.
+        state:
+          type: string
+          description: The current state of the table.
+        keyspace:
+          type: string
+          description: Keyspace to which the table belongs.
+        avg_get_changes_latency_ms:
+          type: number
+          format: float64
+          description: >-
+            The average time taken by the consumer to fetch changes from the
+            producer
+        avg_apply_latency_ms:
+          type: number
+          format: float64
+          description: >-
+            The average time taken to apply received changes to the consumer
+            table.
+        avg_throughput_KiBps:
+          type: number
+          format: float64
+          description: >-
+            The average throughput in KiB per second for this replication
+            stream.
+      required:
+        - table_uuid
+        - table_name
+        - stream_id
+        - state
+        - keyspace
+        - avg_get_changes_latency_ms
+        - avg_apply_latency_ms
+        - avg_throughput_KiBps
+    NamespacesInfo:
+      type: object
+      title: Namespace and corresponding tables participating in the replication
+      description: >-
+        A single namespace and its corresponding tables participating in the
+        replication
+      properties:
+        namespace:
+          type: string
+          description: Name of the namespace in the replication
+        table_info_list:
+          type: array
+          items:
+            $ref: '#/components/schemas/xClusterTableInfoInbound'
+      required:
+        - namespace
+        - table_info_list
+    xClusterPlacementLocation:
+      title: Get xCluster placement location info.
+      description: Get universe's placement location in xCluster replication.
+      type: object
+      properties:
+        cloud:
+          type: string
+          description: Cloud name
+        zone:
+          type: string
+          description: Zone name
+        region:
+          type: string
+          description: Region name
     VoyagerMigrationDetails:
       title: Voyager task details
       description: Information regarding a specific voyager migration task
@@ -729,19 +974,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/VoyagerMigrationDetails'
-    ApiError:
-      title: API Error
-      type: object
-      properties:
-        error:
-          type: object
-          properties:
-            detail:
-              description: Error message
-              type: string
-            status:
-              description: Error code
-              type: integer
     AnalysisIssueDetails:
       title: Analysis Issue Details
       description: Details of issues in Schema Analysis Report
@@ -786,9 +1018,7 @@ components:
             $ref: '#/components/schemas/AnalysisIssueDetails'
     RefactoringCount:
       title: Count of automatic, manual and invalid SQL objects
-      description: >-
-        Count of automatic, manual and invalid SQL objects displayed in Schema
-        analysis page
+      description: Count of automatic, manual and invalid SQL objects.
       type: object
       properties:
         sql_object_type:
@@ -1044,6 +1274,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AssessmentCategoryInfo'
+        notes:
+          type: array
+          items:
+            type: string
     SqlObjectCount:
       title: Count of specific Sql Object type in the source DB
       description: Count of specific Sql Object type in the source DB
@@ -2114,18 +2348,68 @@ components:
           schema:
             $ref: '#/components/schemas/ClusterSpec'
   responses:
-    VoyagerMigrationsResponse:
-      description: List of the Voyager migrations
+    xClusterResponse:
+      description: List of all xCluster replication groups
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/VoyagerMigrationsInfo'
+            title: xCluster Replication Groups
+            type: object
+            properties:
+              inbound_replication_groups:
+                type: array
+                uniqueItems: true
+                items:
+                  $ref: '#/components/schemas/xClusterInboundGroup'
+              outbound_replication_groups:
+                type: array
+                uniqueItems: true
+                items:
+                  $ref: '#/components/schemas/xClusterOutboundGroup'
+            required:
+              - replication_groups
     ApiError:
       description: API Error
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
+    xClusterNamespaceResponse:
+      description: List of all namespaces and tables present in a replication group.
+      content:
+        application/json:
+          schema:
+            type: object
+            title: xCluster Namespace Metrics
+            properties:
+              replication_group_id:
+                type: string
+                description: Unique replication group id of each replication
+              namespace_list:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NamespacesInfo'
+              source_placement_location:
+                type: array
+                items:
+                  $ref: '#/components/schemas/xClusterPlacementLocation'
+              target_placement_location:
+                type: array
+                items:
+                  $ref: '#/components/schemas/xClusterPlacementLocation'
+              source_universe_uuid:
+                type: string
+              target_universe_uuid:
+                type: string
+            required:
+              - replication_group_id
+              - namespace_list
+    VoyagerMigrationsResponse:
+      description: List of the Voyager migrations
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VoyagerMigrationsInfo'
     MigrateSchemaResponse:
       description: Response for individual migration task
       content:

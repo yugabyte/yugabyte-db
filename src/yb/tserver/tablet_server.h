@@ -71,6 +71,7 @@
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -206,10 +207,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   ConcurrentPointerReference<TServerSharedData> SharedObject() override { return shared_object(); }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
-  Status ProcessLeaseUpdate(
-      const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time);
-  Result<GetYSQLLeaseInfoResponsePB> GetYSQLLeaseInfo() const override;
-  bool YSQLLeaseEnabled() const;
+  Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
+  Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
+  Status RestartPG() const override;
+  Status KillPg() const override;
+
+  static bool IsYsqlLeaseEnabled();
   tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
   bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 
@@ -255,12 +258,23 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
+  void SetYsqlDBCatalogVersionsUnlocked(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data)
+      REQUIRES(lock_);
   void SetYsqlDBCatalogVersions(const tserver::DBCatalogVersionDataPB& db_catalog_version_data)
-      EXCLUDES(lock_) override;
-  void SetYsqlDBCatalogInvalMessages(
+      EXCLUDES(lock_) override {
+    std::lock_guard l(lock_);
+    SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data);
+  }
+  void SetYsqlDBCatalogInvalMessagesUnlocked(
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
+      REQUIRES(lock_);
+  void SetYsqlDBCatalogVersionsWithInvalMessages(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
       EXCLUDES(lock_);
   void ResetCatalogVersionsFingerprint() EXCLUDES(lock_);
+  void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
   uint32_t get_oid_cache_invalidations_count() const override {
     return oid_cache_invalidations_count_.load();
@@ -319,6 +333,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       const tserver::GetTserverCatalogMessageListsRequestPB& req,
       tserver::GetTserverCatalogMessageListsResponsePB* resp) const override;
 
+  Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) override;
+
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
   rpc::Messenger* GetMessenger(ash::Component component) const override;
@@ -360,6 +378,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
+
+  void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
+
+  void RegisterPgProcessKiller(std::function<Status(void)> killer) override;
+
+  Status StartYSQLLeaseRefresher();
 
   TserverXClusterContextIf& GetXClusterContext() const;
 
@@ -447,6 +471,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
 
+  void StartTSLocalLockManager() EXCLUDES (lock_);
+
   std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.
@@ -523,7 +549,15 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // that there is no invalidation message. There is nothing in the PG catalog cache that can
   // be invalidated by an empty string.
   using InvalidationMessagesQueue = std::deque<std::pair<uint64_t, std::optional<std::string>>>;
-  using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesQueue>;
+  // If cutoff_catalog_version > 0, we can garbage collect any slots that have catalog version
+  // <= cutoff_catalog_version because no backends on this node will ever need those invalidation
+  // messages in order to support incremental catalog cache refresh. A backend will need at least
+  // cutoff_catalog_version + 1 for incremental catalog cache refresh.
+  struct InvalidationMessagesInfo {
+    uint64_t cutoff_catalog_version = 0;
+    InvalidationMessagesQueue queue;
+  };
+  using DbOidToInvalidationMessagesMap = std::unordered_map<uint32_t, InvalidationMessagesInfo>;
   DbOidToInvalidationMessagesMap ysql_db_invalidation_messages_map_ GUARDED_BY(lock_);
 
   // See same variable comments in CatalogManager.
@@ -566,6 +600,27 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void InvalidatePgTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                               const std::unordered_set<uint32_t>& db_oids_deleted);
 
+  void ScheduleCheckLaggingCatalogVersions();
+  Status CheckYsqlLaggingCatalogVersions();
+
+  void DoGarbageCollectionOfInvalidationMessages(
+      const std::map<uint32_t, std::vector<uint64_t>>& db_local_catalog_versions_map,
+      std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions,
+      std::map<uint32_t, uint64_t> *db_cutoff_catalog_versions);
+  void ClearInvalidationMessageQueueUnlocked(
+      const std::vector<uint64_t>& local_catalog_versions,
+      InvalidationMessagesInfo *info) REQUIRES(lock_);
+  void MergeInvalMessagesIntoQueueUnlocked(
+      uint32_t db_oid,
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      int start_index,
+      int end_index) REQUIRES(lock_);
+  void DoMergeInvalMessagesIntoQueueUnlocked(
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      int start_index,
+      int end_index,
+      InvalidationMessagesQueue *db_message_lists) REQUIRES(lock_);
+
   std::string log_prefix_;
 
   // Bind address of postgres proxy under this tserver.
@@ -581,6 +636,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
+  std::function<Status(void)> pg_restarter_;
+  std::function<Status(void)> pg_killer_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;

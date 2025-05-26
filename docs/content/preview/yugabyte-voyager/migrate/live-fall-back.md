@@ -45,8 +45,9 @@ The following illustration describes the workflow for live migration using YB Vo
 | PREPARE | [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
 | | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ and WRITE (for fall-back) access to all the resources to be migrated. |
 | | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with necessary privileges. |
+| ASSESS | [Assess Migration](#assess-migration) | Assess the migration complexity, and get schema changes, data distribution, and cluster sizing recommendations using the `yb-voyager assess-migration` command. |
 | SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
-| | [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| | [Analyze](#analyze-schema) | Generate a _Schema&nbsp;Analysis&nbsp;Report_ using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
 | | [Import](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | LIVE MIGRATION | Start | Start the phases: export data first, followed by import data to target and archive changes simultaneously. |
@@ -518,17 +519,19 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-   ```sql
-   psql -h <host> \
-        -d <database> \
-        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
-        -v voyager_user='ybvoyager' \
-        -v schema_list='<comma_separated_schema_list>' \
-        -v is_live_migration=1 \
-        -v is_live_migration_fall_back=1 \
-        -v replication_group='<replication_group>' \
-        -f <path_to_the_script>
-   ```
+    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+
+    ```sql
+    psql -h <host> \
+          -d <database> \
+          -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
+          -v voyager_user='ybvoyager' \
+          -v schema_list='<comma_separated_schema_list>' \
+          -v is_live_migration=1 \
+          -v is_live_migration_fall_back=1 \
+          -v replication_group='<replication_group>' \
+          -f <path_to_the_script>
+    ```
 
     The `ybvoyager` user can now be used for migration.
 
@@ -554,19 +557,21 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 1. Grant permissions for migration. Use the `yb-voyager-pg-grant-migration-permissions.sql` script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-   ```sql
-   psql -h <host> \
-        -d <database> \
-        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
-        -v voyager_user='ybvoyager' \
-        -v schema_list='<comma_separated_schema_list>' \
-        -v is_live_migration=1 \
-        -v is_live_migration_fall_back=1 \
-        -v replication_group='<replication_group>' \
-        -f <path_to_the_script>
-   ```
+    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
 
-   The `ybvoyager` user can now be used for migration.
+    ```sql
+    psql -h <host> \
+          -d <database> \
+          -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
+          -v voyager_user='ybvoyager' \
+          -v schema_list='<comma_separated_schema_list>' \
+          -v is_live_migration=1 \
+          -v is_live_migration_fall_back=1 \
+          -v replication_group='<replication_group>' \
+          -f <path_to_the_script>
+    ```
+
+    The `ybvoyager` user can now be used for migration.
 
   {{% /tab %}}
 
@@ -577,6 +582,8 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 </div>
 
 ## Prepare the target database
+
+Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
@@ -649,6 +656,12 @@ The export directory has the following sub-directories and files:
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
 
+## Assess migration
+
+This step is optional and only applicable to PostgreSQL and Oracle database migrations. Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
+
+Refer to [Migration assessment](../../migrate/assess-migration/) for details.
+
 ## Migrate your database to YugabyteDB
 
 Proceed with schema and data migration using the following steps:
@@ -665,7 +678,7 @@ The `yb-voyager export schema` command extracts the schema from the source datab
 
 The `source_db_schema` argument specifies the schema of the source database.
 
-- For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
+For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
 
 {{< /note >}}
 
@@ -682,6 +695,8 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-schema <SOURCE_DB_SCHEMA>
 
 ```
+
+Note that if the source database is PostgreSQL and you haven't already run `assess-migration`, the schema is also assessed and a migration assessment report is generated.
 
 Refer to [export schema](../../reference/schema-migration/export-schema/) for details about the arguments.
 
@@ -742,7 +757,7 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
 
-To add the constraints back, you run the `import schema` command after data import. See [Cutover to the target](#cutover-to-the-target).
+To add the constraints back, you run the `finalize-schema-post-data-import` command after data import. See [Cutover to the target](#cutover-to-the-target).
 
 {{< /note >}}
 
@@ -909,7 +924,7 @@ Perform the following steps as part of the cutover process:
 
     As part of the cutover process, the following occurs in the background:
 
-    1. The initiate cutover to target command stops the export data from source process, followed by the import data to target process after it has imported all the events to the target YugabyteDB database.
+    1. The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to target` phase continues and completes by importing all the exported events into the target YugabyteDB database.
 
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database.
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart the process using the `export data from target` command as suggested in the `import data to target` output.
@@ -929,33 +944,22 @@ The `export data from target` command may result in duplicated events if you res
     ```
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
-
-1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `import schema` with the `post-snapshot-import` flag:
-
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-            --post-snapshot-import true
-    ```
-
-1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them using the following command:
+1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `finalize-schema-post-data-import`. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, you can refresh them by setting the `--refresh-mviews` flag to true.
 
     ```sh
     # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-            --post-snapshot-import true \
-            --refresh-mviews true
+    yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
+       --target-db-host <TARGET_DB_HOST> \
+       --target-db-user <TARGET_DB_USER> \
+       --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+       --target-db-name <TARGET_DB_NAME> \
+       --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+       
     ```
+
+    {{< note title ="Note" >}}
+The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. However, if you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+    {{< /note >}}
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 

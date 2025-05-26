@@ -60,6 +60,9 @@ yb_write_struct_to_file(const char *tempfile_name, const char *file_name,
 {
 	FILE	   *temp_fpout;
 
+	if (!struct_ptr)
+		return;
+
 	temp_fpout = AllocateFile(tempfile_name, PG_BINARY_W);
 	if (temp_fpout == NULL)
 	{
@@ -94,7 +97,6 @@ yb_write_struct_to_file(const char *tempfile_name, const char *file_name,
 						tempfile_name)));
 		unlink(tempfile_name);
 	}
-
 	else if (rename(tempfile_name, file_name) < 0)
 	{
 		ereport(LOG,
@@ -123,7 +125,7 @@ yb_read_struct_from_file(const char *file_name, void *struct_ptr,
 
 	if (!read_chunk(fpin, &format_id, sizeof(format_id)) || format_id != expected_format_id
 		|| !read_chunk(fpin, struct_ptr, struct_size))
-		ereport(LOG,(errmsg("corrupted yb file \"%s\"", file_name)));
+		ereport(LOG, (errmsg("corrupted yb file \"%s\"", file_name)));
 
 	FreeFile(fpin);
 

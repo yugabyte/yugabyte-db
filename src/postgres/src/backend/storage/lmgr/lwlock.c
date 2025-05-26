@@ -222,7 +222,7 @@ LWLockPadded *MainLWLockArray = NULL;
  */
 #define MAX_SIMUL_LWLOCKS	200
 
- /* struct representing the LWLocks we're holding */
+/* struct representing the LWLocks we're holding */
 typedef struct LWLockHandle
 {
 	LWLock	   *lock;
@@ -1083,6 +1083,7 @@ LWLockQueueSelf(LWLock *lock, LWLockMode mode)
 	 */
 	PGPROC	   *proc = MyProc;
 
+	/* YB */
 	if (!IsUnderPostmaster && proc == NULL)
 	{
 		if (KilledProcToClean == NULL)
@@ -1131,6 +1132,7 @@ LWLockDequeueSelf(LWLock *lock)
 	bool		on_waitlist;
 	PGPROC	   *proc = MyProc;
 
+	/* YB */
 	if (proc == NULL)
 	{
 		Assert(!IsUnderPostmaster);
@@ -1150,9 +1152,9 @@ LWLockDequeueSelf(LWLock *lock)
 	LWLockWaitListLock(lock);
 
 	/*
-	 * Remove ourselves from the waitlist, unless we've already been
-	 * removed. The removal happens with the wait list lock held, so there's
-	 * no race in this check.
+	 * Remove ourselves from the waitlist, unless we've already been removed.
+	 * The removal happens with the wait list lock held, so there's no race in
+	 * this check.
 	 */
 	on_waitlist = proc->lwWaiting == LW_WS_WAITING;
 	if (on_waitlist)
@@ -1433,6 +1435,7 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 	 */
 	HOLD_INTERRUPTS();
 
+	/* YB */
 	if (MyProc != NULL)
 		MyProc->ybLWLockAcquired = true;
 
@@ -1441,6 +1444,7 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 
 	if (mustwait)
 	{
+		/* YB */
 		if (MyProc != NULL && !num_held_lwlocks)
 			MyProc->ybLWLockAcquired = false;
 
@@ -1502,6 +1506,8 @@ LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 	 * manipulations of data structures in shared memory.
 	 */
 	HOLD_INTERRUPTS();
+
+	/* YB */
 	if (MyProc != NULL)
 		MyProc->ybLWLockAcquired = true;
 

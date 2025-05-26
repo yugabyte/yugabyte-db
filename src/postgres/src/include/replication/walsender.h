@@ -25,7 +25,7 @@ typedef enum
 } CRSSnapshotAction;
 
 /*
- * The type of LSN type to use in create replication slot command.
+ * YB: The type of LSN type to use in create replication slot command.
  */
 typedef enum
 {
@@ -34,13 +34,13 @@ typedef enum
 } YbCRSLsnType;
 
 /*
- * The type of ordering mode to use in create replication slot command.
+ * YB: The type of ordering mode to use in create replication slot command.
  */
- typedef enum
- {
-	 YB_CRS_ROW,
-	 YB_CRS_TRANSACTION
- } YbCRSOrderingMode;
+typedef enum
+{
+	YB_CRS_ROW,
+	YB_CRS_TRANSACTION
+} YbCRSOrderingMode;
 
 /* global state */
 extern PGDLLIMPORT bool am_walsender;

@@ -16,7 +16,6 @@
 #include "yb/common/transaction.h"
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/value_type.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/tostring.h"
@@ -37,6 +36,14 @@ struct ObjectLockOwner {
     req->set_subtxn_id(subtxn_id);
   }
 
+  template<class T>
+  void PopulateReleaseRequest(T* req, bool release_all = true) const {
+    req->set_txn_id(txn_id.data(), txn_id.size());
+    if (!release_all) {
+      req->set_subtxn_id(subtxn_id);
+    }
+  }
+
   YB_STRUCT_DEFINE_HASH(ObjectLockOwner, txn_id, subtxn_id);
 
   auto operator<=>(const ObjectLockOwner&) const = default;
@@ -51,19 +58,24 @@ struct ObjectLockOwner {
 // oid, an 'ObjectLockPrefix' in formed which is then passed to the ObjectLockManager.
 struct ObjectLockPrefix {
   ObjectLockPrefix(
-      uint64_t database_oid_, uint64_t object_oid_, dockv::KeyEntryType lock_type_)
-      : database_oid(database_oid_), object_oid(object_oid_), lock_type(lock_type_) {}
+      uint64_t database_oid_, uint64_t relation_oid_, uint64_t object_oid_,
+      uint64_t object_sub_oid_, dockv::KeyEntryType lock_type_)
+      : database_oid(database_oid_), relation_oid(relation_oid_), object_oid(object_oid_),
+        object_sub_oid(object_sub_oid_), lock_type(lock_type_) {}
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(database_oid, object_oid, lock_type);
+    return YB_STRUCT_TO_STRING(database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
   }
 
-  YB_STRUCT_DEFINE_HASH(ObjectLockPrefix, database_oid, object_oid, lock_type);
+  YB_STRUCT_DEFINE_HASH(
+      ObjectLockPrefix, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
 
   auto operator<=>(const ObjectLockPrefix&) const = default;
 
   uint64_t database_oid;
+  uint64_t relation_oid;
   uint64_t object_oid;
+  uint64_t object_sub_oid;
   dockv::KeyEntryType lock_type;
 };
 

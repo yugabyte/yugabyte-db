@@ -527,7 +527,10 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 				 errdetail_log("%s", detail_log)));
 	}
 
-	/* Check if there are snapshot schedules, disallow dropping in such cases */
+	/*
+	 * YB: Check if there are snapshot schedules, disallow dropping in such
+	 * cases
+	 */
 	if (IsYugaByteEnabled())
 	{
 		bool		is_active;
@@ -1230,7 +1233,7 @@ check_default_tablespace(char **newval, void **extra, GucSource source)
 	}
 
 	/*
-	 * If Connection Manager is enabled, make the connection sticky.
+	 * YB: If Connection Manager is enabled, make the connection sticky.
 	 */
 	if (YbIsClientYsqlConnMgr())
 	{
@@ -1417,7 +1420,7 @@ check_temp_tablespaces(char **newval, void **extra, GucSource source)
 	list_free(namelist);
 
 	/*
-	 * If Connection Manager is enabled, make the connection sticky.
+	 * YB: If Connection Manager is enabled, make the connection sticky.
 	 */
 	if (YbIsClientYsqlConnMgr())
 	{

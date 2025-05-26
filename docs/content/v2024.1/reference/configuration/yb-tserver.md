@@ -7,7 +7,7 @@ menu:
   v2024.1:
     identifier: yb-tserver
     parent: configuration
-    weight: 2440
+    weight: 2100
 type: docs
 ---
 
@@ -889,6 +889,12 @@ See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If
 
 Default: 1024
 
+##### --ysql_follower_reads_avoid_waiting_for_safe_time
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+Default: `true`
+
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
@@ -1724,7 +1730,7 @@ Default: `1GB`
 
 PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
 
-Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
+Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with `AND` or `OR` operators to create a final bitmap that is used to collect rows from the main table.
 
 Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
 
@@ -1753,13 +1759,13 @@ Default: 1024
 
 ##### yb_enable_batchednl
 
-{{<tags/feature/ea>}} Enable or disable the query planner's use of batched nested loop join.
+Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<tags/feature/ea>}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
+{{<tags/feature/ea idea="483">}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
 

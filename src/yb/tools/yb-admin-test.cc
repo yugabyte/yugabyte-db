@@ -67,6 +67,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 using namespace std::literals;
 
 using yb::common::GetMemberAsArray;
@@ -570,6 +572,188 @@ Result<string> RegexFetchFirst(const string out, const string &exp) {
   return match[1];
 }
 } // namespace
+
+class AdminCliTestForTableLocks : public AdminCliTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->enable_ysql = true;
+    options->extra_master_flags.push_back("--TEST_enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--TEST_enable_object_locking_for_table_locks=true");
+  }
+
+ protected:
+  Result<std::pair<std::string, std::string>> ExtractTxnAndSubtxnIdFrom(
+      const HostPort& addr, const std::string& page) {
+    EasyCurl curl;
+    const std::regex txn_regex(
+        "\\{txn: ([a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}) subtxn_id: "
+        "([0-9]+)\\}");
+    faststring buf;
+    auto url = strings::Substitute("http://$0/$1", ToString(addr), page);
+    RETURN_NOT_OK(curl.FetchURL(url, &buf));
+    auto lt_out = buf.ToString();
+    VLOG(1) << "Response from url: " << url << " :\n" << lt_out;
+    std::smatch match;
+    if (!std::regex_search(lt_out.cbegin(), lt_out.cend(), match, txn_regex)) {
+      return STATUS(NotFound, "Pattern not found");
+    }
+    for (std::size_t i = 0; i < match.size(); ++i) {
+      VLOG(1) << i << ": " << match[i] << '\n';
+    }
+    auto txn_id = match[1];
+    auto subtxn_id = match[2];
+    VLOG(1) << "Transaction ID: " << txn_id;
+    VLOG(1) << "Subtransaction ID: " << subtxn_id;
+    return std::make_pair(txn_id, subtxn_id);
+  }
+
+  Result<std::pair<std::string, std::string>> ExtractTxnAndSubtxnIdFromMaster() {
+    return ExtractTxnAndSubtxnIdFrom(
+        cluster_->GetLeaderMaster()->bound_http_hostport(), "ObjectLockManager");
+  }
+
+  Result<std::pair<std::string, std::string>> ExtractTxnAndSubtxnIdFromTServer(int index) {
+    return ExtractTxnAndSubtxnIdFrom(
+        cluster_->tablet_server(index)->bound_http_hostport(), "TSLocalLockManager");
+  }
+
+  Result<bool> HasLocksTServer(int index) {
+    return HasLocks(cluster_->tablet_server(index)->bound_http_hostport(), "TSLocalLockManager");
+  }
+
+  Result<bool> HasLocksMaster() {
+    return HasLocks(cluster_->GetLeaderMaster()->bound_http_hostport(), "ObjectLockManager");
+  }
+
+  Result<bool> HasLocks(const HostPort& addr, const std::string& page) {
+    auto res = ExtractTxnAndSubtxnIdFrom(addr, page);
+    if (res.ok()) {
+      return true;
+    } else if (res.status().IsNotFound()) {
+      return false;
+    } else {
+      return res.status();
+    }
+  }
+};
+
+TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnIdAndSubtxnId) {
+  BuildAndStart();
+  const std::string db_name{"yugabyte"};
+  const int kTServerIndex = 0;
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+
+  const std::string table_name = "test_table";
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  std::string txn_id;
+  std::string subtxn_id;
+  std::tie(txn_id, subtxn_id) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromMaster());
+
+  ASSERT_OK(CallAdmin("unsafe_release_object_locks_global", txn_id, subtxn_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+
+  // Sanity check that other tranactions can acquire locks.
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnId) {
+  BuildAndStart();
+  const std::string db_name{"yugabyte"};
+  const int kTServerIndex = 0;
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+
+  const std::string table_name = "test_table";
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  std::string txn_id;
+  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromMaster());
+
+  ASSERT_OK(CallAdmin("unsafe_release_object_locks_global", txn_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+
+  // Sanity check that other tranactions can acquire locks.
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksAtTServer) {
+  BuildAndStart();
+  const std::string db_name{"yugabyte"};
+  const int kTServerIndex = 0;
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+
+  const std::string table_name = "test_table";
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  std::string txn_id;
+  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex));
+
+  // Having this test flag allows us to release locks for unknown transactions at the master.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_allow_unknown_txn_release_request", "false"));
+  ASSERT_NOK(CallAdmin("unsafe_release_object_locks_global", txn_id));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+
+  ASSERT_OK(CallTSCli("unsafe_release_all_locks_for_txn", txn_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+
+  // Sanity check that other tranactions can acquire locks.
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksThroughMaster) {
+  BuildAndStart();
+  const std::string db_name{"yugabyte"};
+  const int kTServerIndex = 0;
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+
+  const std::string table_name = "test_table";
+  ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
+  ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+  std::string txn_id;
+  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex));
+
+  // Having this test flag allows us to release locks for unknown transactions at the master.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_allow_unknown_txn_release_request", "true"));
+
+  ASSERT_OK(CallAdmin("unsafe_release_object_locks_global", txn_id));
+  ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
+
+  // Sanity check that other tranactions can acquire locks.
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB(db_name, kTServerIndex));
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table_name));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
 
 // Use list_tablets to list one single tablet for the table.
 // Parse out the tablet from the output.
@@ -1477,6 +1661,109 @@ TEST_F(AdminCliTest, TestCompactionStatusAfterCompactionFinishes) {
   ASSERT_GT(last_full_compaction_time, time_before_compaction);
   const auto last_request_time = ASSERT_RESULT(DateTime::TimestampFromString(match[2].str()));
   ASSERT_GT(last_request_time, time_before_compaction);
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/19957
+TEST_F(AdminCliTest, TestAdminCommandTimeout) {
+  // The test checks that an admin command timeout for compactions and flushes is honored by
+  // FlushManager on yb-master side (no dependency on `master_ts_rpc_timeout_ms`).
+
+  BuildAndStart();
+  const string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  // No admin timeout higher than `master_ts_rpc_timeout_ms` was honored for flush and compaction
+  // operation (passed via FlushManager) before the fix, which means `master_ts_rpc_timeout_ms`
+  // was the max timeout available for the mentioned operations. It is definitely not enough at
+  // least for large compactions.
+  // In case of timeout by admin command timeout value, the admin tool gets the error:
+  // (1) `Timed out waiting for FlushTables`.
+  // In case of timeout by `master_ts_rpc_timeout_ms` value, the admin tool gets the error like:
+  // (2) `Flush operation for id: 9be5b8cbd0d14cfea3371da1a6cbccab failed`.
+  // With the fix, only the error (1) is thrown for timied out commands.
+  constexpr size_t kMasterRpcTimeout = 4000;
+  constexpr size_t kCompactionPause  = 2 * kMasterRpcTimeout;
+  constexpr size_t kAdminCmdTimeout  =
+      kMasterRpcTimeout + ((kCompactionPause - kMasterRpcTimeout) / 2);
+
+  // Update flags.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "master_ts_rpc_timeout_ms", std::to_string(kMasterRpcTimeout)));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_pause_tablet_compact_flush_ms", std::to_string(kCompactionPause)));
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  const auto before_ts = DateTime::TimestampNow();
+  auto result = CallAdmin(
+      "compact_table", kTableName.namespace_name(), kTableName.table_name(),
+      std::to_string(kAdminCmdTimeout / MonoTime::kMillisecondsPerSecond));
+  auto duration = MonoDelta::FromMicroseconds(DateTime::TimestampNow().value() - before_ts.value());
+  LOG(INFO) << "Result: " << result << ", dutaion: " << duration;
+
+  // It is expected to always get the timeout error since kAdminCmdTimeout < kCompactionPause,
+  // additionaly it covers the cases kAdminCmdTimeout > kMasterRpcTimeout for the expected error.
+  bool timed_out = !result.ok() &&
+                    result.status().message().Contains("Timed out waiting for FlushTables");
+  ASSERT_TRUE(timed_out);
+
+  // The expectation is to have the call's duration approximately kAdminCmdTimeout amount.
+  ASSERT_GT(duration, MonoDelta::FromMilliseconds(kAdminCmdTimeout));
+  ASSERT_LT(duration, MonoDelta::FromMilliseconds(kAdminCmdTimeout * 1.25));
+
+  // Wait for some time to let the compaction be unpaused and completed.
+  SleepFor(MonoDelta::FromMilliseconds(1.1 * (kCompactionPause - kAdminCmdTimeout)));
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/26722
+TEST_F(AdminCliTest, TestAdminRpcTimeout) {
+  // The test checks that an admin command timeout is honored when it is greater than admin's
+  // default RPC timeout, which is set by FLAGS_yb_client_admin_rpc_timeout_sec.
+
+  BuildAndStart();
+  const string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  // With the fix for https://github.com/yugabyte/yugabyte-db/issues/19957, no admin command
+  // timeout higher than 60 seconds was honored for any admin RPC operation (refer to
+  // YBClientBuilder::Data::default_rpc_timeout_). Which means any admin command was limited
+  // by the mentioned 60 seconds even if a user was specified the higher timeout.
+  // In case of timeout by admin command timeout value, the admin tool gets the error:
+  // (1) `Timed out waiting for FlushTables`.
+  // In case of timeout by default_rpc_timeout_ value, the admin tool gets the error like:
+  // (2) `Flush operation for id: 9be5b8cbd0d14cfea3371da1a6cbccab failed`.
+  // After the fix, only the error (1) is thrown for timed out commands.
+  constexpr size_t kAdminRpcTimeout  = 4000;
+  constexpr size_t kAdminCmdTimeout  = 2 * kAdminRpcTimeout;
+  constexpr size_t kCompactionPause  = 1.5 * kAdminCmdTimeout;
+  constexpr size_t kMasterRpcTimeout = kAdminRpcTimeout / 2;
+
+  // Update flags.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "master_ts_rpc_timeout_ms", std::to_string(kMasterRpcTimeout)));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_pause_tablet_compact_flush_ms", std::to_string(kCompactionPause)));
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  const auto before_ts = DateTime::TimestampNow();
+  auto result = CallAdmin(
+      "-yb_client_admin_rpc_timeout_sec",
+      std::to_string(kAdminRpcTimeout / MonoTime::kMillisecondsPerSecond),
+      "compact_table", kTableName.namespace_name(), kTableName.table_name(),
+      std::to_string(kAdminCmdTimeout / MonoTime::kMillisecondsPerSecond));
+  auto duration = MonoDelta::FromMicroseconds(DateTime::TimestampNow().value() - before_ts.value());
+  LOG(INFO) << "Result: " << result;
+
+  // It is expected to always get the timeout error since kAdminCmdTimeout < kCompactionPause.
+  bool timed_out = !result.ok() &&
+                    result.status().message().Contains("Timed out waiting for FlushTables");
+  ASSERT_TRUE(timed_out);
+
+  // The expectation is to have the call's duration approximately kAdminCmdTimeout amount.
+  ASSERT_GT(duration, MonoDelta::FromMilliseconds(kAdminCmdTimeout));
+  ASSERT_LT(duration, MonoDelta::FromMilliseconds(kAdminCmdTimeout * 1.25));
+
+  // Wait for some time to let the compaction be unpaused and completed.
+  SleepFor(MonoDelta::FromMilliseconds(1.1 * (kCompactionPause - kAdminCmdTimeout)));
 }
 
 Status AdminCliTest::TestDumpSysCatalogEntry(const std::string& cluster_uuid) {

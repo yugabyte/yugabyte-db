@@ -44,13 +44,14 @@
 #include "yb_tcmalloc_utils.h"
 
 static void
-YbPutHeapSnapshotTupleStore(Tuplestorestate *tupstore, TupleDesc tupdesc,
-							YbcHeapSnapshotSample *sample);
+			YbPutHeapSnapshotTupleStore(Tuplestorestate *tupstore, TupleDesc tupdesc,
+										YbcHeapSnapshotSample *sample);
 
 Datum
 yb_set_tcmalloc_sample_period(PG_FUNCTION_ARGS)
 {
-	int64_t sample_period_ms = PG_GETARG_INT64(0);
+	int64_t		sample_period_ms = PG_GETARG_INT64(0);
+
 	YBCSetTCMallocSamplingPeriod(sample_period_ms);
 	PG_RETURN_VOID();
 }
@@ -59,12 +60,15 @@ void
 yb_backend_heap_snapshot_internal(bool peak_heap, FunctionCallInfo fcinfo)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc tupdesc;
+	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
 
-	/* Only superusers or the YbDbAdmin user are allowed to see the heap snapshot */
+	/*
+	 * Only superusers or the YbDbAdmin user are allowed to see the heap
+	 * snapshot
+	 */
 	if (!IsYbDbAdminUser(GetUserId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -97,8 +101,9 @@ yb_backend_heap_snapshot_internal(bool peak_heap, FunctionCallInfo fcinfo)
 	MemoryContextSwitchTo(oldcontext);
 
 	YbcHeapSnapshotSample *snapshot = NULL;
-	int64_t samples = 0;
-	YbcStatus status = YBCGetHeapSnapshot(&snapshot, &samples, peak_heap);
+	int64_t		samples = 0;
+	YbcStatus	status = YBCGetHeapSnapshot(&snapshot, &samples, peak_heap);
+
 	HandleYBStatus(status);
 
 	for (int i = 0; i < samples; i++)
@@ -132,34 +137,35 @@ YbPutHeapSnapshotTupleStore(Tuplestorestate *tupstore, TupleDesc tupdesc,
 {
 #define YB_BACKEND_HEAP_SNAPSHOT_COLS 6
 
-	Datum values[YB_BACKEND_HEAP_SNAPSHOT_COLS];
-	bool nulls[YB_BACKEND_HEAP_SNAPSHOT_COLS];
+	Datum		values[YB_BACKEND_HEAP_SNAPSHOT_COLS];
+	bool		nulls[YB_BACKEND_HEAP_SNAPSHOT_COLS];
+
 	memset(values, 0, sizeof(values));
 	memset(nulls, 0, sizeof(nulls));
 
 	values[0] = sample->estimated_bytes_is_null ?
-					(Datum) 0 :
-					Int64GetDatum(sample->estimated_bytes);
+		(Datum) 0 :
+		Int64GetDatum(sample->estimated_bytes);
 	nulls[0] = sample->estimated_bytes_is_null;
 	values[1] = sample->estimated_count_is_null ?
-					(Datum) 0 :
-					Int64GetDatum(sample->estimated_count);
+		(Datum) 0 :
+		Int64GetDatum(sample->estimated_count);
 	nulls[1] = sample->estimated_count_is_null;
 	values[2] = sample->avg_bytes_per_allocation_is_null ?
-					(Datum) 0 :
-					Int64GetDatum(sample->avg_bytes_per_allocation);
+		(Datum) 0 :
+		Int64GetDatum(sample->avg_bytes_per_allocation);
 	nulls[2] = sample->avg_bytes_per_allocation_is_null;
 	values[3] = sample->sampled_bytes_is_null ?
-					(Datum) 0 :
-					Int64GetDatum(sample->sampled_bytes);
+		(Datum) 0 :
+		Int64GetDatum(sample->sampled_bytes);
 	nulls[3] = sample->sampled_bytes_is_null;
 	values[4] = sample->sampled_count_is_null ?
-					(Datum) 0 :
-					Int64GetDatum(sample->sampled_count);
+		(Datum) 0 :
+		Int64GetDatum(sample->sampled_count);
 	nulls[4] = sample->sampled_count_is_null;
 	values[5] = sample->call_stack_is_null ?
-					(Datum) 0 :
-					CStringGetTextDatum(sample->call_stack);
+		(Datum) 0 :
+		CStringGetTextDatum(sample->call_stack);
 	nulls[5] = sample->call_stack_is_null;
 
 	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
@@ -168,7 +174,7 @@ YbPutHeapSnapshotTupleStore(Tuplestorestate *tupstore, TupleDesc tupdesc,
 bool
 yb_log_backend_heap_snapshot_internal(int pid, bool peak_heap)
 {
-	PGPROC *proc = BackendPidGetProc(pid);
+	PGPROC	   *proc = BackendPidGetProc(pid);
 
 	/*
 	 * BackendPidGetProc returns NULL if the pid isn't valid; but by the time
@@ -220,7 +226,8 @@ yb_log_backend_heap_snapshot_internal(int pid, bool peak_heap)
 Datum
 yb_log_backend_heap_snapshot(PG_FUNCTION_ARGS)
 {
-	int pid = PG_GETARG_INT32(0);
+	int			pid = PG_GETARG_INT32(0);
+
 	return yb_log_backend_heap_snapshot_internal(pid, false);
 }
 
@@ -230,7 +237,8 @@ yb_log_backend_heap_snapshot(PG_FUNCTION_ARGS)
 Datum
 yb_log_backend_heap_snapshot_peak(PG_FUNCTION_ARGS)
 {
-	int pid = PG_GETARG_INT32(0);
+	int			pid = PG_GETARG_INT32(0);
+
 	return yb_log_backend_heap_snapshot_internal(pid, true);
 }
 

@@ -43,7 +43,9 @@ yba [flags]
 * [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
 * [yba group](yba_group.md)	 - Manage YugabyteDB Anywhere groups
 * [yba host](yba_host.md)	 - Refer to YugabyteDB Anywhere host details
+* [yba ldap](yba_ldap.md)	 - Configure LDAP authentication for YBA
 * [yba login](yba_login.md)	 - Authenticate yba cli using email and password
+* [yba oidc](yba_oidc.md)	 - Manage YugabyteDB Anywhere OIDC configuration
 * [yba provider](yba_provider.md)	 - Manage YugabyteDB Anywhere providers
 * [yba rbac](yba_rbac.md)	 - Manage YugabyteDB Anywhere RBAC (Role-Based Access Control)
 * [yba register](yba_register.md)	 - Register a YugabyteDB Anywhere customer using yba cli

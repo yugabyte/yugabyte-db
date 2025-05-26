@@ -406,6 +406,22 @@ class AbstractCloud(AbstractCommandParser):
                 "'{}' does not match with any entry in CN or SAN of the node cert: {}, "
                 "cert_cn: {}, cert_san: {}".format(host, node_crt_path, cert_cn, cert_san))
 
+    def compute_certificate_fingerprint(self, connect_options, root_crt_path):
+        try:
+            remote_shell = RemoteShell(connect_options)
+            cmd = "openssl x509 -in {} -fingerprint -noout -sha256".format(root_crt_path)
+            out = remote_shell.run_command(cmd).stdout
+            # Extract the fingerprint from the output
+            match = re.search(r'Fingerprint=([A-F0-9:]+)', out)
+            if not match:
+                raise ValueError("Fingerprint not found in openssl output")
+            return match.group(1)
+        except Exception as e:
+            logging.error("Error loading certificate: {}".format(e))
+            raise YBOpsRuntimeError(
+                "Failed to compute fingerprint for certificate at {}: {}".format(
+                    root_crt_path, e))
+
     def verify_certs(self, root_crt_path, server_crt_path, server_key_path, connect_options,
                      verify_hostname=False, perform_extended_validation=False):
         remote_shell = RemoteShell(connect_options)

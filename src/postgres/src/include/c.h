@@ -93,6 +93,7 @@
 #define inline
 #endif
 
+/* YB: compiler fallthrough support */
 #if defined(__has_attribute) && __has_attribute(fallthrough)
 #define yb_switch_fallthrough() __attribute__((fallthrough))
 #else
@@ -144,7 +145,7 @@
  * Testing can be done with "-fsanitize=alignment -fsanitize-trap=alignment"
  * on clang, or "-fsanitize=alignment -fno-sanitize-recover=alignment" on gcc.
  */
-#if defined(__has_attribute) && __has_attribute(no_sanitize)
+#if defined(__has_attribute) && __has_attribute(no_sanitize)	/* YB modified */
 #define pg_attribute_no_sanitize_alignment() __attribute__((no_sanitize("alignment")))
 #else
 #define pg_attribute_no_sanitize_alignment()

@@ -269,6 +269,18 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Allowed states for support bundle
+const (
+	// RunningSupportBundleState state
+	RunningSupportBundleState = "Running"
+	// AbortedSupportBundleState state
+	AbortedSupportBundleState = "Aborted"
+	// SuccessSupportBundleState state
+	SuccessSupportBundleState = "Success"
+	// FailedSupportBundleState state
+	FailedSupportBundleState = "Failed"
+)
+
 // Allowed states for XCluster Universe Lifecycle
 const (
 	// InitializedXClusterState indicates the XCluster universe is initialized
@@ -283,6 +295,34 @@ const (
 	DeletionFailedXClusterState = "DeletionFailed"
 	// FailedXClusterState indicates the XCluster universe encountered a failure
 	FailedXClusterState = "Failed"
+)
+
+// Allowed states for XCluster tables
+const (
+	// UnableToFetchXClusterTableState indicates the XCluster table state is unknown
+	UnableToFetchXClusterTableState = "UnableToFetch"
+	// UpdatingXClusterTableState indicates the XCluster table is updating
+	UpdatingXClusterTableState = "Updating"
+	// BootstrappingXClusterTableState indicates the XCluster table is bootstrapping
+	BootstrappingXClusterTableState = "Bootstrapping"
+	// ValidatingXClusterTableState indicates the XCluster table is validating
+	ValidatedXClusterTableState = "Validated"
+	// RunningXClusterTableState indicates the XCluster table is running
+	RunningXClusterTableState = "Running"
+	// FailedXClusterTableState indicates the XCluster table has failed
+	FailedXClusterTableState = "Failed"
+	// ErrorXClusterTableState indicates the XCluster table has encountered an error
+	ErrorXClusterTableState = "Error"
+	// WarningXClusterTableState indicates the XCluster table has a warning
+	WarningXClusterTableState = "Warning"
+	// DroppedFromSourceXClusterTableState indicates the XCluster table has been dropped from source
+	DroppedFromSourceXClusterTableState = "DroppedFromSource"
+	// DroppedFromTargetXClusterTableState indicates the XCluster table has been dropped from target
+	DroppedFromTargetXClusterTableState = "DroppedFromTarget"
+	// ExtraTableOnSourceXClusterTableState indicates the XCluster table is extra on source
+	ExtraTableOnSourceXClusterTableState = "ExtraTableOnSource"
+	// ExtraTableOnTargetXClusterTableState indicates the XCluster table is extra on target
+	ExtraTableOnTargetXClusterTableState = "ExtraTableOnTarget"
 )
 
 // Node operations allowed on universe
@@ -346,6 +386,8 @@ const (
 	SecurityOperation = "Security"
 	// PITROperation type
 	PITROperation = "PITR"
+	// SupportBundleOperation type
+	SupportBundleOperation = "SupportBundle"
 )
 
 // Different resource types that are supported in CLI
@@ -577,6 +619,33 @@ const (
 	LDAPGroupMappingType = "LDAP"
 )
 
+// GlobalScopeUUID is the UUID for global scope
+const GlobalScopeUUID = "00000000-0000-0000-0000-000000000000"
+
+// LDAP SSL Types
+const (
+	// LdapSSLType - LDAPS
+	LDAPWithSSL = "ldaps"
+	// LdapSSLType - StartTLS
+	LDAPWithStartTLS = "starttls"
+	// LdapSSLType - None
+	LDAPWithoutSSL = "none"
+)
+
+// LDAP TLS Versions
+const (
+	LdapTLSVersion1   = "TLSv1"
+	LdapTLSVersion1_1 = "TLSv1_1"
+	LdapTLSVersion1_2 = "TLSv1_2"
+)
+
+// LDAP Group Search Scopes
+const (
+	LdapGroupSearchScopeObject   = "OBJECT"
+	LdapGroupSearchScopeOneLevel = "ONELEVEL"
+	LdapGroupSearchScopeSubtree  = "SUBTREE"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
@@ -605,6 +674,22 @@ func ErrorReleaseResponseStates() []string {
 // IncompleteReleaseResponseStates return set of states for ongoing tasks
 func IncompleteReleaseResponseStates() []string {
 	return []string{RunningReleaseResponseState, WaitingReleaseResponseState}
+}
+
+// TableStatesInXClusterConfig returns set of states that are valid for tables in xcluster config
+func TableStatesInXClusterConfig() []string {
+	return []string{
+		RunningXClusterTableState,
+		BootstrappingXClusterTableState,
+		ValidatedXClusterTableState,
+		UpdatingXClusterTableState,
+		ErrorXClusterTableState,
+		WarningXClusterTableState,
+		FailedXClusterTableState,
+		UnableToFetchXClusterTableState,
+		DroppedFromSourceXClusterTableState,
+		DroppedFromTargetXClusterTableState,
+	}
 }
 
 // YugabyteDB Anywhere versions >= the minimum listed versions for operations

@@ -41,6 +41,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -100,12 +101,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitStartingFromTime);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleConfigureServers,
-          TaskType.SetNodeState,
-          TaskType.WaitStartingFromTime);
+      ImmutableList.of(TaskType.AnsibleClusterServerCtl, TaskType.AnsibleConfigureServers);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE =
       ImmutableList.of(
@@ -177,12 +173,21 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
                   : ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE)
               : ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
       List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType, activeRole);
+      List<List<Integer>> nodesOrder =
+          activeRole
+              ? nodeOrder.stream()
+                  .map(n -> Collections.singletonList(n))
+                  .collect(Collectors.toList())
+              : Collections.singletonList(nodeOrder);
 
-      for (int nodeIdx : nodeOrder) {
-        String nodeName = String.format("host-n%d", nodeIdx);
+      for (List<Integer> nodeIndexes : nodesOrder) {
+        List<String> nodeNames =
+            nodeIndexes.stream()
+                .map(nodeIdx -> String.format("host-n%d", nodeIdx))
+                .collect(Collectors.toList());
         int pos = position;
         for (TaskType type : taskSequence) {
-          log.debug("exp {} {} - {}", nodeName, pos++, type);
+          log.debug("exp {} {} - {}", nodeNames, pos++, type);
         }
         pos = position;
         for (TaskType type : taskSequence) {
@@ -200,12 +205,15 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
           TaskType taskType = tasks.get(0).getTaskType();
           UserTaskDetails.SubTaskGroupType subTaskGroupType = tasks.get(0).getSubTaskGroupType();
           // Leader blacklisting adds a ModifyBlackList task at position 0
-          int numTasksToAssert = position == 0 ? 2 : 1;
+          int numTasksToAssert = position == 0 ? 2 : nodeNames.size();
           assertEquals(numTasksToAssert, tasks.size());
           assertEquals(type, taskType);
           if (!NON_NODE_TASKS.contains(taskType)) {
             Map<String, Object> assertValues =
-                new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
+                nodeIndexes.size() == 1
+                    ? new HashMap<>(ImmutableMap.of("nodeName", nodeNames.get(0), "nodeCount", 1))
+                    : new HashMap<>(
+                        ImmutableMap.of("nodeNames", nodeNames, "nodeCount", nodeNames.size()));
 
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
               String version = "2.21.0.0-b1";
@@ -364,7 +372,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, true, false);
     position = assertSequence(subTasksByPosition, MASTER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(125, position);
+    assertEquals(117, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());

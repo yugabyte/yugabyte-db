@@ -533,7 +533,7 @@ static bool numericvar_to_uint64(const NumericVar *var, uint64 *result);
 static bool numericvar_to_int128(const NumericVar *var, int128 *result);
 static void int128_to_numericvar(int128 val, NumericVar *var);
 #endif
-#ifdef NEIL
+#ifdef YB_TODO
 /*  No longer in postgres new code. */
 double		numeric_to_double_no_overflow(Numeric num);
 #endif
@@ -2223,12 +2223,15 @@ numeric_abbrev_convert_var(const NumericVar *var, NumericSortSupport *nss)
 		{
 			default:
 				result |= ((int64) var->digits[3]);
+				/* FALLTHROUGH */
 				yb_switch_fallthrough();
 			case 3:
 				result |= ((int64) var->digits[2]) << 14;
+				/* FALLTHROUGH */
 				yb_switch_fallthrough();
 			case 2:
 				result |= ((int64) var->digits[1]) << 28;
+				/* FALLTHROUGH */
 				yb_switch_fallthrough();
 			case 1:
 				result |= ((int64) var->digits[0]) << 42;
@@ -7926,7 +7929,7 @@ int128_to_numericvar(int128 val, NumericVar *var)
 }
 #endif
 
-#ifdef NEIL
+#ifdef YB_TODO
 /*  No longer in Postgres code. */
 /*
  * Convert numeric to float8; if out of range, return +/- HUGE_VAL

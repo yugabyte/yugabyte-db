@@ -539,10 +539,10 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
       if (s.IsTryAgain()) {
         // The handler will return try again when waiting for safe time to catch up, so can log
         // these errors less frequently.
-        YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 300)
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 300)
             << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
       } else {
-        YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 30)
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
             << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
       }
       StoreNOKReplicationError();
@@ -650,7 +650,7 @@ bool XClusterPoller::IsStuck() const {
 
   const auto lag = MonoTime::Now() - last_task_schedule_time_;
   if (lag > 1s * GetAtomicFlag(&FLAGS_xcluster_poller_task_delay_considered_stuck_secs)) {
-    LOG_WITH_PREFIX(ERROR) << "XCluster Poller has not executed any tasks for " << lag.ToString();
+    LOG_WITH_PREFIX(DFATAL) << "XCluster Poller has not executed any tasks for " << lag.ToString();
     return true;
   }
   return false;

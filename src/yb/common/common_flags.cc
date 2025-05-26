@@ -258,10 +258,6 @@ DEFINE_RUNTIME_bool(cdc_disable_sending_composite_values,
                     "When this flag is set to true, cdc service will send null values for columns "
                     "of composite types");
 
-DEFINE_RUNTIME_bool(ysql_enable_inheritance, false,
-                    "Enable YSQL support for table inheritance");
-TAG_FLAG(ysql_enable_inheritance, experimental);
-
 namespace yb {
 
 void InitCommonFlags() {

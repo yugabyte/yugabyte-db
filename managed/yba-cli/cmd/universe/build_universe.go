@@ -85,7 +85,7 @@ func buildClusters(
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 	if len(providerListResponse) < 1 {
-		return nil, fmt.Errorf("no provider found")
+		return nil, fmt.Errorf("no provider with name %s found", providerName)
 	}
 	providerUsed := providerListResponse[0]
 	providerUUID := providerUsed.GetUuid()
@@ -170,7 +170,7 @@ func buildClusters(
 		imageBundleUUIDs = append(imageBundleUUIDs, "")
 	}
 
-	logrus.Info("Using image bundles: ", imageBundleUUIDs, "\n")
+	logrus.Info("Using linux versions: ", imageBundleUUIDs, "\n")
 
 	dedicatedNodes := v1.GetBool("dedicated-nodes")
 

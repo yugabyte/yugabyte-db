@@ -787,13 +787,13 @@ extern Datum Float8GetDatum(float8 X);
 #endif
 
 /*
- * Redact the password if it appears in the query.
+ * YB: Redact the password if it appears in the query.
  * If the query is a CREATE USER / CREATE ROLE / ALTER USER / ALTER ROLE, and
- * the the keyword "PASSWORD" exists in the text, redact the portion following it.
+ * the keyword "PASSWORD" exists in the text, redact the portion following it.
  * The logic is refactored from the LOGSTMT_DDL statement case of pgaudit extension.
  */
-const char *YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag);
-CommandTag	YbParseCommandTag(const char *query_string);
+extern const char *YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag);
+extern CommandTag YbParseCommandTag(const char *query_string);
 
 /*
  * Int64GetDatumFast

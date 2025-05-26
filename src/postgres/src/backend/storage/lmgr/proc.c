@@ -109,7 +109,7 @@ ProcGlobalShmemSize(void)
 {
 	Size		size = 0;
 	Size		TotalProcs =
-	add_size(MaxBackends, add_size(NUM_AUXILIARY_PROCS, max_prepared_xacts));
+		add_size(MaxBackends, add_size(NUM_AUXILIARY_PROCS, max_prepared_xacts));
 
 	/* ProcGlobal */
 	size = add_size(size, sizeof(PROC_HDR));
@@ -363,7 +363,7 @@ InitProcess(void)
 		 */
 		SpinLockRelease(ProcStructLock);
 
-		/* increment rejection counter */
+		/* YB: increment rejection counter */
 		(*yb_too_many_conn)++;
 
 		if (am_walsender)
@@ -392,9 +392,9 @@ InitProcess(void)
 		MarkPostmasterChildActive();
 
 	/*
-	* If the process is killed before this point, it does not have a pid set.
-	* The postmaster will not be able to identify the corresponding MyProc, so
-	* it will restart anyways.
+	* YB: If the process is killed before this point, it does not have a pid
+	* set. The postmaster will not be able to identify the corresponding
+	* MyProc, so it will restart anyways.
 	*/
 	MyProc->ybInitializationCompleted = false;
 	MyProc->ybTerminationStarted = false;
@@ -470,8 +470,8 @@ InitProcess(void)
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		   sizeof(MyProc->yb_ash_metadata.root_request_id));
 	/*
-	 * TODO(asaha): Update the query_id for catalog calls in circular buffer
-	 * once it's calculated
+	 * YB: TODO(asaha): Update the query_id for catalog calls in circular
+	 * buffer once it's calculated
 	 */
 	MyProc->yb_ash_metadata.query_id = IsBackgroundWorker
 		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
@@ -1375,7 +1375,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 		if (InHotStandby)
 		{
 			bool		maybe_log_conflict =
-			(standbyWaitStart != 0 && !logged_recovery_conflict);
+				(standbyWaitStart != 0 && !logged_recovery_conflict);
 
 			/* Set a timer and wait for that or for the lock to be granted */
 			ResolveRecoveryConflictWithLock(locallock->tag.lock,

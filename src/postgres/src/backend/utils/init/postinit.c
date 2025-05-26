@@ -109,6 +109,7 @@ static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
+/* YB functions */
 static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 const char *username, Oid useroid,
 							 bool load_session_libraries,
@@ -118,6 +119,7 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 bool *yb_sys_table_prefetching_started);
 static void YbEnsureSysTablePrefetchingStopped();
 static void YbPresetDatabaseCollation(HeapTuple tuple);
+
 
 /*** InitPostgres support ***/
 
@@ -468,7 +470,10 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 			pfree((void *) default_locale.info.icu.locale);
 		if (default_locale.info.icu.ucol)
 			ucol_close(default_locale.info.icu.ucol);
-		default_locale = (struct pg_locale_struct){0};
+		default_locale = (struct pg_locale_struct)
+		{
+			0
+		};
 	}
 
 	if (dbform->datlocprovider == COLLPROVIDER_ICU)
@@ -849,7 +854,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	pgstat_beinit();
 
 	/*
-	 * Set client_addr and client_host in ASH metadata which will remain
+	 * YB: Set client_addr and client_host in ASH metadata which will remain
 	 * constant throughout the session. We don't want to do this during
 	 * bootstrap because it won't have client address anyway.
 	 */
@@ -1291,8 +1296,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 
 	/*
-	 * See if tablegroup catalog exists - needs to happen before cache fully
-	 * initialized.
+	 * YB: See if tablegroup catalog exists - needs to happen before cache
+	 * fully initialized.
 	 */
 	if (IsYugaByteEnabled() && !bootstrap)
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId, YbTablegroupRelationId,
@@ -1301,7 +1306,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	RelationCacheInitializePhase3();
 
 	/*
-	 * Also cache whether the database is colocated for optimization purposes.
+	 * YB: Also cache whether the database is colocated for optimization
+	 * purposes.
 	 */
 	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
 	{
@@ -1321,8 +1327,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		CheckMyDatabase(dbname, am_superuser, override_allow_connections);
 
 	/*
-	 * We are done with the authentication. Now we can send the db oid to the
-	 * connection, process the startup options and return.
+	 * YB: We are done with the authentication. Now we can send the db oid to
+	 * the connection, process the startup options and return.
 	 *
 	 * This block of code must be after the values of global variables such as
 	 * MyDatabaseId are set, since YbCreateClientIdWithDatabaseOid relies on it.
@@ -1448,6 +1454,7 @@ YbPresetDatabaseCollation(HeapTuple tuple)
 		datum = SysCacheGetAttr(DATABASEOID, tuple, Anum_pg_database_daticulocale, &isnull);
 		Assert(!isnull);
 		char	   *iculocale = TextDatumGetCString(datum);
+
 		make_icu_collator(iculocale, &default_locale);
 		elog(DEBUG1, "iculocale of %u is set to %s", MyDatabaseId, iculocale);
 	}

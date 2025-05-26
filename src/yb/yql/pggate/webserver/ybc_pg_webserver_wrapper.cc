@@ -20,6 +20,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <regex>
 
 #include "yb/gutil/map-util.h"
 
@@ -73,6 +74,10 @@ static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connect
 // YSQL Connection Manager-specific metric labels
 static const char *DATABASE = "database";
 static const char *USER = "user";
+
+static std::regex rename_from(
+  "yb_ysqlserver_((CatalogCacheMisses)|(CatalogCacheTableMisses))");
+static std::string rename_to = "handler_latency_yb_ysqlserver_SQLProcessor_$1";
 
 namespace {
 
@@ -276,8 +281,7 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
-                                                        : JsonWriter::PRETTY_ESCAPE_STR;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
 
   JsonWriter writer(output, json_mode);
   writer.StartArray();
@@ -290,20 +294,33 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
   writer.StartArray();
 
   for (const auto *entry = ybpgm_table, *end = entry + ybpgm_num_entries; entry != end; ++entry) {
-    writer.StartObject();
-    writer.String("name");
-    writer.String(entry->name);
-    writer.String("count");
-    writer.Int64(entry->calls);
-    writer.String("sum");
-    writer.Int64(entry->total_time);
-    writer.String("rows");
-    writer.Int64(entry->rows);
-    if (strlen(entry->table_name) > 0) {
-      writer.String("table_name");
-      writer.String(entry->table_name);
-    }
-    writer.EndObject();
+
+    const auto singleEntryWriter = [&writer, &entry] (const std::string& metric_name) {
+        writer.StartObject();
+        writer.String("name");
+        writer.String(metric_name);
+        writer.String("count");
+        writer.Int64(entry->calls);
+        writer.String("sum");
+        writer.Int64(entry->total_time);
+        writer.String("rows");
+        writer.Int64(entry->rows);
+        if (strlen(entry->table_name) > 0) {
+          writer.String("table_name");
+          writer.String(entry->table_name);
+        }
+        writer.EndObject();
+      };
+
+    singleEntryWriter(entry->name);
+
+    // minor hack to emit old and new names for certain count metrics
+    const std::string duplicate_name = std::regex_replace(
+      entry->name, rename_from, rename_to);
+
+    if (duplicate_name != entry->name)
+      singleEntryWriter(duplicate_name);
+
   }
 
   writer.EndArray();
@@ -316,8 +333,7 @@ static void PgStatStatementsHandler(
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
-                                                        : JsonWriter::PRETTY_ESCAPE_STR;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   JsonWriter writer(output, json_mode);
 
   writer.StartObject();
@@ -339,8 +355,7 @@ static void PgStatStatementsResetHandler(
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
-                                                        : JsonWriter::PRETTY_ESCAPE_STR;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   JsonWriter writer(output, json_mode);
 
   writer.StartObject();
@@ -377,8 +392,7 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
 
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
-                                                        : JsonWriter::PRETTY_ESCAPE_STR;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   JsonWriter writer(output, json_mode);
   YbcRpczEntry *entry = *rpczResultPointer;
 
@@ -452,8 +466,7 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
 static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT_ESCAPE_STR
-                                                        : JsonWriter::PRETTY_ESCAPE_STR;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   std::stringstream *output = &resp->output;
   JsonWriter writer(output, json_mode);
   std::vector<ConnectionStats> stats_list;
@@ -547,6 +560,16 @@ static void PgPrometheusMetricsHandler(
             "counter", ybpgm_table[i].count_help),
         "Couldn't write text metrics for Prometheus");
 
+    // minor hack to emit old and new names for certain count metrics
+    const std::string duplicate_name = std::regex_replace(
+      metric_name, rename_from, rename_to);
+    if (duplicate_name != metric_name) {
+      WARN_NOT_OK(writer.WriteSingleEntry(
+        prometheus_attr, duplicate_name + "_count", ybpgm_table[i].calls,
+        AggregationFunction::kSum, kServerLevel, metric_entity_type,
+        "counter", ybpgm_table[i].count_help),
+    "Couldn't write text metrics for Prometheus");
+    }
     // Skip over empty metrics.
     if (strcmp(ybpgm_table[i].sum_help, "Not applicable") != 0) {
       WARN_NOT_OK(

@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX util)
-set(YB_PCH_DEP_LIBS cds gmock gtest gutil icui18n icuuc libev protoc)
+set(YB_PCH_DEP_LIBS gmock gtest gutil icui18n icuuc libev protoc)
 
 #######################################
 # protoc-gen-insertions
@@ -249,7 +249,6 @@ set(UTIL_LIBS
   boost_system
   boost_thread
   boost_atomic
-  cds
   icui18n
   icuuc
   crcutil

@@ -91,6 +91,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   virtual void StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx);
 
+  Status SetupPGCallbacksAndStartPG(uint16_t pg_port, int pg_ts_idx, bool wait_for_pg = true);
+
   std::unique_ptr<PgSupervisor> pg_supervisor_;
 
  private:

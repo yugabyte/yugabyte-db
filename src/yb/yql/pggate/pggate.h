@@ -17,10 +17,9 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "yb/client/tablet_server.h"
 
@@ -36,14 +35,12 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/server_base_options.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/mem_tracker.h"
-#include "yb/util/memory/arena.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
-#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/uuid.h"
@@ -163,9 +160,14 @@ class PgApiImpl {
   Result<bool> CatalogVersionTableInPerdbMode();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
+  Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change,
+      uint64_t new_catalog_version, const YbcCatalogMessageList *message_list);
+
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
+  Result<int> GetXClusterRole(uint32_t db_oid);
 
   Status NewTupleExpr(
     YbcPgStatement stmt, const YbcPgTypeEntity *tuple_type_entity,

@@ -54,7 +54,7 @@ my %pgdump_runs = (
 			'--format=custom',
 			"--file=$tempdir/binary_upgrade.dump",
 			'-w',
-			'--schema-only',
+			'--no-data',
 			'--binary-upgrade',
 			'-d', 'postgres',    # alternative way to specify database
 		],
@@ -433,6 +433,41 @@ my %pgdump_runs = (
 
 			'--schema=dump_test', '-b', '-B', '--no-sync', 'postgres',
 		],
+	},
+	no_statistics => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/no_statistics.sql", '--no-statistics',
+			'postgres',
+		],
+	},
+	no_data_no_schema => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/no_data_no_schema.sql", '--no-data',
+			'--no-schema', 'postgres',
+		],
+	},
+	statistics_only => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/statistics_only.sql", '--statistics-only',
+			'postgres',
+		],
+	},
+	schema_only_with_statistics => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/schema_only_with_statistics.sql", '--schema-only',
+			'--with-statistics', 'postgres',
+		],
+	},
+	no_schema => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/no_schema.sql", '--no-schema',
+			'postgres',
+		],
 	},);
 
 ###############################################################
@@ -496,10 +531,12 @@ my %full_runs = (
 	no_blobs                 => 1,
 	no_owner                 => 1,
 	no_privs                 => 1,
+	no_statistics => 1,
 	no_table_access_method   => 1,
 	pg_dumpall_dbprivs       => 1,
 	pg_dumpall_exclude       => 1,
-	schema_only              => 1,);
+	schema_only              => 1,
+	schema_only_with_statistics => 1,);
 
 # This is where the actual tests are defined.
 my %tests = (
@@ -520,25 +557,6 @@ my %tests = (
 			no_privs                 => 1,
 		},
 	},
-
-	'ALTER DEFAULT PRIVILEGES FOR ROLE regress_dump_test_role GRANT EXECUTE ON FUNCTIONS'
-	  => {
-		create_order => 15,
-		create_sql   => 'ALTER DEFAULT PRIVILEGES
-					   FOR ROLE regress_dump_test_role IN SCHEMA dump_test
-					   GRANT EXECUTE ON FUNCTIONS TO regress_dump_test_role;',
-		regexp => qr/^
-			\QALTER DEFAULT PRIVILEGES \E
-			\QFOR ROLE regress_dump_test_role IN SCHEMA dump_test \E
-			\QGRANT ALL ON FUNCTIONS  TO regress_dump_test_role;\E
-			/xm,
-		like =>
-		  { %full_runs, %dump_test_schema_runs, section_post_data => 1, },
-		unlike => {
-			exclude_dump_test_schema => 1,
-			no_privs                 => 1,
-		},
-	  },
 
 	'ALTER DEFAULT PRIVILEGES FOR ROLE regress_dump_test_role GRANT EXECUTE ON FUNCTIONS'
 	  => {
@@ -708,6 +726,7 @@ my %tests = (
 			column_inserts         => 1,
 			data_only              => 1,
 			inserts                => 1,
+			no_schema => 1,
 			section_pre_data       => 1,
 			test_schema_plus_blobs => 1,
 		},
@@ -715,6 +734,7 @@ my %tests = (
 			no_blobs    => 1,
 			no_owner    => 1,
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1056,11 +1076,13 @@ my %tests = (
 			column_inserts         => 1,
 			data_only              => 1,
 			inserts                => 1,
+			no_schema => 1,
 			section_pre_data       => 1,
 			test_schema_plus_blobs => 1,
 		},
 		unlike => {
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 			no_blobs    => 1,
 		},
 	},
@@ -1077,6 +1099,7 @@ my %tests = (
 			column_inserts         => 1,
 			data_only              => 1,
 			inserts                => 1,
+			no_schema => 1,
 			section_data           => 1,
 			test_schema_plus_blobs => 1,
 		},
@@ -1084,6 +1107,7 @@ my %tests = (
 			binary_upgrade => 1,
 			no_blobs       => 1,
 			schema_only    => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1229,12 +1253,14 @@ my %tests = (
 			column_inserts         => 1,
 			data_only              => 1,
 			inserts                => 1,
+			no_schema => 1,
 			section_pre_data       => 1,
 			test_schema_plus_blobs => 1,
 		},
 		unlike => {
 			no_blobs    => 1,
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1358,6 +1384,7 @@ my %tests = (
 			%full_runs,
 			%dump_test_schema_runs,
 			data_only            => 1,
+			no_schema => 1,
 			only_dump_test_table => 1,
 			section_data         => 1,
 		},
@@ -1367,6 +1394,7 @@ my %tests = (
 			exclude_test_table       => 1,
 			exclude_test_table_data  => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1384,12 +1412,14 @@ my %tests = (
 			data_only               => 1,
 			exclude_test_table      => 1,
 			exclude_test_table_data => 1,
+			no_schema => 1,
 			section_data            => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1403,7 +1433,10 @@ my %tests = (
 			\QCOPY dump_test.fk_reference_test_table (col1) FROM stdin;\E
 			\n(?:\d\n){5}\\\.\n
 			/xms,
-		like => { data_only => 1, },
+		like => {
+			data_only => 1,
+			no_schema => 1,
+		},
 	},
 
 	'COPY test_second_table' => {
@@ -1419,12 +1452,14 @@ my %tests = (
 			%full_runs,
 			%dump_test_schema_runs,
 			data_only    => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1440,12 +1475,14 @@ my %tests = (
 			%full_runs,
 			%dump_test_schema_runs,
 			data_only    => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1
 		},
 	},
 
@@ -1462,12 +1499,14 @@ my %tests = (
 			%full_runs,
 			%dump_test_schema_runs,
 			data_only    => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1483,12 +1522,14 @@ my %tests = (
 			%full_runs,
 			%dump_test_schema_runs,
 			data_only    => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1504,12 +1545,14 @@ my %tests = (
 			%full_runs,
 			%dump_test_schema_runs,
 			data_only    => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -3655,6 +3698,7 @@ my %tests = (
 			column_inserts         => 1,
 			data_only              => 1,
 			inserts                => 1,
+			no_schema => 1,
 			section_pre_data       => 1,
 			test_schema_plus_blobs => 1,
 			binary_upgrade         => 1,
@@ -3663,6 +3707,7 @@ my %tests = (
 			no_blobs    => 1,
 			no_privs    => 1,
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -3780,6 +3825,7 @@ my %tests = (
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -3795,6 +3841,7 @@ my %tests = (
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only              => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -3943,6 +3990,82 @@ my %tests = (
 		},
 		unlike =>
 		  { exclude_dump_test_schema => 1, no_table_access_method => 1 },
+	},
+
+	#
+	# TABLE and MATVIEW stats will end up in SECTION_DATA.
+	# INDEX stats (expression columns only) will end up in SECTION_POST_DATA.
+	#
+	'statistics_import' => {
+		create_sql => '
+			CREATE TABLE dump_test.has_stats
+			AS SELECT g.g AS x, g.g / 2 AS y FROM generate_series(1,100) AS g(g);
+			CREATE MATERIALIZED VIEW dump_test.has_stats_mv AS SELECT * FROM dump_test.has_stats;
+			CREATE INDEX dup_test_post_data_ix ON dump_test.has_stats(x, (x - 1));
+			ANALYZE dump_test.has_stats, dump_test.has_stats_mv;',
+		regexp => qr/^
+			\QSELECT * FROM pg_catalog.pg_restore_relation_stats(\E\s+
+			'version',\s'\d+'::integer,\s+
+			'schemaname',\s'dump_test',\s+
+			'relname',\s'dup_test_post_data_ix',\s+
+			'relpages',\s'\d+'::integer,\s+
+			'reltuples',\s'\d+'::real,\s+
+			'relallvisible',\s'\d+'::integer\s+
+			\);\s+
+			\QSELECT * FROM pg_catalog.pg_restore_attribute_stats(\E\s+
+			'version',\s'\d+'::integer,\s+
+			'schemaname',\s'dump_test',\s+
+			'relname',\s'dup_test_post_data_ix',\s+
+			'attnum',\s'2'::smallint,\s+
+			'inherited',\s'f'::boolean,\s+
+			'null_frac',\s'0'::real,\s+
+			'avg_width',\s'4'::integer,\s+
+			'n_distinct',\s'-1'::real,\s+
+			'histogram_bounds',\s'\{[0-9,]+\}'::text,\s+
+			'correlation',\s'1'::real\s+
+			\);/xm,
+		like => {
+			%full_runs,
+			%dump_test_schema_runs,
+			no_data_no_schema => 1,
+			no_schema => 1,
+			section_post_data => 1,
+			statistics_only => 1,
+			schema_only_with_statistics => 1,
+		},
+		unlike => {
+			exclude_dump_test_schema => 1,
+			no_statistics => 1,
+			only_dump_measurement => 1,
+			schema_only => 1,
+		},
+	},
+
+	#
+	# While attribute stats (aka pg_statistic stats) only appear for tables
+	# that have been analyzed, all tables will have relation stats because
+	# those come from pg_class.
+	#
+	'relstats_on_unanalyzed_tables' => {
+		regexp => qr/pg_catalog.pg_restore_relation_stats/,
+
+		like => {
+			%full_runs,
+			%dump_test_schema_runs,
+			no_data_no_schema => 1,
+			no_schema => 1,
+			only_dump_test_table => 1,
+			role => 1,
+			role_parallel => 1,
+			section_data => 1,
+			section_post_data => 1,
+			statistics_only => 1,
+			schema_only_with_statistics => 1,
+		},
+		unlike => {
+			no_statistics => 1,
+			schema_only => 1,
+		},
 	});
 
 #########################################

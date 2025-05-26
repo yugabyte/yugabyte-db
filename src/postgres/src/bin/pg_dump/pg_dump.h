@@ -82,9 +82,12 @@ typedef enum
 	DO_PUBLICATION,
 	DO_PUBLICATION_REL,
 	DO_PUBLICATION_TABLE_IN_SCHEMA,
+	DO_REL_STATS,
 	DO_SUBSCRIPTION,
 	DO_TABLEGROUP
 } DumpableObjectType;
+
+#define NUM_DUMPABLE_OBJECT_TYPES (DO_TABLEGROUP + 1)
 
 /*
  * DumpComponents is a bitmask of the potentially dumpable components of
@@ -109,6 +112,7 @@ typedef uint32 DumpComponents;
 #define DUMP_COMPONENT_ACL			(1 << 4)
 #define DUMP_COMPONENT_POLICY		(1 << 5)
 #define DUMP_COMPONENT_USERMAP		(1 << 6)
+#define DUMP_COMPONENT_STATISTICS	(1 << 7)
 #define DUMP_COMPONENT_ALL			(0xFFFF)
 
 /*
@@ -136,6 +140,7 @@ typedef uint32 DumpComponents;
 #define DUMP_COMPONENTS_REQUIRING_LOCK (\
 		DUMP_COMPONENT_DEFINITION |\
 		DUMP_COMPONENT_DATA |\
+		DUMP_COMPONENT_STATISTICS |\
 		DUMP_COMPONENT_POLICY)
 
 typedef struct _dumpableObject
@@ -321,7 +326,7 @@ typedef struct _tableInfo
 	Oid			owning_tab;		/* OID of table owning sequence */
 	int			owning_col;		/* attr # of column owning sequence */
 	bool		is_identity_sequence;
-	int			relpages;		/* table's size in pages (from pg_class) */
+	int32		relpages;		/* table's size in pages (from pg_class) */
 	int			toastpages;		/* toast table's size in pages, if any */
 
 	bool		interesting;	/* true if need to collect more data */
@@ -356,8 +361,7 @@ typedef struct _tableInfo
 	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
-	struct _indxInfo *primaryKeyIndex;	/* Associated index of a PRIMARY KEY
-										 * constraint */
+	struct _relStatsInfo *stats;	/* only set for matviews */
 	bool		needs_override; /* has GENERATED ALWAYS AS IDENTITY */
 	char	   *amname;			/* relation access method */
 
@@ -371,6 +375,10 @@ typedef struct _tableInfo
 	struct _tableDataInfo *dataObj; /* TableDataInfo, if dumping its data */
 	int			numTriggers;	/* number of triggers for table */
 	struct _triggerInfo *triggers;	/* array of TriggerInfo structs */
+
+	/* YB */
+	struct _indxInfo *primaryKeyIndex;	/* Associated index of a PRIMARY KEY
+										 * constraint */
 } TableInfo;
 
 typedef struct _ybTablegroupInfo
@@ -421,7 +429,6 @@ typedef struct _indxInfo
 	int			indnattrs;		/* total number of index attributes */
 	Oid		   *indkeys;		/* In spite of the name 'indkeys' this field
 								 * contains both key and nonkey attributes */
-	Oid		   *indoptions;		/* Access flags for each column of the index */
 	bool		indisclustered;
 	bool		indisreplident;
 	bool		indnullsnotdistinct;
@@ -430,6 +437,9 @@ typedef struct _indxInfo
 
 	/* if there is an associated constraint object, its dumpId: */
 	DumpId		indexconstraint;
+
+	/* YB */
+	Oid		   *indoptions;		/* Access flags for each column of the index */
 } IndxInfo;
 
 typedef struct _indexAttachInfo
@@ -438,6 +448,23 @@ typedef struct _indexAttachInfo
 	IndxInfo   *parentIdx;		/* link to index on partitioned table */
 	IndxInfo   *partitionIdx;	/* link to index on partition */
 } IndexAttachInfo;
+
+typedef struct _relStatsInfo
+{
+	DumpableObject dobj;
+	int32		relpages;
+	char	   *reltuples;
+	int32		relallvisible;
+	char		relkind;		/* 'r', 'm', 'i', etc */
+
+	/*
+	 * indAttNames/nindAttNames are populated only if the relation is an index
+	 * with at least one expression column; we don't need them otherwise.
+	 */
+	char	  **indAttNames;	/* attnames of the index, in order */
+	int32		nindAttNames;	/* number of attnames stored (can be 0) */
+	teSection	section;		/* stats may appear in data or post-data */
+} RelStatsInfo;
 
 typedef struct _statsExtInfo
 {
@@ -713,7 +740,6 @@ extern OprInfo *findOprByOid(Oid oid);
 extern CollInfo *findCollationByOid(Oid oid);
 extern NamespaceInfo *findNamespaceByOid(Oid oid);
 extern ExtensionInfo *findExtensionByOid(Oid oid);
-extern YbTablegroupInfo *findTablegroupByOid(Oid oid);
 extern PublicationInfo *findPublicationByOid(Oid oid);
 
 extern void recordExtensionMembership(CatalogId catId, ExtensionInfo *ext);
@@ -775,6 +801,8 @@ extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
 
+/* YB */
+extern YbTablegroupInfo *findTablegroupByOid(Oid oid);
 extern YbTablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
 
 #endif							/* PG_DUMP_H */

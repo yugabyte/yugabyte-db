@@ -1139,7 +1139,7 @@ public class GFlagsUtil {
 
     if (userGFlags.containsKey(PSQL_PROXY_BIND_ADDRESS)) {
       int ysqlPort = node.ysqlServerRpcPort;
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling) {
+      if (taskParams.enableConnectionPooling) {
         ysqlPort = node.internalYsqlServerRpcPort;
       }
       mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
@@ -1882,5 +1882,17 @@ public class GFlagsUtil {
       throw new RuntimeException("Failed to parse CSV", e);
     }
     return DEFAULT_LOG_LINE_PREFIX;
+  }
+
+  public static boolean isYsqlAuthEnabled(Universe universe, NodeDetails node) {
+    Map<String, String> gflags =
+        GFlagsUtil.getGFlagsForNode(
+            node,
+            ServerType.TSERVER,
+            universe.getUniverseDetails().getPrimaryCluster(),
+            universe.getUniverseDetails().clusters);
+    return universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth
+        || (gflags.containsKey(YSQL_ENABLE_AUTH)
+            && gflags.get(YSQL_ENABLE_AUTH).equalsIgnoreCase("true"));
   }
 }

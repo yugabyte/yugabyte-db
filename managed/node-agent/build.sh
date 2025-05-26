@@ -15,6 +15,7 @@ pushd "$base_dir"
 readonly project_dir=$(pwd)
 popd
 
+export PROJECT_DIR="$project_dir"
 export GOPATH=$project_dir/third-party
 export GOBIN=$GOPATH/bin
 export PATH=$GOBIN:$PATH
@@ -37,7 +38,6 @@ to_lower() {
 
 readonly build_os=$(to_lower "$(uname -s)")
 readonly build_arch=$(to_lower "$(uname -m)")
-
 
 setup_protoc() {
     if [ ! -f "$GOBIN"/protoc ]; then
@@ -87,10 +87,10 @@ build_pymodule() {
     --grpc_python_out="$grpc_python_output_dir" $grpc_proto_files
     # Python does not support custom package. Workaround to change the package name.
     if [ "$build_os" = "darwin" ]; then
-        sed -i "" -e 's/^import \(server_pb2.*\) as/from ybops.node_agent import \1 as/' \
+        sed -i "" -e 's/^import \(.*_pb2.*\) as/from ybops.node_agent import \1 as/' \
         "$grpc_python_output_dir"/*.py
     else
-        sed -i -e 's/^import \(server_pb2.*\) as/from ybops.node_agent import \1 as/' \
+        sed -i -e 's/^import \(.*_pb2.*\) as/from ybops.node_agent import \1 as/' \
         "$grpc_python_output_dir"/*.py
     fi
     cp -rf ../ybops "$grpc_output_dir"/
@@ -194,6 +194,7 @@ package_for_platform() {
     version_dir="${build_output_dir}/${staging_dir_name}/${version}"
     script_dir="${version_dir}/scripts"
     bin_dir="${version_dir}/bin"
+    templates_dir="${version_dir}/templates"
     echo "Packaging ${staging_dir_name}"
     os_exec_name=$(get_executable_name "$os" "$arch")
     exec_name="node-agent"
@@ -206,11 +207,13 @@ package_for_platform() {
     mkdir "$staging_dir_name"
     mkdir -p "$script_dir"
     mkdir -p "$bin_dir"
+    mkdir -p "$templates_dir"
     cp -rf "$os_exec_name" "${bin_dir}/$exec_name"
     # Follow the symlinks.
     cp -Lf ../version.txt "${version_dir}"/version.txt
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
     pushd "$project_dir/resources"
+    cp -rf templates/* "$templates_dir/"
     cp -rf ../pywheels "${script_dir}"/pywheels
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh
@@ -218,7 +221,6 @@ package_for_platform() {
     cp -rf node-agent-provision.sh "${script_dir}"/node-agent-provision.sh
     cp -rf earlyoom-installer.sh "${script_dir}"/earlyoom-installer.sh
     cp -rf configure_earlyoom_service.sh "${script_dir}"/configure_earlyoom_service.sh
-    cp -rf earlyoom "${script_dir}"/earlyoom #TODO: build
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
     pushd "$project_dir"
     cp -rf ../devops/roles/configure-cluster-server/templates/* "${script_dir}"/ynp/modules/provision/systemd/templates/

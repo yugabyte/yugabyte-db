@@ -29,6 +29,9 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
 
+#include "yb/tools/tools_test_utils.h"
+#include "yb/tools/yb-backup/yb-backup-test_base.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -40,6 +43,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_uint32(vector_index_concurrent_reads);
@@ -77,6 +81,7 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
 class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
+    FLAGS_TEST_use_custom_varz = true;
     itest::SetupQuickSplit(1_KB);
     PgMiniTestBase::SetUp();
     tablet::TEST_fail_on_seq_scan_with_vector_indexes = true;
@@ -113,11 +118,13 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     return conn;
   }
 
-  Status CreateIndex(PGConn& conn) {
+  Status CreateIndex(
+       PGConn& conn, const std::string& index_name = kVectorIndexName,
+       std::optional<vector_index::DistanceKind> distance_kind = std::nullopt) {
     return conn.ExecuteFormat(
         "CREATE INDEX $1 ON test USING ybhnsw (embedding $0) "
             "WITH (ef_construction = 256, m = 32, m0 = 128)",
-        VectorOpsName(), kVectorIndexName);
+        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name);
   }
 
   Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
@@ -131,9 +138,13 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
   Status InsertRows(PGConn& conn, size_t start_row, size_t end_row);
   Status InsertRandomRows(PGConn& conn, size_t num_rows);
 
-  void VerifyRead(PGConn& conn, size_t limit, bool add_filter);
+  void VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter);
   void VerifyRows(
-      PGConn& conn, bool add_filter, const std::vector<std::string>& expected, int64_t limit = -1);
+      PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected,
+      int64_t limit = -1);
+  void VerifyRows(
+      PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+      int64_t limit = -1);
 
   void TestSimple(bool table_exists = false);
   void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
@@ -163,7 +174,12 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
 
   const char* VectorOpsName() const {
     using vector_index::DistanceKind;
-    switch (distance_kind_) {
+    return VectorOpsName(distance_kind_);
+  }
+
+  static const char* VectorOpsName(vector_index::DistanceKind distance_kind) {
+    using vector_index::DistanceKind;
+    switch (distance_kind) {
       case DistanceKind::kL2Squared:
         return "vector_l2_ops";
       case DistanceKind::kInnerProduct:
@@ -171,7 +187,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       case DistanceKind::kCosine:
         return "vector_cosine_ops";
     }
-    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind_);
+    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
   }
 
   const char* VectorOp() const {
@@ -355,13 +371,11 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(
     std::future<void> future;
     if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
       future = std::async([this] {
-        cds::threading::Manager::attachThread();
         std::this_thread::sleep_for(1s);
         CHECK_OK(cluster_->mini_tablet_server(1)->Restart());
         ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks)
             = false;
         std::this_thread::sleep_for(5s * kTimeMultiplier);
-        cds::threading::Manager::detachThread();
       });
     }
     RETURN_NOT_OK(CreateIndex(conn));
@@ -382,11 +396,22 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFillRandom(size_t num_rows) {
 }
 
 void PgVectorIndexTest::VerifyRows(
-    PGConn& conn, bool add_filter, const std::vector<std::string>& expected, int64_t limit) {
-  auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(Format(
-      "SELECT * FROM test $0$1",
-      add_filter ? "WHERE id + 3 <= 5" : "",
-      IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit))))));
+    PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected, int64_t limit) {
+  VerifyRows(conn, add_filter ? "WHERE id + 3 <= 5" : "", expected, limit);
+}
+
+void PgVectorIndexTest::VerifyRows(
+    PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+    int64_t limit) {
+  if (limit >= 0 && make_unsigned(limit) < expected.size()) {
+    std::vector<std::string> new_expected(expected.begin(), expected.begin() + limit);
+    return VerifyRows(conn, filter, new_expected, limit);
+  }
+  auto query = Format(
+      "SELECT * FROM test AS t $0$1", filter,
+      IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit)));
+  LOG_WITH_FUNC(INFO) << "   Query: " << AsString(query);
+  auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(query)));
   LOG_WITH_FUNC(INFO) << "  Result: " << AsString(result);
   LOG_WITH_FUNC(INFO) << "Expected: " << AsString(expected);
   ASSERT_EQ(result.size(), expected.size());
@@ -396,7 +421,7 @@ void PgVectorIndexTest::VerifyRows(
   }
 }
 
-void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, bool add_filter) {
+void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter) {
   std::vector<std::string> expected;
   for (size_t i = 1; i <= limit; ++i) {
     expected.push_back(ExpectedRow(i));
@@ -422,7 +447,7 @@ TEST_P(PgVectorIndexTest, Split) {
   // Give some time for split to happen.
   std::this_thread::sleep_for(2s * kTimeMultiplier);
 
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 TEST_P(PgVectorIndexTest, ManyRows) {
@@ -485,12 +510,12 @@ void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
     }
   }
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, flush_flags));
   DisableFlushOnShutdown(*cluster_, true);
   ASSERT_OK(RestartCluster());
   conn = ASSERT_RESULT(Connect());
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 TEST_P(PgVectorIndexTest, Restart) {
@@ -528,12 +553,12 @@ TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
     ExpectedRow(5),
     ExpectedRow(6),
   };
-  ASSERT_NO_FATALS(VerifyRows(conn, false, expected));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, expected));
 
   std::vector<std::string> expected_filtered = {
     BuildRow(2, kDistantVector),
   };
-  ASSERT_NO_FATALS(VerifyRows(conn, true, expected_filtered));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kTrue, expected_filtered));
 }
 
 TEST_P(PgVectorIndexTest, RemoteBootstrap) {
@@ -579,7 +604,7 @@ TEST_P(PgVectorIndexTest, RemoteBootstrap) {
     }
     return false;
   }, 60s * kTimeMultiplier, "Wait desired leader"));
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 TEST_P(PgVectorIndexTest, SnapshotSchedule) {
@@ -596,7 +621,7 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
       nullptr, YQL_DATABASE_PGSQL, DbName(),
       client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
 
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 
   auto hybrid_time = cluster_->mini_master(0)->Now();
   ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, hybrid_time));
@@ -604,13 +629,13 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
   ASSERT_OK(conn.Execute("DELETE FROM test"));
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
-  ASSERT_NO_FATALS(VerifyRows(conn, false, {}, 10));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, {}, 10));
 
   auto snapshot_id = ASSERT_RESULT(snapshot_util.PickSuitableSnapshot(
       schedule_id, hybrid_time));
   ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
 
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 void PgVectorIndexTest::TestRandom() {
@@ -633,6 +658,7 @@ void PgVectorIndexTest::TestRandom() {
   }
 
   auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+
   size_t sum_missing = 0;
   std::vector<size_t> counts;
 
@@ -735,6 +761,60 @@ TEST_P(PgVectorIndexTest, Cosine) {
   TestMetric("2; 3; 1");
 }
 
+TEST_P(PgVectorIndexTest, EfSearch) {
+  constexpr size_t kNumRows = 1000;
+  constexpr int kIterations = 10;
+  constexpr int kSmallEf = 1;
+  constexpr int kBigEf = 1000;
+
+  num_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
+
+  std::unordered_map<int, std::vector<MonoDelta>> times;
+  for (int i = 0; i != kIterations; ++i) {
+    for (int ef : {kSmallEf, kBigEf}) {
+      ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
+      auto start = MonoTime::Now();
+      ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
+      auto passed = MonoTime::Now() - start;
+      times[ef].push_back(passed);
+    }
+  }
+  std::ranges::sort(times[kSmallEf]);
+  std::ranges::sort(times[kBigEf]);
+
+  auto small_median = times[kSmallEf][kIterations / 2];
+  auto big_median = times[kBigEf][kIterations / 2];
+  LOG(INFO) << "ef=" << kSmallEf << ": " << small_median.ToPrettyString()
+            << ", ef=" << kBigEf << ": " << big_median.ToPrettyString();
+  ASSERT_LT(small_median, big_median);
+}
+
+TEST_P(PgVectorIndexTest, Paging) {
+  constexpr int kNumRows = 64;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(conn.Execute("CREATE TABLE fk (id INT PRIMARY KEY)"));
+
+  auto keys = {42, 3, 21, 10, 30};
+
+  std::vector<int> available_keys;
+  for (auto key : keys) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO fk VALUES ($0)", key));
+    available_keys.push_back(key);
+    std::ranges::sort(available_keys);
+    std::vector<std::string> expected;
+    for (auto k : available_keys) {
+      expected.push_back(Format("$0, $1, $0", k, VectorAsString(k)));
+    }
+    for (int limit = 1; limit <= kNumRows; limit *= 2) {
+      SCOPED_TRACE(Format("limit: $0", limit));
+      ASSERT_NO_FATALS(VerifyRows(
+          conn, "INNER JOIN fk as f ON t.id = f.id", expected, limit));
+    }
+  }
+}
+
 TEST_P(PgVectorIndexTest, Options) {
   auto conn = ASSERT_RESULT(MakeTable());
   std::unordered_map<TabletId, std::unordered_set<TableId>> checked_indexes;
@@ -786,8 +866,7 @@ TEST_P(PgVectorIndexTest, Options) {
       LOG(INFO) << "Query: " << query;
       ASSERT_OK(conn.Execute(query));
     }
-    auto peers = ListTabletPeers(
-        cluster_.get(), ListPeersFilter::kLeaders, IncludeTransactionStatusTablets::kFalse);
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
       auto tablet = peer->shared_tablet();
       auto vector_indexes = tablet->vector_indexes().List();
@@ -812,6 +891,29 @@ TEST_P(PgVectorIndexTest, Options) {
       ASSERT_EQ(num_new_indexes, 1);
     }
   }
+}
+
+TEST_P(PgVectorIndexTest, Backup) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  TestManyRows(AddFilter::kFalse);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateIndex(conn, "vi_cos", vector_index::DistanceKind::kCosine));
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, "ysql." + DbName()));
+
+  // Restore the backup.
+  const std::string kRestoreDb = "restored_db";
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, "ysql." + kRestoreDb));
+
+  auto restore_conn = ASSERT_RESULT(ConnectToDB(kRestoreDb));
+  VerifyRead(restore_conn, 10, AddFilter::kFalse);
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {

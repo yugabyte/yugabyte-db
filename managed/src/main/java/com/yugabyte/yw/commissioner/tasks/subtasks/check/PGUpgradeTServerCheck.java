@@ -2,6 +2,10 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -20,19 +24,28 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -43,12 +56,12 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   private final NodeManager nodeManager;
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final LocalNodeManager localNodeManager;
+  private final AuditService auditService;
 
-  private final int PG_UPGRADE_CHECK_TIMEOUT = 300;
+  private static final String PG_UPGRADE_CHECK_LOG_FILE = "pg_upgrade_check.log";
 
   public static class Params extends ServerSubTaskParams {
     public String ybSoftwareVersion;
-    public boolean downloadPackage = true;
   }
 
   @Override
@@ -62,18 +75,19 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       NodeUniverseManager nodeUniverseManager,
       NodeManager nodeManager,
       KubernetesManagerFactory kubernetesManagerFactory,
-      LocalNodeManager localNodeManager) {
+      LocalNodeManager localNodeManager,
+      AuditService auditService) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeManager = nodeManager;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.localNodeManager = localNodeManager;
+    this.auditService = auditService;
   }
 
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    NodeDetails node = universe.getTServersInPrimaryCluster().stream().findAny().get();
     boolean isK8sUniverse =
         universe
             .getUniverseDetails()
@@ -81,14 +95,21 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
             .userIntent
             .providerType
             .equals(CloudType.kubernetes);
+    boolean isDedicatedNodeUniverse =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes;
+    // For K8s and dedicated node universe, we can run the check on any node in the primary cluster.
+    // For other universe types, we run the check on the master leader node as pg_catalog is present
+    // on the master leader node.
+    NodeDetails node =
+        isK8sUniverse || isDedicatedNodeUniverse
+            ? universe.getTServersInPrimaryCluster().stream().findAny().get()
+            : universe.getMasterLeaderNode();
 
     try {
-      if (taskParams().downloadPackage) {
-        // Clean up the downloaded package from the node.
-        cleanUpDownloadedPackage(universe, node, isK8sUniverse);
-        // Download the package to the node.
-        downloadPackage(universe, node, isK8sUniverse);
-      }
+      // Clean up the downloaded package from the node.
+      cleanUpDownloadedPackage(universe, node, isK8sUniverse);
+      // Download the package to the node.
+      downloadPackage(universe, node, isK8sUniverse);
       // Run check on the node
       if (isK8sUniverse) {
         runCheckOnPod(universe, node);
@@ -96,10 +117,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
         runCheckOnNode(universe, node);
       }
     } finally {
-      if (taskParams().downloadPackage) {
-        // Clean up the downloaded package from the node.
-        cleanUpDownloadedPackage(universe, node, isK8sUniverse);
-      }
+      // Clean up the downloaded package from the node.
+      cleanUpDownloadedPackage(universe, node, isK8sUniverse);
     }
   }
 
@@ -132,12 +151,22 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       String packageName = extractPackageName(ybServerPackage);
       String versionName = extractVersionName(ybServerPackage);
       String ybSoftwareDir = nodeUniverseManager.getYbHomeDir(node, universe) + "/yb-software/";
+      Provider provider =
+          Provider.getOrBadRequest(
+              UUID.fromString(
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+      String customTmpDirectory =
+          confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
       nodeUniverseManager
           .runCommand(
               node,
               universe,
               ImmutableList.of(
-                  "rm", "-rf", ybSoftwareDir + packageName, ybSoftwareDir + versionName),
+                  "rm",
+                  "-rf",
+                  ybSoftwareDir + packageName,
+                  ybSoftwareDir + versionName,
+                  customTmpDirectory + "/" + PG_UPGRADE_CHECK_LOG_FILE),
               ShellProcessContext.builder().logCmdOutput(true).build())
           .processErrors();
     }
@@ -252,6 +281,11 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     Architecture arch = universe.getUniverseDetails().arch;
     ReleaseContainer release = releaseManager.getReleaseByVersion(taskParams().ybSoftwareVersion);
     String ybServerPackage = release.getFilePath(arch);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     String pgUpgradeBinaryLocation =
@@ -275,8 +309,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     }
     command.add(pgDataDir);
     command.add("--old-host");
-    if (primaryCluster.userIntent.enableYSQLAuth) {
-      String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    boolean authEnabled = GFlagsUtil.isYsqlAuthEnabled(universe, node);
+    if (authEnabled) {
       command.add(String.format("'$(ls -d -t %s/.yb.* | head -1)'", customTmpDirectory));
     } else {
       command.add(node.cloudInfo.private_ip);
@@ -290,25 +324,56 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     command.add("--username");
     command.add("\"yugabyte\"");
     command.add("--check");
-    // Pipe stdout to stderr to capture the failed checks in logs.
-    command.add("1>&2");
+    command.add(">");
+    command.add(String.format("%s/%s", customTmpDirectory, PG_UPGRADE_CHECK_LOG_FILE));
+    command.add("2>&1");
 
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(true)
-            .timeoutSecs(PG_UPGRADE_CHECK_TIMEOUT)
+            .timeoutSecs(
+                confGetter.getConfForScope(universe, UniverseConfKeys.pgUpgradeCheckTimeoutSec))
             .build();
 
     log.info("Running PG15 upgrade check on node: {} with command: {}", node.nodeName, command);
-    ShellResponse response =
-        nodeUniverseManager.runCommand(node, universe, command, context).processErrors();
-    if (response.code != 0) {
-      log.info(
-          "PG upgrade check failed on node: {} with error: {}", node.nodeName, response.message);
-      throw new RuntimeException("PG15 upgrade check failed on node: " + node.nodeName);
+    nodeUniverseManager.runCommand(node, universe, command, context);
+    List<String> readLogsCommand = new ArrayList<>();
+    readLogsCommand.add("cat");
+    readLogsCommand.add(String.format("%s/%s", customTmpDirectory, PG_UPGRADE_CHECK_LOG_FILE));
+    log.info(
+        "Reading PG15 upgrade check logs on node: {} with command: {}", node.nodeName, command);
+    ShellResponse readLogsResponse =
+        nodeUniverseManager.runCommand(node, universe, readLogsCommand, context).processErrors();
+    ObjectNode output = parsePGUpgradeOutput(readLogsResponse.extractRunCommandOutput());
+    log.info("PG upgrade check output on node: {} is: {}", node.nodeName, output);
+    appendAuditDetails(output);
+    if (output != null
+        && output.has("overallStatus")
+        && output.get("overallStatus").asText().equals("Failure, exiting")) {
+      log.info("PG upgrade check failed on node: {} with error: {}", node.nodeName, output);
+      throw new RuntimeException(
+          "PG15 upgrade check failed on node: " + node.nodeName + "with error:" + output);
     } else {
       log.info("PG upgrade check passed on node: {}", node.nodeName);
     }
+  }
+
+  private void appendAuditDetails(ObjectNode output) {
+    Audit audit = auditService.getFromTaskUUID(getUserTaskUUID());
+    if (audit == null) {
+      return;
+    }
+    JsonNode auditDetails = audit.getAdditionalDetails();
+    ObjectNode modifiedNode;
+    if (auditDetails != null) {
+      modifiedNode = auditDetails.deepCopy();
+    } else {
+      ObjectMapper mapper = new ObjectMapper();
+      modifiedNode = mapper.createObjectNode();
+    }
+    modifiedNode.setAll(output);
+    log.debug("Software upgrade task audit details: {}", modifiedNode);
+    auditService.updateAdditionalDetails(getUserTaskUUID(), modifiedNode);
   }
 
   private String extractVersionName(String ybServerPackage) {
@@ -360,5 +425,104 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       params.setEnableYbc(true);
     }
     return params;
+  }
+
+  /***
+   * Parses the output of the PG upgrade check command and returns a JSON representation.
+   *
+   * This method processes the output of the PG upgrade check command, extracting relevant
+   * information such as the title, checks, and overall status. It organizes this information into
+   *  a structured JSON format for easier consumption.
+   *
+   * example input:
+   *    "Performing Consistency Checks on Old Live Server
+   *      ------------------------------------------------
+   *      Checking cluster versions                                   ok
+   *      Checking attributes of the 'yugabyte' user                  ok
+   *      Checking for all 3 system databases                         ok
+   *      Checking database connection settings                       ok
+   *      Checking for system-defined composite types in user tables  ok
+   *      Checking for reg* data types in user tables                 fatal
+   *
+   *      In database: yugabyte
+   *        public.tbl2.b
+   *
+   *      Your installation contains one of the reg* data types in user tables.
+   *      These data types reference system OIDs that are not preserved by
+   *      pg_upgrade, so this cluster cannot currently be upgraded.  You can
+   *      drop the problem columns and restart the upgrade.
+   *      A list of the problem columns is printed above and in the file:
+   *          /mnt/d0/pg_data/pg_upgrade_output.d/20250416T195704.864/tables_using_reg.txt
+   *
+   *      Checking for removed "abstime" data type in user tables     ok
+   *      Checking for removed "reltime" data type in user tables     ok
+   *      Checking for removed "tinterval" data type in user tables   ok
+   *      Checking for user-defined postfix operators                 ok
+   *      Checking for incompatible polymorphic functions             ok
+   *      Checking for invalid "sql_identifier" user columns          ok
+   *      Checking installed extensions                               ok
+   *
+   *
+   *      Failure, exiting"
+   *
+   */
+  public static ObjectNode parsePGUpgradeOutput(String input) {
+    Map<String, Object> result = new HashMap<>();
+    String[] lines = input.split("\n");
+    String title = lines[0].trim();
+    result.put("title", title);
+
+    List<Map<String, Object>> checks = new ArrayList<>();
+    result.put("checks", checks);
+
+    // Pattern to match check lines (name and status)
+    Pattern checkPattern = Pattern.compile("^(Checking.+?)\\s{2,}(\\w+)$");
+
+    Map<String, Object> currentCheck = null;
+    StringBuilder detailsBuilder = new StringBuilder();
+
+    for (int i = 2; i < lines.length; i++) { // Skip title and separator line
+      String line = lines[i].trim();
+
+      if (line.isEmpty()) continue;
+
+      // Check if this is the overall status (last line)
+      if (i == lines.length - 1 && !line.matches("^Checking.+")) {
+        result.put("overallStatus", line);
+        continue;
+      }
+
+      // Try to match as a check line
+      Matcher matcher = checkPattern.matcher(line);
+      if (matcher.find()) {
+        // If we have a previous check with details, add those details
+        if (currentCheck != null && detailsBuilder.length() > 0) {
+          currentCheck.put("details", detailsBuilder.toString().trim());
+          detailsBuilder.setLength(0); // Clear the builder
+        }
+
+        // Create a new check
+        currentCheck = new HashMap<>();
+        currentCheck.put("name", matcher.group(1).trim());
+        currentCheck.put("status", matcher.group(2).trim());
+        currentCheck.put("details", null); // Default to null
+        checks.add(currentCheck);
+      } else if (currentCheck != null) {
+        // This line is part of the details for the current check
+        if (detailsBuilder.length() > 0) {
+          detailsBuilder.append(" ");
+        }
+        detailsBuilder.append(line);
+      }
+    }
+
+    // Handle any remaining details
+    if (currentCheck != null && detailsBuilder.length() > 0) {
+      currentCheck.put("details", detailsBuilder.toString().trim());
+    }
+
+    ObjectMapper mapper = new ObjectMapper();
+    mapper.enable(SerializationFeature.INDENT_OUTPUT);
+    return mapper.valueToTree(result);
   }
 }

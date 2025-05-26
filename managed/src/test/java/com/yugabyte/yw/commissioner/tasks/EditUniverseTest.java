@@ -81,9 +81,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
-          TaskType.RunHooks,
           TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
@@ -135,9 +135,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
-          TaskType.RunHooks,
           TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,

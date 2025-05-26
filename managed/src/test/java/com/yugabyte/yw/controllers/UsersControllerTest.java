@@ -9,7 +9,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
-import static org.junit.Assert.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.*;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
@@ -29,7 +30,9 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
@@ -41,6 +44,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Http;
@@ -62,7 +66,7 @@ public class UsersControllerTest extends FakeDBApplication {
   public void setUp() {
     customer1 = ModelFactory.testCustomer("tc1", "Test Customer 1");
     customer2 = ModelFactory.testCustomer("tc2", "Test Customer 2");
-    user1 = ModelFactory.testUser(customer1, "tc1@test.com");
+    user1 = ModelFactory.testUser(customer1, "tc1@test.com", Users.Role.Admin);
     role =
         com.yugabyte.yw.models.rbac.Role.create(
             customer1.getUuid(),
@@ -246,6 +250,7 @@ public class UsersControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Ignore("Api Moved to new uri")
   public void testPasswordChangeInvalid() throws IOException {
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     assertEquals(testUser1.getRole(), Role.Admin);
@@ -297,6 +302,8 @@ public class UsersControllerTest extends FakeDBApplication {
 
   @Test
   public void testResetPassword() {
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.SendUserNotification);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     String authTokenTest = testUser1.createAuthToken();
     assertEquals(testUser1.getRole(), Role.Admin);
@@ -343,6 +350,8 @@ public class UsersControllerTest extends FakeDBApplication {
 
   @Test
   public void testResetPasswordWithNewRbac() {
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.SendUserNotification);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
     RoleBinding.create(user1, RoleBindingType.Custom, role, rG);
@@ -462,6 +471,7 @@ public class UsersControllerTest extends FakeDBApplication {
 
   @Test
   public void testUpdateUserProfileNullifyTimezone() throws IOException {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     String testTimezone1 = "America/Toronto";
     testUser1.setTimezone(testTimezone1);

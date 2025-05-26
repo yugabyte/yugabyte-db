@@ -118,7 +118,6 @@ static void ExecGrant_Function(InternalGrant *grantStmt);
 static void ExecGrant_Language(InternalGrant *grantStmt);
 static void ExecGrant_Largeobject(InternalGrant *grantStmt);
 static void ExecGrant_Namespace(InternalGrant *grantStmt);
-static void ExecGrant_Tablegroup(InternalGrant *grantStmt);
 static void ExecGrant_Tablespace(InternalGrant *grantStmt);
 static void ExecGrant_Type(InternalGrant *grantStmt);
 static void ExecGrant_Parameter(InternalGrant *grantStmt);
@@ -151,7 +150,11 @@ static void recordExtensionInitPriv(Oid objoid, Oid classoid, int objsubid,
 									Acl *new_acl);
 static void recordExtensionInitPrivWorker(Oid objoid, Oid classoid, int objsubid,
 										  Acl *new_acl);
+
+/* YB declarations */
+static void ExecGrant_Tablegroup(InternalGrant *grantStmt);
 static bool YbCheckAclCopiesEqual(Acl *old_acl, Acl *new_acl);
+
 
 /*
  * If is_grant is true, adds the given privileges for the list of
@@ -1778,11 +1781,11 @@ ExecGrant_Attribute(InternalGrant *istmt, Oid relOid, const char *relname,
 								 NameStr(pg_attribute_tuple->attname));
 
 	/*
-	 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+	 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 	 * original column acl value is null, we cannot skip catalog update.
 	 */
 	Acl		   *yb_copy_of_old_acl =
-	(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 	/*
 	 * Generate new ACL.
@@ -1793,7 +1796,7 @@ ExecGrant_Attribute(InternalGrant *istmt, Oid relOid, const char *relname,
 								   col_privileges, grantorId,
 								   ownerId);
 
-	/* Skip catalog update if there is no ACL change. */
+	/* YB: Skip catalog update if there is no ACL change. */
 	if (IsYugaByteEnabled() &&
 		yb_copy_of_old_acl &&
 		YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -2074,11 +2077,12 @@ ExecGrant_Relation(InternalGrant *istmt)
 										 0, NULL);
 
 			/*
-			 * The original old_acl is pfree'd by merge_acl_with_grant. If the
-			 * original column acl value is null, we cannot skip catalog update.
+			 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If
+			 * the original column acl value is null, we cannot skip catalog
+			 * update.
 			 */
 			Acl		   *yb_copy_of_old_acl =
-			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+				(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 			/*
 			 * Generate new ACL.
@@ -2092,7 +2096,7 @@ ExecGrant_Relation(InternalGrant *istmt)
 										   grantorId,
 										   ownerId);
 
-			/* Skip catalog update if there is no ACL change. */
+			/* YB: Skip catalog update if there is no ACL change. */
 			if (!(IsYugaByteEnabled() &&
 				  yb_copy_of_old_acl &&
 				  YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl))))
@@ -2283,11 +2287,11 @@ ExecGrant_Database(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB? The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2297,7 +2301,7 @@ ExecGrant_Database(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -2423,11 +2427,11 @@ ExecGrant_Fdw(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2437,7 +2441,7 @@ ExecGrant_Fdw(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -2566,11 +2570,11 @@ ExecGrant_ForeignServer(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2580,7 +2584,7 @@ ExecGrant_ForeignServer(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -2707,11 +2711,11 @@ ExecGrant_Function(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2721,7 +2725,7 @@ ExecGrant_Function(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -2855,11 +2859,11 @@ ExecGrant_Language(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2869,7 +2873,7 @@ ExecGrant_Language(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -3010,11 +3014,11 @@ ExecGrant_Largeobject(InternalGrant *istmt)
 									 loname, 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3024,7 +3028,7 @@ ExecGrant_Largeobject(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -3152,11 +3156,11 @@ ExecGrant_Namespace(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3166,7 +3170,7 @@ ExecGrant_Namespace(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -3298,11 +3302,11 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3312,7 +3316,7 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -3436,11 +3440,11 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3450,7 +3454,7 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))
@@ -3587,11 +3591,11 @@ ExecGrant_Type(InternalGrant *istmt)
 									 0, NULL);
 
 		/*
-		 * The original old_acl is pfree'd by merge_acl_with_grant. If the
+		 * YB: The original old_acl is pfree'd by merge_acl_with_grant. If the
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3601,7 +3605,7 @@ ExecGrant_Type(InternalGrant *istmt)
 									   istmt->grantees, this_privileges,
 									   grantorId, ownerId);
 
-		/* Skip catalog update if there is no ACL change. */
+		/* YB: Skip catalog update if there is no ACL change. */
 		if (IsYugaByteEnabled() &&
 			yb_copy_of_old_acl &&
 			YbCheckAclCopiesEqual(yb_copy_of_old_acl, aclcopy(new_acl)))

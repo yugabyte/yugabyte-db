@@ -9,55 +9,46 @@ menu:
     parent: known-issues
     weight: 101
 type: docs
-rightNav:
-  hideH3: true
 ---
 
-Review limitations and implement suggested workarounds to successfully migrate data from PostgreSQL to YugabyteDB.
+When migrating data from PostgreSQL to YugabyteDB, you must address specific limitations and implement necessary workarounds. Some features, like table inheritance, certain DDL operations, and unique constraint types, are unsupported. You will also encounter compatibility issues with data types and functions. This page helps you navigate these challenges by offering advice on schema adjustments, handling unsupported features, and optimizing performance for a successful migration.
 
-## Contents
+## Data definition
 
-- [Adding primary key to a partitioned table results in an error](#adding-primary-key-to-a-partitioned-table-results-in-an-error)
-- [Index creation on partitions fail for some YugabyteDB builds](#index-creation-on-partitions-fail-for-some-yugabytedb-builds)
-- [Creation of certain views in the rule.sql file](#creation-of-certain-views-in-the-rule-sql-file)
-- [Create or alter conversion is not supported](#create-or-alter-conversion-is-not-supported)
-- [GENERATED ALWAYS AS STORED type column is not supported](#generated-always-as-stored-type-column-is-not-supported)
-- [Unsupported ALTER TABLE DDL variants in source schema](#unsupported-alter-table-ddl-variants-in-source-schema)
-- [Storage parameters on indexes or constraints in the source PostgreSQL](#storage-parameters-on-indexes-or-constraints-in-the-source-postgresql)
-- [Foreign table in the source database requires SERVER and USER MAPPING](#foreign-table-in-the-source-database-requires-server-and-user-mapping)
-- [Exclusion constraints is not supported](#exclusion-constraints-is-not-supported)
-- [PostgreSQL extensions are not supported by target YugabyteDB](#postgresql-extensions-are-not-supported-by-target-yugabytedb)
-- [Deferrable constraint on constraints other than foreign keys is not supported](#deferrable-constraint-on-constraints-other-than-foreign-keys-is-not-supported)
-- [Data ingestion on XML data type is not supported](#data-ingestion-on-xml-data-type-is-not-supported)
-- [GiST, BRIN, and SPGIST index types are not supported](#gist-brin-and-spgist-index-types-are-not-supported)
-- [Indexes on some complex data types are not supported](#indexes-on-some-complex-data-types-are-not-supported)
-- [Constraint trigger is not supported](#constraint-trigger-is-not-supported)
-- [Table inheritance is not supported](#table-inheritance-is-not-supported)
-- [%Type syntax is not supported](#type-syntax-is-not-supported)
-- [GIN indexes on multiple columns are not supported](#gin-indexes-on-multiple-columns-are-not-supported)
-- [Policies on users in source require manual user creation](#policies-on-users-in-source-require-manual-user-creation)
-- [VIEW WITH CHECK OPTION is not supported](#view-with-check-option-is-not-supported)
-- [UNLOGGED table is not supported](#unlogged-table-is-not-supported)
-- [Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans](#index-on-timestamp-column-should-be-imported-as-asc-range-index-to-avoid-sequential-scans)
-- [Exporting data with names for tables/functions/procedures using special characters/whitespaces fails](#exporting-data-with-names-for-tables-functions-procedures-using-special-characters-whitespaces-fails)
-- [Importing with case-sensitive schema names](#importing-with-case-sensitive-schema-names)
-- [Unsupported datatypes by YugabyteDB](#unsupported-datatypes-by-yugabytedb)
-- [Unsupported datatypes by Voyager during live migration](#unsupported-datatypes-by-voyager-during-live-migration)
-- [XID functions is not supported](#xid-functions-is-not-supported)
-- [REFERENCING clause for triggers](#referencing-clause-for-triggers)
-- [BEFORE ROW triggers on partitioned tables](#before-row-triggers-on-partitioned-tables)
-- [Advisory locks is not yet implemented](#advisory-locks-is-not-yet-implemented)
-- [System columns is not yet supported](#system-columns-is-not-yet-supported)
-- [XML functions is not yet supported](#xml-functions-is-not-yet-supported)
-- [Large Objects and its functions are currently not supported](#large-objects-and-its-functions-are-currently-not-supported)
-- [PostgreSQL 12 and later features](#postgresql-12-and-later-features)
-- [MERGE command](#merge-command)
-- [JSONB subscripting](#jsonb-subscripting)
-- [Events Listen / Notify](#events-listen-notify)
-- [Two-Phase Commit](#two-phase-commit)
-- [DDL operations within the Transaction](#ddl-operations-within-the-transaction)
+### Tables
 
-### Adding primary key to a partitioned table results in an error
+#### Table inheritance is not supported
+
+**GitHub**: [Issue #5956](https://github.com/yugabyte/yugabyte-db/issues/5956)
+
+**Description**: If you have table inheritance in the source database, it will error out in the target as it is not currently supported in YugabyteDB:
+
+```output
+ERROR: INHERITS not supported yet
+```
+
+**Workaround**: Currently, there is no workaround.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.cities (
+    name text,
+    population real,
+    elevation integer
+);
+
+CREATE TABLE public.capitals (
+    state character(2) NOT NULL
+)
+INHERITS (public.cities);
+```
+
+---
+
+#### Adding primary key to a partitioned table results in an error
 
 **GitHub**: [Issue #612](https://github.com/yugabyte/yb-voyager/issues/612)
 
@@ -102,159 +93,7 @@ PARTITION BY LIST (region);
 
 ---
 
-### Index creation on partitions fail for some YugabyteDB builds
-
-**GitHub**: [Issue #14529](https://github.com/yugabyte/yugabyte-db/issues/14529)
-
-**Description**: If you have a partitioned table with indexes on it, the migration will fail with an error for YugabyteDB `2.15` or `2.16` due to a regression.
-
-Note that this is fixed in release [2.17.1.0](../../../releases/ybdb-releases/end-of-life/v2.17/#v2.17.1.0).
-
-**Workaround**: N/A
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-DROP TABLE IF EXISTS list_part;
-
-CREATE TABLE list_part (id INTEGER, status TEXT, arr NUMERIC) PARTITION BY LIST(status);
-
-CREATE TABLE list_active PARTITION OF list_part FOR VALUES IN ('ACTIVE');
-
-CREATE TABLE list_archived PARTITION OF list_part FOR VALUES IN ('EXPIRED');
-
-CREATE TABLE list_others PARTITION OF list_part DEFAULT;
-
-INSERT INTO list_part VALUES (1,'ACTIVE',100), (2,'RECURRING',20), (3,'EXPIRED',38), (4,'REACTIVATED',144), (5,'ACTIVE',50);
-
-CREATE INDEX list_ind ON list_part(status);
-```
-
----
-
-### Creation of certain views in the rule.sql file
-
-**GitHub**: [Issue #770](https://github.com/yugabyte/yb-voyager/issues/770)
-
-**Description**: There may be few cases where certain exported views come under the `rule.sql` file and the `view.sql` file might contain a dummy view definition. This `pg_dump` behaviour may be due to how PostgreSQL handles views internally (via rules).
-
-{{< note title ="Note" >}}
-This does not affect the migration as YugabyteDB Voyager takes care of the DDL creation sequence internally.
-{{< /note >}}
-
-**Workaround**: Not required
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE foo(n1 int PRIMARY KEY, n2 int);
-CREATE VIEW v1 AS
-  SELECT n1,n2
-  FROM foo
-  GROUP BY n1;
-```
-
-The exported schema for `view.sql` is as follows:
-
-```sql
-CREATE VIEW public.v1 AS
-  SELECT
-    NULL::integer AS n1,
-    NULL::integer AS n2;
-```
-
-The exported schema for `rule.sql` is as follows:
-
-```sql
-CREATE OR REPLACE VIEW public.v1 AS
-  SELECT foo.n1,foo.n2
-  FROM public.foo
-  GROUP BY foo.n1;
-```
-
-### Create or alter conversion is not supported
-
-**GitHub**: [Issue #10866](https://github.com/yugabyte/yugabyte-db/issues/10866)
-
-**Description**: If you have conversions in your PostgreSQL database, they will error out as follows as conversions are currently not supported in the target YugabyteDB:
-
-```output
-ERROR:  CREATE CONVERSION not supported yet
-```
-
-**Workaround**: Remove the conversions from the exported schema and modify the applications to not use these conversions before pointing them to YugabyteDB.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE CONVERSION public.my_latin1_to_utf8 FOR 'LATIN1' TO 'UTF8' FROM public.latin1_to_utf8;
-
-CREATE FUNCTION public.latin1_to_utf8(src_encoding integer, dest_encoding integer, src bytea, dest bytea, len integer) RETURNS integer
-    LANGUAGE c
-    AS '/usr/lib/postgresql/12/lib/latin1_to_utf8.so', 'my_latin1_to_utf8';
-```
-
----
-
-### GENERATED ALWAYS AS STORED type column is not supported
-
-**GitHub**: [Issue #10695](https://github.com/yugabyte/yugabyte-db/issues/10695)
-
-**Description**: If you have tables in the source database with columns of GENERATED ALWAYS AS STORED type (which means the data of this column is derived from some other columns of the table), it will throw a syntax error in YugabyteDB as follows:
-
-```output
-ERROR: syntax error at or near "(" (SQLSTATE 42601)
-```
-
-**Workaround**: Create a trigger on this table that updates its value on any INSERT/UPDATE operation, and set a default value for this column. This provides functionality similar to PostgreSQL's GENERATED ALWAYS AS STORED columns using a trigger.
-
-**Fixed In**: {{<release "2.25">}}.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE people (
-    name        text,
-    height_cm   numeric,
-    height_in   numeric GENERATED ALWAYS AS (height_cm / 2.54) STORED
-);
-```
-
-Suggested change to the schema is as follows:
-
-```sql
-ALTER TABLE people
-    ALTER COLUMN height_in SET DEFAULT -1;
-
-CREATE OR REPLACE FUNCTION compute_height_in() RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.height_in IS DISTINCT FROM -1 THEN
-        RAISE EXCEPTION 'cannot insert in column "height_in"';
-    ELSE
-        NEW.height_in := NEW.height_cm / 2.54;
-    END IF;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER compute_height_in_trigger
-    BEFORE INSERT OR UPDATE ON people
-    FOR EACH ROW
-    EXECUTE FUNCTION compute_height_in();
-```
-
----
-
-### Unsupported ALTER TABLE DDL variants in source schema
+#### Unsupported ALTER TABLE DDL variants in source schema
 
 **GitHub**: [Issue #1124](https://github.com/yugabyte/yugabyte-db/issues/1124)
 
@@ -305,7 +144,43 @@ ALTER TABLE public.example
 
 ---
 
-### Storage parameters on indexes or constraints in the source PostgreSQL
+#### UNLOGGED table is not supported
+
+**GitHub**: [Issue #1129](https://github.com/yugabyte/yugabyte-db/issues/1129)
+
+**Description**: If there are UNLOGGED tables in the source schema, they will error out during the import schema with the following error as it is not supported in target YugabyteDB.
+
+```output
+ERROR:  UNLOGGED database object not supported yet
+```
+
+**Workaround**: Convert it to a LOGGED table.
+
+**Fixed In**: {{<release "2024.2.0.0, 2.25">}}
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE UNLOGGED TABLE tbl_unlogged (
+  id int,
+  val text
+);
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+CREATE TABLE tbl_unlogged (
+  id int,
+  val text
+);
+```
+
+---
+
+#### Storage parameters on indexes or constraints in the source PostgreSQL
 
 **GitHub**: [Issue #23467](https://github.com/yugabyte/yugabyte-db/issues/23467)
 
@@ -357,65 +232,9 @@ CREATE INDEX abc
 
 ---
 
-### Foreign table in the source database requires SERVER and USER MAPPING
+### Constraints
 
-**GitHub**: [Issue #1627](https://github.com/yugabyte/yb-voyager/issues/1627)
-
-**Description**: If you have foreign tables in the schema, during the export schema phase the exported schema does not include the SERVER and USER MAPPING objects. You must manually create these objects before importing schema, otherwise FOREIGN TABLE creation fails with the following error:
-
-```output
-ERROR: server "remote_server" does not exist (SQLSTATE 42704)
-```
-
-**Workaround**: Create the SERVER and its USER MAPPING manually on the target YugabyteDB database.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE EXTENSION postgres_fdw;
-
-CREATE SERVER remote_server
-    FOREIGN DATA WRAPPER postgres_fdw
-    OPTIONS (host '127.0.0.1', port '5432', dbname 'postgres');
-
-CREATE FOREIGN TABLE foreign_table (
-    id    INT,
-    name  TEXT,
-    data  JSONB
-)
-SERVER remote_server
-OPTIONS (
-    schema_name 'public',
-    table_name 'remote_table'
-);
-
-CREATE USER MAPPING FOR postgres
-SERVER remote_server
-OPTIONS (user 'postgres', password 'XXX');
-```
-
-Exported schema only has the following:
-
-```sql
-CREATE FOREIGN TABLE foreign_table (
-    id    INT,
-    name  TEXT,
-    data  JSONB
-)
-SERVER remote_server
-OPTIONS (
-    schema_name 'public',
-    table_name 'remote_table'
-);
-```
-
-Suggested change is to manually create the SERVER and USER MAPPING on the target YugabyteDB.
-
----
-
-### Exclusion constraints is not supported
+#### Exclusion constraints is not supported
 
 **GitHub**: [Issue #3944](https://github.com/yugabyte/yugabyte-db/issues/3944)
 
@@ -478,29 +297,7 @@ CREATE INDEX idx_no_time_overlap on public.meeting USING gist(room_id,time_range
 
 ---
 
-### PostgreSQL extensions are not supported by target YugabyteDB
-
-**Documentation**: [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
-
-**Description**: If you have any PostgreSQL extension that is not supported by the target YugabyteDB, they result in the following errors during import schema:
-
-```output
-ERROR:  could not open extension control file "/home/centos/yb/postgres/share/extension/<extension_name>.control": No such file or directory
-```
-
-**Workaround**: Remove the extension from the exported schema.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
-```
-
----
-
-### Deferrable constraint on constraints other than foreign keys is not supported
+#### Deferrable constraint on constraints other than foreign keys is not supported
 
 **GitHub**: [Issue #1709](https://github.com/yugabyte/yugabyte-db/issues/1709)
 
@@ -528,296 +325,110 @@ ALTER TABLE ONLY public.users
 
 ---
 
-### Data ingestion on XML data type is not supported
+### Columns
 
-**GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
+#### GENERATED ALWAYS AS STORED type column is not supported
 
-**Description**: If you have XML datatype in the source database, it errors out in the import data to target YugabyteDB phase as data ingestion is not allowed on this data type:
+**GitHub**: [Issue #10695](https://github.com/yugabyte/yugabyte-db/issues/10695)
+
+**Description**: If you have tables in the source database with columns of GENERATED ALWAYS AS STORED type (which means the data of this column is derived from some other columns of the table), it will throw a syntax error in YugabyteDB as follows:
 
 ```output
- ERROR: unsupported XML feature (SQLSTATE 0A000)
+ERROR: syntax error at or near "(" (SQLSTATE 42601)
 ```
 
-**Workaround**: To migrate the data, a workaround is to convert the type to text and import the data to target; to read the data on the target YugabyteDB, you need to create some user defined functions similar to XML functions.
+**Workaround**: Create a trigger on this table that updates its value on any INSERT/UPDATE operation, and set a default value for this column. This provides functionality similar to PostgreSQL's GENERATED ALWAYS AS STORED columns using a trigger.
+
+**Fixed In**: {{<release "2.25">}}.
 
 **Example**
 
 An example schema on the source database is as follows:
 
 ```sql
-CREATE TABLE xml_example (
-      id integer,
-      data xml
+CREATE TABLE people (
+    name        text,
+    height_cm   numeric,
+    height_in   numeric GENERATED ALWAYS AS (height_cm / 2.54) STORED
 );
 ```
 
----
-
-### GiST, BRIN, and SPGIST index types are not supported
-
-**GitHub**: [Issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337)
-
-**Description**: If you have GiST, BRIN, and SPGIST indexes on the source database, it errors out in the import schema phase with the following error:
-
-```output
- ERROR: index method "gist" not supported yet (SQLSTATE XX000)
-
-```
-
-**Workaround**: Currently, there is no workaround; remove the index from the exported schema.
-
-**Example**
-
-An example schema on the source database is as follows:
+Suggested change to the schema is as follows:
 
 ```sql
-CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
-```
+ALTER TABLE people
+    ALTER COLUMN height_in SET DEFAULT -1;
 
----
-
-### Indexes on some complex data types are not supported
-
-**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [Issue #23829](https://github.com/yugabyte/yugabyte-db/issues/23829), [Issue #17017](https://github.com/yugabyte/yugabyte-db/issues/17017)
-
-**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSONB, ARRAYs, INET, UDTs, citext, and so on, those will error out in import schema phase with the following error:
-
-```output
- ERROR:  INDEX on column of type '<TYPE_NAME>' not yet supported
-```
-
-**Workaround**: Currently, there is no workaround, but you can cast these data types in the index definition to supported types, which may require adjustments on the application side when querying the column using the index. Ensure you address these changes before modifying the schema.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE public.citext_type (
-    id integer,
-    data public.citext
-);
-
-CREATE TABLE public.documents (
-    id integer NOT NULL,
-    title_tsvector tsvector,
-    content_tsvector tsvector
-);
-
-CREATE TABLE public.ts_query_table (
-    id integer,
-    query tsquery
-);
-
-CREATE TABLE public.test_json (
-    id integer,
-    data jsonb
-);
-
-CREATE INDEX tsvector_idx ON public.documents  (title_tsvector);
-
-CREATE INDEX tsquery_idx ON public.ts_query_table (query);
-
-CREATE INDEX idx_citext ON public.citext_type USING btree (data);
-
-CREATE INDEX idx_json ON public.test_json (data);
-```
-
----
-
-### Constraint trigger is not supported
-
-**GitHub**: [Issue #4700](https://github.com/yugabyte/yugabyte-db/issues/4700)
-
-**Description**: If you have constraint triggers in your source database, as they are currently unsupported in YugabyteDB, and they will error out as follows:
-
-```output
- ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
-```
-
-**Workaround**: Currently, there is no workaround; remove the constraint trigger from the exported schema and modify the applications if they are using these triggers before pointing it to YugabyteDB.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE public.users (
-    id    int,
-    email character varying(255)
-);
-
-CREATE FUNCTION public.check_unique_username() RETURNS trigger
-    LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION compute_height_in() RETURNS TRIGGER AS $$
 BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM users
-        WHERE email = NEW.email AND id <> NEW.id
-    ) THEN
-        RAISE EXCEPTION 'Email % already exists.', NEW.email;
+    IF NEW.height_in IS DISTINCT FROM -1 THEN
+        RAISE EXCEPTION 'cannot insert in column "height_in"';
+    ELSE
+        NEW.height_in := NEW.height_cm / 2.54;
     END IF;
+
     RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql;
 
-CREATE CONSTRAINT TRIGGER check_unique_username_trigger
-    AFTER INSERT OR UPDATE ON public.users
-    DEFERRABLE INITIALLY DEFERRED
+CREATE TRIGGER compute_height_in_trigger
+    BEFORE INSERT OR UPDATE ON people
     FOR EACH ROW
-    EXECUTE FUNCTION public.check_unique_username();
+    EXECUTE FUNCTION compute_height_in();
 ```
 
 ---
 
-### Table inheritance is not supported
+#### System columns is not yet supported
 
-**GitHub**: [Issue #5956](https://github.com/yugabyte/yugabyte-db/issues/5956)
+**GitHub**: [Issue #24843](https://github.com/yugabyte/yugabyte-db/issues/24843)
 
-**Description**: If you have table inheritance in the source database, it will error out in the target as it is not currently supported in YugabyteDB:
+**Description**: System columns, including `xmin`, `xmax`, `cmin`, `cmax`, and `ctid`, are not available in YugabyteDB. Queries or applications referencing these columns will fail as per the following example:
 
-```output
-ERROR: INHERITS not supported yet
+```sql
+yugabyte=# SELECT xmin, xmax FROM employees where id = 100;
 ```
 
-**Workaround**: Currently, there is no workaround.
+```output
+ERROR:  System column "xmin" is not supported yet
+```
+
+**Workaround**: Use the application layer to manage tracking instead of relying on system columns.
+
+---
+
+### Other objects
+
+#### Large Objects and its functions are currently not supported
+
+**GitHub**: Issue [#25318](https://github.com/yugabyte/yugabyte-db/issues/25318)
+
+**Description**: If you have large objects (datatype `lo`) in the source schema and are using large object functions in queries, the migration will fail during import-schema, as large object is not supported in YugabyteDB.
+
+```sql
+SELECT lo_create('<OID>');
+```
+
+```output
+ERROR: Transaction for catalog table write operation 'pg_largeobject_metadata' not found
+```
+
+**Workaround**: No workaround is available.
 
 **Example**
 
 An example schema on the source database is as follows:
 
 ```sql
-CREATE TABLE public.cities (
-    name text,
-    population real,
-    elevation integer
-);
+CREATE TABLE image (id int, raster lo); 
 
-CREATE TABLE public.capitals (
-    state character(2) NOT NULL
-)
-INHERITS (public.cities);
+CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
+    FOR EACH ROW EXECUTE FUNCTION lo_manage(raster);
 ```
 
 ---
 
-### %Type syntax is not supported
-
-**GitHub**: [Issue #23619](https://github.com/yugabyte/yugabyte-db/issues/23619)
-
-**Description**: If you have any function, procedure, or trigger using the `%TYPE` syntax for referencing a type of a column from a table, then it errors out in YugabyteDB with the following error:
-
-```output
-ERROR: invalid type name "employees.salary%TYPE" (SQLSTATE 42601)
-```
-
-**Workaround**: Fix the syntax to include the actual type name instead of referencing the type of a column.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE public.employees (
-    employee_id integer NOT NULL,
-    employee_name text,
-    salary numeric
-);
-
-
-CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    emp_salary employees.salary%TYPE;  -- Declare a variable with the same type as employees.salary
-BEGIN
-    SELECT salary INTO emp_salary
-    FROM employees
-    WHERE employee_id = emp_id;
-
-    RETURN emp_salary;
-END;
-$$;
-```
-
-Suggested change to CREATE FUNCTION is as follows:
-
-```sql
-CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    Emp_salary NUMERIC;  -- Declare a variable with the same type as employees.salary
-BEGIN
-    SELECT salary INTO emp_salary
-    FROM employees
-    WHERE employee_id = emp_id;
-
-    RETURN emp_salary;
-END;
-$$;
-```
-
----
-
-### GIN indexes on multiple columns are not supported
-
-**GitHub**: [Issue #724](https://github.com/yugabyte/yb-voyager/issues/724)
-
-**Description**: If there are GIN indexes in the source schema on multiple columns, they result in an error during import schema as follows:
-
-```output
-ERROR: access method "ybgin" does not support multicolumn indexes (SQLSTATE 0A000)
-```
-
-**Workaround**: Currently, as there is no workaround, modify the schema to not include such indexes.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE public.test_gin_json (
-    id     integer,
-    text   jsonb,
-    text1  jsonb
-);
-
-CREATE INDEX gin_multi_on_json
-    ON public.test_gin_json USING gin (text, text1);
-```
-
----
-
-### Policies on users in source require manual user creation
-
-**GitHub**: [Issue #1655](https://github.com/yugabyte/yb-voyager/issues/1655)
-
-**Description**: If there are policies in the source schema for USERs in the database, the USERs have to be created manually on the target YugabyteDB, as currently the migration of USER/GRANT is not supported. Skipping the manual user creation will return an error during import schema as follows:
-
-```output
-ERROR: role "<role_name>" does not exist (SQLSTATE 42704)
-```
-
-**Workaround**: Create the USERs manually on target before import schema to create policies.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE public.z1 (
-    a integer,
-    b text
-);
-CREATE ROLE regress_rls_group;
-CREATE POLICY p2 ON public.z1 TO regress_rls_group USING (((a % 2) = 1));
-```
-
----
-
-### VIEW WITH CHECK OPTION is not supported
+#### VIEW WITH CHECK OPTION is not supported
 
 **GitHub**: [Issue #22716](https://github.com/yugabyte/yugabyte-db/issues/22716)
 
@@ -900,144 +511,35 @@ CREATE TRIGGER trigger_modify_employee_12000
 
 ---
 
-### UNLOGGED table is not supported
+#### Create or alter conversion is not supported
 
-**GitHub**: [Issue #1129](https://github.com/yugabyte/yugabyte-db/issues/1129)
+**GitHub**: [Issue #10866](https://github.com/yugabyte/yugabyte-db/issues/10866)
 
-**Description**: If there are UNLOGGED tables in the source schema, they will error out during the import schema with the following error as it is not supported in target YugabyteDB.
+**Description**: If you have conversions in your PostgreSQL database, they will error out as follows as conversions are currently not supported in the target YugabyteDB:
 
 ```output
-ERROR:  UNLOGGED database object not supported yet
+ERROR:  CREATE CONVERSION not supported yet
 ```
 
-**Workaround**: Convert it to a LOGGED table.
-
-**Fixed In**: {{<release "2024.2.0.0, 2.25">}}
+**Workaround**: Remove the conversions from the exported schema and modify the applications to not use these conversions before pointing them to YugabyteDB.
 
 **Example**
 
 An example schema on the source database is as follows:
 
 ```sql
-CREATE UNLOGGED TABLE tbl_unlogged (
-  id int,
-  val text
-);
-```
+CREATE CONVERSION public.my_latin1_to_utf8 FOR 'LATIN1' TO 'UTF8' FROM public.latin1_to_utf8;
 
-Suggested change to the schema is as follows:
-
-```sql
-CREATE TABLE tbl_unlogged (
-  id int,
-  val text
-);
+CREATE FUNCTION public.latin1_to_utf8(src_encoding integer, dest_encoding integer, src bytea, dest bytea, len integer) RETURNS integer
+    LANGUAGE c
+    AS '/usr/lib/postgresql/12/lib/latin1_to_utf8.so', 'my_latin1_to_utf8';
 ```
 
 ---
 
-### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+### Data types
 
-**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
-
-**Description**: If there is an index on a timestamp column, the index should be imported as a range index automatically, as most queries relying on timestamp columns use range predicates. This avoids sequential scans and makes indexed scans accessible.
-
-**Workaround**: Manually add the ASC (range) clause to the exported files.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE INDEX ON timestamp_demo (ts);
-```
-
-Suggested change to the schema is to add the `ASC` clause as follows:
-
-```sql
-CREATE INDEX ON timestamp_demo (ts ASC);
-```
-
----
-
-### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
-
-**GitHub**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
-
-**Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
-
-**Workaround**: Rename the objects (tables/functions/procedures) on the source database to a name without special characters.
-
-**Example**
-
-An example schema on the source MySQL database is as follows:
-
-```sql
-CREATE TABLE `xyz abc`(id int);
-INSERT INTO `xyz abc` VALUES(1);
-INSERT INTO `xyz abc` VALUES(2);
-INSERT INTO `xyz abc` VALUES(3);
-```
-
-The exported schema is as follows:
-
-```sql
-CREATE TABLE "xyz abc" (id bigint);
-```
-
-The preceding example may hang or result in an error.
-
----
-
-### Importing with case-sensitive schema names
-
-**GitHub**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
-
-**Description**: If you migrate your database using a case-sensitive schema name, the migration will fail with a "no schema has been selected" or "schema already exists" error(s).
-
-**Workaround**: Currently, yb-voyager does not support case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If required, you may alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
-
-**Example**
-
-An example yb-voyager import-schema command with a case-sensitive schema name is as follows:
-
-```sh
-yb-voyager import schema --target-db-name voyager
-    --target-db-hostlocalhost
-    --export-dir .
-    --target-db-password password
-    --target-db-user yugabyte
-    --target-db-schema "\"Test\""
-```
-
-The preceding example will result in an error as follows:
-
-```output
-ERROR: no schema has been selected to create in (SQLSTATE 3F000)
-```
-
-Suggested changes to the schema can be done using the following steps:
-
-1. Change the case sensitive schema name during schema migration as follows:
-
-    ```sh
-    yb-voyager import schema --target-db-name voyager
-    --target-db-hostlocalhost
-    --export-dir .
-    --target-db-password password
-    --target-db-user yugabyte
-    --target-db-schema test
-    ```
-
-1. Alter the schema name post migration as follows:
-
-    ```sh
-    ALTER SCHEMA "test" RENAME TO "Test";
-    ```
-
----
-
-### Unsupported datatypes by YugabyteDB
+#### Unsupported datatypes by YugabyteDB
 
 **GitHub**: [Issue 11323](https://github.com/yugabyte/yugabyte-db/issues/11323), [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
@@ -1055,37 +557,81 @@ CREATE TABLE public.locations (
     name character varying(100),
     geom geometry(Point,4326)
  );
-
 ```
 
 ---
 
-### Unsupported datatypes by Voyager during live migration
+## Data manipulation
 
-**GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
+### MERGE command
 
-**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
+**GitHub**: Issue [#25574](https://github.com/yugabyte/yugabyte-db/issues/25574)
 
-For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column: `HSTORE`, `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
+**Description**: If you are using a Merge query to conditionally insert, update, or delete rows on a table on your source database, then this query will fail once you migrate your apps to YugabyteDB as it is a PostgreSQL 15 feature, and not supported yet.
 
-**Workaround**: None.
+```output
+ERROR:  syntax error at or near "MERGE"
+```
+
+**Workaround**: Use the PL/pgSQL function to implement similar functionality on the database.
 
 **Example**
 
 An example schema on the source database is as follows:
 
 ```sql
-CREATE TABLE combined_tbl (
-    id int,
-    l line,
-    ls lseg,
-    p point,
-    p1 path,
-    p2 polygon
+CREATE TABLE customer_account (
+    customer_id INT PRIMARY KEY,
+    balance NUMERIC(10, 2) NOT NULL
 );
+
+INSERT INTO customer_account (customer_id, balance)
+VALUES
+    (1, 100.00),
+    (2, 200.00),
+    (3, 300.00);
+
+CREATE TABLE recent_transactions (
+    transaction_id SERIAL PRIMARY KEY,
+    customer_id INT NOT NULL,
+    transaction_value NUMERIC(10, 2) NOT NULL
+);
+INSERT INTO recent_transactions (customer_id, transaction_value)
+VALUES
+    (1, 50.00),
+    (3, -25.00),
+    (4, 150.00);
+
+MERGE INTO customer_account ca
+USING recent_transactions t
+ON t.customer_id = ca.customer_id
+WHEN MATCHED THEN
+  UPDATE SET balance = balance + transaction_value
+WHEN NOT MATCHED THEN
+  INSERT (customer_id, balance)
+  VALUES (t.customer_id, t.transaction_value);
+```
+
+Suggested schema change is to replace the MERGE command with a PL/pgSQL function similar to the following:
+
+```sql
+CREATE OR REPLACE FUNCTION merge_customer_account()
+RETURNS void AS $$
+BEGIN
+    -- Insert new rows or update existing rows in customer_account
+    INSERT INTO customer_account (customer_id, balance)
+    SELECT customer_id, transaction_value
+    FROM recent_transactions
+    ON CONFLICT (customer_id) 
+    DO UPDATE
+    SET balance = customer_account.balance + EXCLUDED.balance;
+END;
+$$ LANGUAGE plpgsql;
 ```
 
 ---
+
+## Functions and operators
 
 ### XID functions is not supported
 
@@ -1108,6 +654,367 @@ CREATE TABLE xid_example (
       id integer,
       tx_id xid
 );
+```
+
+---
+
+### XML functions is not yet supported
+
+**GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
+
+**Description**: XML functions and the XML data type are unsupported in YugabyteDB. If you use functions like `xpath`, `xmlconcat`, and `xmlparse`, it will fail with an error as per the following example:
+
+```sql
+yugabyte=# SELECT xml_is_well_formed_content('<project>Alpha</project>') AS is_well_formed_content;
+```
+
+```output
+ERROR:  unsupported XML feature
+DETAIL:  This functionality requires the server to be built with libxml support.
+HINT:  You need to rebuild PostgreSQL using --with-libxml.
+```
+
+**Workaround**: Convert XML data to JSON format for compatibility with YugabyteDB, or handle XML processing at the application layer before inserting data.
+
+---
+
+### JSONB subscripting
+
+**GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
+
+**Description**: If you are using the JSONB subscripting in app queries and in the schema (constraints or default expression) on your source database, then the app query will fail once you migrate your apps to YugabyteDB, and import-schema will fail if any DDL has this feature, as it's a PostgreSQL 15 feature.
+
+```output
+ERROR: cannot subscript type jsonb because it is not an array
+```
+
+**Workaround**: You can use the Arrow ( `-> / ->>` ) operators to access JSONB fields.
+
+**Fixed In**: {{<release "2.25">}}.
+
+**Example**
+
+An example query / DDL on the source database is as follows:
+
+```sql
+SELECT ('{"a": {"b": {"c": "some text"}}}'::jsonb)['a']['b']['c'];
+
+CREATE TABLE test_jsonb_chk (
+    id int,
+    data1 jsonb,
+    CHECK (data1['key']<>'{}')
+);
+```
+
+Suggested change in query to get it working-
+
+```sql
+SELECT ((('{"a": {"b": {"c": "some text"}}}'::jsonb)->'a')->'b')->>'c';
+
+CREATE TABLE test_jsonb_chk (
+    id int,
+    data1 jsonb,
+    CHECK (data1->'key'<>'{}')
+);
+```
+
+---
+
+## Indexes
+
+### Index creation on partitions fail for some YugabyteDB builds
+
+**GitHub**: [Issue #14529](https://github.com/yugabyte/yugabyte-db/issues/14529)
+
+**Description**: If you have a partitioned table with indexes on it, the migration will fail with an error for YugabyteDB `2.15` or `2.16` due to a regression.
+
+Note that this is fixed in release [2.17.1.0](../../../releases/ybdb-releases/end-of-life/v2.17/#v2.17.1.0).
+
+**Workaround**: N/A
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+DROP TABLE IF EXISTS list_part;
+
+CREATE TABLE list_part (id INTEGER, status TEXT, arr NUMERIC) PARTITION BY LIST(status);
+
+CREATE TABLE list_active PARTITION OF list_part FOR VALUES IN ('ACTIVE');
+
+CREATE TABLE list_archived PARTITION OF list_part FOR VALUES IN ('EXPIRED');
+
+CREATE TABLE list_others PARTITION OF list_part DEFAULT;
+
+INSERT INTO list_part VALUES (1,'ACTIVE',100), (2,'RECURRING',20), (3,'EXPIRED',38), (4,'REACTIVATED',144), (5,'ACTIVE',50);
+
+CREATE INDEX list_ind ON list_part(status);
+```
+
+---
+
+### GiST, BRIN, and SPGIST index types are not supported
+
+**GitHub**: [Issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337)
+
+**Description**: If you have GiST, BRIN, and SPGIST indexes on the source database, it errors out in the import schema phase with the following error:
+
+```output
+ ERROR: index method "gist" not supported yet (SQLSTATE XX000)
+
+```
+
+**Workaround**: Currently, there is no workaround; remove the index from the exported schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
+```
+
+---
+
+### Indexes on some complex data types are not supported
+
+**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698), [Issue #23829](https://github.com/yugabyte/yugabyte-db/issues/23829), [Issue #17017](https://github.com/yugabyte/yugabyte-db/issues/17017)
+
+**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSONB, ARRAYs, INET, UDTs, citext, and so on, those will error out in import schema phase with the following error:
+
+```output
+ ERROR:  INDEX on column of type '<TYPE_NAME>' not yet supported
+```
+
+**Workaround**: Currently, there is no workaround, but you can cast these data types in the index definition to supported types, which may require adjustments on the application side when querying the column using the index. Ensure you address these changes before modifying the schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.citext_type (
+    id integer,
+    data public.citext
+);
+
+CREATE TABLE public.documents (
+    id integer NOT NULL,
+    title_tsvector tsvector,
+    content_tsvector tsvector
+);
+
+CREATE TABLE public.ts_query_table (
+    id integer,
+    query tsquery
+);
+
+CREATE TABLE public.test_json (
+    id integer,
+    data jsonb
+);
+
+CREATE INDEX tsvector_idx ON public.documents  (title_tsvector);
+
+CREATE INDEX tsquery_idx ON public.ts_query_table (query);
+
+CREATE INDEX idx_citext ON public.citext_type USING btree (data);
+
+CREATE INDEX idx_json ON public.test_json (data);
+```
+
+---
+
+### GIN indexes on multiple columns are not supported
+
+**GitHub**: [Issue #724](https://github.com/yugabyte/yb-voyager/issues/724)
+
+**Description**: If there are GIN indexes in the source schema on multiple columns, they result in an error during import schema as follows:
+
+```output
+ERROR: access method "ybgin" does not support multicolumn indexes (SQLSTATE 0A000)
+```
+
+**Workaround**: Currently, as there is no workaround, modify the schema to not include such indexes.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.test_gin_json (
+    id     integer,
+    text   jsonb,
+    text1  jsonb
+);
+
+CREATE INDEX gin_multi_on_json
+    ON public.test_gin_json USING gin (text, text1);
+```
+
+---
+
+## Concurrency control
+
+### Advisory locks is not yet implemented
+
+**GitHub**: [Issue #3642](https://github.com/yugabyte/yugabyte-db/issues/3642)
+
+**Description**: YugabyteDB does not support PostgreSQL advisory locks (for example, pg_advisory_lock, pg_try_advisory_lock). Any attempt to use advisory locks will result in a "function-not-implemented" error as per the following example:
+
+```sql
+yugabyte=# SELECT pg_advisory_lock(100), COUNT(*) FROM cars;
+```
+
+```output
+ERROR:  advisory locks feature is currently in preview
+HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_locks to true and add it to the list of allowed preview flags i.e. GFlag allowed_preview_flags_csv. If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details
+```
+
+**Workaround**: Implement a custom locking mechanism in the application to coordinate actions without relying on database-level advisory locks.
+
+---
+
+### Two-Phase Commit
+
+**GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
+
+**Description**: If your application queries or PL/pgSQL objects rely on [Two-Phase Commit protocol](https://www.postgresql.org/docs/11/two-phase.html) that allows multiple distributed systems to work together in a transactional manner in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in YugabyteDB and will throw the following error when you attempt to execute the commands:
+
+```sql
+ERROR:  PREPARE TRANSACTION not supported yet
+```
+
+**Workaround**: Currently, there is no workaround.
+
+---
+
+### DDL operations within the Transaction
+
+**GitHub**:  Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404)
+
+**Description**: If your application queries or PL/pgSQL objects runs DDL operations inside transactions in the source PostgreSQL database, this functionality will not work after migrating to YugabyteDB. Currently, DDL operations in a transaction in YugabyteDB is not supported and will not work as expected.
+
+**Workaround**: Currently, there is no workaround.
+
+**Example:**
+
+```sql
+yugabyte=# \d test
+Did not find any relation named "test".
+yugabyte=# BEGIN;
+BEGIN
+yugabyte=*# CREATE TABLE test(id int, val text);
+CREATE TABLE
+yugabyte=*# \d test
+                Table "public.test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ val    | text    |           |          | 
+yugabyte=*# ROLLBACK;
+ROLLBACK
+yugabyte=# \d test
+                Table "public.test"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           |          | 
+ val    | text    |           |          | 
+```
+
+---
+
+## Extensions
+
+### PostgreSQL extensions are not supported by target YugabyteDB
+
+**Documentation**: [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
+
+**Description**: If you have any PostgreSQL extension that is not supported by the target YugabyteDB, they result in the following errors during import schema:
+
+```output
+ERROR:  could not open extension control file "/home/centos/yb/postgres/share/extension/<extension_name>.control": No such file or directory
+```
+
+**Workaround**: Remove the extension from the exported schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
+```
+
+---
+
+## Server programming
+
+### Events Listen / Notify
+
+**GitHub**: Issue [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872)
+
+**Description**: If your application queries or PL/pgSQL objects rely on **LISTEN/NOTIFY events** in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, LISTEN/NOTIFY events are a no-op in YugabyteDB, and any attempt to use them will trigger a warning instead of performing the expected event-driven operations:
+
+```sql
+WARNING:  LISTEN not supported yet and will be ignored
+```
+
+**Workaround**: Currently, there is no workaround.
+
+**Example:**
+
+```sql
+LISTEN my_table_changes;
+INSERT INTO my_table (name) VALUES ('Charlie');
+NOTIFY my_table_changes, 'New row added with name: Charlie';
+```
+
+---
+
+### Constraint trigger is not supported
+
+**GitHub**: [Issue #4700](https://github.com/yugabyte/yugabyte-db/issues/4700)
+
+**Description**: If you have constraint triggers in your source database, as they are currently unsupported in YugabyteDB, and they will error out as follows:
+
+```output
+ ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+```
+
+**Workaround**: Currently, there is no workaround; remove the constraint trigger from the exported schema and modify the applications if they are using these triggers before pointing it to YugabyteDB.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.users (
+    id    int,
+    email character varying(255)
+);
+
+CREATE FUNCTION public.check_unique_username() RETURNS trigger
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM users
+        WHERE email = NEW.email AND id <> NEW.id
+    ) THEN
+        RAISE EXCEPTION 'Email % already exists.', NEW.email;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER check_unique_username_trigger
+    AFTER INSERT OR UPDATE ON public.users
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    EXECUTE FUNCTION public.check_unique_username();
 ```
 
 ---
@@ -1247,96 +1154,72 @@ EXECUTE FUNCTION check_and_modify_val();
 
 ---
 
-### Advisory locks is not yet implemented
+### %Type syntax is not supported
 
-**GitHub**: [Issue #3642](https://github.com/yugabyte/yugabyte-db/issues/3642)
+**GitHub**: [Issue #23619](https://github.com/yugabyte/yugabyte-db/issues/23619)
 
-**Description**: YugabyteDB does not support PostgreSQL advisory locks (for example, pg_advisory_lock, pg_try_advisory_lock). Any attempt to use advisory locks will result in a "function-not-implemented" error as per the following example:
-
-```sql
-yugabyte=# SELECT pg_advisory_lock(100), COUNT(*) FROM cars;
-```
+**Description**: If you have any function, procedure, or trigger using the `%TYPE` syntax for referencing a type of a column from a table, then it errors out in YugabyteDB with the following error:
 
 ```output
-ERROR:  advisory locks feature is currently in preview
-HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_locks to true and add it to the list of allowed preview flags i.e. GFlag allowed_preview_flags_csv. If the app doesn't need strict functionality, this error can be silenced by using the GFlag yb_silence_advisory_locks_not_supported_error. See https://github.com/yugabyte/yugabyte-db/issues/3642 for details
+ERROR: invalid type name "employees.salary%TYPE" (SQLSTATE 42601)
 ```
 
-**Workaround**: Implement a custom locking mechanism in the application to coordinate actions without relying on database-level advisory locks.
-
----
-
-### System columns is not yet supported
-
-**GitHub**: [Issue #24843](https://github.com/yugabyte/yugabyte-db/issues/24843)
-
-**Description**: System columns, including `xmin`, `xmax`, `cmin`, `cmax`, and `ctid`, are not available in YugabyteDB. Queries or applications referencing these columns will fail as per the following example:
-
-```sql
-yugabyte=# SELECT xmin, xmax FROM employees where id = 100;
-```
-
-```output
-ERROR:  System column "xmin" is not supported yet
-```
-
-**Workaround**: Use the application layer to manage tracking instead of relying on system columns.
-
----
-
-### XML functions is not yet supported
-
-**GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
-
-**Description**: XML functions and the XML data type are unsupported in YugabyteDB. If you use functions like `xpath`, `xmlconcat`, and `xmlparse`, it will fail with an error as per the following example:
-
-```sql
-yugabyte=# SELECT xml_is_well_formed_content('<project>Alpha</project>') AS is_well_formed_content;
-```
-
-```output
-ERROR:  unsupported XML feature
-DETAIL:  This functionality requires the server to be built with libxml support.
-HINT:  You need to rebuild PostgreSQL using --with-libxml.
-```
-
-**Workaround**: Convert XML data to JSON format for compatibility with YugabyteDB, or handle XML processing at the application layer before inserting data.
-
----
-
-### Large Objects and its functions are currently not supported
-
-
-**GitHub**: Issue [#25318](https://github.com/yugabyte/yugabyte-db/issues/25318)
-
-**Description**: If you have large objects (datatype `lo`) in the source schema and are using large object functions in queries, the migration will fail during import-schema, as large object is not supported in YugabyteDB.
-
-```sql
-SELECT lo_create('<OID>');
-```
-
-```output
-ERROR: Transaction for catalog table write operation 'pg_largeobject_metadata' not found
-```
-
-**Workaround**: No workaround is available.
+**Workaround**: Fix the syntax to include the actual type name instead of referencing the type of a column.
 
 **Example**
 
 An example schema on the source database is as follows:
 
 ```sql
-CREATE TABLE image (id int, raster lo); 
+CREATE TABLE public.employees (
+    employee_id integer NOT NULL,
+    employee_name text,
+    salary numeric
+);
 
-CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
-    FOR EACH ROW EXECUTE FUNCTION lo_manage(raster);
+
+CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    emp_salary employees.salary%TYPE;  -- Declare a variable with the same type as employees.salary
+BEGIN
+    SELECT salary INTO emp_salary
+    FROM employees
+    WHERE employee_id = emp_id;
+
+    RETURN emp_salary;
+END;
+$$;
 ```
+
+Suggested change to CREATE FUNCTION is as follows:
+
+```sql
+CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    Emp_salary NUMERIC;  -- Declare a variable with the same type as employees.salary
+BEGIN
+    SELECT salary INTO emp_salary
+    FROM employees
+    WHERE employee_id = emp_id;
+
+    RETURN emp_salary;
+END;
+$$;
+```
+
+---
+
+## PostgreSQL 12 and later features
 
 ### PostgreSQL 12 and later features
 
 **GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
 
-**Description**: If any of these PostgreSQL features for version 12 and later are present in the source schema, the import schema step on the target YugabyteDB will fail as YugabyteDB is currently PG11 compatible.
+**Description**: If any of the following PostgreSQL 12 and later features are present in the source schema, the import schema step on the target YugabyteDB will fail.
 
 - [JSON Constructor functions](https://www.postgresql.org/about/featurematrix/detail/395/) - `JSON_ARRAY_AGG`, `JSON_ARRAY`, `JSON_OBJECT`, `JSON_OBJECT_AGG`.
 - [JSON query functions](https://www.postgresql.org/docs/17/functions-json.html#FUNCTIONS-SQLJSON-TABLE) - `JSON_QUERY`, `JSON_VALUE`, `JSON_EXISTS`, `JSON_TABLE`.
@@ -1346,9 +1229,9 @@ CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
 - [Non-decimal integer literals](https://www.postgresql.org/about/featurematrix/detail/407/).
 - [Non-deterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC).
 - [COMPRESSION clause](https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-PARMS-COMPRESSION) in TABLE Column for TOASTing method.
-- [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy, and oid related).
+- [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy, and OID related).
 
-Apart from these, the following issues are supported in YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25), which supports PostgreSQL 15.
+In addition, if any of the following PostgreSQL features are present in the source schema, the import schema step on the target YugabyteDB will fail, unless you are importing to YugabyteDB [v2.25](/preview/releases/ybdb-releases/v2.25) (which supports PG15).
 
 - [Multirange datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
 - [UNIQUE NULLS NOT DISTINCT clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.
@@ -1362,173 +1245,558 @@ Apart from these, the following issues are supported in YugabyteDB [v2.25](/prev
 - [SQL Body in Create function](https://www.postgresql.org/docs/15/sql-createfunction.html#:~:text=a%20new%20session.-,sql_body,-The%20body%20of).
 - [Common Table Expressions (With queries) with MATERIALIZED clause](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-CTE-MATERIALIZATION).
 
-### MERGE command
+---
 
-**GitHub**: Issue [#25574](https://github.com/yugabyte/yugabyte-db/issues/25574)
+## Migration process and tooling issues
 
-**Description**: If you are using a Merge query to conditionally insert, update, or delete rows on a table on your source database, then this query will fail once you migrate your apps to YugabyteDB as it is a PostgreSQL 15 feature, and not supported yet.
+### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
 
-```output
-ERROR:  syntax error at or near "MERGE"
+**GitHub**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
+
+**Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
+
+**Workaround**: Rename the objects (tables/functions/procedures) on the source database to a name without special characters.
+
+**Example**
+
+An example schema on the source MySQL database is as follows:
+
+```sql
+CREATE TABLE `xyz abc`(id int);
+INSERT INTO `xyz abc` VALUES(1);
+INSERT INTO `xyz abc` VALUES(2);
+INSERT INTO `xyz abc` VALUES(3);
 ```
 
-**Workaround**: Use the PL/pgSQL function to implement similar functionality on the database.
+The exported schema is as follows:
+
+```sql
+CREATE TABLE "xyz abc" (id bigint);
+```
+
+The preceding example may hang or result in an error.
+
+---
+
+### Importing with case-sensitive schema names
+
+**GitHub**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
+
+**Description**: If you migrate your database using a case-sensitive schema name, the migration will fail with a "no schema has been selected" or "schema already exists" error(s).
+
+**Workaround**: Currently, yb-voyager does not support case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If required, you may alter the schema names to a case-sensitive alternative post-migration using the ALTER SCHEMA command.
+
+**Example**
+
+An example yb-voyager import-schema command with a case-sensitive schema name is as follows:
+
+```sh
+yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema "\"Test\""
+```
+
+The preceding example will result in an error as follows:
+
+```output
+ERROR: no schema has been selected to create in (SQLSTATE 3F000)
+```
+
+Suggested changes to the schema can be done using the following steps:
+
+1. Change the case sensitive schema name during schema migration as follows:
+
+    ```sh
+    yb-voyager import schema --target-db-name voyager
+    --target-db-hostlocalhost
+    --export-dir .
+    --target-db-password password
+    --target-db-user yugabyte
+    --target-db-schema test
+    ```
+
+1. Alter the schema name post migration as follows:
+
+    ```sh
+    ALTER SCHEMA "test" RENAME TO "Test";
+    ```
+
+---
+
+### Foreign table in the source database requires SERVER and USER MAPPING
+
+**GitHub**: [Issue #1627](https://github.com/yugabyte/yb-voyager/issues/1627)
+
+**Description**: If you have foreign tables in the schema, during the export schema phase the exported schema does not include the SERVER and USER MAPPING objects. You must manually create these objects before importing schema, otherwise FOREIGN TABLE creation fails with the following error:
+
+```output
+ERROR: server "remote_server" does not exist (SQLSTATE 42704)
+```
+
+**Workaround**: Create the SERVER and its USER MAPPING manually on the target YugabyteDB database.
 
 **Example**
 
 An example schema on the source database is as follows:
 
 ```sql
-CREATE TABLE customer_account (
-    customer_id INT PRIMARY KEY,
-    balance NUMERIC(10, 2) NOT NULL
+CREATE EXTENSION postgres_fdw;
+
+CREATE SERVER remote_server
+    FOREIGN DATA WRAPPER postgres_fdw
+    OPTIONS (host '127.0.0.1', port '5432', dbname 'postgres');
+
+CREATE FOREIGN TABLE foreign_table (
+    id    INT,
+    name  TEXT,
+    data  JSONB
+)
+SERVER remote_server
+OPTIONS (
+    schema_name 'public',
+    table_name 'remote_table'
 );
 
-INSERT INTO customer_account (customer_id, balance)
-VALUES
-    (1, 100.00),
-    (2, 200.00),
-    (3, 300.00);
-
-CREATE TABLE recent_transactions (
-    transaction_id SERIAL PRIMARY KEY,
-    customer_id INT NOT NULL,
-    transaction_value NUMERIC(10, 2) NOT NULL
-);
-INSERT INTO recent_transactions (customer_id, transaction_value)
-VALUES
-    (1, 50.00),
-    (3, -25.00),
-    (4, 150.00);
-
-MERGE INTO customer_account ca
-USING recent_transactions t
-ON t.customer_id = ca.customer_id
-WHEN MATCHED THEN
-  UPDATE SET balance = balance + transaction_value
-WHEN NOT MATCHED THEN
-  INSERT (customer_id, balance)
-  VALUES (t.customer_id, t.transaction_value);
+CREATE USER MAPPING FOR postgres
+SERVER remote_server
+OPTIONS (user 'postgres', password 'XXX');
 ```
 
-Suggested schema change is to replace the MERGE command with a PL/pgSQL function similar to the following:
+Exported schema only has the following:
 
 ```sql
-CREATE OR REPLACE FUNCTION merge_customer_account()
-RETURNS void AS $$
-BEGIN
-    -- Insert new rows or update existing rows in customer_account
-    INSERT INTO customer_account (customer_id, balance)
-    SELECT customer_id, transaction_value
-    FROM recent_transactions
-    ON CONFLICT (customer_id) 
-    DO UPDATE
-    SET balance = customer_account.balance + EXCLUDED.balance;
-END;
-$$ LANGUAGE plpgsql;
+CREATE FOREIGN TABLE foreign_table (
+    id    INT,
+    name  TEXT,
+    data  JSONB
+)
+SERVER remote_server
+OPTIONS (
+    schema_name 'public',
+    table_name 'remote_table'
+);
 ```
 
-### JSONB subscripting
+Suggested change is to manually create the SERVER and USER MAPPING on the target YugabyteDB.
 
-**GitHub**: Issue [#25575](https://github.com/yugabyte/yugabyte-db/issues/25575)
+---
 
-**Description**: If you are using the JSONB subscripting in app queries and in the schema (constraints or default expression) on your source database, then the app query will fail once you migrate your apps to YugabyteDB, and import-schema will fail if any DDL has this feature, as it's a PostgreSQL 15 feature.
+### Unsupported datatypes by Voyager during live migration
 
-```output
-ERROR: cannot subscript type jsonb because it is not an array
-```
+**GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Workaround**: You can use the Arrow ( `-> / ->>` ) operators to access JSONB fields.
+**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
 
-**Fixed In**: {{<release "2.25">}}.
+For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column: `HSTORE`, `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS`.
+
+**Workaround**: None.
 
 **Example**
 
-An example query / DDL on the source database is as follows:
+An example schema on the source database is as follows:
 
 ```sql
-SELECT ('{"a": {"b": {"c": "some text"}}}'::jsonb)['a']['b']['c'];
-
-CREATE TABLE test_jsonb_chk (
+CREATE TABLE combined_tbl (
     id int,
-    data1 jsonb,
-    CHECK (data1['key']<>'{}')
+    l line,
+    ls lseg,
+    p point,
+    p1 path,
+    p2 polygon
 );
 ```
 
-Suggested change in query to get it working-
+---
+
+### Data ingestion on XML data type is not supported
+
+**GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
+
+**Description**: If you have XML datatype in the source database, it errors out in the import data to target YugabyteDB phase as data ingestion is not allowed on this data type:
+
+```output
+ ERROR: unsupported XML feature (SQLSTATE 0A000)
+```
+
+**Workaround**: To migrate the data, a workaround is to convert the type to text and import the data to target; to read the data on the target YugabyteDB, you need to create some user defined functions similar to XML functions.
+
+**Example**
+
+An example schema on the source database is as follows:
 
 ```sql
-SELECT ((('{"a": {"b": {"c": "some text"}}}'::jsonb)->'a')->'b')->>'c';
-
-CREATE TABLE test_jsonb_chk (
-    id int,
-    data1 jsonb,
-    CHECK (data1->'key'<>'{}')
+CREATE TABLE xml_example (
+      id integer,
+      data xml
 );
 ```
 
-### Events Listen / Notify
+---
 
-**GitHub**: Issue [#1872](https://github.com/yugabyte/yugabyte-db/issues/1872)
+### Policies on users in source require manual user creation
 
-**Description**: If your application queries or PL/pgSQL objects rely on **LISTEN/NOTIFY events** in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, LISTEN/NOTIFY events are a no-op in YugabyteDB, and any attempt to use them will trigger a warning instead of performing the expected event-driven operations:
+**GitHub**: [Issue #1655](https://github.com/yugabyte/yb-voyager/issues/1655)
 
-```sql
-WARNING:  LISTEN not supported yet and will be ignored
+**Description**: If there are policies in the source schema for USERs in the database, the USERs have to be created manually on the target YugabyteDB, as currently the migration of USER/GRANT is not supported. Skipping the manual user creation will return an error during import schema as follows:
+
+```output
+ERROR: role "<role_name>" does not exist (SQLSTATE 42704)
 ```
 
-**Workaround**: Currently, there is no workaround.
+**Workaround**: Create the USERs manually on target before import schema to create policies.
 
-**Example:**
+**Example**
+
+An example schema on the source database is as follows:
 
 ```sql
-LISTEN my_table_changes;
-INSERT INTO my_table (name) VALUES ('Charlie');
-NOTIFY my_table_changes, 'New row added with name: Charlie';
+CREATE TABLE public.z1 (
+    a integer,
+    b text
+);
+CREATE ROLE regress_rls_group;
+CREATE POLICY p2 ON public.z1 TO regress_rls_group USING (((a % 2) = 1));
 ```
 
-### Two-Phase Commit
+---
 
-**GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
+### Creation of certain views in the rule.sql file
 
-**Description**: If your application queries or PL/pgSQL objects rely on [Two-Phase Commit protocol](https://www.postgresql.org/docs/11/two-phase.html) that allows multiple distributed systems to work together in a transactional manner in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in YugabyteDB and will throw the following error when you attempt to execute the commands:
+**GitHub**: [Issue #770](https://github.com/yugabyte/yb-voyager/issues/770)
+
+**Description**: There may be few cases where certain exported views come under the `rule.sql` file and the `view.sql` file might contain a dummy view definition. This `pg_dump` behaviour may be due to how PostgreSQL handles views internally (via rules).
+
+{{< note title ="Note" >}}
+This does not affect the migration as YugabyteDB Voyager takes care of the DDL creation sequence internally.
+{{< /note >}}
+
+**Workaround**: Not required
+
+**Example**
+
+An example schema on the source database is as follows:
 
 ```sql
-ERROR:  PREPARE TRANSACTION not supported yet
+CREATE TABLE foo(n1 int PRIMARY KEY, n2 int);
+CREATE VIEW v1 AS
+  SELECT n1,n2
+  FROM foo
+  GROUP BY n1;
 ```
 
-**Workaround**: Currently, there is no workaround.
-
-### DDL operations within the Transaction
-
-**GitHub**:  Issue [#1404](https://github.com/yugabyte/yugabyte-db/issues/1404)
-
-**Description**: If your application queries or PL/pgSQL objects runs DDL operations inside transactions in the source PostgreSQL database, this functionality will not work after migrating to YugabyteDB. Currently, DDL operations in a transaction in YugabyteDB is not supported and will not work as expected.
-
-**Workaround**: Currently, there is no workaround.
-
-**Example:**
+The exported schema for `view.sql` is as follows:
 
 ```sql
-yugabyte=# \d test
-Did not find any relation named "test".
-yugabyte=# BEGIN;
-BEGIN
-yugabyte=*# CREATE TABLE test(id int, val text);
-CREATE TABLE
-yugabyte=*# \d test
-                Table "public.test"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- id     | integer |           |          | 
- val    | text    |           |          | 
-yugabyte=*# ROLLBACK;
-ROLLBACK
-yugabyte=# \d test
-                Table "public.test"
- Column |  Type   | Collation | Nullable | Default 
---------+---------+-----------+----------+---------
- id     | integer |           |          | 
- val    | text    |           |          | 
+CREATE VIEW public.v1 AS
+  SELECT
+    NULL::integer AS n1,
+    NULL::integer AS n2;
+```
+
+The exported schema for `rule.sql` is as follows:
+
+```sql
+CREATE OR REPLACE VIEW public.v1 AS
+  SELECT foo.n1,foo.n2
+  FROM public.foo
+  GROUP BY foo.n1;
+```
+
+---
+
+## Performance optimizations
+
+### Hash-sharding with indexes on the timestamp/date columns
+
+**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)  
+**Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, indexes in YugabyteDB are hash-sharded by default, which is not optimal for range predicates, and can impact query performance.
+
+Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../develop/postgresql-compatibility/) in YugabyteDB.
+
+**Workaround**: Explicitly configure the index to use range sharding. This ensures efficient data access with range-based queries.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...
+    created_at timestamp
+);
+
+CREATE INDEX idx_orders_created ON orders(created_at);
+```
+
+Suggested change to the schema is to add the ASC/DESC clause as follows:
+
+```sql
+CREATE INDEX idx_orders_created ON orders(created_at DESC);
+```
+
+---
+
+### Hotspots with range-sharded timestamp/date indexes
+
+**Description**: Range-sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, due to the way these values increment. For example, take a column of values `created_at timestamp`. As new values are inserted, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. Then, after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
+
+Note that if the table is colocated, this hotspot concern can safely be ignored, as all the data resides on a single tablet, and the distribution is no longer relevant.
+
+**Workaround**:
+
+To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. The new sharding key will be a modulo of the hash of the timestamp column value, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
+
+To fully implement this solution also requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, include the new sharding key values in the query filters to benefit from distributed execution.
+
+Ensure that the index on the column is configured to be range-sharded.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...
+    created_at timestamp
+);
+CREATE INDEX idx_orders_created ON orders(created_at DESC);
+```
+
+And a related read query might look like the following:
+
+```sql
+SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
+```
+
+Suggested change to the schema is to add the sharding key as the modulo of the hash of the timestamp column value, which gives a key in a range (for example, 0-15). This can change depending on the use case. This key will be used to distribute the data among various tablets and hence help in distributing the data evenly.
+
+In addition, modify range queries to include the modulo of the hash of timestamp column value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...
+    created_at timestamp
+);
+CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) HASH, created_at DESC);
+
+SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- fetch orders for the previous month
+```
+
+---
+
+### Redundant indexes
+
+**Description**: A redundant index is an index that duplicates the functionality of another index or is unnecessary because the database can use an existing index to achieve the same result. This happens when multiple indexes cover the same columns or when a subset of columns in one index is already covered by another.
+
+**Workaround**: Remove the redundant index from the schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    product_id int,
+    ...
+);
+
+CREATE INDEX idx_orders_order_id on orders(order_id);
+CREATE INDEX idx_orders_order_id_product_id on orders(order_id, product_id);
+```
+
+Suggested change to the schema is to remove this redundant index `idx_orders_order_id` as another stronger index is present `idx_orders_order_id_product_id`:
+
+```sql
+CREATE INDEX idx_orders_order_id on orders(order_id);
+```
+
+---
+
+### Index on low-cardinality column
+
+**Description**:
+
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+
+Design the index to evenly distribute data across all nodes and optimize performance based on query patterns. Avoid using low-cardinality columns, such as boolean values, ENUMs, or days of the week, as sharding keys, as they result in data being distributed across only a few tablets.
+
+#### Single column index
+
+Using a single-column index on a low-cardinality column leads to uneven data distribution, regardless of the sharding strategy.
+
+**Workaround**:
+
+It is recommended to drop the index if it is not required.
+
+If the index is used in queries, combine it with a high-cardinality column to create either a multi-column index with the sharding key on the high-cardinality column or a multi-column range-sharding index. This ensures better data distribution across all nodes.
+
+#### Multi-column index
+
+In a multi-column index with a low cardinality column as the sharding key, the data will be unevenly distributed.
+
+**Workaround**:
+
+Make the index range-sharded to distribute data based on the combined values of all columns, or reorder the index columns to place the high-cardinality column first. This enables sharding on the high-cardinality column and ensures even distribution across all nodes.
+
+**Example**:
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TYPE order_statuses AS ENUM ('CONFIRMED', 'SHIPPED', 'OUT FOR DELIVERY', 'DELIVERED', 'CANCELLED');
+
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...,
+    status order_statuses
+);
+
+CREATE INDEX idx_order_status on orders (status); --single column index on column having only 5 values 
+
+CREATE INDEX idx_order_status_order_id on orders (status, order_id); --multi column index on first column with only 5 values 
+```
+
+Since the number of distinct values of the column `status` is 5, there will be a maximum of 5 tablets created, limiting the scalability.
+
+Suggested change to both types of indexes is one of the following.
+
+Make it a multi-column range-index:
+
+```sql
+ --These indexes will distribute the data on the combine value of both and as order_id is high cardinality column, it will make sure that data is distributed evenly
+
+CREATE INDEX idx_order_status on orders(status ASC, order_id); --adding order_id and making it a range-sharded index explictly
+
+CREATE INDEX idx_order_status_order_id on orders (status ASC, order_id); --making it a range-sharded index explictly 
+```
+
+
+Make it multi-column with a sharding key on a high-cardinality column:
+
+```sql
+--these indexes will distribute the data on order_id first and then each shard is clustered on status  
+
+CREATE INDEX idx_orders_status on orders(order_id, status); --making it multi column by adding order_id as first column 
+
+CREATE INDEX idx_order_status_order_id on orders (order_id, status); --reordering the columns to place the order_id first and then keeping status.
+```
+
+---
+
+### Index on column with a high percentage of NULL values
+
+**Description**:
+
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+
+Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
+
+If an index is created on a column with a high percentage of NULL values, all NULL entries will be stored in a single tablet. This concentration can create a hotspot, leading to performance degradation.
+
+**Workaround**: If the NULL values are not being queried, it is recommended to create a Partial index by filtering the NULL values and  optimizing it for the other data.
+
+If NULL values are being queried and the index is a single-column index, it is recommended to add another column and make it a multi-column range-sharded index to distribute the NULL values evenly across various nodes. If the index is multi-column, it is recommended to make it a range-sharded index.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE users (
+    user_id int PRIMARY,
+    first_name text,
+    middle_name text,
+    ...
+);
+
+CREATE INDEX idx_users_middle_name on users (middle_name); -- this index is on middle name which is having 50% NULL values
+
+CREATE INDEX idx_users_middle_name_user_id on users (middle_name, user_id); -- this index is having first column as middle name which is having 50% NULL values
+```
+
+As these indexes have a sharding key on the `middle_name` column, where half of the values as NULL, half of the data resides on a single tablet and becomes a hotspot.
+
+Suggested change to the schema is one of the following.
+
+Partial indexing by removing the NULL values:
+
+```sql
+CREATE INDEX idx_users_middle_name on users (middle_name) where middle_name <> NULL; --filtering the NULL values so those will not be indexed
+
+CREATE INDEX idx_users_middle_name_user_id on users (middle_name, user_id) where middle_name <> NULL;  --filtering the NULL values so those will not be indexed
+```
+
+
+Making it a range-sharded index explicitly so that NULLs are evenly distributed across all nodes by using another column:
+
+```sql
+CREATE INDEX idx_users_middle_name on users (middle_name ASC, user_id); --adding user_id 
+
+CREATE INDEX idx_users_middle_name_user_id on users (middle_name ASC, user_id);
+
+```
+
+---
+
+### Index on column with high percentage of a particular value
+
+**Description**:
+
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+
+Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
+
+If the index is designed for a column with a high percentage of a particular value in the data, all the data for that value will reside on a single tablet, which will become a hotspot, causing performance degradation.
+
+**Workaround**: If the frequently occurring value is not being queried, it is recommended that a Partial index be created by filtering this value, optimizing it for other data.
+
+If the value is being queried and the index is a single-column index, it is recommended to add another column and make it a multi-column range-sharded index to distribute the value evenly across various nodes. If the index is multi-column, it is recommended to make it a range-sharded index.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE user_activity (
+    user_id int PRIMARY,
+    event_type text, --type of the activity 'login', 'logout', 'profile_update
+, 'email_verification', so on.. various events 
+    event_timestamp timestampz,
+    ...
+);
+
+CREATE INDEX idx_user_activity_event_type on user_activity (event_type); --this index is on the event_type which is having 80% data with 'login' type 
+
+CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type, user_id); --this index is on the event_type which is having 80% data with 'login' type 
+
+```
+
+As these indexes have a sharding key on the `event_type` column, where the value ‘login’ is 80% of the data, 80% of the data resides on a single tablet, which becomes a hotspot.
+
+Suggested change to the schema is one of the following.
+
+Partial indexing by removing the ‘login’ value from the index to optimize it for other values.
+
+```sql
+CREATE INDEX idx_user_activity_event_type on user_activity (event_type) where event_type <> 'login' ; --filtering the 'login' values so those will not be indexed
+
+CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type, user_id) where event_type <> 'login' ;  --filtering the 'login' values so those will not be indexed
+```
+
+OR
+
+Explicitly making it a range-sharded index so that the empty string value is evenly distributed across all nodes by adding another column.
+
+```sql
+CREATE INDEX idx_user_activity_event_type on user_activity (event_type ASC, user_id); --adding column user_id
+
+CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type ASC, user_id)
+
 ```

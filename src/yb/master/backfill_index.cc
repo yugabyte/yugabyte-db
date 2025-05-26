@@ -841,9 +841,9 @@ Status BackfillTable::UpdateRowsProcessedForIndexTable(const uint64_t number_row
 Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
   if (!s.ok()) {
     // Move on to ABORTED permission.
-    LOG_WITH_PREFIX(ERROR)
+    LOG_WITH_PREFIX(DFATAL)
         << "Failed backfill. Could not compute safe time for "
-        << yb::ToString(indexed_table_) << " " << s;
+        << AsString(indexed_table_) << " " << s;
     if (!timestamp_chosen_.exchange(true)) {
       RETURN_NOT_OK(Abort());
     }
@@ -958,8 +958,8 @@ Status BackfillTable::DoBackfill() {
 
 Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& failed_indexes) {
   if (!s.ok()) {
-    LOG_WITH_PREFIX(ERROR) << "failed to backfill the index: " << yb::ToString(failed_indexes)
-                           << " due to " << s;
+    LOG_WITH_PREFIX(WARNING) << "failed to backfill the index: " << AsString(failed_indexes)
+                            << " due to " << s;
     RETURN_NOT_OK_PREPEND(
         MarkIndexesAsFailed(failed_indexes, s.message().ToBuffer()),
         "Couldn't mark indexes as failed");
@@ -1168,8 +1168,8 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
   DVLOG(3) << __PRETTY_FUNCTION__;
   auto res = master_->catalog_manager()->FindTableById(index_table_id);
   if (!res && res.status().IsNotFound()) {
-    LOG(ERROR) << "Index " << index_table_id << " was not found."
-               << " This is ok in case somebody issued a delete index. : " << res.ToString();
+    LOG(WARNING) << "Index " << index_table_id << " was not found."
+                 << " This is ok in case somebody issued a delete index. : " << res.ToString();
     return Status::OK();
   }
   scoped_refptr<TableInfo> index_table_info = VERIFY_RESULT_PREPEND(std::move(res),
@@ -1192,8 +1192,8 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
       auto index_table_rlock = index_table_info->LockForRead();
       auto state = index_table_rlock->pb.state();
       if (!index_table_rlock->is_running() || FLAGS_TEST_simulate_cannot_enable_compactions) {
-        LOG(ERROR) << "Index " << index_table_id << " is in state "
-                   << SysTablesEntryPB_State_Name(state) << " : cannot enable compactions on it";
+        LOG(WARNING) << "Index " << index_table_id << " is in state "
+                     << SysTablesEntryPB_State_Name(state) << " : cannot enable compactions on it";
         // Treating it as success so that we can proceed with updating other indexes.
         return Status::OK();
       }
@@ -1421,7 +1421,9 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
   } else {
     safe_time = HybridTime(resp_.safe_time());
     if (safe_time.is_special()) {
-      LOG(ERROR) << "GetSafeTime for " << tablet_->ToString() << " got " << safe_time;
+      status = STATUS_FORMAT(
+          InternalError, "GetSafeTime for $0 got $1", tablet_->ToString(), safe_time);
+      LOG(DFATAL) << status;
     } else {
       VLOG(3) << "GetSafeTime for " << tablet_->ToString() << " got " << safe_time;
     }
@@ -1444,7 +1446,8 @@ BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
       start_key_(start_key),
       requested_index_names_(RetrieveIndexNames(backfill_tablet->master()->catalog_manager_impl(),
                                                 indexes_being_backfilled_)) {
-  deadline_ = MonoTime::Max(); // Never time out.
+  // No deadline for the task, refer to ComputeDeadline() for a single attempt deadline.
+  deadline_ = MonoTime::Max();
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -1466,7 +1469,7 @@ Status BackfillChunk::Launch() {
   return Status::OK();
 }
 
-MonoTime BackfillChunk::ComputeDeadline() {
+MonoTime BackfillChunk::ComputeDeadline() const {
   MonoTime timeout = MonoTime::Now();
   if (GetTableType() == TableType::PGSQL_TABLE_TYPE) {
     timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_ysql_index_backfill_rpc_timeout_ms));
@@ -1474,6 +1477,7 @@ MonoTime BackfillChunk::ComputeDeadline() {
     DCHECK(GetTableType() == TableType::YQL_TABLE_TYPE);
     timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_index_backfill_rpc_timeout_ms));
   }
+  // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   return MonoTime::Earliest(timeout, deadline_);
 }
 

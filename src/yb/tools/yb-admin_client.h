@@ -39,6 +39,8 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xcluster_types.h"
 
+#include "yb/common/transaction.h"
+
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
@@ -209,6 +211,9 @@ class ClusterAdminClient {
 
   // Launch backfill for (deferred) indexes on the specified table.
   Status LaunchBackfillIndexForTable(const client::YBTableName& table_name);
+
+  // Release object locks for specified tranaction
+  Status ReleaseObjectLocksGlobal(const TransactionId& txn, uint32_t subtxn_id);
 
   // List all tablet servers known to master
   Status ListAllTabletServers(bool exclude_dead = false);

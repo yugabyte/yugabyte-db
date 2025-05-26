@@ -240,6 +240,7 @@ gtrgm_consistent(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 				elog(ERROR, "cannot handle ~~* with case-sensitive trigrams");
 #endif
+				/* FALL THRU */
 				yb_switch_fallthrough();
 			case LikeStrategyNumber:
 				qtrg = generate_wildcard_trgm(VARDATA(query),
@@ -249,6 +250,7 @@ gtrgm_consistent(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 				elog(ERROR, "cannot handle ~* with case-sensitive trigrams");
 #endif
+				/* FALL THRU */
 				yb_switch_fallthrough();
 			case RegExpStrategyNumber:
 				qtrg = createTrgmNFA(query, PG_GET_COLLATION(),
@@ -337,6 +339,7 @@ gtrgm_consistent(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 			elog(ERROR, "cannot handle ~~* with case-sensitive trigrams");
 #endif
+			/* FALL THRU */
 			yb_switch_fallthrough();
 		case LikeStrategyNumber:
 		case EqualStrategyNumber:
@@ -379,6 +382,7 @@ gtrgm_consistent(PG_FUNCTION_ARGS)
 #ifndef IGNORECASE
 			elog(ERROR, "cannot handle ~* with case-sensitive trigrams");
 #endif
+			/* FALL THRU */
 			yb_switch_fallthrough();
 		case RegExpStrategyNumber:
 			/* Regexp search is inexact */

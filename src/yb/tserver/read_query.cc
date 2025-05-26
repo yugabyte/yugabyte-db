@@ -132,6 +132,11 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   virtual ~ReadQuery() = default;
 
  private:
+  struct ReadRestartInfo {
+    ReadHybridTime restart_time;
+    std::string key;
+  };
+
   Status DoPerform();
 
   // Picks read based for specified read context.
@@ -141,7 +146,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
 
   tablet::Tablet* tablet() const;
 
-  ReadHybridTime FormRestartReadHybridTime(const HybridTime& restart_time) const;
+  ReadRestartInfo FormReadRestartInfo(const ReadRestartData& read_restart_data) const;
 
   Status PickReadTime(server::Clock* clock);
 
@@ -150,8 +155,8 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
 
   // Read implementation. If restart is required returns restart time, in case of success
   // returns invalid ReadHybridTime. Otherwise returns error status.
-  Result<ReadHybridTime> DoRead();
-  Result<ReadHybridTime> DoReadImpl();
+  Result<ReadRestartInfo> DoRead();
+  Result<ReadRestartInfo> DoReadImpl();
 
   Status Complete();
 
@@ -191,7 +196,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
-  std::shared_ptr<yb::tserver::TabletConsensusInfoPB> tablet_consensus_info_;
+  std::shared_ptr<TabletConsensusInfoPB> tablet_consensus_info_;
 };
 
 bool ReadQuery::transactional() const {
@@ -202,8 +207,12 @@ tablet::Tablet* ReadQuery::tablet() const {
   return down_cast<tablet::Tablet*>(abstract_tablet_.get());
 }
 
-ReadHybridTime ReadQuery::FormRestartReadHybridTime(const HybridTime& restart_time) const {
-  return read_time_.FormRestartReadHybridTime(restart_time, safe_ht_to_read_);
+ReadQuery::ReadRestartInfo ReadQuery::FormReadRestartInfo(
+    const ReadRestartData& read_restart_data) const {
+  return ReadRestartInfo{
+    read_time_.FormRestartReadHybridTime(read_restart_data.restart_time, safe_ht_to_read_),
+    read_restart_data.key
+  };
 }
 
 Status ReadQuery::PickReadTime(server::Clock* clock) {
@@ -508,12 +517,13 @@ Status ReadQuery::Complete() {
     context_.sidecars().Reset();
     VLOG(1) << "Read time: " << read_time_ << ", safe: " << safe_ht_to_read_;
     const auto result = VERIFY_RESULT(DoRead());
-    if (allow_retry_ && read_time_ && read_time_ == result) {
+    if (allow_retry_ && read_time_ && read_time_ == result.restart_time) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5)
-          << __func__ << ", restarting read with the same read time: " << result << THROTTLE_MSG;
+          << __func__ << ", restarting read with the same read time: " << result.restart_time
+          << THROTTLE_MSG;
       allow_retry_ = false;
     }
-    read_time_ = result;
+    read_time_ = result.restart_time;
     // If read was successful, then restart time is invalid. Finishing.
     // (If a read restart was requested, then read_time would be set to the time at which we have
     // to restart.)
@@ -537,6 +547,7 @@ Status ReadQuery::Complete() {
       restart_read_time->set_local_limit_ht(read_time_.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
       tablet()->metrics()->Increment(tablet::TabletCounters::kRestartReadRequests);
+      resp_->set_restart_read_key(result.key);
       break;
     }
 
@@ -590,8 +601,8 @@ Status ReadQuery::Complete() {
   return Status::OK();
 }
 
-Result<ReadHybridTime> ReadQuery::DoRead() {
-  Result<ReadHybridTime> result{ReadHybridTime()};
+Result<ReadQuery::ReadRestartInfo> ReadQuery::DoRead() {
+  Result<ReadRestartInfo> result{ReadRestartInfo{}};
   {
     LongOperationTracker long_operation_tracker("Read", 1s);
     result = DoReadImpl();
@@ -608,7 +619,7 @@ Result<ReadHybridTime> ReadQuery::DoRead() {
   return result;
 }
 
-Result<ReadHybridTime> ReadQuery::DoReadImpl() {
+Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
   docdb::ReadOperationData read_operation_data = {
     .deadline = context_.GetClientDeadline(),
     .read_time = {},
@@ -667,7 +678,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
     }
     if (failed.size() == 0) {
       // TODO(dtxn) implement read restart for Redis.
-      return ReadHybridTime();
+      return ReadRestartInfo();
     } else if (failed.size() == 1) {
       return failed[0];
     } else {
@@ -694,14 +705,14 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
           read_operation_data, ql_read_req, req_->transaction(), &result,
           &context_.sidecars().Start()));
       TRACE("Done HandleQLReadRequest");
-      if (result.restart_read_ht.is_valid()) {
-        return FormRestartReadHybridTime(result.restart_read_ht);
+      if (result.read_restart_data.is_valid()) {
+        return FormReadRestartInfo(result.read_restart_data);
       }
       result.response.set_rows_data_sidecar(
           narrow_cast<int32_t>(context_.sidecars().Complete()));
       resp_->add_ql_batch()->Swap(&result.response);
     }
-    return ReadHybridTime();
+    return ReadRestartInfo();
   }
 
   if (!req_->pgsql_batch().empty()) {
@@ -716,8 +727,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       total_num_rows_read += result.num_rows_read;
 
       TRACE("Done HandlePgsqlReadRequest");
-      if (result.restart_read_ht.is_valid()) {
-        return FormRestartReadHybridTime(result.restart_read_ht);
+      if (result.read_restart_data.is_valid()) {
+        return FormReadRestartInfo(result.read_restart_data);
       }
       result.response.set_rows_data_sidecar(
           narrow_cast<int32_t>(context_.sidecars().Complete()));
@@ -729,14 +740,14 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       tablet()->metrics()->IncrementBy(
           tablet::TabletCounters::kPgsqlConsistentPrefixReadRows, total_num_rows_read);
     }
-    return ReadHybridTime();
+    return ReadRestartInfo();
   }
 
   if (abstract_tablet_->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     return STATUS(NotSupported, "Transaction status table does not support read");
   }
 
-  return ReadHybridTime();
+  return ReadRestartInfo();
 }
 
 } // namespace

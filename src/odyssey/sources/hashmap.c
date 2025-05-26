@@ -198,27 +198,3 @@ od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,
 	return ptr;
 }
 
-/*
- * YB: Prepare statement name based on extended query optimization mode.
- * By introducing dependency on more unique parameters, we increase correctness
- * of extended query protocol across logical clients.
- * 
- * Optimized mode: allow logical clients to share the same cached plan on
- * the server if they attempt to prepare the same query string under the
- * same statement name.
- * 
- * Unoptimized mode: Unique cached plans will be generated for each logical
- * client, even if they attempt to prepare the same query string under the
- * same statement name. (PG-like behavior)
- */
-od_hash_t yb_prepare_stmt_hash(od_hash_t body_hash, od_hash_t keyhash,
-			       od_hash_t client_hash, bool optimized)
-{
-	od_hash_t yb_stmt_hash;
-	if (optimized)
-		yb_stmt_hash = body_hash ^ keyhash;
-	else
-		yb_stmt_hash = client_hash ^ body_hash ^ keyhash;
-
-	return yb_stmt_hash;
-}

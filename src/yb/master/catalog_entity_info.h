@@ -39,23 +39,20 @@
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_types.h"
-#include "yb/master/catalog_entity_base.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master_backup.pb.h"
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
-
 #include "yb/consensus/consensus_types.pb.h"
+#include "yb/dockv/partition.h"
 
+#include "yb/master/catalog_entity_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/tasks_tracker.h"
 
-#include "yb/server/monitored_task.h"
-
+#include "yb/qlexpr/index.h"
 #include "yb/tablet/metadata.pb.h"
 
 #include "yb/util/cow_object.h"
@@ -65,8 +62,7 @@
 
 DECLARE_bool(use_parent_table_id_field);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 class RetryingRpcTask;
 
@@ -83,8 +79,8 @@ struct ExternalTableSnapshotData {
   SysTablesEntryPB table_entry_pb;
   std::string pg_schema_name;
   size_t num_tablets = 0;
-  typedef std::pair<std::string, std::string> PartitionKeys;
-  typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
+  using PartitionKeys = std::pair<std::string, std::string>;
+  using PartitionToIdMap = std::map<PartitionKeys, TabletId>;
   std::vector<std::pair<TabletId, PartitionPB>> old_tablets;
   PartitionToIdMap new_tablets_map;
   // Mapping: Old tablet ID -> New tablet ID.
@@ -94,7 +90,7 @@ struct ExternalTableSnapshotData {
   // the clone_op.
   std::optional<int> new_table_schema_version = std::nullopt;
 };
-typedef std::unordered_map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
+using ExternalTableSnapshotDataMap = std::unordered_map<TableId, ExternalTableSnapshotData>;
 
 struct ExternalNamespaceSnapshotData {
   ExternalNamespaceSnapshotData() : db_type(YQL_DATABASE_UNKNOWN), just_created(false) {}
@@ -104,7 +100,7 @@ struct ExternalNamespaceSnapshotData {
   bool just_created;
 };
 // Map: old_namespace_id (key) -> new_namespace_id + db_type + created-flag.
-typedef std::unordered_map<NamespaceId, ExternalNamespaceSnapshotData> NamespaceMap;
+using NamespaceMap = std::unordered_map<NamespaceId, ExternalNamespaceSnapshotData>;
 
 struct ExternalUDTypeSnapshotData {
   ExternalUDTypeSnapshotData() : just_created(false) {}
@@ -1071,8 +1067,8 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
-  std::optional<ObjectLockInfo::WriteLock> RefreshYsqlOperationLease(const NodeInstancePB& instance)
-      EXCLUDES(mutex_);
+  std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+  RefreshYsqlOperationLease(const NodeInstancePB& instance) EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 
@@ -1585,5 +1581,4 @@ void SetupTabletInfo(
     const PartitionPB& partition,
     SysTabletsEntryPB::State state);
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

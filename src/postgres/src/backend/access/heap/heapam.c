@@ -559,9 +559,9 @@ heapgettup(HeapScanDesc scan,
 			if (scan->rs_base.rs_parallel != NULL)
 			{
 				ParallelBlockTableScanDesc pbscan =
-				(ParallelBlockTableScanDesc) scan->rs_base.rs_parallel;
+					(ParallelBlockTableScanDesc) scan->rs_base.rs_parallel;
 				ParallelBlockTableScanWorker pbscanwork =
-				scan->rs_parallelworkerdata;
+					scan->rs_parallelworkerdata;
 
 				table_block_parallelscan_startblock_init(scan->rs_base.rs_rd,
 														 pbscanwork, pbscan);
@@ -781,9 +781,9 @@ heapgettup(HeapScanDesc scan,
 		else if (scan->rs_base.rs_parallel != NULL)
 		{
 			ParallelBlockTableScanDesc pbscan =
-			(ParallelBlockTableScanDesc) scan->rs_base.rs_parallel;
+				(ParallelBlockTableScanDesc) scan->rs_base.rs_parallel;
 			ParallelBlockTableScanWorker pbscanwork =
-			scan->rs_parallelworkerdata;
+				scan->rs_parallelworkerdata;
 
 			page = table_block_parallelscan_nextpage(scan->rs_base.rs_rd,
 													 pbscanwork, pbscan);
@@ -897,9 +897,9 @@ heapgettup_pagemode(HeapScanDesc scan,
 			if (scan->rs_base.rs_parallel != NULL)
 			{
 				ParallelBlockTableScanDesc pbscan =
-				(ParallelBlockTableScanDesc) scan->rs_base.rs_parallel;
+					(ParallelBlockTableScanDesc) scan->rs_base.rs_parallel;
 				ParallelBlockTableScanWorker pbscanwork =
-				scan->rs_parallelworkerdata;
+					scan->rs_parallelworkerdata;
 
 				table_block_parallelscan_startblock_init(scan->rs_base.rs_rd,
 														 pbscanwork, pbscan);
@@ -1090,9 +1090,9 @@ heapgettup_pagemode(HeapScanDesc scan,
 		else if (scan->rs_base.rs_parallel != NULL)
 		{
 			ParallelBlockTableScanDesc pbscan =
-			(ParallelBlockTableScanDesc) scan->rs_base.rs_parallel;
+				(ParallelBlockTableScanDesc) scan->rs_base.rs_parallel;
 			ParallelBlockTableScanWorker pbscanwork =
-			scan->rs_parallelworkerdata;
+				scan->rs_parallelworkerdata;
 
 			page = table_block_parallelscan_nextpage(scan->rs_base.rs_rd,
 													 pbscanwork, pbscan);
@@ -1290,14 +1290,14 @@ heap_rescan(TableScanDesc sscan, ScanKey key, bool set_params,
 void
 heap_endscan(TableScanDesc sscan)
 {
-	/* Note: no locking manipulations needed */
-
 	if (IsYBRelation(sscan->rs_rd))
 	{
 		return ybc_heap_endscan(sscan);
 	}
 
 	HeapScanDesc scan = (HeapScanDesc) sscan;
+
+	/* Note: no locking manipulations needed */
 
 	/*
 	 * unpin scan buffers
@@ -1328,7 +1328,6 @@ heap_endscan(TableScanDesc sscan)
 HeapTuple
 heap_getnext(TableScanDesc sscan, ScanDirection direction)
 {
-
 	if (IsYBRelation(sscan->rs_rd))
 	{
 		return ybc_heap_getnext(sscan);
@@ -1454,9 +1453,7 @@ heap_set_tidrange(TableScanDesc sscan, ItemPointer mintid,
 	 * of the relation.
 	 */
 	if (ItemPointerCompare(maxtid, &highestItem) < 0)
-	{
 		ItemPointerCopy(maxtid, &highestItem);
-	}
 
 	/*
 	 * If the given minimum TID is above the lowest possible TID in the
@@ -2708,7 +2705,7 @@ static inline bool
 xmax_infomask_changed(uint16 new_infomask, uint16 old_infomask)
 {
 	const uint16 interesting =
-	HEAP_XMAX_IS_MULTI | HEAP_XMAX_LOCK_ONLY | HEAP_LOCK_MASK;
+		HEAP_XMAX_IS_MULTI | HEAP_XMAX_LOCK_ONLY | HEAP_LOCK_MASK;
 
 	if ((new_infomask & interesting) != (old_infomask & interesting))
 		return true;
@@ -2792,6 +2789,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	tp.t_self = *tid;
 
 l1:
+
 	/*
 	 * If we didn't pin the visibility map page and the page has become all
 	 * visible while we were busy locking the buffer, we'll have to unlock and
@@ -8358,16 +8356,8 @@ index_delete_sort(TM_IndexDeleteOp *delstate)
 	const int	gaps[9] = {1968, 861, 336, 112, 48, 21, 7, 3, 1};
 
 	/* Think carefully before changing anything here -- keep swaps cheap */
-#ifdef NEIL
-	/*
-	 * NEIL: Revisit this to have a permanent fix.
-	 * - ItemPointer is part of TM_IndexDelete.
-	 * - yb_item is added to ItemPointer and increase the size of
-	 *   TM_IndexDelete.
-	 */
 	StaticAssertStmt(sizeof(TM_IndexDelete) <= 8,
 					 "element size exceeds 8 bytes");
-#endif
 
 	for (int g = 0; g < lengthof(gaps); g++)
 	{

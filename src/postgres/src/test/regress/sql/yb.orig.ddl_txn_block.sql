@@ -138,3 +138,25 @@ CREATE INDEX test10_idx ON test10(val);
 \d+ test10;
 ROLLBACK;
 \d+ test10;
+
+-- TODO(#3109): CREATE and DROP database are already being tested in various
+-- other regress tests. This is being tested here since
+-- FLAGS_TEST_yb_ddl_transaction_block_enabled is false for all of them.
+-- Remove this once FLAGS_TEST_yb_ddl_transaction_block_enabled is true by
+-- default.
+create database k1;
+drop database k1;
+
+CREATE SEQUENCE regtest_seq;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+DROP SEQUENCE regtest_seq;
+COMMIT;
+
+CREATE TABLE test11(id INT PRIMARY KEY, val TEXT);
+INSERT INTO test11 VALUES (1, 'text');
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+TRUNCATE test11;
+TRUNCATE test11;
+SELECT * FROM test11;
+ROLLBACK;
+SELECT * FROM test11;

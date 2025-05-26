@@ -72,13 +72,16 @@ interface MigrationAssessmentRefactoringProps {
 
 export type UnsupportedObjectData = {
   issue_name?: string;
+  issue_type?: string;
   count?: number;
   objects?: UnsupportedSqlObjectData[];
   docs_link?: string;
-  issue_type?: string;
-  sql_statement?: string;
-  impact?: string;
+  category: string;
+  sql_statement: string;
+  impact: string;
+  minimum_versions_fixed_in: string;
 };
+
 
 
 export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringProps> = ({
@@ -205,6 +208,19 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
     return Array.from(typeSet);
   }, [assessmentCategoryInfo]);
 
+  // Although I could have inlined the description directly in each row,
+  // the number of distinct categories is small, so a map provides a cleaner,
+  // more efficient way to avoid redundant data duplication across rows.
+  const categoryDescriptionMap = useMemo(() => {
+    const map = new Map<string, string>();
+    assessmentCategoryInfo?.forEach(({ category, category_description }) => {
+      if (category) {
+        map.set(formatSnakeCase(category), category_description ?? t('common.notAvailable'));
+      }
+    });
+    return map;
+  }, [assessmentCategoryInfo]);
+
   const unsupportedObjectsData = useMemo<UnsupportedObjectData[]>(() => {
     if (!assessmentCategoryInfo) return [];
 
@@ -309,9 +325,40 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         setCellProps: () => ({
           style: {
             padding: "2px 4px",
-            maxWidth: "100px", wordBreak: "break-word", whiteSpace: "normal", hyphens: "auto"
-          }
+            maxWidth: "100px",
+            wordBreak: "break-word",
+            whiteSpace: "normal",
+            hyphens: "auto",
+          },
         }),
+        customBodyRenderLite: (dataIndex: number) => {
+          const row = unsupportedObjectsData[dataIndex];
+          const description = categoryDescriptionMap.get(row.category) || "No description";
+
+          return (
+            <YBTooltip
+              title={description}
+              placement="right"
+              interactive
+              classes={{
+                tooltip: classes.tooltip
+              }}
+            >
+              <Typography
+                variant="body2"
+                component="span"
+                style={{
+                  cursor: 'help',
+                  borderBottom: `1px dotted ${theme.palette.grey[400]}`,
+                  display: 'inline-flex',
+                  alignItems: 'center'
+                }}
+              >
+                {row.category}
+              </Typography>
+            </YBTooltip>
+          );
+        },
       },
     },
     {
@@ -524,22 +571,22 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                       onChange={(e) => setSelectedImpact(e.target.value)}
                     >
                       <MenuItem value={
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts")}>{
+                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts"))}>{
                         t("clusterDetail.voyager.planAndAssess.impactLevels.allImpacts")
                       }
                       </MenuItem>
                       <MenuItem value={
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.Level1")
+                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level1"))
                       }>
                         {t("clusterDetail.voyager.planAndAssess.impactLevels.Level1")}
                       </MenuItem>
                       <MenuItem value={
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.Level2")
+                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level2"))
                       }>
                         {t("clusterDetail.voyager.planAndAssess.impactLevels.Level2")}
                       </MenuItem>
                       <MenuItem value={
-                        t("clusterDetail.voyager.planAndAssess.impactLevels.Level3")
+                        String(t("clusterDetail.voyager.planAndAssess.impactLevels.Level3"))
                       }>
                         {t("clusterDetail.voyager.planAndAssess.impactLevels.Level3")}
                       </MenuItem>
@@ -559,9 +606,15 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
 
       <MigrationRefactoringIssueSidePanel
         issue={selectedIssue}
+        description={assessmentCategoryInfo?.find(cat =>
+            formatSnakeCase(cat.category || "") === selectedIssue?.category
+          )?.issues?.find(issue =>
+            issue.name === selectedIssue?.issue_name
+          )?.description}
         open={showOccurrences}
         onClose={() => setShowOccurrences(false)}
       />
+
     </>
 
   );

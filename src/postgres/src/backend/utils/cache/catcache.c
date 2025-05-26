@@ -96,6 +96,7 @@ static CatCInProgress *catcache_in_progress_stack = NULL;
 
 /* Cache management header --- pointer is NULL until created */
 static CatCacheHeader *CacheHdr = NULL;
+
 long		YbNumCatalogCacheMisses;
 long		YbNumCatalogCacheIdMisses[SysCacheSize] = {0};
 long		YbNumCatalogCacheTableMisses[YbNumCatalogCacheTables] = {0};
@@ -350,14 +351,17 @@ CatalogCacheComputeHashValue(CatCache *cache, int nkeys,
 		case 4:
 			oneHash = (cc_hashfunc[3]) (v4);
 			hashValue ^= pg_rotate_left32(oneHash, 24);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case 3:
 			oneHash = (cc_hashfunc[2]) (v3);
 			hashValue ^= pg_rotate_left32(oneHash, 16);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case 2:
 			oneHash = (cc_hashfunc[1]) (v2);
 			hashValue ^= pg_rotate_left32(oneHash, 8);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case 1:
 			oneHash = (cc_hashfunc[0]) (v1);
@@ -409,6 +413,7 @@ CatalogCacheComputeTupleHashValue(CatCache *cache, int nkeys, HeapTuple tuple)
 							 cc_tupdesc,
 							 &isNull);
 			Assert(!isNull);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case 3:
 			v3 = fastgetattr(tuple,
@@ -416,6 +421,7 @@ CatalogCacheComputeTupleHashValue(CatCache *cache, int nkeys, HeapTuple tuple)
 							 cc_tupdesc,
 							 &isNull);
 			Assert(!isNull);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case 2:
 			v2 = fastgetattr(tuple,
@@ -423,6 +429,7 @@ CatalogCacheComputeTupleHashValue(CatCache *cache, int nkeys, HeapTuple tuple)
 							 cc_tupdesc,
 							 &isNull);
 			Assert(!isNull);
+			/* FALLTHROUGH */
 			yb_switch_fallthrough();
 		case 1:
 			v1 = fastgetattr(tuple,
@@ -667,7 +674,7 @@ CatCacheInvalidate(CatCache *cache, uint32 hashValue)
 
 	CACHE_elog(DEBUG2, "CatCacheInvalidate: called");
 
-	/* We are modifying some part of the cache, so reset loaded status. */
+	/* YB: We are modifying some part of the cache, so reset loaded status. */
 	cache->yb_cc_is_fully_loaded = false;
 
 	/*
@@ -774,7 +781,7 @@ ResetCatalogCache(CatCache *cache, bool debug_discard)
 	dlist_mutable_iter iter;
 	int			i;
 
-	/* Reset loaded status */
+	/* YB: Reset loaded status */
 	cache->yb_cc_is_fully_loaded = false;
 
 	/* Remove each list in this cache, or at least mark it dead */
@@ -1311,7 +1318,8 @@ SetCatCacheList(CatCache *cache,
 							continue;	/* ignore dead and negative entries */
 
 						if (ct->hash_value != hashValue)
-							continue;	/* quickly skip entry if wrong hash val */
+							continue;	/* quickly skip entry if wrong hash
+										 * val */
 
 						if (!ItemPointerEquals(&(ct->tuple.t_self), &(ntp->t_self)))
 							continue;	/* not same tuple */
@@ -1324,7 +1332,7 @@ SetCatCacheList(CatCache *cache,
 							continue;
 
 						found = true;
-						break;		/* A-OK */
+						break;	/* A-OK */
 					}
 				}
 
@@ -1350,7 +1358,7 @@ SetCatCacheList(CatCache *cache,
 				ctlist = lappend(ctlist, ct);
 				ct->refcount++;
 			}
-		} while (false);	/* YB: assume no failure (see above comment) */
+		} while (false);		/* YB: assume no failure (see above comment) */
 
 		table_close(relation, AccessShareLock);
 
@@ -1441,7 +1449,7 @@ InitCatCachePhase2(CatCache *cache, bool touch_index)
 		CatalogCacheInitializeCache(cache);
 
 	/*
-	 * TODO(mihnea/robert) This could be enabled if we handle
+	 * YB: TODO(mihnea/robert) This could be enabled if we handle
 	 * "primary key as index" so that PG can open the primary indexes by id.
 	 */
 	if (IsYugaByteEnabled())
@@ -2438,7 +2446,8 @@ SearchCatCacheList(CatCache *cache,
 							continue;	/* ignore dead and negative entries */
 
 						if (ct->hash_value != hashValue)
-							continue;	/* quickly skip entry if wrong hash val */
+							continue;	/* quickly skip entry if wrong hash
+										 * val */
 
 						if (!ItemPointerEquals(&(ct->tuple.t_self), &(ntp->t_self)))
 							continue;	/* not same tuple */
@@ -2451,7 +2460,7 @@ SearchCatCacheList(CatCache *cache,
 							continue;
 
 						found = true;
-						break;		/* A-OK */
+						break;	/* A-OK */
 					}
 				}
 
@@ -2619,13 +2628,14 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		 * 0.1% of the times through this code path, even when there's no
 		 * toasted fields.
 		 */
-#if 0	/* YB: return NULL is not handled yet (HeapTupleHasExternal(ntp) is
-		   expected to be false) */
+#if 0							/* YB: return NULL is not handled yet
+								 * (HeapTupleHasExternal(ntp) is expected to
+								 * be false) */
 #ifdef USE_ASSERT_CHECKING
 		if (pg_prng_uint32(&pg_global_prng_state) <= (PG_UINT32_MAX / 1000))
 			return NULL;
 #endif
-#endif	/* YB */
+#endif							/* YB */
 
 		/*
 		 * If there are any out-of-line toasted fields in the tuple, expand
@@ -2684,13 +2694,13 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 
 		ct = (CatCTup *) palloc(sizeof(CatCTup) +
 								MAXIMUM_ALIGNOF + dtp->t_len);
-#ifdef CATCACHE_STATS
+#ifdef CATCACHE_STATS			/* YB added */
 		cache->yb_cc_size_bytes += sizeof(CatCTup) + MAXIMUM_ALIGNOF + dtp->t_len;
 #endif
 		ct->tuple.t_len = dtp->t_len;
 		ct->tuple.t_self = dtp->t_self;
 		HEAPTUPLE_COPY_YBCTID(dtp, &ct->tuple);
-#ifdef CATCACHE_STATS
+#ifdef CATCACHE_STATS			/* YB added */
 		/* HEAPTUPLE_COPY_YBCTID makes allocation for ybctid. */
 		bool		allocated_ybctid = (IsYugaByteEnabled() &&
 										HEAPTUPLE_YBCTID(&ct->tuple));
@@ -2729,7 +2739,7 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 		/* Set up keys for a negative cache entry */
 		oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 		ct = (CatCTup *) palloc(sizeof(CatCTup));
-#ifdef CATCACHE_STATS
+#ifdef CATCACHE_STATS			/* YB added */
 		cache->yb_cc_size_bytes += sizeof(CatCTup);
 #endif
 

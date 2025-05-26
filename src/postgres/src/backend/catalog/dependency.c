@@ -96,6 +96,7 @@
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 
+
 /*
  * Deletion processing requires additional state for each ObjectAddress that
  * it's planning to delete.  For simplicity and code-sharing we make the
@@ -652,6 +653,7 @@ findDependentObjects(const ObjectAddress *object,
 					break;
 
 				/* Otherwise, treat this like an internal dependency */
+				/* FALL THRU */
 				yb_switch_fallthrough();
 
 			case DEPENDENCY_INTERNAL:
@@ -1315,7 +1317,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	HeapTuple	tup;
 	ObjectAddress implicit_tablegroup;
 	bool		is_colocated_tables_with_tablespace_enabled =
-	*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 	/* DROP hook of the objects being removed */
 	InvokeObjectDropHookArg(object->classId, object->objectId,
@@ -1396,10 +1398,9 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 	systable_endscan(scan);
 
 	/*
-	 * Check if implicit tablegroup has any more tables in it.
+	 * YB: Check if implicit tablegroup has any more tables in it.
 	 * If not delete it.
 	 */
-
 	if (is_colocated_tables_with_tablespace_enabled &&
 		OidIsValid(implicit_tablegroup.objectId))
 	{
@@ -1471,7 +1472,7 @@ doDeletion(const ObjectAddress *object, int flags)
 					if (object->objectSubId != 0)
 					{
 						Relation	yb_rel =
-						RelationIdGetRelation(object->objectId);
+							RelationIdGetRelation(object->objectId);
 
 						if (IsYBRelation(yb_rel) &&
 							!(flags & YB_SKIP_YB_DROP_COLUMN))

@@ -31,19 +31,13 @@ import java.io.InputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.math.BigInteger;
-import java.security.Key;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.PrivateKey;
+import java.security.*;
+import java.security.MessageDigest;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
-import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -78,15 +72,16 @@ import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
+import org.bouncycastle.openssl.PEMKeyPair;
+import org.bouncycastle.openssl.PEMParser;
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
-import org.bouncycastle.util.io.pem.PemObject;
-import org.bouncycastle.util.io.pem.PemReader;
 import org.flywaydb.play.FileUtils;
 import play.libs.Json;
 
@@ -707,28 +702,11 @@ public class CertificateHelper {
     return (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(certificateData));
   }
 
-  public static PrivateKey convertStringToPrivateKey(String strKey) throws Exception {
-    strKey = strKey.replace(System.lineSeparator(), "");
-    strKey = strKey.replaceAll("^\"+|\"+$", "");
-    strKey = strKey.replace("-----BEGIN PRIVATE KEY-----", "");
-    strKey = strKey.replace("-----END PRIVATE KEY-----", "");
-    strKey = strKey.replace("-----BEGIN RSA PRIVATE KEY-----", "");
-    strKey = strKey.replace("-----END RSA PRIVATE KEY-----", "");
-
-    byte[] decoded = Base64.getMimeDecoder().decode(strKey);
-
-    PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
-    KeyFactory kf = KeyFactory.getInstance("RSA");
-    return kf.generatePrivate(spec);
-  }
-
   public static PrivateKey getPrivateKey(String keyContent) {
-    try (PemReader pemReader = new PemReader(new StringReader(keyContent))) {
-      PemObject pemObject = pemReader.readPemObject();
-      byte[] bytes = pemObject.getContent();
-      PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
-      KeyFactory kf = KeyFactory.getInstance("RSA");
-      return kf.generatePrivate(spec);
+    try {
+      PEMParser parser = new PEMParser(new StringReader(keyContent));
+      PEMKeyPair pemKeyPair = (PEMKeyPair) parser.readObject();
+      return new JcaPEMKeyConverter().getPrivateKey(pemKeyPair.getPrivateKeyInfo());
     } catch (Exception e) {
       log.error(e.getMessage());
       throw new RuntimeException("Unable to get Private Key");
@@ -819,7 +797,7 @@ public class CertificateHelper {
 
   public static KeyPair getKeyPairObject()
       throws NoSuchAlgorithmException, NoSuchProviderException {
-    KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA", "BC");
+    KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
     keypairGen.initialize(2048);
     return keypairGen.generateKeyPair();
   }
@@ -869,7 +847,7 @@ public class CertificateHelper {
           new JcaContentSignerBuilder(CertificateHelper.SIGNATURE_ALGO).build(keyPair.getPrivate());
       X509CertificateHolder holder = certGen.build(signer);
       JcaX509CertificateConverter converter = new JcaX509CertificateConverter();
-      converter.setProvider(new BouncyCastleProvider());
+      converter.setProvider(Security.getProvider(BouncyCastleFipsProvider.PROVIDER_NAME));
       return converter.getCertificate(holder);
     } catch (Exception e) {
       throw new RuntimeException(e.getMessage(), e);
@@ -939,10 +917,10 @@ public class CertificateHelper {
       X509CertificateHolder newCertHolder = newCertBuilder.build(csrContentSigner);
       X509Certificate newCert =
           new JcaX509CertificateConverter()
-              .setProvider(new BouncyCastleProvider())
+              .setProvider(Security.getProvider(BouncyCastleFipsProvider.PROVIDER_NAME))
               .getCertificate(newCertHolder);
 
-      newCert.verify(caCert.getPublicKey(), BouncyCastleProvider.PROVIDER_NAME);
+      newCert.verify(caCert.getPublicKey(), BouncyCastleFipsProvider.PROVIDER_NAME);
 
       return newCert;
     } catch (Exception e) {
@@ -1134,6 +1112,38 @@ public class CertificateHelper {
         x509CACerts.addAll(0, x509ServerCerts);
       }
       verifyCertSignatureAndOrder(x509CACerts, keyContent);
+    }
+  }
+
+  /*
+   * Compute the fingerprint of the certificate.
+   * Incase of multiple certificates, return the fingerprint for first one.
+   */
+  public static String computeFingerprint(String certPath) {
+    try {
+      if (certPath == null || certPath.isEmpty()) {
+        throw new IllegalArgumentException("Certificate path is empty or null");
+      }
+      Collection<X509Certificate> certs = getCertsFromFile(certPath);
+      if (certs.isEmpty()) {
+        throw new IllegalArgumentException("No certificates found in the file");
+      }
+      X509Certificate cert = certs.iterator().next();
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] fingerprint = digest.digest(cert.getEncoded());
+      StringBuilder sb = new StringBuilder();
+      for (byte b : fingerprint) {
+        sb.append(String.format("%02X:", b));
+      }
+      // Sample fingerprint - E1:9A:EC:C6:AE:B9:2F:A5:D9:37:3E:7E:EF:36:99:10:07:7C:30:
+      return sb.substring(0, sb.length() - 1);
+
+    } catch (Exception e) {
+      log.error(
+          "Error computing fingerprint for certificate present at: {}. Error: {}",
+          certPath,
+          e.getMessage());
+      throw new RuntimeException("Failed to compute fingerprint", e);
     }
   }
 }

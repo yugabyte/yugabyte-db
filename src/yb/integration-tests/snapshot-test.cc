@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
@@ -21,6 +22,8 @@
 #include "yb/consensus/consensus.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/cluster_verifier.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -115,27 +118,21 @@ using master::TableIdentifierPB;
 
 const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "snapshot_test_table");
 
-class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
- public:
+template <typename MiniClusterType>
+class SnapshotTestBase : public YBMiniClusterTestBase<MiniClusterType> {
+ protected:
+  virtual void SetupCluster() = 0;
+
   void SetUp() override {
-    YBMiniClusterTestBase::SetUp();
+    YBMiniClusterTestBase<MiniClusterType>::SetUp();
 
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 5;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+    SetupCluster();
 
-    MiniClusterOptions opts;
-    opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(opts));
-    ASSERT_OK(cluster_->Start());
-
-    messenger_ = ASSERT_RESULT(
-        MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+    messenger_ = ASSERT_RESULT(MessengerBuilder("test-msgr").set_num_reactors(1).Build());
     rpc::ProxyCache proxy_cache(messenger_.get());
-    proxy_ddl_.reset(new master::MasterDdlProxy(
-        &proxy_cache, cluster_->mini_master()->bound_rpc_addr()));
-    proxy_backup_.reset(new MasterBackupProxy(
-        &proxy_cache, cluster_->mini_master()->bound_rpc_addr()));
+    const auto rpc_addr = ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr());
+    proxy_ddl_.reset(new master::MasterDdlProxy(&proxy_cache, rpc_addr));
+    proxy_backup_.reset(new MasterBackupProxy(&proxy_cache, rpc_addr));
 
     // Connect to the cluster.
     client_ = ASSERT_RESULT(cluster_->CreateClient());
@@ -153,12 +150,45 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
     messenger_->Shutdown();
 
-    if (cluster_) {
-      cluster_->Shutdown();
-      cluster_.reset();
-    }
+    YBMiniClusterTestBase<MiniClusterType>::DoTearDown();
+  }
 
-    YBMiniClusterTestBase::DoTearDown();
+  TestWorkload CreateDefaultWorkload() {
+    auto cluster = cluster_.get();
+    TestWorkload workload(cluster);
+    workload.set_table_name(kTableName);
+    workload.set_sequential_write(true);
+    workload.set_insert_failures_allowed(false);
+    workload.set_num_write_threads(1);
+    workload.set_write_batch_size(10);
+    return workload;
+  }
+
+  TestWorkload SetupWorkload() {
+    auto workload = CreateDefaultWorkload();
+    workload.Setup();
+    return workload;
+  }
+
+  using YBMiniClusterTestBase<MiniClusterType>::cluster_;
+  std::unique_ptr<Messenger> messenger_;
+  unique_ptr<MasterBackupProxy> proxy_backup_;
+  unique_ptr<master::MasterDdlProxy> proxy_ddl_;
+  RpcController controller_;
+  std::unique_ptr<client::YBClient> client_;
+};
+
+class SnapshotTest : public SnapshotTestBase<MiniCluster> {
+ public:
+  void SetupCluster() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 3;
+    cluster_.reset(new MiniCluster(opts));
+    ASSERT_OK(cluster_->Start());
   }
 
   RpcController* ResetAndGetController() {
@@ -401,22 +431,6 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
-  TestWorkload CreateDefaultWorkload() {
-    TestWorkload workload(cluster_.get());
-    workload.set_table_name(kTableName);
-    workload.set_sequential_write(true);
-    workload.set_insert_failures_allowed(false);
-    workload.set_num_write_threads(1);
-    workload.set_write_batch_size(10);
-    return workload;
-  }
-
-  TestWorkload SetupWorkload() {
-    auto workload = CreateDefaultWorkload();
-    workload.Setup();
-    return workload;
-  }
-
   Status TableHidden(const TableId& table_id) {
     LOG(INFO) << "Verifying table is hidden";
     // Check that the table is hidden on the master.
@@ -488,13 +502,27 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     }
     return Status::OK();
   }
+};
 
+class SnapshotExternalMiniClusterTest : public SnapshotTestBase<ExternalMiniCluster> {
  protected:
-  std::unique_ptr<Messenger> messenger_;
-  unique_ptr<MasterBackupProxy> proxy_backup_;
-  unique_ptr<master::MasterDdlProxy> proxy_ddl_;
-  RpcController controller_;
-  std::unique_ptr<client::YBClient> client_;
+  void SetupCluster() override {
+    ExternalMiniClusterOptions opts;
+    opts.num_tablet_servers = 3;
+
+    for (const auto& tserver_flag :
+         {
+             "--log_min_seconds_to_retain=5",
+             "--xcluster_checkpoint_max_staleness_secs=0",
+             "--TEST_tablet_verify_flushed_frontier_after_modifying=true",
+             "--enable_ysql=false",
+         }) {
+      opts.extra_tserver_flags.push_back(tserver_flag);
+    }
+
+    cluster_.reset(new ExternalMiniCluster(opts));
+    ASSERT_OK(cluster_->Start());
+  }
 };
 
 TEST_F(SnapshotTest, CreateSnapshot) {
@@ -1021,6 +1049,101 @@ TEST_F(RestoreAndDeleteValidationTest, RestoreAfterDelete) {
   ASSERT_TRUE(!result.ok() && result.status().IsIllegalState())
       << "Expected illegal state from restoring deleted snapshot, instead got: "
       << (!result.ok() ? result.status() : Status::OK());
+}
+
+namespace {
+
+template <typename ExternalDaemonType>
+Status RestartIfNotAlive(ExternalDaemonType* daemon, const std::string& log_prefix) {
+  if (daemon->IsProcessAlive()) {
+    return Status::OK();
+  }
+  LOG(INFO) << log_prefix << "restarting " << daemon->id() << "...";
+  return daemon->Restart();
+}
+
+} // namespace
+
+TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClusterTest) {
+  constexpr auto kNumIters = 30;
+  constexpr auto kTimeout = 10s * kTimeMultiplier;
+
+  client::SnapshotTestUtil snapshot_util;
+  auto client = ASSERT_RESULT(snapshot_util.InitWithCluster(cluster_.get()));
+
+  TestWorkload workload = SetupWorkload();
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(kTableName, client.get()));
+
+  const auto leader_master_rpc_addr = ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr());
+  master::MasterClusterProxy master_proxy(&client->proxy_cache(), leader_master_rpc_addr);
+
+  auto* const ts1 = cluster_->tablet_server(0);
+
+  auto tablet_ids = ASSERT_RESULT(cluster_->GetTabletIds(ts1));
+
+  for (int iter = 0; iter < kNumIters; ++iter) {
+    const auto log_prefix = Format("Iteration $0: ", iter);
+    ASSERT_OK(ts1->FlushTablets({}));
+    const auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(table));
+    auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
+    for (const auto& tablet_id : tablet_ids) {
+      ASSERT_OK(WaitForServersToAgree(
+          kTimeout, ts_map, tablet_id, 0,
+          /* expected_index = */ nullptr, itest::MustBeCommitted::kTrue));
+    }
+
+    const auto rows_inserted = workload.rows_inserted();
+    LOG(INFO) << log_prefix << "writing more data";
+    workload.Start();
+    workload.WaitInserted(rows_inserted + 100);
+    workload.Stop();
+
+    LOG(INFO) << log_prefix << "paused workload, starting snapshot deletion";
+    constexpr auto kCrashProbabilityFlagName =
+        "TEST_simulated_crash_after_modify_flushed_frontier_probability";
+    ASSERT_OK(cluster_->SetFlag(ts1, kCrashProbabilityFlagName, "0.3"));
+    ASSERT_OK(snapshot_util.DeleteSnapshot(snapshot_id));
+    LOG(INFO) << log_prefix << "snapshot deletion started";
+
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto state = VERIFY_RESULT(snapshot_util.SnapshotState(snapshot_id));
+          if (state == SysSnapshotEntryPB::DELETED) {
+            return true;
+          }
+          YB_LOG_EVERY_N_SECS(INFO, 1)
+              << log_prefix << "snapshot state: " << SysSnapshotEntryPB_State_Name(state);
+          RETURN_NOT_OK(RestartIfNotAlive(ts1, log_prefix));
+          return false;
+        },
+        kTimeout, "Wait for snapshot cleanup"));
+    auto status = cluster_->SetFlag(ts1, kCrashProbabilityFlagName, "0");
+    // Network error is acceptable since process may crash due to injected fault.
+    ASSERT_TRUE(status.ok() || status.IsNetworkError())
+        << "Unexpected error when resetting " << kCrashProbabilityFlagName << " flag: " << status;
+
+    // Give some time for process to exit in case of crash.
+    SleepFor(500ms * kTimeMultiplier);
+    ASSERT_OK(RestartIfNotAlive(ts1, log_prefix));
+
+    // Wait for local bootstrap to complete and pending operations to be applied.
+    ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
+    auto* ts1_details = ts_map[ts1->uuid()].get();
+    for (const auto& tablet_id : tablet_ids) {
+      ASSERT_OK(WaitUntilTabletRunning(ts1_details, tablet_id, kTimeout));
+      ASSERT_OK(WaitForServerToBeQuiet(
+          kTimeout, {ts1_details}, tablet_id,
+          /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue));
+    }
+
+    ClusterVerifier cluster_verifier(cluster_.get());
+    cluster_verifier.SetVerificationTimeout(kTimeout);
+    ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  }
+
+  workload.StopAndJoin();
 }
 
 } // namespace yb

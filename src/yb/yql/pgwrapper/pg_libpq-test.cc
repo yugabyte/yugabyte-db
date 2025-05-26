@@ -165,6 +165,8 @@ class PgLibPqTest : public LibPqTestBase {
 
   void TestSecondaryIndexInsertSelect();
 
+  Status TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces);
+
   void KillPostmasterProcessOnTservers();
 
   Result<string> GetPostmasterPidViaShell(pid_t backend_pid);
@@ -945,6 +947,107 @@ class PgLibPqWithSharedMemTest : public PgLibPqTest {
 
 TEST_F_EX(PgLibPqTest, SecondaryIndexInsertSelectWithSharedMem, PgLibPqWithSharedMemTest) {
   TestSecondaryIndexInsertSelect();
+}
+
+Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces) {
+  auto conn = VERIFY_RESULT(Connect());
+  constexpr auto kPgCatalogOid = 11;
+
+  // Secondary index scan on system table.
+  auto query = Format(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM pg_class WHERE relname = 'pg_class' AND relnamespace = $0",
+      kPgCatalogOid);
+  // First run is to warm up the cache.
+  RETURN_NOT_OK(conn.FetchRow<std::string>(query));
+  // Second run is the real test.
+  auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  rapidjson::Document explain_json;
+  explain_json.Parse(explain_str.c_str());
+  auto scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Catalog Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of catalog read requests");
+
+  // Secondary index scan on copartitioned table.
+  RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE vector_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 2 TABLETS"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE INDEX ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO vector_test VALUES (1, '[1, 2, 3]')"));
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM vector_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT 1"));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Limit",
+            IllegalState,
+            "Unexpected scan type");
+  scan_type = std::string(explain_json[0]["Plan"]["Plans"][0]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index.
+  RETURN_NOT_OK(conn.Execute("CREATE DATABASE colodb WITH colocation = true"));
+  conn = VERIFY_RESULT(ConnectToDB("colodb"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE colo_test (id int PRIMARY KEY, value TEXT)"));
+  RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO colo_test VALUES (1, 'hi')"));
+  query = "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM colo_test WHERE value = 'hi'";
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index on different tablespaces.
+  if (is_colocated_with_tablespaces) {
+    RETURN_NOT_OK(conn.Execute("DROP INDEX colo_test_value_idx"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLESPACE spc LOCATION '/dne'"));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value) TABLESPACE spc"));
+    explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+    explain_json.Parse(explain_str.c_str());
+    scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+    SCHECK_EQ(scan_type, "Index Scan",
+              IllegalState,
+              "Unexpected scan type");
+    SCHECK_GT(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+              IllegalState,
+              "Unexpected number of storage read requests");
+  }
+
+  return Status::OK();
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    options->extra_master_flags.push_back(flag);
+    options->extra_tserver_flags.push_back(flag);
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
+          PgLibPqColocatedTablesWithTablespacesTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
 void AssertRows(PGConn *conn, int expected_num_rows) {
@@ -1796,7 +1899,7 @@ Result<YsqlMetric> PgLibPqTest::GetCatCacheTableMissMetric(const std::string& ta
   auto found_it =
       std::find_if(json_metrics.begin(), json_metrics.end(), [table_name](YsqlMetric& metric) {
         return (
-            metric.name.find("CatalogCacheTableMisses") != std::string::npos &&
+            metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
             metric.labels["table_name"] == table_name);
       });
   if (found_it == json_metrics.end()) {
@@ -2931,7 +3034,11 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
   int num_successes = 0;
   std::array<PGConn, 2> conns = {
     ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
-    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
+    // For this test, we need to have the DDL connection and DML connection connected to
+    // two nodes in order to have heartbeat delay to cause stale cache which shows catalog
+    // version mismatch symptom.
+    ASSERT_RESULT((pg_ts = cluster_->tablet_server(1),
+                   ConnectToDB(kNamespaceName, true /* simple_query_protocol */))),
   };
 
   ASSERT_OK(conns[0].ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -2996,6 +3103,8 @@ class PgLibPqTestEnumType: public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--TEST_do_not_add_enum_sort_order=true");
+    // The EnumType test kills all postmasters on tservers so it must wait until they are spawned.
+    options->wait_for_tservers_to_accept_ysql_connections = true;
   }
 };
 
@@ -4100,20 +4209,13 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   EasyCurl c;
   faststring buf;
 
-  auto prometheus_metrics_url =
-      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=true", hostport);
-  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
-  auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
-
-  auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
-  ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
-  auto json_metrics = ParseJsonMetrics(buf.ToString());
+  auto prometheus_metrics = GetPrometheusMetrics();
+  auto json_metrics = GetJsonMetrics();
 
   for (const auto& metrics : {json_metrics, prometheus_metrics}) {
     int64_t expected_total_cache_misses = 0;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
           metric.labels.find("table_name") == metric.labels.end()) {
         expected_total_cache_misses = metric.value;
         break;
@@ -4126,7 +4228,7 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     int64_t total_index_cache_misses = 0;
     std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
           metric.labels.find("table_name") != metric.labels.end()) {
         auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
         ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
@@ -4144,7 +4246,7 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     // table-level cache miss metric.
     int64_t total_table_cache_misses = 0;
     for (const auto& metric : metrics) {
-      if (metric.name.find("CatalogCacheTableMisses") != std::string::npos) {
+      if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos) {
         auto table_name = metric.labels.at("table_name");
         ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
             << "Expected sum of index cache misses for table " << table_name

@@ -148,6 +148,10 @@ message PgVectorIdxOptionsPB {
 
   reserved 5, 6;
   optional PgHnswIndexOptionsPB hnsw = 7;
+
+  // Permanent index id. It should be unique for tablet, but when tablet is cloned,
+  // index id in new tablet remains the same.
+  optional string id = 8;
 }
 
 message PgHnswReadOptionsPB {
@@ -157,6 +161,7 @@ message PgHnswReadOptionsPB {
 message PgVectorReadOptionsPB {
   required QLValuePB vector = 1;
   required int32 prefetch_size = 2;
+  optional uint64 num_top_vectors_to_remove = 4;
   oneof index_params {
     PgHnswReadOptionsPB hnsw_options = 3;
   }
@@ -209,7 +214,7 @@ message SchemaPB {
   optional TablePropertiesPB table_properties = 2;
   optional ColocatedTableIdentifierPB colocated_table_id = 3;
   // Added in 2.13, any upgraded cluster may not have this value so use it appropriately.
-  optional string pgschema_name = 4;
+  optional string DEPRECATED_pgschema_name = 4; // GHI: #12770 (DEPRECATE_EOL 2.27)
 }
 
 // This message contains the metadata of a secondary index of a table.

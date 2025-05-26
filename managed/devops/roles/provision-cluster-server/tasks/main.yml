@@ -491,50 +491,53 @@
     name: "node_exporter.service"
     state: started
 
-# THP settings are added here for prebuilt AMI and for backports
-- name: Provision | Add yb-enable-transparent-huge-pages.service unit
-  copy:
-    dest: /etc/systemd/system/yb-enable-transparent-huge-pages.service
-    owner: root
-    group: root
-    mode: '0644'
-    content: |
-      [Unit]
-      Description=YugabyteDB Enable Transparent Hugepages (THP)
-      DefaultDependencies=no
-      After=local-fs.target
-      Before=sysinit.target
+- block:
+  # THP settings are added here for prebuilt AMI and for backports
+  - name: Provision | Add yb-enable-transparent-huge-pages.service unit
+    copy:
+      dest: /etc/systemd/system/yb-enable-transparent-huge-pages.service
+      owner: root
+      group: root
+      mode: '0644'
+      content: |
+        [Unit]
+        Description=YugabyteDB Enable Transparent Hugepages (THP)
+        DefaultDependencies=no
+        After=local-fs.target
+        Before=sysinit.target
 
-      [Service]
-      Type=oneshot
-      RemainAfterExit=yes
-      ExecStart=/bin/sh -c '\
-        echo always > /sys/kernel/mm/transparent_hugepage/enabled && \
-        echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag && \
-        echo 0 > /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none'
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/bin/sh -c '\
+          echo always > /sys/kernel/mm/transparent_hugepage/enabled && \
+          echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag && \
+          echo 0 > /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none'
 
-      [Install]
-      WantedBy=basic.target
-  tags: yb-prebuilt-ami
+        [Install]
+        WantedBy=basic.target
+    tags: yb-prebuilt-ami
 
-- name: Provision | Reload systemd to pick up THP unit
-  systemd:
-    daemon_reload: true
-  tags: yb-prebuilt-ami
+  - name: Provision | Reload systemd to pick up THP unit
+    systemd:
+      daemon_reload: true
+    tags: yb-prebuilt-ami
 
-- name: Provision | Enable and start yb-enable-transparent-huge-pages
-  systemd:
-    name: yb-enable-transparent-huge-pages
-    enabled: true
-    state: started
-  tags: yb-prebuilt-ami
+  - name: Provision | Enable and start yb-enable-transparent-huge-pages
+    systemd:
+      name: yb-enable-transparent-huge-pages
+      enabled: true
+      state: started
+    tags: yb-prebuilt-ami
 
-- name: Provision | Validate transparent hugepage settings
-  shell: |
-    grep '\[always\]' /sys/kernel/mm/transparent_hugepage/enabled &&
-    grep '\[defer+madvise\]' /sys/kernel/mm/transparent_hugepage/defrag &&
-    [[ "$(cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none)" == "0" ]]
-  register: thp_validate
-  changed_when: false
-  failed_when: thp_validate.rc != 0
-  tags: yb-prebuilt-ami
+  - name: Provision | Validate transparent hugepage settings
+    shell: |
+      grep '\[always\]' /sys/kernel/mm/transparent_hugepage/enabled &&
+      grep '\[defer+madvise\]' /sys/kernel/mm/transparent_hugepage/defrag &&
+      test "$(cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none)" -eq 0
+    register: thp_validate
+    changed_when: false
+    failed_when: thp_validate.rc != 0
+    tags: yb-prebuilt-ami
+  when: not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
+        or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))

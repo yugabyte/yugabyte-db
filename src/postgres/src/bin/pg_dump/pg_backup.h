@@ -70,6 +70,7 @@ enum _dumpPreparedQueries
 	PREPQUERY_DUMPOPR,
 	PREPQUERY_DUMPRANGETYPE,
 	PREPQUERY_DUMPTABLEATTACH,
+	PREPQUERY_GETATTRIBUTESTATS,
 	PREPQUERY_GETCOLUMNACLS,
 	PREPQUERY_GETDOMAINCONSTRAINTS,
 	NUM_PREP_QUERIES			/* must be last */
@@ -154,12 +155,13 @@ typedef struct _restoreOptions
 	/* flags derived from the user-settable flags */
 	bool		dumpSchema;
 	bool		dumpData;
+	bool		dumpStatistics;
 } RestoreOptions;
 
 typedef struct _dumpOptions
 {
 	ConnParams	cparams;
-	const char *master_hosts;	/* YB Master hosts */
+
 	int			binary_upgrade;
 
 	/* various user-settable parameters */
@@ -178,8 +180,6 @@ typedef struct _dumpOptions
 	int			no_subscriptions;
 	int			no_toast_compression;
 	int			no_unlogged_table_data;
-	int			no_tablegroups;
-	int			no_tablegroup_creations;
 	int			serializable_deferrable;
 	int			disable_triggers;
 	int			outputNoTableAm;
@@ -187,12 +187,7 @@ typedef struct _dumpOptions
 	int			use_setsessauth;
 	int			enable_row_security;
 	int			load_via_partition_root;
-	int			include_yb_metadata;	/* In this mode DDL statements include
-										 * YB specific metadata such as tablet
-										 * partitions. */
-	int			yb_dump_role_checks;	/* Add to the dump additional checks if the used ROLE
-										 * exists. The ROLE usage statements are skipped if
-										 * the ROLE does not exist. */
+
 	/* default, if no "inclusion" switches appear, is to dump everything */
 	bool		include_everything;
 
@@ -209,7 +204,19 @@ typedef struct _dumpOptions
 	/* flags derived from the user-settable flags */
 	bool		dumpSchema;
 	bool		dumpData;
+	bool		dumpStatistics;
 
+	/* YB */
+	const char *master_hosts;	/* YB Master hosts */
+	int			no_tablegroups;
+	int			no_tablegroup_creations;
+	int			include_yb_metadata;	/* In this mode DDL statements include
+										 * YB specific metadata such as tablet
+										 * partitions. */
+	int			yb_dump_role_checks;	/* Add to the dump additional checks
+										 * if the used ROLE exists. The ROLE
+										 * usage statements are skipped if the
+										 * ROLE does not exist. */
 	Oid			db_oid;			/* initiated only if include-yb-metadata flag
 								 * is set */
 	char	   *yb_read_time;	/* read the data as of this time. Used in
@@ -286,6 +293,10 @@ typedef int DumpId;
  * Function pointer prototypes for assorted callback methods.
  */
 
+/* forward declaration to avoid including pg_backup_archiver.h here */
+typedef struct _tocEntry TocEntry;
+
+typedef char *(*DefnDumperPtr) (Archive *AH, const void *userArg, const TocEntry *te);
 typedef int (*DataDumperPtr) (Archive *AH, const void *userArg);
 
 typedef void (*SetupWorkerPtrType) (Archive *AH);

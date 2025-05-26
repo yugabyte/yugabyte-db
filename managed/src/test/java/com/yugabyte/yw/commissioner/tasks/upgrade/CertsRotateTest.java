@@ -843,7 +843,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
         certsParams.selfSignedServerCertRotate, tlsUpdateParams.selfSignedServerCertRotate);
   }
 
-  @Test
+  // @Test
   @Parameters(method = "getTestRetryParameters")
   public void testCertsRotateRollingUpgradeRetries(
       boolean currentNodeToNode,

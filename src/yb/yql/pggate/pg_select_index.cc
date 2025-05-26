@@ -15,6 +15,7 @@
 
 #include "yb/yql/pggate/pg_select_index.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pggate_flags.h"

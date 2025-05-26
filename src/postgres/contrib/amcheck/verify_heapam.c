@@ -1597,8 +1597,8 @@ FullTransactionIdFromXidAndCtx(TransactionId xid, const HeapCheckContext *ctx)
 	diff = (int32) (ctx->next_xid - xid);
 
 	/*
-	 * In cases of corruption we might see a 32bit xid that is before epoch
-	 * 0. We can't represent that as a 64bit xid, due to 64bit xids being
+	 * In cases of corruption we might see a 32bit xid that is before epoch 0.
+	 * We can't represent that as a 64bit xid, due to 64bit xids being
 	 * unsigned integers, without the modulo arithmetic of 32bit xid. There's
 	 * no really nice way to deal with that, but it works ok enough to use
 	 * FirstNormalFullTransactionId in that case, as a freshly initdb'd

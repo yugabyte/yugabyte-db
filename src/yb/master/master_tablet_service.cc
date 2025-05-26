@@ -179,8 +179,8 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
       for (const auto db_oid : db_oids) {
         if (!master_->catalog_manager()->GetYsqlDBCatalogVersion(db_oid, &catalog_version,
                                                                  &last_breaking_version).ok()) {
-          LOG_WITH_FUNC(ERROR) << "failed to get db catalog version for "
-                               << db_oid << ", ignoring";
+          LOG_WITH_FUNC(DFATAL) << "failed to get db catalog version for "
+                                << db_oid << ", ignoring";
         } else {
           LOG_WITH_FUNC(INFO) << "db catalog version for " << db_oid << ": "
                               << catalog_version << ", breaking version: "
@@ -190,7 +190,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
     } else {
       if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
                                                              &last_breaking_version).ok()) {
-        LOG_WITH_FUNC(ERROR) << "failed to get catalog version, ignoring";
+        LOG_WITH_FUNC(DFATAL) << "failed to get catalog version, ignoring";
       } else {
         LOG_WITH_FUNC(INFO) << "catalog version: " << catalog_version << ", breaking version: "
                             << last_breaking_version;

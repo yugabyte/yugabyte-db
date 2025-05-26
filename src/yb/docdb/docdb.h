@@ -110,7 +110,7 @@ struct PrepareDocWriteOperationResult {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    tablet::TabletMetrics* tablet_metrics,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
@@ -134,7 +134,7 @@ Status AssembleDocWriteBatch(
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
-    HybridTime* restart_read_ht,
+    ReadRestartData* read_restart_data,
     const std::string& table_name);
 
 struct ExternalTxnApplyStateData {

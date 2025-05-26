@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -57,9 +58,46 @@ var createUniverseCmd = &cobra.Command{
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to create\n", formatter.RedColor))
 		}
+
+		providerCode := v1.GetString("provider-code")
+		if len(strings.TrimSpace(providerCode)) == 0 {
+			cmd.Help()
+			logrus.Fatalln(
+				formatter.Colorize(
+					"No provider code found to create universe\n",
+					formatter.RedColor,
+				),
+			)
+		}
+
+		if strings.EqualFold(providerCode, util.GCPProviderType) ||
+			strings.EqualFold(providerCode, util.K8sProviderType) {
+
+			specialCharsRegex := regexp.MustCompile(`^[a-z0-9-]*$`)
+
+			if !specialCharsRegex.MatchString(universeName) {
+				cmd.Help()
+				logrus.Fatalln(
+					formatter.Colorize(
+						"Name can only contain lowercase letters, numbers and hyphens in GCP or Kubernetes universes\n",
+						formatter.RedColor,
+					),
+				)
+			}
+		}
+
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 		if enableVolumeEncryption {
-			cmd.MarkFlagRequired("kms-config")
+			kmsConfigName := v1.GetString("kms-config")
+			if len(strings.TrimSpace(kmsConfigName)) == 0 {
+				cmd.Help()
+				logrus.Fatalln(
+					formatter.Colorize(
+						"No kms config name found while enabling volume encryption\n",
+						formatter.RedColor,
+					),
+				)
+			}
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -110,6 +148,15 @@ var createUniverseCmd = &cobra.Command{
 							formatter.Colorize(clientRootCACertUUID, formatter.GreenColor)), "\n")
 				}
 			}
+			if len(clientRootCACertUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf(
+						"Client root certificate %s not found\n",
+						clientRootCA,
+					),
+					formatter.RedColor,
+				))
+			}
 		}
 
 		rootCACertUUID := ""
@@ -117,7 +164,6 @@ var createUniverseCmd = &cobra.Command{
 
 		// find the root certficate UUID from the name
 		if len(rootCA) != 0 {
-
 			for _, c := range certs {
 				if strings.Compare(c.GetLabel(), rootCA) == 0 {
 					rootCACertUUID = c.GetUuid()
@@ -127,6 +173,10 @@ var createUniverseCmd = &cobra.Command{
 							formatter.Colorize(rootCACertUUID, formatter.GreenColor)), "\n")
 				}
 			}
+			if len(rootCACertUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf("Root certificate %s not found\n", rootCA), formatter.RedColor))
+			}
 		}
 
 		kmsConfigUUID := ""
@@ -135,10 +185,7 @@ var createUniverseCmd = &cobra.Command{
 
 		if enableVolumeEncryption {
 			opType = util.EnableOpType
-			kmsConfigName, err := cmd.Flags().GetString("kms-config")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
+			kmsConfigName := v1.GetString("kms-config")
 			// find kmsConfigUUID from the name
 			kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
 			if err != nil {
@@ -162,6 +209,10 @@ var createUniverseCmd = &cobra.Command{
 						}
 					}
 				}
+			}
+			if len(kmsConfigUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf("KMS config %s not found\n", kmsConfigName), formatter.RedColor))
 			}
 		}
 
@@ -308,8 +359,8 @@ func init() {
 	createUniverseCmd.Flags().String("master-gflags", "",
 		"[Optional] Master GFlags in map (JSON or YAML) format. "+
 			"Provide the gflags in the following formats: "+
-			"\"--master-gflags {\"master-gflag-key-1\":\"value-1\","+
-			"\"master-gflag-key-2\":\"value-2\" }\" or"+
+			"\"--master-gflags '{\"master-gflag-key-1\":\"value-1\","+
+			"\"master-gflag-key-2\":\"value-2\" }'\" or"+
 			"  \"--master-gflags \"master-gflag-key-1: value-1\nmaster-gflag-key-2"+
 			": value-2\nmaster-gflag-key-3: value-3\".")
 

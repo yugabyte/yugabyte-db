@@ -90,9 +90,11 @@ DECLARE_int32(metrics_snapshotter_interval_ms);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
+DECLARE_uint32(TEST_clone_pg_schema_delay_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
@@ -771,6 +773,51 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   ASSERT_VECTORS_EQ(rows, kRows);
 }
 
+TEST_F(PgCloneTest, CloneVectorIndex) {
+  ASSERT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(source_conn_->Execute(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1))"));
+  ASSERT_OK(source_conn_->Execute(
+      "CREATE INDEX test_vi ON test USING ybhnsw (embedding vector_l2_ops)"));
+
+  for (int i = 0; i <= 10; i += 2) {
+    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
+  }
+  auto timestamp = ASSERT_RESULT(GetCurrentTime());
+  for (int i = 1; i <= 10; i += 2) {
+    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
+  }
+
+  LOG(INFO) << "Create first clone";
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      timestamp.ToInt64()));
+
+  LOG(INFO) << "Read first clone";
+  {
+    auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
+        "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
+    ASSERT_EQ(row, "4; 2; 6");
+  }
+  LOG(INFO) << "Drop first clone";
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+
+  LOG(INFO) << "Create second clone";
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
+
+  LOG(INFO) << "Read second clone";
+  {
+    auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+    auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
+        "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
+    ASSERT_EQ(row, "4; 3; 5");
+  }
+  LOG(INFO) << "Drop second clone";
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
+}
+
 class TsDataSizeMetricsTest : public PgCloneTest {
  public:
   uint64_t GetTsDataSize() {
@@ -877,6 +924,16 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithA
   ASSERT_EQ(rows[0], kRow);
 }
 
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlDbTimeout)) {
+  // Inject an artificial delay that would make CREATE DATABASE timeout in case clone is using
+  // a timeout other than ysql_clone_pg_schema_rpc_timeout_ms.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) =
+      FLAGS_yb_client_admin_operation_timeout_sec * 1000;
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
+  ASSERT_OK(status);
+}
+
 TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
   // Assert that we propagate the error message from the clone operation to the user.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_clone_pg_schema) = true;
@@ -887,15 +944,20 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
 }
 
 TEST_F(PgCloneTest, CloneTimeoutExceeded) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 10;
   auto status = source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
   ASSERT_NOK(status);
 
-  // The clone should be aborted, and the error message should mention that it timed out.
-  auto row = ASSERT_RESULT((source_conn_->FetchRowAsString(
-      "SELECT db_name, parent_db_name, state FROM yb_database_clones()")));
-  ASSERT_EQ(row, Format("$0, $1, ABORTED", kTargetNamespaceName1, kSourceNamespaceName));
+  // We have to wait here because the client uses FLAGS_ysql_clone_pg_schema_rpc_timeout_ms as its
+  // timeout too, so if it times out before the clone does, the clone will not be in the ABORTED
+  // state when we check.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto row = VERIFY_RESULT(source_conn_->FetchRowAsString(
+        "SELECT db_name, parent_db_name, state FROM yb_database_clones()"));
+    return row == Format("$0, $1, ABORTED", kTargetNamespaceName1, kSourceNamespaceName);
+  }, 10s, "Wait for clone to be aborted"));
   auto error_msg = ASSERT_RESULT((source_conn_->FetchRowAsString(
       "SELECT failure_reason FROM yb_database_clones()")));
   ASSERT_STR_CONTAINS(error_msg, "timed out");

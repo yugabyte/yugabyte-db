@@ -89,6 +89,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       }
     } catch (Exception e) {
       String error = e.getMessage().toLowerCase();
+      log.error("Exception validating Azure provider: {}", error);
       String clientJsonPath = cloudInfoJson.get("azuClientId").get("jsonPath").asText();
       // secret can be null in case of managed identity so create path from client jsonPath
       String secretJsonPath = clientJsonPath.replace("azuClientId", "azuClientSecret");
@@ -415,6 +416,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
               try {
                 GenericResource subnetResource = azure.genericResources().getById(subnet);
               } catch (Exception e) {
+                log.error("Exception validating subnet: {}", e.getMessage());
                 String err =
                     String.format(
                         "Subnet %s not found under Virtual Network %s!", subnetName, vnetName);
@@ -430,6 +432,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
             }
           }
         } catch (Exception e) {
+          log.error("Exception validating virtual network: {}", e.getMessage());
           String err =
               String.format(
                   "Virtual Network: %s not found in Resource Group: %s",

@@ -25,8 +25,10 @@ import "yb/common/transaction.proto";
 import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/docdb/docdb.proto";
 import "yb/dockv/dockv.proto";
 import "yb/master/master_types.proto";
+import "yb/tserver/tserver.proto";
 
 message BackfillJobPB {
   repeated IndexInfoPB indexes = 1;
@@ -406,15 +408,12 @@ message SysClusterConfigEntryPB {
 }
 
 message SysObjectLockEntryPB {
-  message LockTypesPB { repeated TableLockType lock_type = 1; }
-  message ObjectLocksMapPB {
-    // object_id -> Locks taken
-    map<uint64, LockTypesPB> objects = 1;
+  message ObjectLocksListPB {
+    repeated docdb.ObjectLockPB locks = 1;
   }
   message SubtxnDBMapPB {
-    optional uint64 db_id = 1;
     // subtxn -> object locks ...
-    map<uint32, ObjectLocksMapPB> subtxns = 2;
+    map<uint32, ObjectLocksListPB> subtxns = 1;
   }
   message TransactionSubtxnMapPB {
     // txn_id -> subtxn ...
@@ -437,11 +436,14 @@ message SysObjectLockEntryPB {
     optional int64 instance_seqno = 3;
   }
   optional LeaseInfoPB lease_info = 2;
+  map<uint64, tserver.ReleaseObjectLockRequestPB> in_progress_release_request = 3;
 }
 
 message SysXClusterConfigEntryPB {
   optional uint32 version = 1;
   optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
+  // Local NamespaceId -> xCluster info for that namespace.
+  map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 3;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for Redis Config.

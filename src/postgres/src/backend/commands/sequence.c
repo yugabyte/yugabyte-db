@@ -359,9 +359,7 @@ ResetSequence(Oid seq_relid)
 		seq->log_cnt = 0;
 
 		/*
-		 * Create a new storage file for the sequence.  We want to keep the
-		 * sequence's relfrozenxid at 0, since it won't contain any unfrozen XIDs.
-		 * Same with relminmxid, since a sequence will never contain multixacts.
+		 * Create a new storage file for the sequence.
 		 */
 		RelationSetNewRelfilenode(seq_rel, seq_rel->rd_rel->relpersistence,
 								  true /* yb_copy_split_options */ );
@@ -586,9 +584,10 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 				seqform, newdataform,
 				&need_seq_rewrite, &owned_by);
 	/*
-	 * pg_upgrade sets all options other than OWNED BY during DefineSequence
-	 * (where need_seq_rewrite is ignored). pg_upgrade sets OWNED BY using ALTER
-	 * SEQUENCE, but that's treated specially: See the comment for init_params.
+	 * YB: pg_upgrade sets all options other than OWNED BY during
+	 * DefineSequence (where need_seq_rewrite is ignored). pg_upgrade sets
+	 * OWNED BY using ALTER SEQUENCE, but that's treated specially: See the
+	 * comment for init_params.
 	 */
 	if (IsYugaByteEnabled() && IsBinaryUpgrade && need_seq_rewrite)
 		elog(ERROR, "need_seq_rewrite cannot be true in binary upgrade mode");
@@ -1363,8 +1362,8 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	PreventCommandIfParallelMode("setval()");
 
 	/*
-	 * Only read the sequence from a disk page if we are in Postgres mode, since YugaByte stores it
-	 * elsewhere and this will cause an error
+	 * YB: Only read the sequence from a disk page if we are in Postgres mode,
+	 * since YugaByte stores it elsewhere and this will cause an error
 	 */
 	if (!IsYugaByteEnabled())
 	{

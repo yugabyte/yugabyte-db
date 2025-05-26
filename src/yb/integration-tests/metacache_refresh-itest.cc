@@ -83,7 +83,6 @@ class MetacacheRefreshITest : public MiniClusterTestWithClient<ExternalMiniClust
  public:
   const std::string kPgsqlNamespaceName = "test_namespace";
   const std::string kPgsqlTableName = "test_table";
-  const std::string kPgsqlSchemaName = "test_schema";
   const std::string kPgsqlTableId = "test_table_id";
   const std::string kPgsqlKeyspaceName = "test_keyspace";
   const std::string kPgsqlKeyspaceID = "test_keyspace_id";
@@ -134,7 +133,6 @@ class MetacacheRefreshITest : public MiniClusterTestWithClient<ExternalMiniClust
     client::YBSchemaBuilder schema_builder;
     schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
     schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
-    schema_builder.SetSchemaName(kPgsqlSchemaName);
     EXPECT_OK(client_->CreateNamespaceIfNotExists(
         kPgsqlNamespaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
         kNamespaceId));

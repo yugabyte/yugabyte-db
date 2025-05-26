@@ -19,7 +19,6 @@
 
 namespace yb::client {
 
-// TestEchoServiceClient(client::YBClient & yb_client);
 DEFINE_STATEFUL_SERVICE_CLIENT(TestEcho, TEST_ECHO,
     GetEcho,
     GetEchoCount);

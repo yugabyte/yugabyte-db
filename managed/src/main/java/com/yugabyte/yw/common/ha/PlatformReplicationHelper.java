@@ -553,14 +553,18 @@ public class PlatformReplicationHelper {
   }
 
   // Read the HA config from the file.
-  Optional<HighAvailabilityConfig> maybeGetLocalHighAvailabilityConfig() {
+  Optional<HighAvailabilityConfig> maybeGetLocalHighAvailabilityConfig(String clusterKey) {
     File localHaConfigFile =
         getReplicationDirFor("localhost").resolve(LOCAL_HA_CONFIG_JSON_FILE).toFile();
     try {
       if (localHaConfigFile.exists() && localHaConfigFile.isFile()) {
         HighAvailabilityConfig config =
             Json.mapper().readValue(localHaConfigFile, HighAvailabilityConfig.class);
-        return Optional.of(config);
+        if (clusterKey.equals(config.getClusterKey())) {
+          return Optional.of(config);
+        } else {
+          log.warn("Cluster keys do not match");
+        }
       }
     } catch (Exception e) {
       log.warn("Failed to read local HA config from file {}", localHaConfigFile, e);

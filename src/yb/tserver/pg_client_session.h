@@ -68,7 +68,6 @@ namespace tserver {
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
-    (AcquireObjectLock) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network
@@ -77,6 +76,7 @@ namespace tserver {
 // If such method responds with error Status, it will be handled by the upper layer that will fill
 // response with error status and call context.RespondSuccess.
 #define PG_CLIENT_SESSION_ASYNC_METHODS \
+    (AcquireObjectLock) \
     (GetTableKeyRanges) \
     /**/
 
@@ -96,6 +96,12 @@ struct PgClientSessionContext {
   const std::string& instance_uuid;
 };
 
+class LeaseEpochValidator {
+ public:
+  virtual ~LeaseEpochValidator() = default;
+  virtual bool IsLeaseValid(uint64_t lease_epoch) = 0;
+};
+
 class PgClientSession final {
  private:
   using SharedThisSource = std::shared_ptr<void>;
@@ -107,13 +113,14 @@ class PgClientSession final {
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
       client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-      uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
-      rpc::Scheduler& scheduler);
+      uint64_t id, uint64_t lease_epoch, LeaseEpochValidator* lease_provider,
+      tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler);
   ~PgClientSession();
 
   uint64_t id() const;
 
-  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
+  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
+                 const PgTablesQueryResult& tables);
 
   void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
@@ -152,6 +159,9 @@ class PgClientSession final {
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+void PreparePgTablesQuery(
+    const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids);
 
 } // namespace tserver
 } // namespace yb

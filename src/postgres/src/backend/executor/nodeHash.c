@@ -257,6 +257,7 @@ MultiExecParallelHash(HashState *node)
 			 * way, wait for everyone to arrive here so we can proceed.
 			 */
 			BarrierArriveAndWait(build_barrier, WAIT_EVENT_HASH_BUILD_ALLOCATE);
+			/* Fall through. */
 			yb_switch_fallthrough();
 
 		case PHJ_BUILD_HASHING_INNER:
@@ -1221,12 +1222,14 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 				/* All other participants just flush their tuples to disk. */
 				ExecParallelHashCloseBatchAccessors(hashtable);
 			}
+			/* Fall through. */
 			yb_switch_fallthrough();
 
 		case PHJ_GROW_BATCHES_ALLOCATING:
 			/* Wait for the above to be finished. */
 			BarrierArriveAndWait(&pstate->grow_batches_barrier,
 								 WAIT_EVENT_HASH_GROW_BATCHES_ALLOCATE);
+			/* Fall through. */
 			yb_switch_fallthrough();
 
 		case PHJ_GROW_BATCHES_REPARTITIONING:
@@ -1240,6 +1243,7 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 			/* Wait for the above to be finished. */
 			BarrierArriveAndWait(&pstate->grow_batches_barrier,
 								 WAIT_EVENT_HASH_GROW_BATCHES_REPARTITION);
+			/* Fall through. */
 			yb_switch_fallthrough();
 
 		case PHJ_GROW_BATCHES_DECIDING:
@@ -1302,6 +1306,7 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 				dsa_free(hashtable->area, pstate->old_batches);
 				pstate->old_batches = InvalidDsaPointer;
 			}
+			/* Fall through. */
 			yb_switch_fallthrough();
 
 		case PHJ_GROW_BATCHES_FINISHING:
@@ -1357,7 +1362,7 @@ ExecParallelHashRepartitionFirst(HashJoinTable hashtable)
 			else
 			{
 				size_t		tuple_size =
-				MAXALIGN(HJTUPLE_OVERHEAD + tuple->t_len);
+					MAXALIGN(HJTUPLE_OVERHEAD + tuple->t_len);
 
 				/* It belongs in a later batch. */
 				hashtable->batches[batchno].estimated_size += tuple_size;
@@ -1399,7 +1404,7 @@ ExecParallelHashRepartitionRest(HashJoinTable hashtable)
 	for (i = 1; i < old_nbatch; ++i)
 	{
 		ParallelHashJoinBatch *shared =
-		NthParallelHashJoinBatch(old_batches, i);
+			NthParallelHashJoinBatch(old_batches, i);
 
 		old_inner_tuples[i] = sts_attach(ParallelHashJoinBatchInner(shared),
 										 ParallelWorkerNumber + 1,
@@ -1580,12 +1585,14 @@ ExecParallelHashIncreaseNumBuckets(HashJoinTable hashtable)
 				/* Clear the flag. */
 				pstate->growth = PHJ_GROWTH_OK;
 			}
+			/* Fall through. */
 			yb_switch_fallthrough();
 
 		case PHJ_GROW_BUCKETS_ALLOCATING:
 			/* Wait for the above to complete. */
 			BarrierArriveAndWait(&pstate->grow_buckets_barrier,
 								 WAIT_EVENT_HASH_GROW_BUCKETS_ALLOCATE);
+			/* Fall through. */
 			yb_switch_fallthrough();
 
 		case PHJ_GROW_BUCKETS_REINSERTING:
@@ -3182,7 +3189,7 @@ ExecHashTableDetachBatch(HashJoinTable hashtable)
 			while (DsaPointerIsValid(batch->chunks))
 			{
 				HashMemoryChunk chunk =
-				dsa_get_address(hashtable->area, batch->chunks);
+					dsa_get_address(hashtable->area, batch->chunks);
 				dsa_pointer next = chunk->next.shared;
 
 				dsa_free(hashtable->area, batch->chunks);

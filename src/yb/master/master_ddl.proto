@@ -19,6 +19,7 @@ option java_package = "org.yb.master";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/docdb/docdb.proto";
 import "yb/master/catalog_entity_info.proto";
@@ -54,6 +55,15 @@ message UDTypeInfoPB {
   repeated string field_names = 3;
   repeated QLTypePB field_types = 4;
   optional NamespaceIdentifierPB namespace = 5;
+}
+
+// Additional internal table type for different special cases when the special object
+// is being created via CreateTableRequestPB.
+enum InternalTableType {
+  UNKNOWN_INTERNAL_TABLE_TYPE = 0;
+  GENERIC_TABLE = 1;
+  PG_CRON_JOB_TABLE = 2;
+  XCLUSTER_DDL_REPLICATION_TABLE = 3;
 }
 
 // Create table request (including index table)
@@ -136,6 +146,9 @@ message CreateTableRequestPB {
   }
 
   optional XClusterTableInfo xcluster_table_info = 33;
+
+  // Additional internal table type for different special cases.
+  optional InternalTableType internal_table_type = 34 [ default = GENERIC_TABLE ];
 }
 
 message CreateTableResponsePB {
@@ -773,6 +786,8 @@ message AcquireObjectLocksGlobalRequestPB {
   optional uint64 lease_epoch = 5;
   optional fixed64 ignore_after_hybrid_time = 6;
   optional fixed64 propagated_hybrid_time = 7;
+  optional AshMetadataPB ash_metadata = 8;
+  optional bytes status_tablet = 9;
 }
 
 message AcquireObjectLocksGlobalResponsePB {
@@ -789,6 +804,10 @@ message ReleaseObjectLocksGlobalRequestPB {
   optional uint64 lease_epoch = 4;
   optional fixed64 apply_after_hybrid_time = 5;
   optional fixed64 propagated_hybrid_time = 6;
+  optional AshMetadataPB ash_metadata = 7;
+  // Should generally not be used. Only used by yb-admin to manually
+  // clear out locks (that may have leaked).
+  optional bool wait_for_completion = 8;
 }
 
 message ReleaseObjectLocksGlobalResponsePB {
@@ -796,9 +815,20 @@ message ReleaseObjectLocksGlobalResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message GetObjectLockStatusRequestPB {
+}
+
+message GetObjectLockStatusResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated ObjectLockInfoPB object_lock_infos = 2;
+}
+
 message RefreshYsqlLeaseRequestPB {
   optional NodeInstancePB instance = 1;
-  optional bool needs_bootstrap = 2;
+  // The current lease epoch of the tserver making this request.
+  // Unset if the tserver doesn't think it has a live lease.
+  optional uint64 current_lease_epoch = 2;
+  optional uint64 local_request_send_time_ms = 3;
 }
 
 message RefreshYsqlLeaseInfoPB {
@@ -807,6 +837,7 @@ message RefreshYsqlLeaseInfoPB {
   // TODO: If this ends up being too big, consider adding a way to break this up
   // into multiple messages.
   optional tserver.DdlLockEntriesPB ddl_lock_entries = 3;
+  optional uint64 lease_expiry_time_ms = 4;
 }
 
 message RefreshYsqlLeaseResponsePB {
@@ -877,4 +908,7 @@ service MasterDdl {
       returns (ReleaseObjectLocksGlobalResponsePB);
   rpc RefreshYsqlLease(RefreshYsqlLeaseRequestPB)
     returns (RefreshYsqlLeaseResponsePB);
+
+  rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
+      returns (GetObjectLockStatusResponsePB);
 }

@@ -696,7 +696,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <rowbounds> YbRowBounds
 %type <splitopt> SplitClause YbOptSplit
 %type <str>		OptTableSpaceLocation opt_for_bfinstr partition_key row_key
-				read_time row_key_end row_key_start
+				read_time row_key_end row_key_start yb_opt_alias
 
 
 /*
@@ -906,16 +906,17 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
 
  /*
-  * Break shift/reduce conflict in hash column declaration "col HASH" by
+  * YB: Break shift/reduce conflict in hash column declaration "col HASH" by
   * giving a higher precedence to HASH as a sort order over operator class.
   */
 %nonassoc   _YB_HASH_P
 %nonassoc   NO_OPCLASS
  /*
-  * Break shift/reduce conflict in hash column declaration "(col) HASH" by
+  * YB: Break shift/reduce conflict in hash column declaration "(col) HASH" by
   * giving a higher precedence to col as an expression list over a single expression.
   */
 %nonassoc   EXPR_LIST
+
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -1213,10 +1214,7 @@ opt_with:	WITH
  * is "WITH ADMIN name".
  */
 OptRoleList:
-			OptRoleList CreateOptRoleElem
-				{
-					$$ = lappend($1, $2);
-				}
+			OptRoleList CreateOptRoleElem			{ $$ = lappend($1, $2); }
 			| /* EMPTY */							{ $$ = NIL; }
 		;
 
@@ -1870,9 +1868,9 @@ var_value:	opt_boolean_or_string
 		;
 
 iso_level:	READ UNCOMMITTED						{ $$ = "read uncommitted"; }
-			| READ COMMITTED					{ $$ = "read committed"; }
-			| REPEATABLE READ					{ $$ = "repeatable read"; }
-			| SERIALIZABLE						{ $$ = "serializable"; }
+			| READ COMMITTED						{ $$ = "read committed"; }
+			| REPEATABLE READ						{ $$ = "repeatable read"; }
+			| SERIALIZABLE							{ $$ = "serializable"; }
 		;
 
 opt_boolean_or_string:
@@ -2918,10 +2916,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -2932,10 +2926,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -3051,7 +3041,6 @@ alter_table_cmd:
 				}
 			| alter_generic_options
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action OPTIONS", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_GenericOptions;
@@ -3145,17 +3134,11 @@ opt_reloptions:		WITH reloptions					{ $$ = $2; }
 			 |		/* EMPTY */						{ $$ = NIL; }
 		;
 
-/* TODO: add interleaved to reloption_list.
+/* YB: TODO: add interleaved to reloption_list.
    Eventually deprecate using colocated */
 reloption_list:
-			reloption_elem
-				{
-					$$ = list_make1($1);
-				}
-			| reloption_list ',' reloption_elem
-				{
-					$$ = lappend($1, $3);
-				}
+			reloption_elem							{ $$ = list_make1($1); }
+			| reloption_list ',' reloption_elem		{ $$ = lappend($1, $3); }
 		;
 
 /* This should match def_elem and also allow qualified names */
@@ -3991,11 +3974,7 @@ OptTemp:	TEMPORARY					{ $$ = RELPERSISTENCE_TEMP; }
 							 parser_errposition(@1)));
 					$$ = RELPERSISTENCE_TEMP;
 				}
-			/* CREATE UNLOGGED TABLE / SEQUENCE / VIEW */
-			| UNLOGGED
-				{
-					$$ = RELPERSISTENCE_UNLOGGED;
-				}
+			| UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
 			| /*EMPTY*/					{ $$ = RELPERSISTENCE_PERMANENT; }
 		;
 
@@ -4291,7 +4270,7 @@ ColConstraintElem:
 
 opt_unique_null_treatment:
 			NULLS_P DISTINCT		{ $$ = true; }
-			| NULLS_P NOT DISTINCT  { $$ = false;}
+			| NULLS_P NOT DISTINCT	{ $$ = false; }
 			| /*EMPTY*/				{ $$ = true; }
 		;
 
@@ -4364,27 +4343,28 @@ TableLikeClause:
 		;
 
 TableLikeOptionList:
-			TableLikeOptionList INCLUDING TableLikeOption	{ $$ = $1 | $3; }
-			| TableLikeOptionList EXCLUDING TableLikeOption	{ $$ = $1 & ~$3; }
-			| /* EMPTY */						{ $$ = 0; }
+				TableLikeOptionList INCLUDING TableLikeOption	{ $$ = $1 | $3; }
+				| TableLikeOptionList EXCLUDING TableLikeOption	{ $$ = $1 & ~$3; }
+				| /* EMPTY */						{ $$ = 0; }
 		;
 
 TableLikeOption:
-			COMMENTS			{ $$ = CREATE_TABLE_LIKE_COMMENTS; }
-			| COMPRESSION
-				{
-					parser_ybc_signal_unsupported(@1, "LIKE COMPRESSION", 1129);
-					$$ = CREATE_TABLE_LIKE_COMPRESSION;
-				}
-			| CONSTRAINTS		{ $$ = CREATE_TABLE_LIKE_CONSTRAINTS; }
-			| DEFAULTS			{ $$ = CREATE_TABLE_LIKE_DEFAULTS; }
-			| GENERATED			{ $$ = CREATE_TABLE_LIKE_GENERATED; }
-			| IDENTITY_P		{ $$ = CREATE_TABLE_LIKE_IDENTITY; }
-			| INDEXES			{ $$ = CREATE_TABLE_LIKE_INDEXES; }
-			| STATISTICS		{ $$ = CREATE_TABLE_LIKE_STATISTICS; }
-			| STORAGE			{ $$ = CREATE_TABLE_LIKE_STORAGE; }
-			| ALL				{ $$ = CREATE_TABLE_LIKE_ALL; }
+				COMMENTS			{ $$ = CREATE_TABLE_LIKE_COMMENTS; }
+				| COMPRESSION
+					{
+						parser_ybc_signal_unsupported(@1, "LIKE COMPRESSION", 1129);
+						$$ = CREATE_TABLE_LIKE_COMPRESSION;
+					}
+				| CONSTRAINTS		{ $$ = CREATE_TABLE_LIKE_CONSTRAINTS; }
+				| DEFAULTS			{ $$ = CREATE_TABLE_LIKE_DEFAULTS; }
+				| IDENTITY_P		{ $$ = CREATE_TABLE_LIKE_IDENTITY; }
+				| GENERATED			{ $$ = CREATE_TABLE_LIKE_GENERATED; }
+				| INDEXES			{ $$ = CREATE_TABLE_LIKE_INDEXES; }
+				| STATISTICS		{ $$ = CREATE_TABLE_LIKE_STATISTICS; }
+				| STORAGE			{ $$ = CREATE_TABLE_LIKE_STORAGE; }
+				| ALL				{ $$ = CREATE_TABLE_LIKE_ALL; }
 		;
+
 
 /* ConstraintElem specifies constraint syntax which is not embedded into
  *	a column definition. ColConstraintElem specifies the embedded form.
@@ -4434,7 +4414,7 @@ ConstraintElem:
 								   &n->deferrable, &n->initdeferred, NULL,
 								   NULL, yyscanner);
 
-					/* Make column list available as index params also */
+					/* YB: Make column list available as index params also */
 					ListCell *lc;
 					foreach(lc, $4)
 					{
@@ -4474,7 +4454,10 @@ ConstraintElem:
 
 					n->contype = CONSTR_PRIMARY;
 					n->location = @1;
-					/* For Postgres' purpose, make index params available as a column list also */
+					/*
+					 * YB: For Postgres' purpose, make index params available
+					 * as a column list also
+					 */
 					ListCell *lc;
 					foreach(lc, $4)
 					{
@@ -4562,10 +4545,6 @@ ConstraintElem:
 
 opt_no_inherit:	NO INHERIT
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = true;
 				}
@@ -4750,10 +4729,6 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = $3;
 				}
@@ -4846,16 +4821,11 @@ OptTableGroup:
 				}
 		;
 
-OptTableSpace:
-	     		TABLESPACE name { $$ = $2; }
+OptTableSpace:   TABLESPACE name					{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-OptConsTableSpace:
-			USING INDEX TABLESPACE name
-				{
-					$$ = $4;
-				}
+OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -5123,7 +5093,6 @@ create_mv_target:
 				}
 		;
 
-			/* CREATE UNLOGGED MATERIALIZED VIEW */
 OptNoLog:	UNLOGGED					{ $$ = RELPERSISTENCE_UNLOGGED; }
 			| /*EMPTY*/					{ $$ = RELPERSISTENCE_PERMANENT; }
 		;
@@ -5328,7 +5297,7 @@ NumericOnly_list:	NumericOnly						{ $$ = list_make1($1); }
 CreatePLangStmt:
 			CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE name
 			{
-				/* Old code structure.
+				/* YB: Old code structure.
 				 *	n->replace = $2; (if_not_exists)
 				 *  n->plname = $6; (extname)
 				 */
@@ -5428,7 +5397,7 @@ OptTableGroupOwner: OWNER RoleSpec		{ $$ = $2; }
 /*****************************************************************************
  *
  *		QUERY:
- *             CREATE TABLESPACE tablespace
+ *             CREATE TABLESPACE tablespace LOCATION '/path/to/tablespace/'
  *
  *****************************************************************************/
 
@@ -5843,10 +5812,7 @@ AlterFdwStmt: ALTER FOREIGN DATA_P WRAPPER name opt_fdw_options alter_generic_op
 
 /* Options definition for CREATE FDW, SERVER and USER MAPPING */
 create_generic_options:
-			OPTIONS '(' generic_option_list ')'
-				{
-					$$ = $3;
-				}
+			OPTIONS '(' generic_option_list ')'			{ $$ = $3; }
 			| /*EMPTY*/									{ $$ = NIL; }
 		;
 
@@ -5863,10 +5829,7 @@ generic_option_list:
 
 /* Options definition for ALTER FDW, SERVER and USER MAPPING */
 alter_generic_options:
-			OPTIONS	'(' alter_generic_option_list ')'
-				{
-					$$ = $3;
-				}
+			OPTIONS	'(' alter_generic_option_list ')'		{ $$ = $3; }
 		;
 
 alter_generic_option_list:
@@ -6589,18 +6552,12 @@ ConstraintAttributeSpec:
 		;
 
 ConstraintAttributeElem:
-			NOT DEFERRABLE				{ $$ = CAS_NOT_DEFERRABLE; }
-			| DEFERRABLE				{
-				$$ = CAS_DEFERRABLE;
-			  }
-			| INITIALLY IMMEDIATE		{
-				$$ = CAS_INITIALLY_IMMEDIATE;
-			}
-			| INITIALLY DEFERRED		{
-				$$ = CAS_INITIALLY_DEFERRED;
-			}
-			| NOT VALID					{ $$ = CAS_NOT_VALID; }
-			| NO INHERIT				{ $$ = CAS_NO_INHERIT; }
+			NOT DEFERRABLE					{ $$ = CAS_NOT_DEFERRABLE; }
+			| DEFERRABLE					{ $$ = CAS_DEFERRABLE; }
+			| INITIALLY IMMEDIATE			{ $$ = CAS_INITIALLY_IMMEDIATE; }
+			| INITIALLY DEFERRED			{ $$ = CAS_INITIALLY_DEFERRED; }
+			| NOT VALID						{ $$ = CAS_NOT_VALID; }
+			| NO INHERIT					{ $$ = CAS_NO_INHERIT; }
 		;
 
 
@@ -6693,6 +6650,7 @@ CreateAssertionStmt:
 					$$ = NULL;
 				}
 		;
+
 
 /*****************************************************************************
  *
@@ -7412,38 +7370,21 @@ object_type_any_name:
 			TABLE									{ $$ = OBJECT_TABLE; }
 			| SEQUENCE								{ $$ = OBJECT_SEQUENCE; }
 			| VIEW									{ $$ = OBJECT_VIEW; }
-			| MATERIALIZED VIEW
+			| MATERIALIZED VIEW						{ $$ = OBJECT_MATVIEW; }
+			| INDEX									{ $$ = OBJECT_INDEX; }
+			| FOREIGN TABLE							{ $$ = OBJECT_FOREIGN_TABLE; }
+			| COLLATION
 				{
-					$$ = OBJECT_MATVIEW;
-				}
-			| INDEX { $$ = OBJECT_INDEX; }
-			| FOREIGN TABLE
-				{
-					$$ = OBJECT_FOREIGN_TABLE;
-				}
-			| COLLATION	{
 					if (!YBIsCollationEnabled())
 						parser_ybc_not_support(@1, "DROP COLLATION");
 					$$ = OBJECT_COLLATION;
 				}
-			| CONVERSION_P { parser_ybc_not_support(@1, "DROP CONVERSION"); $$ = OBJECT_CONVERSION; }
-			| STATISTICS { $$ = OBJECT_STATISTIC_EXT; }
-			| TEXT_P SEARCH PARSER
-				{
-					$$ = OBJECT_TSPARSER;
-				}
-			| TEXT_P SEARCH DICTIONARY
-				{
-					$$ = OBJECT_TSDICTIONARY;
-				}
-			| TEXT_P SEARCH TEMPLATE
-				{
-					$$ = OBJECT_TSTEMPLATE;
-				}
-			| TEXT_P SEARCH CONFIGURATION
-				{
-					$$ = OBJECT_TSCONFIGURATION;
-				}
+			| CONVERSION_P							{ parser_ybc_not_support(@1, "DROP CONVERSION"); $$ = OBJECT_CONVERSION; }
+			| STATISTICS							{ $$ = OBJECT_STATISTIC_EXT; }
+			| TEXT_P SEARCH PARSER					{ $$ = OBJECT_TSPARSER; }
+			| TEXT_P SEARCH DICTIONARY				{ $$ = OBJECT_TSDICTIONARY; }
+			| TEXT_P SEARCH TEMPLATE				{ $$ = OBJECT_TSTEMPLATE; }
+			| TEXT_P SEARCH CONFIGURATION			{ $$ = OBJECT_TSCONFIGURATION; }
 		;
 
 /*
@@ -8679,6 +8620,18 @@ access_method_clause:
 			| /*EMPTY*/								{ $$ = IsYugaByteEnabled() ? NULL : DEFAULT_INDEX_TYPE;	}
 		;
 
+yb_opt_alias:
+			AS ColId
+				{
+					if (!IsBinaryUpgrade)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("syntax error at or near \"AS\"")));
+					$$ = $2;
+				}
+			| /* empty */								{ $$ = NULL; }
+		;
+
 yb_index_params: index_elem
 				{
 					$$ = list_make1($1);
@@ -8715,25 +8668,26 @@ yb_index_params: index_elem
 				}
 		;
 
+
 index_elem_options:
-	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
+	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
 			$$ = makeNode(IndexElem);
 			$$->name = NULL;
 			$$->expr = NULL;
-			$$->indexcolname = NULL;
+			$$->indexcolname = $5;
 			$$->collation = $1;
 			$$->opclass = $2;
 			$$->opclassopts = NIL;
 			$$->ordering = $3;
 			$$->nulls_ordering = $4;
 		}
-	| opt_collate any_name reloptions opt_yb_index_sort_order opt_nulls_order
+	| opt_collate any_name reloptions opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
 			$$ = makeNode(IndexElem);
 			$$->name = NULL;
 			$$->expr = NULL;
-			$$->indexcolname = NULL;
+			$$->indexcolname = $6;
 			$$->collation = $1;
 			$$->opclass = $2;
 			$$->opclassopts = $3;
@@ -8856,7 +8810,7 @@ YbBackfillIndexStmt:
 						char *nptr = $7;
 						char *end;
 						errno = 0;
-						n->bfinfo->read_time = pg_strtouint64(nptr, &end, 10);
+						n->bfinfo->read_time = strtou64(nptr, &end, 10);
 						if (!(*nptr != '\0' && *end == '\0')
 								|| errno == ERANGE)
 							ereport(ERROR,
@@ -9904,7 +9858,7 @@ ReindexStmt:
 						n->params = lappend(n->params,
 											makeDefElem("concurrently", NULL, @3));
 					}
-					/* Only support INDEX target. */
+					/* YB: Only support INDEX target. */
 					if (n->kind != REINDEX_OBJECT_INDEX)
 					{
 						Assert(n->kind == REINDEX_OBJECT_TABLE);
@@ -11923,15 +11877,11 @@ transaction_mode_item:
 					{ $$ = makeDefElem("transaction_read_only",
 									   makeIntConst(false, @1), @1); }
 			| DEFERRABLE
-				{
-					$$ = makeDefElem("transaction_deferrable",
-									 makeIntConst(true, @1), @1);
-				}
+					{ $$ = makeDefElem("transaction_deferrable",
+									   makeIntConst(true, @1), @1); }
 			| NOT DEFERRABLE
-				{
-					$$ = makeDefElem("transaction_deferrable",
-									 makeIntConst(false, @1), @1);
-				}
+					{ $$ = makeDefElem("transaction_deferrable",
+									   makeIntConst(false, @1), @1); }
 		;
 
 /* Syntax with commas is SQL-spec, without commas is Postgres historical */
@@ -13109,8 +13059,8 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 		;
 
 using_clause:
-			USING from_list				{ $$ = $2; }
-			| /* EMPTY */				{ $$ = NIL; }
+				USING from_list						{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 
@@ -13134,47 +13084,56 @@ LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
 
 opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 			| /*EMPTY*/
-			  {
-			    parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
-			    $$ = AccessExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
+			    	$$ = AccessExclusiveLock;
+				}
 		;
 
 lock_type:	ACCESS SHARE					{ $$ = AccessShareLock; }
 			| ROW SHARE
-			  { parser_ybc_not_support(@1, "ROW SHARE");
-			    $$ = RowShareLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ROW SHARE");
+			    	$$ = RowShareLock;
+				}
 			| ROW EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "ROW EXCLUSIVE");
-			    $$ = RowExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ROW EXCLUSIVE");
+			    	$$ = RowExclusiveLock;
+				}
 			| SHARE UPDATE EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
-			    $$ = ShareUpdateExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
+			    	$$ = ShareUpdateExclusiveLock;
+				}
 			| SHARE
-			  {
-			    parser_ybc_not_support(@1, "SHARE");
-			    $$ = ShareLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE");
+			    	$$ = ShareLock;
+				}
 			| SHARE ROW EXCLUSIVE
 				{
-				  parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
-				  $$ = ShareRowExclusiveLock;
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
+			    	$$ = ShareRowExclusiveLock;
 				}
 			| EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "EXCLUSIVE");
-			    $$ = ExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "EXCLUSIVE");
+			    	$$ = ExclusiveLock;
+				}
 			| ACCESS EXCLUSIVE
-			  {
-			    parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
-			    $$ = AccessExclusiveLock;
-			  }
+				{
+					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+						parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
+			    	$$ = AccessExclusiveLock;
+				}
 		;
 
 opt_nowait:	NOWAIT							{ $$ = true; }
@@ -13861,7 +13820,6 @@ OptTempTableName:
 					$$ = $4;
 					$$->relpersistence = RELPERSISTENCE_TEMP;
 				}
-			/* SELECT ... INTO UNLOGGED <table-name> */
 			| UNLOGGED opt_table qualified_name
 				{
 					$$ = $3;
@@ -14189,10 +14147,7 @@ having_clause:
 		;
 
 for_locking_clause:
-			for_locking_items
-				{
-					$$ = $1;
-				}
+			for_locking_items						{ $$ = $1; }
 			| FOR READ ONLY							{ $$ = NIL; }
 		;
 
@@ -15044,11 +14999,11 @@ opt_array_bounds:
 		;
 
 SimpleTypename:
-			GenericType	{ $$ = $1; }
-			| Numeric	{ $$ = $1; }
-			| Bit	{ $$ = $1; }
-			| Character	{ $$ = $1; }
-			| ConstDatetime	{ $$ = $1; }
+			GenericType								{ $$ = $1; }
+			| Numeric								{ $$ = $1; }
+			| Bit									{ $$ = $1; }
+			| Character								{ $$ = $1; }
+			| ConstDatetime							{ $$ = $1; }
 			| ConstInterval opt_interval
 				{
 					$$ = $1;
@@ -15103,7 +15058,7 @@ GenericType:
 		;
 
 opt_type_modifiers: '(' expr_list ')'				{ $$ = $2; }
-				| /* EMPTY */					{ $$ = NIL; }
+					| /* EMPTY */					{ $$ = NIL; }
 		;
 
 /*
@@ -17519,8 +17474,9 @@ SignedIconst: Iconst								{ $$ = $1; }
 		;
 
 /*
- * Iconst does not accept large OID such as 2147500041, use SignedIconst to convert
- * it to -2147467255 instead. See process_integer_literal and strtoint for details.
+ * YB: Iconst does not accept large OID such as 2147500041, use SignedIconst to
+ * convert it to -2147467255 instead. See process_integer_literal and strtoint
+ * for details.
  */
 Oid:		SignedIconst							{ $$ = $1; };
 

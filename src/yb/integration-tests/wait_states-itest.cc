@@ -186,10 +186,7 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
   }
 
   void EnableYSQLFlags() override {
-    if (test_mode_ == TestMode::kYCQL) {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = false;
-    } else {
+    if (test_mode_ != TestMode::kYCQL) {
       pgwrapper::PgMiniTestBase::EnableYSQLFlags();
     }
   }
@@ -837,6 +834,10 @@ void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder)
           [this, &stop = thread_holder->stop_flag()] { CreateIndexesUntilStopped(stop); });
       break;
     case ash::WaitStateCode::kReplicaState_TakeUpdateLock:
+    case ash::WaitStateCode::kRemoteBootstrap_StartRemoteSession:
+    case ash::WaitStateCode::kRemoteBootstrap_FetchData:
+    case ash::WaitStateCode::kRemoteBootstrap_RateLimiter:
+    case ash::WaitStateCode::kRemoteBootstrap_ReadDataFromFile:
     case ash::WaitStateCode::kRetryableRequests_SaveToDisk:
       thread_holder->AddThreadFunctor(
           [this, &stop = thread_holder->stop_flag()] { AddNodesUntilStopped(stop); });
@@ -887,7 +888,12 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kYCQL_Analyze,
       ash::WaitStateCode::kYCQL_Execute,
       ash::WaitStateCode::kYBClient_WaitingOnDocDB,
-      ash::WaitStateCode::kYBClient_LookingUpTablet
+      ash::WaitStateCode::kYBClient_LookingUpTablet,
+      ash::WaitStateCode::kYBClient_WaitingOnMaster,
+      ash::WaitStateCode::kRemoteBootstrap_StartRemoteSession,
+      ash::WaitStateCode::kRemoteBootstrap_FetchData,
+      ash::WaitStateCode::kRemoteBootstrap_RateLimiter,
+      ash::WaitStateCode::kRemoteBootstrap_ReadDataFromFile
       ), WaitStateCodeToString);
 
 TEST_P(AshTestVerifyOccurrence, VerifyWaitStateEntered) {
@@ -1029,6 +1035,11 @@ class AshTestVerifyPgOccurrence : public AshTestVerifyPgOccurrenceBase,
                                   public ::testing::WithParamInterface<ash::WaitStateCode> {
  public:
   AshTestVerifyPgOccurrence() : AshTestVerifyPgOccurrenceBase(GetParam()) {}
+
+ protected:
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->wait_for_pg = false;
+  }
 };
 
 INSTANTIATE_TEST_SUITE_P(

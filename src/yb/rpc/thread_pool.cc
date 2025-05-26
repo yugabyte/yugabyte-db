@@ -21,9 +21,7 @@
 
 #include <boost/intrusive/list.hpp>
 
-#include <cds/container/basket_queue.h>
-#include <cds/gc/dhp.h>
-
+#include "yb/util/concurrent_queue.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
@@ -43,7 +41,7 @@ namespace {
 
 class Worker;
 
-using TaskQueue = cds::container::BasketQueue<cds::gc::DHP, ThreadPoolTask*>;
+using TaskQueue = SemiFairQueue<ThreadPoolTask>;
 using WaitingWorkers = LockFreeStack<Worker>;
 
 struct ThreadPoolShare {
@@ -78,7 +76,9 @@ class Worker : public boost::intrusive::list_base_hook<> {
       : share_(share) {
   }
 
-  Status Start(size_t index, ThreadPoolTask* task) {
+  Status Start(size_t index, ThreadPoolTask* task) EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
+    SCHECK_EQ(state_, WorkerState::kRunning, IllegalState, "Worker already stopped");
     auto name = strings::Substitute("$0_$1_worker", share_.options.name, index);
     return Thread::Create(share_.options.name, name, &Worker::Execute, this, task, &thread_);
   }
@@ -144,8 +144,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
   ThreadPoolTask* PopTask() {
     // First of all we try to get already queued task, w/o locking.
     // If there is no task, so we could go to waiting state.
-    ThreadPoolTask* task;
-    if (share_.task_queue.pop(task)) {
+    if (auto* task = share_.task_queue.Pop()) {
       return task;
     }
 
@@ -190,8 +189,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
     if (task_) {
       return std::exchange(task_, nullptr);
     }
-    ThreadPoolTask* task;
-    if (share_.task_queue.pop(task)) {
+    if (auto task = share_.task_queue.Pop()) {
       return task;
     }
     return std::nullopt;
@@ -237,7 +235,7 @@ class ThreadPool::Impl {
     return share_.options;
   }
 
-  bool Enqueue(ThreadPoolTask* task) {
+  bool Enqueue(ThreadPoolTask* task) EXCLUDES(mutex_) {
     ++adding_;
     if (closing_) {
       --adding_;
@@ -249,31 +247,54 @@ class ThreadPool::Impl {
       return true;
     }
 
+    if (TryStartNewWorker(task)) {
+      --adding_;
+      return true;
+    }
+
+    // We can get here in 3 cases:
+    // 1) Reached number of workers and all workers are busy.
+    // 2) Failed to start a new thread for a worker.
+    // 3) We are shutting down. In this case we add task to the queue, so it will be processed by
+    //    Shutdown.
+    share_.task_queue.Push(task);
+    --adding_;
+    NotifyWorker(nullptr);
+    return true;
+  }
+
+  bool TryStartNewWorker(ThreadPoolTask* task) EXCLUDES(mutex_) {
+    Worker* worker = nullptr;
     if (share_.num_workers++ < share_.options.max_workers) {
       std::lock_guard lock(mutex_);
       if (!closing_) {
         auto new_worker = std::make_unique<Worker>(share_);
-        auto status = new_worker->Start(++worker_counter_, task);
-        if (status.ok()) {
-          workers_.push_back(*new_worker.release());
-          --adding_;
-          return true;
+        workers_.push_back(*(worker = new_worker.release()));
+      }
+    }
+    if (worker) {
+      auto status = worker->Start(++worker_counter_, task);
+      if (status.ok()) {
+        return true;
+      }
+      bool empty;
+      {
+        std::lock_guard lock(mutex_);
+        if (!closing_) {
+          workers_.erase_and_dispose(workers_.iterator_to(*worker), std::default_delete<Worker>());
+          empty = workers_.empty();
         } else {
-          if (workers_.empty()) {
-            LOG_WITH_PREFIX(FATAL) << "Unable to start first worker: " << status;
-          } else {
-            LOG_WITH_PREFIX(WARNING) << "Unable to start worker: " << status;
-          }
+          empty = false;
         }
+      }
+      if (empty) {
+        LOG_WITH_PREFIX(FATAL) << "Unable to start first worker: " << status;
+      } else {
+        LOG_WITH_PREFIX(WARNING) << "Unable to start worker: " << status;
       }
     }
     --share_.num_workers;
-
-    bool added = share_.task_queue.push(task);
-    DCHECK(added); // BasketQueue always succeed.
-    --adding_;
-    NotifyWorker(nullptr);
-    return true;
+    return false;
   }
 
   // Returns true if we found worker that will pick up this task, false otherwise.
@@ -302,7 +323,7 @@ class ThreadPool::Impl {
     return share_.options.name + ": ";
   }
 
-  void Shutdown() {
+  void Shutdown() EXCLUDES(mutex_) {
     // Prevent new worker threads from being created by pretending a large number of workers have
     // already been created.
     share_.num_workers = 1ul << 48;
@@ -310,7 +331,7 @@ class ThreadPool::Impl {
     {
       std::lock_guard lock(mutex_);
       if (closing_) {
-        CHECK(share_.task_queue.empty());
+        CHECK(share_.task_queue.Empty());
         CHECK(workers_.empty());
         return;
       }
@@ -334,8 +355,7 @@ class ThreadPool::Impl {
         workers_.clear();
       }
     }
-    ThreadPoolTask* task = nullptr;
-    while (share_.task_queue.pop(task)) {
+    while (auto* task = share_.task_queue.Pop()) {
       TaskDone(task, kShuttingDownStatus);
     }
 

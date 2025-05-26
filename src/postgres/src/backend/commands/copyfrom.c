@@ -555,12 +555,11 @@ CopyFrom(CopyFromState cstate)
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
-	bool orig_yb_disable_transactional_writes = yb_disable_transactional_writes;
 
 	/* Yb variables */
 	bool		useNonTxnInsert = false;
 	bool		has_more_tuples;
-	bool set_txn_batch_size_explicitly = true;
+	bool		set_txn_batch_size_explicitly = true;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
@@ -737,32 +736,44 @@ CopyFrom(CopyFromState cstate)
 		cstate->qualexpr = ExecInitQual(castNode(List, cstate->whereClause),
 										&mtstate->ps);
 	/*
-	 * For colocated table, default to non-txn for better performance. But for consistency,
-	 * we need to ensure the index and the row are written in same batch.
-	 * If ROWS_PER_TRANSACTION is not explicitly set for a colocated table, non-txn will be
-	 * enabled automatically. In this case, the batch_size will be set to 0, ensuring that
-	 * data is sent continuously in a pipeline i.e., without an intervening commit which will
-	 * act as a flush barrier.
+	 * YB: For colocated table, default to non-txn for better performance. But
+	 * for consistency, we need to ensure the index and the row are written in
+	 * same batch. If ROWS_PER_TRANSACTION is not explicitly set for a
+	 * colocated table, non-txn will be enabled automatically. In this case,
+	 * the batch_size will be set to 0, ensuring that data is sent continuously
+	 * in a pipeline i.e., without an intervening commit which will act as a
+	 * flush barrier.
+	 *
 	 * Always use distributed transaction in following cases for consistency:
-	 * 1. When foreign key constrain is defined. If a foreign key constraint is violated,
-	 *    the data will still be loaded into the table, leading to inconsistencies.
-	 * 2. When rules or trigger are defined. Both rules and trigger may write data in separate
-	 *    buffer, leading to inconsistencies.
+	 * 1. When foreign key constrain is defined. If a foreign key constraint is
+	 *    violated, the data will still be loaded into the table, leading to
+	 *    inconsistencies.
+	 * 2. When rules or trigger are defined. Both rules and trigger may write
+	 *    data in separate buffer, leading to inconsistencies.
 	 */
-	bool has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
+	bool		has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
 		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
+
 	if (yb_fast_path_for_colocated_copy &&
 		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
 		!has_rule_or_trigger && !IsTransactionBlock())
 	{
-		elog(LOG,"using non-txn for copy from colocated table");
+		elog(LOG, "using non-txn for copy from colocated table, yb_disable_transactional_writes=%d",
+			 yb_disable_transactional_writes);
 		useNonTxnInsert = true;
-		yb_disable_transactional_writes = true;
+
+		/*
+		 * the value will be reset automatically once the current top
+		 * transaction ends
+		 */
+		set_config_option("yb_disable_transactional_writes", "true", PGC_USERSET, PGC_S_SESSION,
+						  GUC_ACTION_LOCAL, true, 0, false);
 		cstate->opts.batch_size = 0;
 		YBAdjustOperationsBuffering(YBCRelInfoGetSecondaryIndicesCount(resultRelInfo) + 1);
 	}
 
+	/* YB */
 	if (cstate->opts.batch_size > 0)
 	{
 		/*
@@ -1425,7 +1436,6 @@ yb_no_more_tuples:
 
 	FreeExecutorState(estate);
 
-	yb_disable_transactional_writes = orig_yb_disable_transactional_writes;
 	return processed;
 }
 

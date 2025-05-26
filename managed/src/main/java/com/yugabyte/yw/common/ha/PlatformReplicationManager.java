@@ -139,7 +139,6 @@ public class PlatformReplicationManager {
     if (!this.getSchedule().cancel()) {
       log.warn("Unknown error occurred stopping platform backup schedule");
     }
-    deleteLocalHighAvailabilityConfig();
   }
 
   public void init() {
@@ -260,6 +259,7 @@ public class PlatformReplicationManager {
     // Stop the old backup schedule.
     stopAndDisable();
 
+    boolean wasLeader = localInstance.getIsLeader();
     // Demote the local instance to follower.
     localInstance.demote();
 
@@ -270,10 +270,12 @@ public class PlatformReplicationManager {
               i.setIsLeader(true);
               i.update();
             });
-
-    // Try switching local prometheus to read from the reported leader.
-    replicationHelper.switchPrometheusToFederated(new URL(requestLeaderAddr));
-
+    // Any failure inside the condition rollbacks the DB updates.
+    // This conditional check is just for optimization the prometheus mode switch.
+    if (wasLeader) {
+      // Try switching local prometheus to read from the reported leader.
+      replicationHelper.switchPrometheusToFederated(new URL(requestLeaderAddr));
+    }
     String version =
         configHelper
             .getConfig(ConfigType.YugawareMetadata)
@@ -286,7 +288,8 @@ public class PlatformReplicationManager {
   @VisibleForTesting
   public boolean updateLocalInstanceAfterRestore(HighAvailabilityConfig config) {
     AtomicBoolean updated = new AtomicBoolean();
-    Optional<HighAvailabilityConfig> localConfig = maybeGetLocalHighAvailabilityConfig();
+    Optional<HighAvailabilityConfig> localConfig =
+        maybeGetLocalHighAvailabilityConfig(config.getClusterKey());
     PlatformInstance localInstance =
         localConfig.isPresent() ? localConfig.get().getLocal().orElse(null) : null;
     if (localInstance != null) {
@@ -833,10 +836,12 @@ public class PlatformReplicationManager {
   /**
    * Reads the HA config from the local JSON file that was saved earlier.
    *
+   * @param clusterKey the HA config cluster key.
    * @return the HA config.
    */
-  public synchronized Optional<HighAvailabilityConfig> maybeGetLocalHighAvailabilityConfig() {
-    return replicationHelper.maybeGetLocalHighAvailabilityConfig();
+  public synchronized Optional<HighAvailabilityConfig> maybeGetLocalHighAvailabilityConfig(
+      String clusterKey) {
+    return replicationHelper.maybeGetLocalHighAvailabilityConfig(clusterKey);
   }
 
   /**

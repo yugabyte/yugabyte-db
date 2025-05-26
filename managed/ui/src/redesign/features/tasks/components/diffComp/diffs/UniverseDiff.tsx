@@ -9,7 +9,7 @@
 
 import { MutableRefObject } from 'react';
 import clsx from 'clsx';
-import { differenceWith, intersectionWith, isEqual, keys } from 'lodash';
+import { differenceWith, intersectionWith, isEqual, keys, size } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 
@@ -92,6 +92,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           }}
         />
       );
+      this.changesCount++;
     }
   }
 
@@ -393,6 +394,31 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
       afterComp.push(<DeviceInfoField content={<>&nbsp;</>} />, ...after1);
     }
 
+    if (beforeValue?.userIntent?.dedicatedNodes !== afterValue?.userIntent?.dedicatedNodes) {
+      attributes.push(<DeviceInfoHeader content="Master Placement" />);
+      beforeComp.push(
+        <DeviceInfoField
+          content={
+            beforeValue?.userIntent?.dedicatedNodes
+              ? MasterPlacementMode.DEDICATED
+              : MasterPlacementMode.COLOCATED
+          }
+          operation={DiffOperation.REMOVED}
+        />
+      );
+      afterComp.push(
+        <DeviceInfoField
+          content={
+            afterValue?.userIntent?.dedicatedNodes
+              ? MasterPlacementMode.DEDICATED
+              : MasterPlacementMode.COLOCATED
+          }
+          operation={DiffOperation.ADDED}
+        />
+      );
+      this.changesCount++;
+    }
+
     if (beforeValue.userIntent.masterInstanceType !== afterValue.userIntent.masterInstanceType) {
       this.cards[clusterType].push(
         <DiffCard
@@ -618,6 +644,11 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     const beforeComp: JSX.Element[] = [];
     const afterComp: JSX.Element[] = [];
 
+    const changesCountByOperation = {
+      [DiffOperation.ADDED]: 0,
+      [DiffOperation.REMOVED]: 0,
+      [DiffOperation.CHANGED]: 0
+    };
     // Check for the added instance tags.
     beforeInstanceTags &&
       Object.keys(beforeInstanceTags).forEach((key) => {
@@ -628,6 +659,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           );
           afterComp.push(<InstanceTagsField operation={DiffOperation.REMOVED} value={'---'} />);
           this.changesCount++;
+          changesCountByOperation[DiffOperation.REMOVED]++;
         } else if (afterInstanceTags && beforeInstanceTags[key] !== afterInstanceTags[key]) {
           attributes.push(<InstanceTagsField value={key} />);
           beforeComp.push(
@@ -637,6 +669,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
             <InstanceTagsField operation={DiffOperation.ADDED} value={afterInstanceTags[key]} />
           );
           this.changesCount++;
+          changesCountByOperation[DiffOperation.CHANGED]++;
         }
       });
     afterInstanceTags &&
@@ -648,6 +681,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
             <InstanceTagsField operation={DiffOperation.ADDED} value={afterInstanceTags[key]} />
           );
           this.changesCount++;
+          changesCountByOperation[DiffOperation.ADDED]++;
         }
       });
     this.cards[ClusterType.PRIMARY].push(
@@ -665,7 +699,13 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           title: '',
           element: <>{beforeComp}</>
         }}
-        operation={DiffOperation.CHANGED}
+        operation={
+          changesCountByOperation[DiffOperation.CHANGED] > 0
+            ? DiffOperation.CHANGED
+            : changesCountByOperation[DiffOperation.ADDED] > 0
+            ? DiffOperation.ADDED
+            : DiffOperation.REMOVED
+        }
       />
     );
   }

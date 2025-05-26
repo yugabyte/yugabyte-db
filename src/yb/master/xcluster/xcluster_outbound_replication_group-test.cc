@@ -246,7 +246,7 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
       pb.set_state(master::SysTablesEntryPB::PREPARING);
       pb.set_name(table_name);
       pb.set_namespace_id(namespace_id);
-      pb.mutable_schema()->set_pgschema_name(pg_schema_name);
+      pb.mutable_schema()->set_deprecated_pgschema_name(pg_schema_name);
       pb.set_table_type(PGSQL_TABLE_TYPE);
       l.Commit();
     }

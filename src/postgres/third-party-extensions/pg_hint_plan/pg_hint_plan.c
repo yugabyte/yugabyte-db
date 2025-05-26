@@ -59,6 +59,15 @@
 /* PostgreSQL */
 #include "access/htup_details.h"
 
+/* YB includes */
+#include "catalog/namespace.h"
+#include "common/hashfn.h"
+#include "pg_yb_utils.h"
+#include "utils/catcache.h"
+#include "utils/inval.h"
+#include "utils/plancache.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
@@ -428,6 +437,32 @@ typedef enum YbBadHintMode
 	BAD_HINT_UNRECORNIZED
 } YbBadHintMode;
 
+/*
+ * Hint cache.
+ */
+typedef struct YbHintCacheKey {
+    const char *query_string;
+    const char *application_name;
+} YbHintCacheKey;
+
+typedef struct YbHintCacheEntry {
+    YbHintCacheKey key;
+    const char *hints;
+} YbHintCacheEntry;
+
+/*
+ * Separate memory context for hint cache so that we can easily clear the cache
+ * using MemoryContextReset. Lives under CacheMemoryContext.
+ */
+static MemoryContext YbHintCacheCtx = NULL;
+static HTAB *YbHintCache = NULL;
+static Oid YbCachedHintRelationId = InvalidOid;
+
+#define YB_HINT_ATTR_ID 1
+#define YB_HINT_ATTR_QUERY_STRING 2
+#define YB_HINT_ATTR_APPLICATION_NAME 3
+#define YB_HINT_ATTR_HINTS 4
+
 static bool enable_hint_table_check(bool *newval, void **extra, GucSource source);
 static void assign_enable_hint_table(bool newval, void *extra);
 
@@ -557,6 +592,19 @@ static void ybAddProhibitedJoin(PlannerInfo *root, NodeTag ybJoinTag, Relids joi
 static HintKeyword ybIsNegationHint(Hint *hint);
 static NodeTag ybIsNegationJoinHint(Hint *hint);
 
+static HTAB *yb_init_hint_cache(void);
+static uint32 yb_hint_hash_fn(const void *key, Size keysize);
+static int yb_hint_match_fn(const void *key1, const void *key2, Size keysize);
+static const char *yb_get_cached_hints(const char *client_query, const char *client_application, bool *found);
+static void yb_set_cached_hints(const char *client_query,
+								const char *client_application,
+								const char *hints,
+								HTAB *hint_cache);
+static void YbInvalidateHintCacheCallback(Datum argument, Oid relationId);
+static void YbInvalidateHintCache(void);
+static void YbRefreshHintCache(void);
+static YbHintCacheEntry *YbTupleToHintCacheEntry(TupleDesc tupleDescriptor, HeapTuple heapTuple);
+
 /* GUC variables */
 static bool	pg_hint_plan_enable_hint = true;
 static int debug_level = 0;
@@ -570,6 +618,7 @@ static bool yb_enable_internal_hint_test = false;
 static bool yb_internal_hint_test_fail = false;
 static bool yb_use_generated_hints_for_plan = false;
 static bool yb_use_query_id_for_hinting = false;
+static bool yb_enable_hint_table_cache = true;
 
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
 static int recurse_level = 0;		/* recursion level incl. direct SPI calls */
@@ -713,6 +762,9 @@ _PG_init(void)
 {
 	PLpgSQL_plugin	**var_ptr;
 
+	if (yb_enable_hint_table_cache)
+		CacheRegisterRelcacheCallback(YbInvalidateHintCacheCallback, (Datum) 0);
+
 	/* Define custom GUC variables. */
 	DefineCustomBoolVariable("pg_hint_plan.enable_hint",
 			 "Force planner to use plans specified in the hint comment preceding to the query.",
@@ -834,6 +886,17 @@ _PG_init(void)
 							&yb_use_query_id_for_hinting,
 							false,
 							PGC_USERSET,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.yb_enable_hint_table_cache",
+							"Enables per-session caching for the hint table.",
+							NULL,
+							&yb_enable_hint_table_cache,
+							true,
+							PGC_BACKEND,
 							0,
 							NULL,
 							NULL,
@@ -2060,6 +2123,27 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	char 	nulls[2] = {' ', ' '};
 	text   *qry;
 	text   *app;
+
+	if (IsYugaByteEnabled() && yb_enable_hint_table_cache)
+	{
+		bool found;
+		elog(DEBUG5, "Looking up hints cache for query: %s, application: '%s'", client_query, client_application);
+		const char *cached_hints_app = yb_get_cached_hints(client_query, client_application, &found);
+		if (found)
+		{
+			elog(DEBUG4, "Hint cache hit: query: %s, application: '%s', hints: %s", client_query, client_application, cached_hints_app);
+			return cached_hints_app;
+		}
+		const char *cached_hints_empty = yb_get_cached_hints(client_query, "", &found);
+		if (found)
+		{
+			elog(DEBUG4, "Hint cache hit: query: %s, application: '%s', hints: %s", client_query, "", cached_hints_empty);
+			return cached_hints_empty;
+		}
+		elog(DEBUG4, "Hint cache miss for query: %s, application: '%s'", client_query, client_application);
+		YbIncrementHintCacheMisses();
+		return NULL;
+	}
 
 	PG_TRY();
 	{
@@ -3402,8 +3486,9 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
 		ereport(DEBUG1,
-				(errmsg("\n++ BEGIN pg_hint_plan_planner\n        query: %s",
-						query_string)));
+				(errmsg("\n++ BEGIN pg_hint_plan_planner\n        query: %s\n"
+					    "        query id: %lu",
+						query_string, parse->queryId)));
 	}
 
 	/*
@@ -6444,6 +6529,334 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 	}
 }
 
+/*
+ * Initialize the hint cache. We use the TopMemoryContext so that the cache
+ * is persistent for the duration of the backend.
+ */
+static HTAB *
+yb_init_hint_cache(void)
+{
+	elog(DEBUG1, "Initializing hint cache");
+
+	HASHCTL ctl;
+	MemSet(&ctl, 0, sizeof(ctl));
+
+	ctl.keysize = sizeof(YbHintCacheKey);
+	ctl.entrysize = sizeof(YbHintCacheEntry);
+	ctl.hcxt = YbHintCacheCtx;
+	ctl.hash = yb_hint_hash_fn;
+	ctl.match = yb_hint_match_fn;
+
+	return hash_create(
+		"YbHintCache", 128, /* initial size estimate */
+		&ctl, HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
+}
+
+/* Hash function for YbHintCacheKey (composite of two strings) */
+static uint32
+yb_hint_hash_fn(const void *key, Size keysize)
+{
+	Assert(keysize == sizeof(YbHintCacheKey));
+	const YbHintCacheKey *k = (const YbHintCacheKey *) key;
+	const char *s1 = k->query_string;
+	const char *s2 = k->application_name;
+	Size len1 = strlen(s1);
+	Size len2 = strlen(s2);
+
+	/* Compute hash for each key component */
+	uint32 h1 = hash_bytes((const unsigned char *) s1, len1);
+	uint32 h2 = hash_bytes((const unsigned char *) s2, len2);
+
+	/* Combine the two hash values into one */
+	uint32 h_combined = hash_combine(h1, h2);
+	return h_combined;
+}
+
+/* Comparison function for YbHintCacheKey */
+static int
+yb_hint_match_fn(const void *key1, const void *key2, Size keysize)
+{
+	Assert(keysize == sizeof(YbHintCacheKey));
+	const YbHintCacheKey *k1 = (const YbHintCacheKey *) key1;
+	const YbHintCacheKey *k2 = (const YbHintCacheKey *) key2;
+	if (strcmp(k1->query_string, k2->query_string) == 0 &&
+		strcmp(k1->application_name, k2->application_name) == 0)
+	{
+		return 0;
+	}
+	return 1;
+}
+
+/*
+ * Look up a cached hints entry for a given query and application name.
+ * Returns a pointer to the hints string, or NULL if no entry is found.
+ * The hints string is copied to the caller's context.
+ */
+static const char *
+yb_get_cached_hints(const char *client_query, const char *client_application,
+					bool *found)
+{
+	YbHintCacheEntry *entry;
+	YbHintCacheKey key;
+	key.query_string = client_query;
+	key.application_name = client_application;
+
+	if (!YbHintCache)
+		YbRefreshHintCache();
+
+	entry =
+		(YbHintCacheEntry *) hash_search(YbHintCache, &key, HASH_FIND, found);
+	if (*found)
+	{
+		elog(DEBUG4, "Hint cache hit: query: %s, application: '%s', hints: %s",
+			 client_query, client_application, entry->hints);
+		YbIncrementHintCacheHits();
+		return pstrdup(entry->hints);
+	}
+	return NULL;
+}
+
+/*
+ * Stores one row from the hint_plan.hints table in the in-memory hint cache.
+ */
+static void
+yb_set_cached_hints(const char *client_query, const char *client_application,
+					const char *hints, HTAB *hint_cache)
+{
+	YbHintCacheEntry *entry;
+	bool found;
+	YbHintCacheKey key;
+	MemoryContext oldcontext;
+
+	oldcontext = MemoryContextSwitchTo(YbHintCacheCtx);
+
+	key.query_string = client_query;
+	key.application_name = client_application;
+
+	entry =
+		(YbHintCacheEntry *) hash_search(hint_cache, &key, HASH_ENTER, &found);
+	/*
+	 * found should never be true since (a) there's a unique constraint on the
+	 * query and application name, and (b) we delete and re-create the hash
+	 * table before calling this function.
+	 */
+	Assert(!found);
+	/*
+	 * Copy all strings into the hash table's memory context so they
+	 * survive for the life of the cache.
+	 */
+	entry->key.query_string = pstrdup(client_query);
+	entry->key.application_name = pstrdup(client_application);
+	entry->hints = hints ? pstrdup(hints) : NULL;
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * Invalidates the in-memory hint cache when we receive a relcache invalidation
+ * message for the hint_plan.hints table.
+ */
+static void
+YbInvalidateHintCacheCallback(Datum argument, Oid relationId)
+{
+	/*
+	 * If we don't know what the OID of the hint table is, then we always
+	 * have to invalidate the hint cache to be safe.
+	 */
+	if (relationId == YbCachedHintRelationId ||
+		YbCachedHintRelationId == InvalidOid)
+	{
+		elog(DEBUG3, "Invalidating this backend's hint cache");
+		YbHintCache = NULL;
+		YbCachedHintRelationId = InvalidOid;
+
+		/*
+		 * This invalidation message may have been triggered by a modification
+		 * to a hint for a prepared statement that's currently in the plan cache.
+		 * If that prepared statement is using a generic plan, it's never going
+		 * to pick up the new hint. Clearing the plan cache will force the planner
+		 * to re-plan the prepared statement with the new hint.
+		 *
+		 * We don't know which prepared statements were affected, so we have to reset
+		 * the entire plan cache.
+		 */
+		ResetPlanCache();
+	}
+}
+
+/*
+ * Returns the oid of the hint_plan.hints table (cached in memory).
+ * If the cached oid is invalid, the oid is retrieved from the pg_class
+ * catalog cache.
+ */
+static Oid
+YbGetHintRelationId(void)
+{
+	if (YbCachedHintRelationId == InvalidOid)
+	{
+		Oid hintSchemaId = get_namespace_oid("hint_plan", false);
+
+		YbCachedHintRelationId = get_relname_relid("hints", hintSchemaId);
+		elog(DEBUG3, "New hint relation id: %d", YbCachedHintRelationId);
+	}
+
+	return YbCachedHintRelationId;
+}
+
+/*
+ * Converts a heap tuple from the hint table into a YbHintCacheEntry struct.
+ * Allocates memory for the entry in caller's context.
+ */
+static YbHintCacheEntry *
+YbTupleToHintCacheEntry(TupleDesc tupleDescriptor, HeapTuple heapTuple)
+{
+	YbHintCacheEntry *entry = palloc(sizeof(YbHintCacheEntry));
+
+	/* All columns of the hint table are non-nullable */
+	bool isNull;
+	entry->key.query_string = TextDatumGetCString(heap_getattr(
+		heapTuple, YB_HINT_ATTR_QUERY_STRING, tupleDescriptor, &isNull));
+	entry->key.application_name = TextDatumGetCString(heap_getattr(
+		heapTuple, YB_HINT_ATTR_APPLICATION_NAME, tupleDescriptor, &isNull));
+	entry->hints = TextDatumGetCString(
+		heap_getattr(heapTuple, YB_HINT_ATTR_HINTS, tupleDescriptor, &isNull));
+
+	return entry;
+}
+
+/*
+ * Deletes the entire hint cache and scans the hint table, inserting all
+ * rows into the cache.
+ */
+void
+YbRefreshHintCache(void)
+{
+	elog(DEBUG4, "Refreshing hint cache");
+	YbIncrementHintCacheRefreshes();
+
+	if (YbHintCacheCtx == NULL)
+	{
+		elog(DEBUG3, "Creating hint cache context");
+
+		if (!CacheMemoryContext)
+			CreateCacheMemoryContext();
+
+		YbHintCacheCtx = AllocSetContextCreate(
+			CacheMemoryContext, "YbHintCacheContext", ALLOCSET_DEFAULT_SIZES);
+	}
+	else
+	{
+		elog(DEBUG3, "Resetting hint cache context");
+		MemoryContextReset(YbHintCacheCtx);
+	}
+
+	HTAB *hint_cache = yb_init_hint_cache();
+
+	MemoryContext hintScanContext = AllocSetContextCreate(
+		YbHintCacheCtx, "YbHintScanContext", ALLOCSET_DEFAULT_SIZES);
+	MemoryContext oldContext = MemoryContextSwitchTo(hintScanContext);
+
+	if (!RecoveryInProgress())
+	{
+		Relation hintTable = NULL;
+		SysScanDesc scanDescriptor = NULL;
+		ScanKeyData scanKey[1];
+		int scanKeyCount = 0;
+		HeapTuple heapTuple = NULL;
+		TupleDesc tupleDescriptor = NULL;
+
+		elog(DEBUG4, "Scanning hint table");
+
+		hintTable = table_open(YbGetHintRelationId(), AccessShareLock);
+
+		scanDescriptor = systable_beginscan(hintTable, InvalidOid, false, NULL,
+											scanKeyCount, scanKey);
+
+		tupleDescriptor = RelationGetDescr(hintTable);
+
+		while (HeapTupleIsValid(heapTuple = systable_getnext(scanDescriptor)))
+		{
+			/*
+			 * Entries must be allocated in YbHintCacheCtx so they survive
+			 * the deletion of hintScanContext.
+			 */
+			MemoryContextSwitchTo(YbHintCacheCtx);
+			YbHintCacheEntry *entry = YbTupleToHintCacheEntry(tupleDescriptor, heapTuple);
+			if (entry != NULL)
+				yb_set_cached_hints(entry->key.query_string,
+									entry->key.application_name, entry->hints, hint_cache);
+			MemoryContextSwitchTo(hintScanContext);
+		}
+
+		systable_endscan(scanDescriptor);
+		table_close(hintTable, AccessShareLock);
+	}
+
+	MemoryContextSwitchTo(oldContext);
+	MemoryContextDelete(hintScanContext);
+
+	elog(DEBUG4, "Done refreshing hint cache");
+
+	YbHintCache = hint_cache;
+}
+
+/*
+ * yb_hint_plan_cache_invalidate invalidates the hint cache in response to
+ * a trigger.
+ */
+PG_FUNCTION_INFO_V1(yb_hint_plan_cache_invalidate);
+Datum
+yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
+{
+	if (!yb_enable_hint_table_cache)
+	{
+		elog(DEBUG3, "Hint cache is disabled, skipping cache invalidation");
+		PG_RETURN_DATUM(PointerGetDatum(NULL));
+	}
+
+	if (!CALLED_AS_TRIGGER(fcinfo))
+	{
+		ereport(ERROR, (errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
+						errmsg("must be called as trigger")));
+	}
+
+	if (IsYsqlUpgrade || YBCPgYsqlMajorVersionUpgradeInProgress() || yb_extension_upgrade)
+	{
+		/* DDL operations are not allowed during extension upgrade */
+		elog(DEBUG3, "Skipping hint cache invalidation during extension upgrade");
+		PG_RETURN_DATUM(PointerGetDatum(NULL));
+	}
+
+	/*
+	 * Send an invalidation message marking the hint table relcache entry as
+	 * invalid.
+	 */
+	YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+
+	YbInvalidateHintCache();
+
+	YbForceSendInvalMessages();
+	YBDecrementDdlNestingLevel();
+
+	PG_RETURN_DATUM(PointerGetDatum(NULL));
+}
+
+/*
+ * Invalidates the hint cache in response to a trigger.
+ */
+static void
+YbInvalidateHintCache(void)
+{
+	HeapTuple classTuple = NULL;
+
+	classTuple = SearchSysCache1(RELOID, ObjectIdGetDatum(YbGetHintRelationId()));
+	if (HeapTupleIsValid(classTuple))
+	{
+		elog(DEBUG3, "Marking hint table relcache entry as invalid");
+		CacheInvalidateRelcacheByTuple(classTuple);
+		ReleaseSysCache(classTuple);
+	}
+}
 
 /* include core static functions */
 static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,

@@ -96,7 +96,6 @@ typedef struct PlannedStmt
 	int			stmt_len;		/* length in bytes; 0 means "rest of string" */
 
 	/* YB specific fields */
-
 	/*
 	 * Number of relations that are still referenced by the plan after
 	 * constraint exclusion and partition pruning.
@@ -173,26 +172,26 @@ typedef struct Plan
 	Bitmapset  *extParam;
 	Bitmapset  *allParam;
 
-	/* alias to use for hinting - unique across all blocks/entire query */
+	/* YB: alias to use for hinting - unique across all blocks/entire query */
 	char	   *ybHintAlias;
 
 	/*
-	 * Unique id across all plan nodes. This is inherited from corresponding
-	 * Path node (in a few cases there is not one).
+	 * YB: Unique id across all plan nodes. This is inherited from
+	 * corresponding Path node (in a few cases there is not one).
 	 */
 	uint32		ybUniqueId;
 
 	/*
-	 * If a node is a child of a Subquery Scan node and the scan node gets
+	 * YB: If a node is a child of a Subquery Scan node and the scan node gets
 	 * removed the child node will 'inherit' the unique hint alias
 	 * of the scan.
 	 */
 	char	   *ybInheritedHintAlias;
 
-	/* Is this a join that was referenced in a leading join hint? */
+	/* YB: Is this a join that was referenced in a leading join hint? */
 	bool		ybIsHinted;
 
-	/* Is this node forced using a UID? */
+	/* YB: Is this node forced using a UID? */
 	bool		ybHasHintedUid;
 } Plan;
 
@@ -236,9 +235,9 @@ typedef struct ProjectSet
 } ProjectSet;
 
 /*
- * An enum whose values describe the type of entity that may be excluded from
- * bookkeeping operations performed by an UPDATE or an INSERT ON CONFLICT DO
- * UPDATE query.
+ * YB: An enum whose values describe the type of entity that may be excluded
+ * from bookkeeping operations performed by an UPDATE or an INSERT ON CONFLICT
+ * DO UPDATE query.
  */
 typedef enum
 {
@@ -390,25 +389,23 @@ typedef struct ModifyTable
 	List	   *mergeActionLists;	/* per-target-table lists of actions for
 									 * MERGE */
 
+	/* YB */
 	List	   *ybPushdownTlist;	/* tlist for the pushdown SET expressions */
 	List	   *ybReturningColumns; /* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
-
 	/*
-	 * A collection of entities that are impacted by the ModifyTable query, and
-	 * their relationship to the columns that are modified by the query. This is
-	 * currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE queries.
-	 * The contents of this struct are computed at planning time and remain
-	 * immutable for the lifetime of the plan.
+	 * YB: A collection of entities that are impacted by the ModifyTable query,
+	 * and their relationship to the columns that are modified by the query.
+	 * This is currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE
+	 * queries. The contents of this struct are computed at planning time and
+	 * remain immutable for the lifetime of the plan.
 	 */
 	YbUpdateAffectedEntities *yb_update_affected_entities;
-
 	/*
-	 * A collection of entity OIDs (grouped by type) for which it is known at
-	 * planning time that bookkeeping updates can be skipped.
-	 * This is currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE
-	 * queries.
+	 * YB: A collection of entity OIDs (grouped by type) for which it is known
+	 * at planning time that bookkeeping updates can be skipped. This is
+	 * currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE queries.
 	 * The entities in this struct are mutually exclusive to the entities in
 	 * yb_update_affected_entities.
 	 */
@@ -604,8 +601,10 @@ typedef struct IndexScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indexorderbyorig;	/* the same in original form */
 	List	   *indexorderbyops;	/* OIDs of sort ops for ORDER BY exprs */
-	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+
+	/* YB */
+	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	YbPushdownExprs yb_idx_pushdown;
 	YbPushdownExprs yb_rel_pushdown;
 	YbPlanInfo	yb_plan_info;
@@ -653,6 +652,8 @@ typedef struct IndexOnlyScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+
+	/* YB */
 	YbPushdownExprs yb_pushdown;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */

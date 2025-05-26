@@ -3,6 +3,13 @@
 
 set -euo pipefail
 
+to_lower() {
+  out=$(awk '{print tolower($0)}' <<< "$1")
+  echo "$out"
+}
+
+readonly build_arch=$(to_lower "$(uname -m)")
+
 main() {
   echo "* Installing Earlyoom Service"
   if [ "$SUDO_ACCESS" = "true" ]; then
@@ -58,18 +65,29 @@ EOF
 
   SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+  ARTIFACT="earlyoom-linux-amd64.tar.gz"
+  if [ "$build_arch" = "arm64" ]; then
+      ARTIFACT="earlyoom-linux-arm64.tar.gz"
+  fi
+  mkdir -p "${TMP_DIR}/earlyoom"
+  tar -xzf "third-party/${ARTIFACT}" -C "${TMP_DIR}/earlyoom/" --no-same-owner
+  EXTRACTED_DIR=$(ls -d /${TMP_DIR}/earlyoom/*/ | head -n 1)
 
   if [ "$SUDO_ACCESS" = "true" ]; then\
     cp $SCRIPT_DIR/configure_earlyoom_service.sh $TMP_DIR/
-    cp $SCRIPT_DIR/earlyoom $TMP_DIR/
     sudo chown yugabyte:yugabyte $TMP_DIR/configure_earlyoom_service.sh
-    sudo chown yugabyte:yugabyte $TMP_DIR/earlyoom
+    sudo chmod 755 $TMP_DIR/configure_earlyoom_service.sh
+    sudo chown yugabyte:yugabyte $EXTRACTED_DIR/earlyoom
+    sudo chmod 755 $EXTRACTED_DIR/earlyoom
     mv $TMP_DIR/configure_earlyoom_service.sh $BIN_DIR/
-    mv $TMP_DIR/earlyoom $BIN_DIR/
   else
     cp $SCRIPT_DIR/configure_earlyoom_service.sh $BIN_DIR/
-    cp $SCRIPT_DIR/earlyoom $BIN_DIR/
+    chmod 755 $BIN_DIR/configure_earlyoom_service.sh
+    chmod 755 $EXTRACTED_DIR/earlyoom
   fi
+  mv $EXTRACTED_DIR/earlyoom $BIN_DIR/
+
+  rm -rf "${TMP_DIR}/earlyoom"
 
   if [ -z "${EARLYOOM_ARGS}" ]; then
     EARLYOOM_ARGS="-m 5 -r 240 --prefer 'postgres'"

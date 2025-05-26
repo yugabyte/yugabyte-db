@@ -1,38 +1,83 @@
 ---
 title: YB Documentation
 headerTitle: YugabyteDB Documentation
-headcontent: Build scalable applications and learn distributed SQL
+headcontent: Distributed PostgreSQL for Modern Apps
 description: Guides, examples, and reference material you need to evaluate YugabyteDB database, build scalable applications, and learn distributed SQL.
 type: indexpage
 layout: list
 breadcrumbDisable: true
 weight: 1
-showRightNav: true
 unversioned: true
 ---
 
-YugabyteDB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a combination of high-performance document store, per-shard distributed consensus replication, and multi-shard ACID transactions, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. As a cloud-native database, it can be deployed across public and private clouds as well as in Kubernetes environments.
+YugabyteDB is a cloud-native distributed PostgreSQL-compatible database that combines strong consistency with ultra-resilience, seamless scalability, geo-distribution, and highly flexible data locality to deliver business-critical, transactional applications.
 
-YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency.
+Available as a flexible service and with a uniform experience across Kubernetes and/or any combination of public, private, or hybrid cloud, YugabyteDB provides distributed PostgreSQL that scales and never fails.
+
+YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or modernized transactional applications that need absolute data correctness and require scalability, high availability, or global deployment.
+<!--YugabyteDB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability, and low latency.-->
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
-    title="Get Started in the Cloud"
-    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required."
+    title="Get Started"
+    description="Create your first cluster and build a sample application in 15 minutes."
     buttonText="Get started"
-    buttonUrl="/preview/yugabyte-cloud/cloud-quickstart/"
-    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
+    buttonUrl="/preview/tutorials/quick-start-yugabytedb-managed/"
+    imageAlt="Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 
   {{< sections/bottom-image-box
-    title="Get Started locally on your Laptop"
-    description="Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL."
+    title="Modernize and Migrate"
+    description="Streamline all stages of bringing a source to YugabyteDB, including analysis, conversion, migration, and cutover."
     buttonText="Get started"
-    buttonUrl="/preview/tutorials/quick-start/"
-    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
+    buttonUrl="/preview/yugabyte-voyager/introduction/"
+    imageAlt="Cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
 
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Explore"
+    description="Explore YugabyteDB's support for cloud-native applications."
+    linkText1="PostgreSQL compatibility"
+    linkUrl1="/preview/explore/ysql-language-features/"
+    linkText2="Resilience"
+    linkUrl2="/preview/explore/fault-tolerance/"
+    linkText3="Scalability"
+    linkUrl3="/preview/explore/linear-scalability/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="/preview/explore/"
+  >}}
+  {{< sections/3-box-card
+    title="Develop"
+    description="Build global applications using familiar APIs and drivers."
+    linkText1="Global applications"
+    linkUrl1="/preview/develop/build-global-apps/"
+    linkText2="Hybrid and multi-cloud"
+    linkUrl2="/preview/develop/multi-cloud/"
+    linkText3="Drivers and ORMs"
+    linkUrl3="/preview/drivers-orms/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="/preview/develop/"
+  >}}
+  {{< sections/3-box-card
+    title="Under the hood"
+    description="Learn about YugabyteDB's modern architecture."
+    linkText1="Query layer"
+    linkUrl1="/preview/architecture/query-layer/"
+    linkText2="Storage layer"
+    linkUrl2="/preview/architecture/docdb/"
+    linkText3="Transactions"
+    linkUrl3="/preview/architecture/transactions/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="/preview/architecture/"
+  >}}
+{{< /sections/3-boxes >}}
+
+<!--
 ## Introduction to YugabyteDB
 
 ##### Video: [Introducing YugabyteDB: The Distributed SQL Database for Mission-Critical Applications](https://www.youtube.com/watch?v=j24p07Frw00)
@@ -124,3 +169,4 @@ Database connection management with YugabyteDB.
 ##### Blog: [Understanding Client Connections in YugabyteDB YSQL](https://www.yugabyte.com/blog/how-connection-pooling-works/)
 
 Understand client connections in YugabyteDB, and how connection pooling helps.
+-->

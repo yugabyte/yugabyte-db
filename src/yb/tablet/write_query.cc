@@ -45,6 +45,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
@@ -62,6 +63,9 @@ TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
 DEFINE_test_flag(bool, writequery_stuck_from_callback_leak, false,
     "Simulate WriteQuery stuck because of the update index flushed rpc call back leak");
+
+DECLARE_bool(batch_tablet_metrics_update);
+DECLARE_bool(ysql_analyze_dump_metrics);
 
 namespace yb {
 namespace tablet {
@@ -203,6 +207,14 @@ WriteQuery::WriteQuery(
       start_time_(MonoTime::Now()),
       execute_mode_(ExecuteMode::kSimple) {
   IncrementActiveWriteQueryObjectsBy(1);
+  auto res = tablet_safe();
+  if (res.ok()) {
+    global_tablet_metrics_ = (*res)->metrics();
+  }
+
+  metrics_ = std::make_shared<TabletMetricsHolder>(
+      GetAtomicFlag(&FLAGS_batch_tablet_metrics_update), global_tablet_metrics_,
+      &scoped_tablet_metrics_);
 }
 
 LWWritePB& WriteQuery::request() {
@@ -240,9 +252,9 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
   }
   // If a restart read is required, then we return this fact to caller and don't perform the write
   // operation.
-  if (status.ok() && restart_read_ht_.is_valid()) {
+  if (status.ok() && read_restart_data_.is_valid()) {
     auto restart_time = response()->mutable_restart_read_time();
-    restart_time->set_read_ht(restart_read_ht_.ToUint64());
+    restart_time->set_read_ht(read_restart_data_.restart_time.ToUint64());
     auto local_limit = context_->ReportReadRestart();
     if (!local_limit.ok()) {
       Cancel(local_limit.status());
@@ -250,6 +262,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     }
     restart_time->set_deprecated_max_of_read_time_and_local_limit_ht(local_limit->ToUint64());
     restart_time->set_local_limit_ht(local_limit->ToUint64());
+    response()->set_restart_read_key(read_restart_data_.key);
     // Global limit is ignored by caller, so we don't set it.
     Cancel(Status::OK());
     return;
@@ -280,6 +293,21 @@ void WriteQuery::Release() {
 
 WriteQuery::~WriteQuery() {
   IncrementActiveWriteQueryObjectsBy(-1);
+
+  // Any metrics updated after destroying the WriteQuery
+  // object cannot be sent with the response PB. So, update
+  // global tablet metrics directly from now.
+  metrics_->Reset();
+
+  if (global_tablet_metrics_) {
+    scoped_tablet_metrics_.MergeAndClear(global_tablet_metrics_);
+  }
+  auto tablet_result = tablet_safe();
+  if (tablet_result.ok()) {
+    scoped_statistics_.MergeAndClear(
+        (*tablet_result)->regulardb_statistics().get(),
+        (*tablet_result)->intentsdb_statistics().get());
+  }
 }
 
 void WriteQuery::set_client_request(std::reference_wrapper<const tserver::WriteRequestPB> req) {
@@ -308,12 +336,10 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
 
   auto tablet = *tablet_result;
   if (status.ok()) {
-    TabletMetrics* metrics = tablet->metrics();
-    if (metrics) {
+    if (metrics_) {
       auto op_duration_usec =
           make_unsigned(MonoDelta(MonoTime::Now() - start_time_).ToMicroseconds());
-
-      metrics->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
+      metrics_->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
     }
   }
 
@@ -714,7 +740,7 @@ Status WriteQuery::DoExecute() {
 
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      doc_ops_, write_batch.read_pairs(), tablet->metrics(), isolation_level_, row_mark_type,
+      doc_ops_, write_batch.read_pairs(), metrics_, isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
@@ -771,7 +797,7 @@ Status WriteQuery::DoExecute() {
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
         request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
-        transaction_participant, tablet->metrics(), &prepare_result_.lock_batch, wait_queue,
+        transaction_participant, metrics_, &prepare_result_.lock_batch, wait_queue,
         deadline(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
@@ -807,7 +833,7 @@ Status WriteQuery::DoExecute() {
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
       request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
-      transaction_participant, tablet->metrics(),
+      transaction_participant, metrics_,
       &prepare_result_.lock_batch, wait_queue, is_advisory_lock_request, deadline(),
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
@@ -850,7 +876,7 @@ Status WriteQuery::DoTransactionalConflictsResolved() {
     safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
     read_time_ = ReadHybridTime::FromHybridTimeRange(
         {safe_time, tablet->clock()->NowRange().second});
-    tablet->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    metrics_->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
   } else if (prepare_result_.need_read_snapshot &&
              isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
     return STATUS_FORMAT(
@@ -871,7 +897,7 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   auto tablet = VERIFY_RESULT(tablet_safe());
   if (prepare_result_.need_read_snapshot && !read_time_) {
     // A read_time will be picked by the below ScopedReadOperation::Create() call.
-    tablet->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    metrics_->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
   }
   // For WriteQuery requests with execution mode kCql and kPgsql, we perform schema version checks
   // in two places:
@@ -902,18 +928,13 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
                                                   read_time_))
       : ScopedReadOperation();
 
-  docdb::DocDBStatistics statistics;
-  auto scope_exit = ScopeExit([&statistics, tablet] {
-    statistics.MergeAndClear(
-        tablet->regulardb_statistics().get(), tablet->intentsdb_statistics().get());
-  });
   docdb::ReadOperationData read_operation_data {
     .deadline = deadline(),
     .read_time = prepare_result_.need_read_snapshot
         ? read_op.read_time()
         // When need_read_snapshot is false, this time is used only to write TTL field of record.
         : ReadHybridTime::SingleTime(tablet->clock()->Now()),
-    .statistics = &statistics,
+    .statistics = &scoped_statistics_,
   };
 
   // We expect all read operations for this transaction to be done in AssembleDocWriteBatch. Once
@@ -931,15 +952,15 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
         doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
         scoped_read_operation_, &write_batch, init_marker_behavior,
-        tablet->monotonic_counter(), &restart_read_ht_, tablet->metadata()->table_name()));
+        tablet->monotonic_counter(), &read_restart_data_, tablet->metadata()->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.
-    if (!restart_read_ht_.is_valid() || !allow_immediate_read_restart_) {
+    if (!read_restart_data_.is_valid() || !allow_immediate_read_restart_) {
       break;
     }
 
-    read_operation_data.read_time.read = restart_read_ht_;
+    read_operation_data.read_time.read = read_restart_data_.restart_time;
     if (!local_limit_updated) {
       local_limit_updated = true;
       safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
@@ -948,7 +969,7 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
           safe_time);
     }
 
-    restart_read_ht_ = HybridTime();
+    read_restart_data_ = ReadRestartData();
 
     write_batch.mutable_write_pairs()->clear();
 
@@ -1388,7 +1409,7 @@ void WriteQuery::PgsqlRespondSchemaVersionMismatch() {
 }
 
 void WriteQuery::PgsqlExecuteDone(const Status& status) {
-  if (!status.ok() || restart_read_ht_.is_valid() || schema_version_mismatch_) {
+  if (!status.ok() || read_restart_data_.is_valid() || schema_version_mismatch_) {
     StartSynchronization(std::move(self_), status);
     return;
   }
@@ -1420,6 +1441,18 @@ void WriteQuery::IncrementActiveWriteQueryObjectsBy(int64_t value) {
     LOG(DFATAL) << "Unable to update kActiveWriteQueryObjects metric but had "
                 << "previosuly contributed to it.";
   }
+}
+
+PgsqlResponsePB* WriteQuery::GetPgsqlResponseForMetricsCapture() const {
+  if (!pgsql_write_ops_.empty()) {
+    auto& write_op = pgsql_write_ops_.at(0);
+    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
+        write_op->request().metrics_capture() ==
+            PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
+      return write_op->response();
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace tablet

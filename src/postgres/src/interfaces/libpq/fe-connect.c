@@ -3854,6 +3854,7 @@ keep_going:						/* We will come back to here until there is
 				appendPQExpBuffer(&conn->errorMessage,
 								  libpq_gettext("\"%s\" failed\n"),
 								  "SELECT pg_is_in_recovery()");
+
 				/* Close connection politely. */
 				conn->status = CONNECTION_OK;
 				sendTerminateConn(conn);
@@ -6067,7 +6068,7 @@ conninfo_add_defaults(PQconninfoOption *options, PQExpBuffer errorMessage)
 		}
 
 		/*
-		 * Special handling for "dbname" option.
+		 * YB: Special handling for "dbname" option.
 		 */
 		if (strcmp(option->keyword, "dbname") == 0)
 		{
@@ -7432,7 +7433,7 @@ bool
 pqGetHomeDirectory(char *buf, int bufsize)
 {
 #ifndef WIN32
-	const char *home = NULL;
+	const char *home;
 
 	home = getenv("HOME");
 	if (home == NULL || home[0] == '\0')

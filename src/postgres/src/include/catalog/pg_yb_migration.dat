@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V78__26645__yb_binary_upgrade_set_next_pg_enum_sortorder.sql
-{ major => '78', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V81__26240__pg_clear_relation_stats.sql
+{ major => '81', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

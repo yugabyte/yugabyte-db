@@ -1651,4 +1651,76 @@ TEST_F(YsqlMajorUpgradeTest, YbSuperuserRole) {
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 
+TEST_F(YsqlMajorUpgradeTest, Analyze) {
+  constexpr std::string_view kStatsUpdateError =
+      "YSQL DDLs, and catalog modifications are not allowed during a major YSQL upgrade";
+  constexpr std::string_view kNoRandStateError = "Invalid sampling state, random state is missing";
+  using ExpectedErrors = std::optional<const std::vector<std::string_view>>;
+  auto check_analyze = [this](std::optional<size_t> server, ExpectedErrors expected_errors) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(server));
+    auto status = conn.ExecuteFormat("ANALYZE $0", kSimpleTableName);
+    if (!expected_errors) {
+      ASSERT_OK(status);
+    } else {
+      ASSERT_NOK(status);
+      for (const auto& err : *expected_errors) {
+        if (status.ToString().find(err) != std::string::npos) {
+          return;
+        }
+      }
+      FAIL() << "Unexpected error " << status.ToString();
+    }
+  };
+  ASSERT_OK(CreateSimpleTable());
+  check_analyze(kAnyTserver, std::nullopt);
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+  check_analyze(kAnyTserver, {{kStatsUpdateError}});
+  LOG(INFO) << "Restarting yb-tserver " << kMixedModeTserverPg15 << " in current version";
+  auto mixed_mode_pg15_tserver = cluster_->tablet_server(kMixedModeTserverPg15);
+  ASSERT_OK(RestartTServerInCurrentVersion(
+      *mixed_mode_pg15_tserver, /*wait_for_cluster_to_stabilize=*/true));
+  check_analyze(kMixedModeTserverPg11, {{kNoRandStateError, kStatsUpdateError}});
+  check_analyze(kMixedModeTserverPg15, {{kNoRandStateError, kStatsUpdateError}});
+  ASSERT_OK(UpgradeAllTserversFromMixedMode());
+  check_analyze(kAnyTserver, {{kStatsUpdateError}});
+  ASSERT_OK(FinalizeUpgrade());
+  check_analyze(kAnyTserver, std::nullopt);
+}
+
+TEST_F(YsqlMajorUpgradeTest, EnumTypes) {
+  ASSERT_OK(ExecuteStatements({
+    "CREATE TYPE color AS ENUM ('red', 'green', 'blue', 'yellow')",
+    "CREATE TABLE paint_log (id serial, shade color) PARTITION BY HASH (shade)",
+    "CREATE TABLE paint_log_p0 PARTITION OF paint_log FOR VALUES WITH (MODULUS 2, REMAINDER 0)",
+    "CREATE TABLE paint_log_p1 PARTITION OF paint_log FOR VALUES WITH (MODULUS 2, REMAINDER 1)",
+    "INSERT INTO paint_log (shade) VALUES ('red'), ('green'), ('blue'), ('yellow')"
+  }));
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  auto type_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+    "SELECT oid FROM pg_type WHERE typname = 'color'"));
+
+  const auto fetch_partition_data = [&](const std::string& partition) {
+    return conn.FetchRows<int, std::string>(
+        Format("SELECT id, shade::text FROM $0 ORDER BY shade", partition));
+  };
+
+  const auto fetch_enum_data = [&]() {
+    return conn.FetchRows<pgwrapper::PGOid, float, std::string>(Format(
+        "SELECT oid, enumsortorder, enumlabel FROM pg_enum WHERE enumtypid = $0"
+        " ORDER BY enumsortorder", type_oid));
+  };
+
+  auto paint_log_p0_res = ASSERT_RESULT(fetch_partition_data("paint_log_p0"));
+  auto paint_log_p1_res = ASSERT_RESULT(fetch_partition_data("paint_log_p1"));
+  auto enum_oids = ASSERT_RESULT(fetch_enum_data());
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_partition_data("paint_log_p0")), paint_log_p0_res);
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_partition_data("paint_log_p1")), paint_log_p1_res);
+  ASSERT_VECTORS_EQ(ASSERT_RESULT(fetch_enum_data()), enum_oids);
+}
+
 }  // namespace yb

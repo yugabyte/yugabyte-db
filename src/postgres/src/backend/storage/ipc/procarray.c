@@ -269,7 +269,7 @@ typedef enum KAXCompressReason
 	KAX_PRUNE,					/* we just pruned old entries */
 	KAX_TRANSACTION_END,		/* we just committed/removed some XIDs */
 	KAX_STARTUP_PROCESS_IDLE	/* startup process is about to sleep */
-}			KAXCompressReason;
+} KAXCompressReason;
 
 
 static ProcArrayStruct *procArray;
@@ -673,6 +673,7 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 	LWLockRelease(XidGenLock);
 	LWLockRelease(ProcArrayLock);
 }
+
 
 /*
  * ProcArrayEndTransaction -- mark a transaction as no longer running

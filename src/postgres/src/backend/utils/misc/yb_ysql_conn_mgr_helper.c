@@ -819,11 +819,12 @@ YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superus
 	 * shared memory block in DeleteSharedMemory() based on YB_GUC_SUPPORT_VIA_SHMEM.
 	 */
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
-		int new_client_id = yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
-		if (new_client_id > 0)
-			ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
-		else
-			ereport(FATAL, (errmsg("unable to create the shared memory block")));
+	int			new_client_id = yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
+
+	if (new_client_id > 0)
+		ereport(NOTICE, (errhint("shmkey=%d", new_client_id)));
+	else
+		ereport(FATAL, (errmsg("unable to create the shared memory block")));
 #endif
 }
 

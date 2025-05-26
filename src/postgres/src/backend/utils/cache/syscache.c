@@ -1768,6 +1768,7 @@ InitCatalogCachePhase2(void)
 		InitCatCachePhase2(SysCache[cacheId], true);
 }
 
+
 /*
  * SearchSysCache
  *
@@ -1898,7 +1899,6 @@ SearchSysCacheLocked1(int cacheId,
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
 		return SearchSysCache1(cacheId, key1);
 	}
 

@@ -1536,7 +1536,7 @@ untransformRelOptions(Datum options)
 			val = (Node *) makeString(pstrdup(p));
 		}
 		result = lappend(result, makeDefElem(pstrdup(s), val, -1));
-		pfree(s);
+		pfree(s);				/* YB-added */
 	}
 
 	return result;
@@ -1915,7 +1915,7 @@ allocateReloptStruct(Size base, relopt_value *options, int numoptions)
 			if (optstr->fill_cb)
 			{
 				const char *val = optval->isset ? optval->values.string_val :
-				optstr->default_isnull ? NULL : optstr->default_val;
+					optstr->default_isnull ? NULL : optstr->default_val;
 
 				size += optstr->fill_cb(val, NULL);
 			}
@@ -1999,8 +1999,8 @@ fillRelOptions(void *rdopts, Size basesize,
 						if (optstring->fill_cb)
 						{
 							Size		size =
-							optstring->fill_cb(string_val,
-											   (char *) rdopts + offset);
+								optstring->fill_cb(string_val,
+												   (char *) rdopts + offset);
 
 							if (size)
 							{

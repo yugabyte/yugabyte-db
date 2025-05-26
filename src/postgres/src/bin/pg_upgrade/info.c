@@ -60,9 +60,9 @@ gen_db_file_maps(DbInfo *old_db, DbInfo *new_db,
 		   new_relnum < new_db->rel_arr.nrels)
 	{
 		RelInfo    *old_rel = (old_relnum < old_db->rel_arr.nrels) ?
-		&old_db->rel_arr.rels[old_relnum] : NULL;
+			&old_db->rel_arr.rels[old_relnum] : NULL;
 		RelInfo    *new_rel = (new_relnum < new_db->rel_arr.nrels) ?
-		&new_db->rel_arr.rels[new_relnum] : NULL;
+			&new_db->rel_arr.rels[new_relnum] : NULL;
 
 		/* handle running off one array before the other */
 		if (!new_rel)

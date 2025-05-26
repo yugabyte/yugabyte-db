@@ -15,13 +15,16 @@
 
 #include "yb/tserver/ysql_lease_poller.h"
 
+#include "yb/common/ysql_operation_lease.h"
+
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/server/server_base.proxy.h"
 
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/master_leader_poller.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/condition_variable.h"
@@ -107,7 +110,7 @@ YsqlLeasePoller::YsqlLeasePoller(TabletServer& server, MasterLeaderFinder& finde
     : server_(server), finder_(finder) {}
 
 Status YsqlLeasePoller::Poll() {
-  if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh || !server_.YSQLLeaseEnabled()) {
+  if (!FLAGS_TEST_tserver_enable_ysql_lease_refresh || !IsYsqlLeaseEnabled()) {
     return Status::OK();
   }
 
@@ -120,18 +123,23 @@ Status YsqlLeasePoller::Poll() {
 
   master::RefreshYsqlLeaseRequestPB req;
   *req.mutable_instance() = server_.instance_pb();
-  req.set_needs_bootstrap(!server_.HasBootstrappedLocalLockManager());
+  auto current_lease_info = VERIFY_RESULT(server_.GetYSQLLeaseInfo());
+  if (current_lease_info.is_live) {
+    req.set_current_lease_epoch(current_lease_info.lease_epoch);
+  }
+  req.set_local_request_send_time_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                         CoarseMonoClock::now().time_since_epoch())
+                                         .count());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   master::RefreshYsqlLeaseResponsePB resp;
-  MonoTime pre_request_time = MonoTime::Now();
   RETURN_NOT_OK(proxy_->RefreshYsqlLease(req, &resp, &rpc));
   if (RandomActWithProbability(
           GetAtomicFlag(&FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob))) {
     return STATUS_FORMAT(NetworkError, "Pretending to fail ysql lease refresh RPC");
   }
   RETURN_NOT_OK(ResponseStatus(resp));
-  return server_.ProcessLeaseUpdate(resp.info(), pre_request_time);
+  return server_.ProcessLeaseUpdate(resp.info());
 }
 
 MonoDelta YsqlLeasePoller::IntervalToNextPoll(int32_t consecutive_failures) {

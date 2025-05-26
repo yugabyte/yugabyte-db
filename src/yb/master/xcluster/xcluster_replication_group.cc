@@ -216,7 +216,7 @@ Status HandleExtensionOnDropReplication(
               << "), switching yb_xcluster_ddl_replication extension role to Source.";
     Synchronizer sync;
     RETURN_NOT_OK(master::SetupDDLReplicationExtension(
-        catalog_manager, namespace_name, XClusterDDLReplicationRole::kSource,
+        catalog_manager, namespace_id, XClusterDDLReplicationRole::kSource,
         sync.AsStdStatusCallback()));
     return sync.Wait();
   }
@@ -826,7 +826,8 @@ Result<uint32> AddHistoricalPackedSchemaForColocatedTable(
   Schema new_schema;
   RETURN_NOT_OK(SchemaFromPB(schema, &new_schema));
 
-  dockv::SchemaPackingStorage old_packings(TableType::PGSQL_TABLE_TYPE);
+  dockv::SchemaPackingStorage old_packings(
+      TableType::PGSQL_TABLE_TYPE, std::make_shared<dockv::SchemaPackingRegistry>("XCluster: "));
   RETURN_NOT_OK(old_packings.LoadFromPB(historical_schema_packings.old_schema_packings()));
   const auto existing_version =
       old_packings.GetSchemaPackingVersion(TableType::PGSQL_TABLE_TYPE, new_schema);

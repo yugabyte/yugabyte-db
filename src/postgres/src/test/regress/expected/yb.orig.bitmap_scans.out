@@ -503,13 +503,14 @@ SELECT * FROM simple AS tbl_1 JOIN simple AS tbl_2 ON tbl_1.ind_a = tbl_2.ind_a 
    ->  Seq Scan on simple tbl_1
    ->  YB Bitmap Table Scan on simple tbl_2
          Storage Filter: ((tbl_1.ind_a = ind_a) OR ((tbl_1.ind_b = ind_a) AND (tbl_1.ind_a = 2)))
+         Recheck Cond: ((ind_a = tbl_1.ind_a) OR (ind_a = tbl_1.ind_b))
          ->  BitmapOr
                ->  Bitmap Index Scan on simple_ind_a_idx
                      Index Cond: (ind_a = tbl_1.ind_a)
                ->  Bitmap Index Scan on simple_ind_a_idx
                      Index Cond: (ind_a = tbl_1.ind_b)
                      Storage Index Filter: ((tbl_1.ind_a = ind_a) OR ((tbl_1.ind_b = ind_a) AND (tbl_1.ind_a = 2)))
-(10 rows)
+(11 rows)
 
 --
 -- #22065: test pushdowns on Subplans

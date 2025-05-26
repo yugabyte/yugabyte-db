@@ -55,17 +55,19 @@ class ObjectLockInfo;
 
 class ObjectLockInfoManager {
  public:
-  ObjectLockInfoManager(Master* master, CatalogManager* catalog_manager);
+  ObjectLockInfoManager(Master& master, CatalogManager& catalog_manager);
   virtual ~ObjectLockInfoManager();
 
   void Start();
 
+  void Shutdown();
+
   void LockObject(
-      const AcquireObjectLocksGlobalRequestPB& req, AcquireObjectLocksGlobalResponsePB* resp,
+      const AcquireObjectLocksGlobalRequestPB& req, AcquireObjectLocksGlobalResponsePB& resp,
       rpc::RpcContext rpc);
 
   void UnlockObject(
-      const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB* resp,
+      const ReleaseObjectLocksGlobalRequestPB& req, ReleaseObjectLocksGlobalResponsePB& resp,
       rpc::RpcContext rpc);
   void ReleaseLocksForTxn(const TransactionId& txn_id);
 
@@ -75,6 +77,7 @@ class ObjectLockInfoManager {
 
   tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
+  void RelaunchInProgressRequests(const LeaderEpoch& leader_epoch, const std::string& tserver_uuid);
   void Clear();
   tserver::TSLocalLockManagerPtr TEST_ts_local_lock_manager();
   tserver::TSLocalLockManagerPtr ts_local_lock_manager();
@@ -90,7 +93,7 @@ class ObjectLockInfoManager {
   void BootstrapLocksPostLoad();
 
  private:
-  template <class Req, class Resp>
+  template <class Req>
   friend class UpdateAllTServers;
   class Impl;
   std::unique_ptr<Impl> impl_;

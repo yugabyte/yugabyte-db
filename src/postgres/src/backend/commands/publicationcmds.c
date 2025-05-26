@@ -877,7 +877,7 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 		}
 	}
 
-	/* Log a NOTICE for unsupported relations. */
+	/* YB: Log a NOTICE for unsupported relations. */
 	if (IsYugaByteEnabled() && stmt->for_all_tables)
 		yb_log_unsupported_publication_relations();
 

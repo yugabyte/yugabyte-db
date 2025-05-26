@@ -22,7 +22,6 @@
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
@@ -180,9 +179,9 @@ class PgsqlReadOperation : public DocExprExecutor {
   // Construct and access methods.
   PgsqlReadOperation(std::reference_wrapper<const PgsqlReadOperationData> data,
                      WriteBuffer* result_buffer,
-                     HybridTime* restart_read_ht)
+                     ReadRestartData* read_restart_data)
       : data_(data), request_(data_.request), result_buffer_(result_buffer),
-        restart_read_ht_(restart_read_ht) {
+        read_restart_data_(read_restart_data) {
   }
 
   const PgsqlReadRequestPB& request() const { return data_.request; }
@@ -248,7 +247,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   const PgsqlReadOperationData& data_;
   const PgsqlReadRequestPB& request_;
   WriteBuffer* const result_buffer_;
-  HybridTime* const restart_read_ht_;
+  ReadRestartData* const read_restart_data_;
 
   boost::container::small_vector<dockv::PgWireEncoderEntry, 0x10> target_encoders_;
   PgsqlResponsePB response_;

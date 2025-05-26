@@ -44,7 +44,7 @@ YugabyteDB smart drivers have the following key features.
 | [Node type aware](#node-type-aware-load-balancing) | If your cluster has read replicas, distribute connections based on the node type (primary or read replica). (Not supported by all smart drivers.) |
 | [Topology aware](#topology-aware-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
 | [Configurable&nbsp;refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable. |
-| [Multi-cluster](#connect-to-multiple-clusters) | Connect to multiple clusters from a single client application. |
+| [Multi-cluster](#connect-to-multiple-clusters) | Connect to more than one cluster from a single client application. |
 | [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
 
 ## Overview
@@ -246,7 +246,11 @@ If topology keys are specified, and `fallback-to-topology-keys-only` is true, no
 
 ### Connect to multiple clusters
 
-For deployments where a single client application needs to connect to more than one YugabyteDB cluster (for example, xCluster or two completely independent clusters), the smart driver can connect to multiple clusters while keeping connections balanced in each connected cluster. The smart driver identifies the cluster from the URL used to connect, and ensures load in the cluster is evenly balanced. You don't need to specify any additional properties.
+For deployments where a single client application needs to connect to more than one YugabyteDB cluster (for example, xCluster or two completely independent clusters), the smart driver can connect to multiple clusters while keeping connections balanced in each connected cluster.
+
+Note that connections are not balanced across multiple clusters; rather, the smart driver maintains multiple connection pools, but each is isolated.
+
+The smart driver identifies the cluster from the URL used to connect, and ensures load in the cluster is evenly balanced. You don't need to specify any additional properties.
 
 For example:
 
@@ -261,7 +265,7 @@ The application can initiate connections using any of the URLs, and the driver w
 
 Multi-cluster is supported in YugabyteDB v2024.1.6.0, v2024.2.3.0, and v2.25.2.0. You can also include URLs from a _maximum of one_ cluster running an older (unsupported) version of YugabyteDB. Using the preceding example, _Cluster1_ could be running an unsupported version, but not both _Cluster1_ and _Cluster2_.
 
-Currently, multi-cluster load balancing is available only in the Java (JDBC) smart driver (v42.7.3-yb-4 or later).
+Currently, multi-cluster connections are available only in the Java (JDBC) smart driver (v42.7.3-yb-4 or later).
 
 ## Connection pooling
 

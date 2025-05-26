@@ -30,6 +30,7 @@
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
       "back": "Back",
+      "next": "Next",
       "selectAll": "Select All",
       "selected": "Selected",
       "note": "Note :",
@@ -46,6 +47,7 @@
       "reset": "Reset",
       "expand": "Expand",
       "collapse": "Collapse",
+      "formFieldRequired": "Required.",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -97,10 +99,17 @@
       "yba_ha_last_backup_size_mb": "HA Last Backup Size (MB)"
     },
     "dashboard": {
-      "nodeAgentReminderBanner": {
-        "primaryText": "Automatic installation of node agent failed on some nodes.",
-        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph><paragraph><nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink></paragraph>",
-        "viewNodeAgentsButton": "View Node Agents"
+      "installNodeAgentReminderBanner": {
+        "primaryText": "Node agent needs to be installed on some nodes",
+        "nodeAgentMustBeInstallToUpgradeYba": "Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.",
+        "waysToInstallNodeAgent": "YugabyteDB Anywhere can automatically install node agent on universes that require it, or you can install node agent manually.",
+        "howToManuallyInstallNodeAgent": "To manually install node agent, navigate to the universe and choose Actions>More>Install Node Agent.",
+        "automaticInstallationsInProgress": "Automatic installation of node agent is in progress. Click View Node Agents to see which nodes have node agent installed.",
+        "manuallyUnregisteredNodeAgent": "If you manually removed node agent on any nodes, then you must also manually reinstall by navigating to the universe and choosing Actions>More>Install Node Agent. The automatic installation of node agent will not reinstall node agent on those nodes for you.",
+        "someNodeAgentsAreNotFunctional": "We found some universes where node agent is not functional. Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation by choosing Actions>Reinstall Node Agent.",
+        "learnMoreText": "<nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink>",
+        "viewNodeAgentsButton": "View Node Agents",
+        "enableAutomaticNodeAgentInstallationButton": " Automatically Install Node Agents"
       }
     },
     "universeActions": {
@@ -305,6 +314,21 @@
         "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>",
         "overrideWarningRF3": "<strong>Note!</strong> Editing connection pooling ports requires a rolling restart of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "overrideWarningRF1": "<strong>Note!</strong> Editing connection pooling ports requires a restart of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart."
+      },
+      "supportBundle": {
+        "editCustomPrometheusQueriesModal": {
+          "title": "Custom Queries",
+          "infoText": "The provided PromQL expressions will be run and the result will be stored in the support bundle under the corresponding folder name.",
+          "addCustomQuery": "Add Custom Query",
+          "customQuery": "Custom Query",
+          "folderName": "Folder Name",
+          "prometheusQuery": "PromQL expression",
+          "validationError": {
+            "folderNameHasSpecialCharacters": "The folder name cannot contain any of these special characters: #%&{}\\<>*?/$!'\":@+`|=",
+            "folderNameMustBeUnique": "The folder name must be unique."
+          },
+          "submitLabel": "Confirm"
+        }
       }
     },
     "commonErrors": {
@@ -369,10 +393,10 @@
         "internalYsqlServerRpcPort": "Internal YSQL Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
         "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
         "enableConnectionPooling": "Enable Connection Pooling",
-        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of<br /> simultaneous connections to your database.",
+        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
         "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
         "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
         "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
@@ -511,6 +535,7 @@
         "azOverrides": "AZ Overrides",
         "forceApply": "Force Apply",
         "k8sOverrides": "Kubernetes Overrides",
+        "validateAndSaveSuccess": "Validated and Saved Successfully",
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
@@ -1730,6 +1755,12 @@
         "TIMED_OUT": "Timed Out",
         "universePaused": "Universe Paused"
       },
+      "enableAutomaticNodeAgentInstallationModal": {
+        "title": "Automatically Install Node Agent",
+        "infoText": "<paragraph>YugabyteDB Anywhere can automatically install node agent on universes that require it. Installation is quick and does not impact application or database performance.</paragraph><paragraph>Some universe tasks will be unavailable while installation is in progress. If other tasks are in progress (for example, backups), wait until they complete before starting automatic installation.</paragraph>",
+        "confirmationText": "Type YES to proceeed.",
+        "submitLabel": "Start"
+      },
       "installNodeAgentModal": {
         "title": {
           "install": "Install Node Agent",
@@ -2386,6 +2417,8 @@
         "expand": "Expand",
         "viewLess": "Collapse",
         "showLog": "YugaWare Log",
+        "expandAll":"Expand All",
+        "collapseAll":"Collapse All",
         "percentComplete": "<b>{{percent}}</b>% Completed"
       },
       "banner": {
@@ -2568,6 +2601,14 @@
       "dataDogApiKey": "Datadog API Key",
       "dataDogURLPlaceholder": "Custom Datadog URL",
       "dataDogSite": "Datadog Site",
+      "lokiEndpoint": "Loki endpoint",
+      "lokiEndpointPlaceholder": "http://<loki-url>:<loki-port>",
+      "lokiEndpointTooltip": "Loki endpoint URL. Ensure loki is accessible through the mentioned port. YugbayteDB Anywhere will push logs to <endpoint>/loki/api/v1/push.",
+      "lokiUsername": "Username",
+      "lokiPassword": "Password",
+      "lokiOrganizationID": "Organization / Tenant ID (Optional)",
+      "lokiOrganizationIDTooltip": "Organization ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud since the authentication reroutes requests according to scope.",
+      "authType": "Authentication Type",
       "siteURL": "Site URL",
       "splunkToken": "Splunk Access Token",
       "endpointURL": "Endpoint URL",
@@ -2949,6 +2990,51 @@
       "github": "GitHub",
       "freeTShirtAt": "Free t-shirt at",
       "yugabyteInc": "Yugabyte, Inc."
+    },
+    "createUniverseV2": {
+      "title": "Create Universe",
+      "steps": {
+        "general": "General",
+        "generalSettings": "General Settings",
+        "placement": "Placement",
+        "resilienceAndRegions": "Resilience and Regions",
+        "nodesAndAvailabilityZone": "Nodes and Availability Zones",
+        "hardware": "Hardware",
+        "instanceSettings": "Instance Settings",
+        "database": "Database",
+        "databaseSettings": "Database Settings",
+        "security": "Security",
+        "securitySettings": "Security Settings",
+        "advanced": "Advanced",
+        "proxySettings": "Proxy Settings",
+        "otherAdvancedSettings": "Other Advanced Settings",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost"
+      },
+      "generalSettings": {
+        "title": "General Settings",
+        "universeName": "Universe Name",
+        "universeNamePlaceholder": "Enter Universe Name",
+        "cloudProvider": "Cloud Provider",
+        "providerconfiguration": "Provider Configuration",
+        "providerConfigurationPlaceholder": "Select Provider Configuration",
+        "databaseVersion": "Database Version",
+        "databaseVersionPlaceholder": "Select Database Version",
+        "errMsg": {
+          "universeNameRequired": "Universe name is required",
+          "cloudProviderRequired": "Cloud provider is required",
+          "providerConfigurationRequired": "Provider configuration is required",
+          "databaseVersionRequired": "Database version is required"
+        }
+      },
+      "resilienceAndRegions": {
+        "title": "Resilience",
+        "resilienceType": {
+          "regular": "Regular Cluster",
+          "singleNode": "Single-Node Cluster",
+          "quickSetup": "Quick Setup"
+        }
+      }
     }
   }
 }

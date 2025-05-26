@@ -32,6 +32,7 @@
 /* callback function for check_functions_in_node */
 typedef bool (*check_function_callback) (Oid func_id, void *context);
 
+
 extern Oid	exprType(const Node *expr);
 extern int32 exprTypmod(const Node *expr);
 extern bool exprIsLengthCoercion(const Node *expr, int32 *coercedTypmod);
@@ -160,7 +161,5 @@ extern bool planstate_tree_walker(struct PlanState *planstate, bool (*walker) ()
 
 /* YB additions. */
 extern List **YbPlanStateTryGetAggrefs(struct PlanState *planstate);
-
-extern bool YbGetBitmapScanRecheckRequired(struct PlanState *planstate);
 
 #endif							/* NODEFUNCS_H */

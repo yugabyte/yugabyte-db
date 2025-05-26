@@ -71,6 +71,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -90,7 +91,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int32(raft_heartbeat_interval_ms, yb::NonTsanVsTsan(500, 1000),
+DEFINE_NON_RUNTIME_int32(raft_heartbeat_interval_ms, yb::NonTsanVsTsan(500, 1000),
              "The heartbeat interval for Raft replication. The leader produces heartbeats "
              "to followers at this interval. The followers expect a heartbeat at this interval "
              "and consider a leader to have failed if it misses several in a row.");
@@ -190,11 +191,23 @@ METRIC_DEFINE_event_stats(
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during RaftConsensus::UpdateRaftConfig");
 
-DEFINE_UNKNOWN_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
+DEFINE_NON_RUNTIME_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
              "Leader lease duration. A leader keeps establishing a new lease or extending the "
              "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
              "leader (i.e. serve up-to-date read requests or acknowledge write requests) until a "
              "lease of this duration has definitely expired on the old leader's side.");
+
+DEFINE_validator(leader_lease_duration_ms,
+    FLAG_DELAYED_COND_VALIDATOR(
+        FLAGS_raft_heartbeat_interval_ms < _value,
+        yb::Format("Must be strictly greater than raft_heartbeat_interval_ms: $0",
+            FLAGS_raft_heartbeat_interval_ms)));
+
+DEFINE_validator(raft_heartbeat_interval_ms,
+    FLAG_DELAYED_COND_VALIDATOR(
+        _value < FLAGS_leader_lease_duration_ms,
+        yb::Format("Must be strictly less than leader_lease_duration_ms: $0",
+            FLAGS_leader_lease_duration_ms)));
 
 DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
@@ -746,14 +759,16 @@ string RaftConsensus::ServersInTransitionMessage() {
   const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
   auto servers_in_transition = CountServersInTransition(active_config);
   auto committed_servers_in_transition = CountServersInTransition(committed_config);
-  LOG(INFO) << Substitute("Active config has $0 and committed has $1 servers in transition.",
-                          servers_in_transition, committed_servers_in_transition);
+  LOG_WITH_PREFIX(INFO) << Format(
+      "Active config has $0 and committed has $1 servers in transition.", servers_in_transition,
+      committed_servers_in_transition);
   if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
-    err_msg = Substitute("Leader not ready to step down as there are $0 active config peers"
-                         " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
-                         servers_in_transition, committed_servers_in_transition,
-                         active_config.ShortDebugString(), committed_config.ShortDebugString());
-    LOG(INFO) << err_msg;
+    err_msg = Format(
+        "Leader not ready to step down as there are $0 active config peers"
+        " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
+        servers_in_transition, committed_servers_in_transition, active_config.ShortDebugString(),
+        committed_config.ShortDebugString());
+    LOG_WITH_PREFIX(INFO) << err_msg;
   }
   return err_msg;
 }
@@ -814,7 +829,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     const auto msg = Format(
         "Received a leader stepdown operation for wrong tablet id: $0, must be: $1",
         tablet_id, this->tablet_id());
-    LOG_WITH_PREFIX(ERROR) << msg;
+    LOG_WITH_PREFIX(DFATAL) << msg;
     StatusToPB(STATUS(IllegalState, msg), resp->mutable_error()->mutable_status());
     return Status::OK();
   }
@@ -2449,18 +2464,23 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
   //    committed at least one operation in our current term as leader.
   //    See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
   // 2. Ensure there is no other pending change config.
+  // 3. Ensure there is no pending split operation (unless we are just changing role, not
+  //    adding/removing Raft members). See https://github.com/yugabyte/yugabyte-db/issues/26644.
   if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
-      state_->IsConfigChangePendingUnlocked()) {
-    return STATUS_FORMAT(IllegalState,
-                         "Leader is not ready for Config Change, can try again. "
-                         "Type: $0. Has opid: $1. Committed config: $2. "
-                         "Pending config: $3. Current term: $4. Committed op id: $5.",
-                         ChangeConfigType_Name(type),
-                         active_config.has_opid_index(),
-                         state_->GetCommittedConfigUnlocked().ShortDebugString(),
-                         state_->IsConfigChangePendingUnlocked() ?
-                             state_->GetPendingConfigUnlocked().ShortDebugString() : "",
-                         state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked());
+      state_->IsConfigChangePendingUnlocked() ||
+      (type != CHANGE_ROLE && !state_->GetPendingSplitOpIdUnlocked().empty())) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Leader is not ready for Config Change, can try again. "
+        "Type: $0. Has opid: $1. Committed config: $2. "
+        "Pending config: $3. Current term: $4. Committed op id: $5. Pending split op id: $6",
+        ChangeConfigType_Name(type), active_config.has_opid_index(),
+        state_->GetCommittedConfigUnlocked().ShortDebugString(),
+        state_->IsConfigChangePendingUnlocked()
+            ? state_->GetPendingConfigUnlocked().ShortDebugString()
+            : "",
+        state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked(),
+        state_->GetPendingSplitOpIdUnlocked());
   }
   // For sys catalog tablet, additionally ensure that there are no servers currently in transition.
   // If not, it could lead to data loss.
@@ -2915,7 +2935,7 @@ PeerRole RaftConsensus::GetActiveRole() const {
   return state_->GetActiveRoleUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLatestOpIdFromLog() {
+OpId RaftConsensus::GetLatestOpIdFromLog() {
   return log_->GetLatestEntryOpId();
 }
 
@@ -3511,22 +3531,22 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
   }
 }
 
-yb::OpId RaftConsensus::GetLastReceivedOpId() {
+OpId RaftConsensus::GetLastReceivedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastReceivedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLastCommittedOpId() {
+OpId RaftConsensus::GetLastCommittedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetCommittedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLastAppliedOpId() {
+OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetAllAppliedOpId() {
+OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
 }
 
@@ -3551,7 +3571,7 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
   OperationType op_type = round->replicate_msg()->op_type();
   string op_str = Format("$0 [$1]", OperationType_Name(op_type), round->id());
   if (!IsConsensusOnlyOperation(op_type)) {
-    LOG_WITH_PREFIX(ERROR) << "Unexpected op type: " << op_str;
+    LOG_WITH_PREFIX(DFATAL) << "Unexpected op type: " << op_str;
     return;
   }
   if (!status.ok()) {
@@ -3560,7 +3580,7 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
 
     // Clear out the pending state (ENG-590).
     if (IsChangeConfigOperation(op_type) && state_->GetPendingConfigOpIdUnlocked() == round->id()) {
-      WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending state");
+      WARN_NOT_OK(state_->ClearPendingConfigUnlocked(), "Could not clear pending config");
     }
   } else if (IsChangeConfigOperation(op_type)) {
     // Notify the TabletPeer owner object.

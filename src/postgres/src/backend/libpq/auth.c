@@ -48,7 +48,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
-#include "utils/builtins.h"	/* TODO: may not be needed */
+#include "utils/builtins.h"		/* TODO: may not be needed */
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -56,7 +56,8 @@
  * Global authentication functions
  *----------------------------------------------------------------
  */
-static void auth_failed(Port *port, int status, const char *logdetail, bool lockout);
+static void auth_failed(Port *port, int status, const char *logdetail,
+						bool yb_role_is_locked_out);
 static char *recv_password_packet(Port *port);
 static void set_authn_id(Port *port, const char *id);
 
@@ -483,12 +484,9 @@ ClientAuthentication(Port *port)
 
 		/* If we haven't loaded a root certificate store, fail */
 		if (!secure_loaded_verify_locations())
-		{
 			ereport(FATAL,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("client certificates can only be checked if a root certificate store is available")));
-		}
-
 
 		/*
 		 * If we loaded a root certificate store, and if a certificate is
@@ -497,11 +495,9 @@ ClientAuthentication(Port *port)
 		 * already if it didn't verify ok.
 		 */
 		if (!port->peer_cert_valid)
-		{
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("connection requires a valid client certificate")));
-		}
 	}
 
 	/*
@@ -540,14 +536,12 @@ ClientAuthentication(Port *port)
 					_("no encryption");
 
 				if (am_walsender && !am_db_walsender)
-				{
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					/* translator: last %s describes encryption state */
 							 errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\", %s",
 									hostinfo, port->user_name,
 									encryption_state)));
-				}
 				else
 				{
 					if (yb_auth_passthrough)
@@ -615,7 +609,6 @@ ClientAuthentication(Port *port)
 					0))
 
 				if (am_walsender && !am_db_walsender)
-				{
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					/* translator: last %s describes encryption state */
@@ -623,7 +616,6 @@ ClientAuthentication(Port *port)
 									hostinfo, port->user_name,
 									encryption_state),
 							 HOSTNAME_LOOKUP_DETAIL(port)));
-				}
 				else
 				{
 					if (yb_auth_passthrough)
@@ -770,7 +762,7 @@ ClientAuthentication(Port *port)
 		(*ClientAuthentication_hook) (port, status);
 
 	/*
-	 * If conditions are met, update the role's profile entry.  Specific
+	 * YB: If conditions are met, update the role's profile entry.  Specific
 	 * authentication methods are isolated from profile handling.
 	 */
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist &&
@@ -1095,7 +1087,7 @@ CheckYbTserverKeyAuth(Port *port, const char **logdetail)
 		char	   *end;
 
 		errno = 0;
-		client_key = pg_strtouint64(passwd, &end, 10);
+		client_key = strtou64(passwd, &end, 10);
 		if (!(*passwd != '\0' && *end == '\0') || errno == ERANGE)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -2204,6 +2196,7 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
 				ereport(LOG,
 						(errmsg("error from underlying PAM layer: %s",
 								msg[i]->msg)));
+				/* FALL THROUGH */
 				yb_switch_fallthrough();
 			case PAM_TEXT_INFO:
 				/* we don't bother to log TEXT_INFO messages */

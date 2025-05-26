@@ -47,7 +47,6 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, "log_statement=all");
-    flags.putIfAbsent("ysql_enable_inheritance", "true");
     return flags;
   }
 

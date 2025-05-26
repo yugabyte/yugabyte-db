@@ -69,7 +69,6 @@ extern void SnapBuildSnapDecRefcount(Snapshot snap);
 
 extern Snapshot SnapBuildInitialSnapshot(SnapBuild *builder);
 extern const char *SnapBuildExportSnapshot(SnapBuild *snapstate);
-extern const char *YbSnapBuildExportSnapshotWithReadTime(uint64_t read_time);
 
 extern void SnapBuildClearExportedSnapshot(void);
 extern void SnapBuildResetExportedSnapshotState(void);
@@ -96,4 +95,7 @@ extern void SnapBuildSerializationPoint(SnapBuild *builder, XLogRecPtr lsn);
 extern void SnapBuildXidSetCatalogChanges(SnapBuild *builder, TransactionId xid,
 										  int subxcnt, TransactionId *subxacts,
 										  XLogRecPtr lsn);
+
+/* YB */
+extern const char *YbSnapBuildExportSnapshotWithReadTime(uint64_t read_time);
 #endif							/* SNAPBUILD_H */

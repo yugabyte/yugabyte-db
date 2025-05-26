@@ -24,8 +24,8 @@ import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.nodeagent.Server.PingResponse;
-import com.yugabyte.yw.nodeagent.Server.ServerInfo;
+import com.yugabyte.yw.nodeagent.PingResponse;
+import com.yugabyte.yw.nodeagent.ServerInfo;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import java.nio.file.Paths;
@@ -63,7 +63,7 @@ public class NodeAgentPoller {
   private static final String LIVE_POLLER_POOL_NAME = "node_agent.live_node_poller";
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
   private static final String UPGRADER_POOL_NAME = "node_agent.upgrader";
-  private static final int MAX_FAILED_CONN_COUNT = 50;
+  private static final int MAX_FAILED_CONN_COUNT = 10;
 
   private static final String NODE_AGENT_VERSION_MISMATCH_NAME = "ybp_nodeagent_version_mismatch";
   private static final Gauge NODE_AGENT_VERSION_MISMATCH_GAUGE =
@@ -168,7 +168,9 @@ public class NodeAgentPoller {
           pollerExecutor.submit(this);
         } catch (RejectedExecutionException e) {
           stateRef.set(PollerTaskState.IDLE);
-          log.error("Failed to schedule poller task for {}", param.getNodeAgentUuid());
+          log.warn(
+              "Failed to schedule poller task for {}. Will be retried later",
+              param.getNodeAgentUuid());
         }
       }
     }
@@ -247,9 +249,12 @@ public class NodeAgentPoller {
       if (stateRef.compareAndSet(PollerTaskState.SCHEDULED, PollerTaskState.RUNNING)) {
         try {
           NodeAgent.maybeGet(param.getNodeAgentUuid()).ifPresent(n -> poll(n));
-        } catch (Exception e) {
+        } catch (Throwable t) {
           log.error(
-              "Error in polling for node {} - {}", param.getNodeAgentUuid(), e.getMessage(), e);
+              "Error in polling for node {} - {}", param.getNodeAgentUuid(), t.getMessage(), t);
+          if (t instanceof Error) {
+            throw (Error) t;
+          }
         } finally {
           stateRef.set(PollerTaskState.IDLE);
         }

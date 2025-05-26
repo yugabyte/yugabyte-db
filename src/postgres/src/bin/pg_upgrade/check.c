@@ -40,20 +40,14 @@ static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
 static char *get_canonical_locale_name(int category, const char *locale);
 
-/* Yugabyte-specific checks */
-
+/* YB functions */
 static void yb_check_upgrade_compatibility_guc(PGconn *old_cluster_conn);
-
 static void yb_check_system_databases_exist(PGconn *old_cluster_conn);
-
 static void yb_check_user_attributes(PGconn *old_cluster_conn,
 									 const char *user_name,
 									 const char **role_attrs);
-
 static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
-
 static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
-
 static void yb_check_installed_extensions();
 
 /*
@@ -112,7 +106,7 @@ check_and_dump_old_cluster(bool live_check)
 
 	if (is_yugabyte_enabled())
 	{
-		PGconn *old_cluster_conn = connectToServer(&old_cluster, "template1");
+		PGconn	   *old_cluster_conn = connectToServer(&old_cluster, "template1");
 
 		/*
 		 * --check can be run any time before the upgrade. Upgrade Compatibility
@@ -131,7 +125,7 @@ check_and_dump_old_cluster(bool live_check)
 	/* Extract a list of databases and tables from the old cluster */
 	get_db_and_rel_infos(&old_cluster);
 
-	/* Enable these checks and other functions to initialize new node */
+	/* YB: Enable these checks and other functions to initialize new node */
 	if (!is_yugabyte_enabled())
 		/* Yugabyte does not support tablespace directories */
 		init_tablespaces();
@@ -1068,11 +1062,11 @@ check_for_user_defined_postfix_ops(ClusterInfo *cluster)
 				db_used = true;
 			}
 			yb_fprintf_and_log(script, "  (oid=%s) %s.%s (%s.%s, NONE)\n",
-					PQgetvalue(res, rowno, i_oproid),
-					PQgetvalue(res, rowno, i_oprnsp),
-					PQgetvalue(res, rowno, i_oprname),
-					PQgetvalue(res, rowno, i_typnsp),
-					PQgetvalue(res, rowno, i_typname));
+							   PQgetvalue(res, rowno, i_oproid),
+							   PQgetvalue(res, rowno, i_oprnsp),
+							   PQgetvalue(res, rowno, i_oprname),
+							   PQgetvalue(res, rowno, i_typnsp),
+							   PQgetvalue(res, rowno, i_typname));
 		}
 
 		PQclear(res);
@@ -1201,8 +1195,8 @@ check_for_incompatible_polymorphics(ClusterInfo *cluster)
 			}
 
 			yb_fprintf_and_log(script, "  %s: %s\n",
-					PQgetvalue(res, rowno, i_objkind),
-					PQgetvalue(res, rowno, i_objname));
+							   PQgetvalue(res, rowno, i_objkind),
+							   PQgetvalue(res, rowno, i_objname));
 		}
 
 		PQclear(res);
@@ -1784,8 +1778,8 @@ yb_check_old_cluster_user(PGconn *old_cluster_conn)
 void
 yb_check_installed_extensions()
 {
-	int dbnum;
-	bool found = false;
+	int			dbnum;
+	bool		found = false;
 	StringInfoData error_msg;
 	char		output_path[MAXPGPATH];
 	FILE	   *script = NULL;
@@ -1809,38 +1803,41 @@ yb_check_installed_extensions()
 
 		/* Find installed extensions not in the allowed list */
 		res = executeQueryOrDie(conn,
-			"SELECT extname FROM pg_extension WHERE extname NOT IN "
-			"('auto_explain',"
-			"'file_fdw',"
-			"'fuzzystrmatch',"
-			"'hstore',"
-			"'passwordcheck',"
-			"'pgcrypto',"
-			"'pg_stat_statements',"
-			"'pg_trgm',"
-			"'postgres_fdw',"
-			"'autoinc',"
-			"'insert_username',"
-			"'moddatetime',"
-			"'refint',"
-			"'sslinfo',"
-			"'tablefunc',"
-			"'uuid-ossp',"
-			"'hypopg',"
-			"'orafce',"
-			"'pgaudit',"
-			"'pg_hint_plan',"
-			"'hll',"
-			"'pg_cron',"
-			"'pg_partman',"
-			"'plpgsql',"
-			"'anon')");
+								"SELECT extname FROM pg_extension WHERE extname NOT IN "
+								"('auto_explain',"
+								"'file_fdw',"
+								"'fuzzystrmatch',"
+								"'hstore',"
+								"'passwordcheck',"
+								"'pgcrypto',"
+								"'pg_stat_statements',"
+								"'pg_trgm',"
+								"'postgres_fdw',"
+								"'autoinc',"
+								"'insert_username',"
+								"'moddatetime',"
+								"'refint',"
+								"'sslinfo',"
+								"'tablefunc',"
+								"'uuid-ossp',"
+								"'hypopg',"
+								"'orafce',"
+								"'pgaudit',"
+								"'pg_hint_plan',"
+								"'hll',"
+								"'pg_cron',"
+								"'pg_partman',"
+								"'plpgsql',"
+								"'anon',"
+								"'cube',"
+								"'earthdistance')");
 		ntups = PQntuples(res);
 		i_name = PQfnumber(res, "extname");
 
 		for (rowno = 0; rowno < ntups; rowno++)
 		{
 			const char *extension_name = PQgetvalue(res, rowno, i_name);
+
 			found = true;
 			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
 				pg_fatal("could not open file \"%s\": %s\n", output_path,

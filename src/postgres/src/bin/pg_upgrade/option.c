@@ -58,6 +58,7 @@ parseCommandLine(int argc, char *argv[])
 		{"jobs", required_argument, NULL, 'j'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"clone", no_argument, NULL, 1},
+		{"no-statistics", no_argument, NULL, 5},
 
 		/* Yugabyte flags */
 		{"old-host", required_argument, NULL, 'h'},
@@ -72,6 +73,7 @@ parseCommandLine(int argc, char *argv[])
 
 	user_opts.do_sync = true;
 	user_opts.transfer_mode = TRANSFER_MODE_COPY;
+	user_opts.do_statistics = true;
 
 	os_info.progname = get_progname(argv[0]);
 
@@ -142,11 +144,11 @@ parseCommandLine(int argc, char *argv[])
 				new_cluster.pgdata = pg_strdup(optarg);
 				break;
 
-			case 'h':
+			case 'h':			/* YB */
 				old_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
-			case 'H':
+			case 'H':			/* YB */
 				new_cluster.yb_hostaddr = pg_strdup(optarg);
 				break;
 
@@ -206,7 +208,7 @@ parseCommandLine(int argc, char *argv[])
 				old_cluster.sockdir = pg_strdup(optarg);
 				break;
 
-			case 'S':
+			case 'S':			/* YB */
 				new_cluster.sockdir = pg_strdup(optarg);
 				break;
 
@@ -222,6 +224,10 @@ parseCommandLine(int argc, char *argv[])
 
 			case 1:
 				user_opts.transfer_mode = TRANSFER_MODE_CLONE;
+				break;
+
+			case 5:
+				user_opts.do_statistics = false;
 				break;
 
 			default:
@@ -333,10 +339,11 @@ usage(void)
 	printf(_("  -v, --verbose                 enable verbose internal logging\n"));
 	printf(_("  -V, --version                 display version information, then exit\n"));
 	printf(_("  --clone                       clone instead of copying files to new cluster\n"));
-	printf(_("  -h, --old-host=HOST           old cluster host address\n"));
-	printf(_("  -H, --new-host=HOST           new cluster host address\n"));
-	printf(_("  -s, --old-socketdir=DIR       old cluster socket directory\n"));
-	printf(_("  -S, --new-socketdir=DIR       new cluster socket directory\n"));
+	printf(_("  --no-statistics               do not import statistics from old cluster\n"));
+	printf(_("  -h, --old-host=HOST           old cluster host address\n"));	/* YB */
+	printf(_("  -H, --new-host=HOST           new cluster host address\n"));	/* YB */
+	printf(_("  -s, --old-socketdir=DIR       old cluster socket directory\n"));	/* YB */
+	printf(_("  -S, --new-socketdir=DIR       new cluster socket directory\n"));	/* YB */
 	printf(_("  -?, --help                    show this help, then exit\n"));
 	printf(_("\n"
 			 "Before running pg_upgrade you must:\n"

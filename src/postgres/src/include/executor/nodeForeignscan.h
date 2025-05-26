@@ -30,6 +30,7 @@ extern void ExecForeignScanReInitializeDSM(ForeignScanState *node,
 extern void ExecForeignScanInitializeWorker(ForeignScanState *node,
 											ParallelWorkerContext *pwcxt);
 extern void ExecShutdownForeignScan(ForeignScanState *node);
+
 extern void ExecAsyncForeignScanRequest(AsyncRequest *areq);
 extern void ExecAsyncForeignScanConfigureWait(AsyncRequest *areq);
 extern void ExecAsyncForeignScanNotify(AsyncRequest *areq);
@@ -39,4 +40,5 @@ extern void ExecAsyncForeignScanNotify(AsyncRequest *areq);
  */
 extern void YbExecUpdateInstrumentForeignScan(ForeignScanState *node,
 											  Instrumentation *instr);
+
 #endif							/* NODEFOREIGNSCAN_H */

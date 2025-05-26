@@ -254,18 +254,18 @@ YBCheckSnapshotsAllowed(bool check_isolation_level)
 	{
 		switch (XactIsoLevel)
 		{
-			/*
-			 * Currently in YSQL, export & import is allowed only in REPEATABLE READ.
-			 */
+				/*
+				 * Currently in YSQL, export & import is allowed only in REPEATABLE READ.
+				 */
 			case XACT_READ_COMMITTED:
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("cannot export/import snapshot in READ COMMITTED Isolation Level")));
+						 errmsg("cannot export/import snapshot in READ COMMITTED Isolation Level")));
 				break;
 			case XACT_SERIALIZABLE:
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("cannot export/import snapshot in SERIALIZABLE Isolation Level")));
+						 errmsg("cannot export/import snapshot in SERIALIZABLE Isolation Level")));
 				break;
 		}
 	}
@@ -657,10 +657,10 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 					 errdetail("The source transaction is not running anymore.")));
 	}
 	/*
-	 * ProcArrayInstallImportedXmin sets MyProc->xmin and also checks if exporting
-	 * snapshot is alive. In YugabyteDB, we do not need to set xmin and also
-	 * expiry of the exported snapshot has to be checked via an rpc to master.
-	 * So this step is skipped for YugabyteDB.
+	 * YB: ProcArrayInstallImportedXmin sets MyProc->xmin and also checks if
+	 * exporting snapshot is alive. In YugabyteDB, we do not need to set xmin
+	 * and also expiry of the exported snapshot has to be checked via an rpc to
+	 * master. So this step is skipped for YugabyteDB.
 	 */
 	else if (!IsYugaByteEnabled() &&
 			 !ProcArrayInstallImportedXmin(CurrentSnapshot->xmin, sourcevxid))
@@ -1223,11 +1223,12 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 static char *
 YBCExportSnapshot(const YbOptionalReadPointHandle *read_point)
 {
-	char *snapshot_id = NULL;
+	char	   *snapshot_id = NULL;
 	YbcPgTxnSnapshot snapshot =
-		{.db_id = MyDatabaseId,
-		 .iso_level = XactIsoLevel,
-		 .read_only = XactReadOnly};
+	{.db_id = MyDatabaseId,
+		.iso_level = XactIsoLevel,
+	.read_only = XactReadOnly};
+
 	HandleYBStatus(YBCPgExportSnapshot(&snapshot, &snapshot_id,
 									   read_point->has_value ? &read_point->value : NULL));
 	return snapshot_id;
@@ -1568,10 +1569,11 @@ ImportSnapshot(const char *idstr)
 		 */
 		if (strspn(idstr, "0123456789abcdef-") != strlen(idstr))
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
 
 		YbcPgTxnSnapshot yb_snapshot = {};
+
 		HandleYBStatus(YBCPgImportSnapshot(idstr, &yb_snapshot));
 		src_dbid = yb_snapshot.db_id;
 		src_isolevel = yb_snapshot.iso_level;
@@ -1587,8 +1589,8 @@ ImportSnapshot(const char *idstr)
 		 */
 		if (strspn(idstr, "0123456789ABCDEF-") != strlen(idstr))
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
 
 		/* OK, read the file */
 		snprintf(path, MAXPGPATH, SNAPSHOT_EXPORT_DIR "/%s", idstr);
@@ -2145,7 +2147,7 @@ MaintainOldSnapshotTimeMapping(TimestampTz whenTaken, TransactionId xmin)
 		int			bucket = (oldSnapshotControl->head_offset
 							  + ((ts - oldSnapshotControl->head_timestamp)
 								 / USECS_PER_MINUTE))
-		% OLD_SNAPSHOT_TIME_MAP_ENTRIES;
+			% OLD_SNAPSHOT_TIME_MAP_ENTRIES;
 
 		if (TransactionIdPrecedes(oldSnapshotControl->xid_by_minute[bucket], xmin))
 			oldSnapshotControl->xid_by_minute[bucket] = xmin;
@@ -2212,7 +2214,7 @@ MaintainOldSnapshotTimeMapping(TimestampTz whenTaken, TransactionId xmin)
 					/* Extend map to unused entry. */
 					int			new_tail = (oldSnapshotControl->head_offset
 											+ oldSnapshotControl->count_used)
-					% OLD_SNAPSHOT_TIME_MAP_ENTRIES;
+						% OLD_SNAPSHOT_TIME_MAP_ENTRIES;
 
 					oldSnapshotControl->count_used++;
 					oldSnapshotControl->xid_by_minute[new_tail] = xmin;
@@ -2343,7 +2345,7 @@ SerializeSnapshot(Snapshot snapshot, char *start_address)
 	if (serialized_snapshot.subxcnt > 0)
 	{
 		Size		subxipoff = sizeof(SerializedSnapshotData) +
-		snapshot->xcnt * sizeof(TransactionId);
+			snapshot->xcnt * sizeof(TransactionId);
 
 		memcpy((TransactionId *) (start_address + subxipoff),
 			   snapshot->subxip, snapshot->subxcnt * sizeof(TransactionId));

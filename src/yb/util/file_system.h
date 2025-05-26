@@ -141,6 +141,7 @@ class RandomAccessFile : public FileWithUniqueId {
       uint64_t offset, size_t n, Slice* result, char* scratch, const ReadValidator& validator);
 
   Status Read(uint64_t offset, size_t n, Slice* result, char* scratch);
+  Status Read(uint64_t offset, size_t n, Slice* result, std::byte* scratch);
 
   // Returns the size of the file
   virtual Result<uint64_t> Size() const = 0;

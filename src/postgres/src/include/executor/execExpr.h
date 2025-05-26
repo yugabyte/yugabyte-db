@@ -765,7 +765,6 @@ extern void ExecEvalConvertRowtype(ExprState *state, ExprEvalStep *op,
 extern void ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op,
 										ExprContext *econtext);
-extern void YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintNotNull(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintCheck(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op);
@@ -786,5 +785,8 @@ extern void ExecEvalAggOrderedTransDatum(ExprState *state, ExprEvalStep *op,
 										 ExprContext *econtext);
 extern void ExecEvalAggOrderedTransTuple(ExprState *state, ExprEvalStep *op,
 										 ExprContext *econtext);
+
+/* YB */
+extern void YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op);
 
 #endif							/* EXEC_EXPR_H */

@@ -64,6 +64,11 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (RefreshYsqlLease)
   )
 
+  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
+    CatalogManager,
+    (GetObjectLockStatus)
+  )
+
   void AcquireObjectLocksGlobal(
       const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
       rpc::RpcContext rpc) override {
