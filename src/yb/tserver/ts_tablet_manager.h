@@ -620,6 +620,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
       const std::string& source_addr, const std::string& debug_session_string);
 
+  void UpdateAllowCompactionFailures();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -789,6 +791,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   simple_spinlock metadata_cache_spinlock_;
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
   std::atomic<client::YBMetaDataCache*> metadata_cache_;
+
+  std::vector<FlagCallbackRegistration> flag_callbacks_;
+
+  std::string allow_compaction_failures_for_tablet_ids_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

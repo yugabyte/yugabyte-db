@@ -2448,7 +2448,8 @@ Status DBImpl::CompactFilesImpl(
         "[%s] [JOB %d] Compaction error: %s",
         c->column_family_data()->GetName().c_str(), job_context->job_id,
         status.ToString().c_str());
-    if (db_options_.paranoid_checks && bg_error_.ok()) {
+    if (db_options_.paranoid_checks && !allow_compaction_failures_ &&
+        bg_error_.ok()) {
       bg_error_ = status;
     }
   }
@@ -3819,7 +3820,8 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   } else {
     RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log, "Compaction error: %s",
         status.ToString().c_str());
-    if (db_options_.paranoid_checks && bg_error_.ok()) {
+    if (db_options_.paranoid_checks && !allow_compaction_failures_ &&
+        bg_error_.ok()) {
       bg_error_ = status;
     }
   }
@@ -6894,6 +6896,12 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
 const std::string& DBImpl::LogPrefix() const {
   static const std::string kEmptyString;
   return db_options_.info_log ? db_options_.info_log->Prefix() : kEmptyString;
+}
+
+void DBImpl::SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) {
+  if (allow_compaction_failures_.exchange(allow_compaction_failures) != allow_compaction_failures) {
+    LOG_WITH_PREFIX(INFO) << "allow_compaction_failures changed to: " << allow_compaction_failures;
+  }
 }
 
 }  // namespace rocksdb
