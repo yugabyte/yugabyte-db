@@ -61,7 +61,7 @@ To set up disaster recovery for a cluster, do the following:
 
     You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to [xCluster and colocation](../../../../explore/colocation/#xcluster-and-colocation).
 
-    YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
+    YugabyteDB Aeon checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
 
 1. If data needs to be copied, click **Next: Confirm Full Copy**, and select a storage configuration.
 
@@ -77,7 +77,7 @@ To set up disaster recovery for a cluster, do the following:
 
 1. Click **Confirm and Enable Disaster Recovery**.
 
-YugabyteDB Anywhere proceeds to set up DR for the cluster. How long this takes depends mainly on the amount of data that needs to be copied to the DR replica.
+YugabyteDB Aeon proceeds to set up DR for the cluster. How long this takes depends mainly on the amount of data that needs to be copied to the DR replica.
 
 ## Monitor replication
 
@@ -195,7 +195,7 @@ Note that to display the lag threshold in the [Async Replication Lag chart](#met
 
 When you receive an alert, navigate to the Disaster Recovery [Tables tab](#tables) to see the table status.
 
-YugabyteDB Anywhere collects these metrics every 2 minutes, and fires the alert within 10 minutes of the error.
+YugabyteDB Aeon collects these metrics every 2 minutes, and fires the alert within 10 minutes of the error.
 
 For more information on alerting in YugabyteDB Aeon, refer to [Alerts](../../../cloud-monitor/cloud-alerts/).
 
@@ -220,13 +220,13 @@ To add a database to DR, do the following:
 
 1. Click **Validate Selection**.
 
-    YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
+    YugabyteDB Aeon checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
 
 1. If data needs to be copied, click **Next: Confirm Full Copy**.
 
 1. Click **Apply Changes**.
 
-YugabyteDB Anywhere proceeds to copy the database to the DR replica. How long this takes depends mainly on the amount of data that needs to be copied.
+YugabyteDB Aeon proceeds to copy the database to the DR replica. How long this takes depends mainly on the amount of data that needs to be copied.
 
 ### Change the DR replica
 
