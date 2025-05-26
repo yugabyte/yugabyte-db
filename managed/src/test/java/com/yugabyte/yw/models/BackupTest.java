@@ -549,6 +549,50 @@ public class BackupTest extends FakeDBApplication {
   }
 
   @Test
+  public void testMaybeFetchBackupWithPITRWindowStartAfterRestoreTimestampFail()
+      throws InterruptedException {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup.setState(BackupState.Completed);
+    backup.save();
+    tableParamsParent = backup.getBackupInfo();
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 5000L,
+                backup.backupCreateTimeInMillis() - 500L));
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 3000L,
+                backup.backupCreateTimeInMillis() - 500L));
+
+    backup.save();
+    // Restore timestamp less backup params start window
+    long restoreTimestampMillis = backup.backupCreateTimeInMillis() - 6000L;
+    Optional<Backup> optBackup =
+        Backup.maybeGetRestorableBackup(
+            defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
+    assertTrue(optBackup.isEmpty());
+  }
+
+  @Test
   public void testMaybeFetchBackupWithClosestCreateTimeAfterRestoreTimestamp()
       throws InterruptedException {
     Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
@@ -576,8 +620,23 @@ public class BackupTest extends FakeDBApplication {
             BackupCategory.YB_CONTROLLER,
             BackupVersion.V2);
     incrementalBackup.setState(BackupState.Completed);
+    tableParamsParent = backup.getBackupInfo();
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                incrementalBackup.backupCreateTimeInMillis() - 5000L,
+                incrementalBackup.backupCreateTimeInMillis() - 300L));
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                incrementalBackup.backupCreateTimeInMillis() - 3000L,
+                incrementalBackup.backupCreateTimeInMillis() - 100L));
     incrementalBackup.save();
-    // Restore timestamp more than latest backup create time
+    // Restore timestamp in the latest backup restorable window
     long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() - 200L;
     Optional<Backup> optBackup =
         Backup.maybeGetRestorableBackup(
