@@ -1,19 +1,27 @@
-## yba oidc
+## yba oidc login
 
-Manage YugabyteDB Anywhere OIDC configuration
+Login to YBA using OIDC authentication
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere OIDC (OpenID Connect) configuration
+Login to YBA using OIDC authentication
 
 ```
-yba oidc [flags]
+yba oidc login [flags]
+```
+
+### Examples
+
+```
+yba oidc login
 ```
 
 ### Options
 
 ```
-  -h, --help   help for oidc
+      --show-api-token   [Optional] Show the API token after authentication. (default false)
+  -f, --force            [Optional] Bypass the prompt for non-interactive usage. Provide the host (--host/-H)
+  -h, --help             help for login
 ```
 
 ### Options inherited from parent commands
@@ -35,9 +43,5 @@ yba oidc [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba oidc configure](yba_oidc_configure.md)	 - Configure OIDC configuration for YBA
-* [yba oidc describe](yba_oidc_describe.md)	 - Describe OIDC configuration for YBA
-* [yba oidc disable](yba_oidc_disable.md)	 - Disable OIDC configuration for YBA
-* [yba oidc login](yba_oidc_login.md)	 - Login to YBA using OIDC authentication
+* [yba oidc](yba_oidc.md)	 - Manage YugabyteDB Anywhere OIDC configuration
 

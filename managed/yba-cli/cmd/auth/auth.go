@@ -30,7 +30,7 @@ var AuthCmd = &cobra.Command{
 		}
 		var apiToken string
 		var data []byte
-		url := viperVariablesInAuth(cmd, force)
+		url := ViperVariablesInAuth(cmd, force)
 		if !force {
 
 			// Prompt for the API token
@@ -62,7 +62,7 @@ var AuthCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		authUtil(url, apiToken, showToken)
+		InitializeAuthenticatedSession(url, apiToken, showToken)
 	},
 }
 
