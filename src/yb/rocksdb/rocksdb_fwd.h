@@ -68,6 +68,8 @@ class DirectWriteHandler;
 
 YB_DEFINE_ENUM(FlushAbility, (kNoNewData)(kHasNewData)(kAlreadyFlushing));
 
+YB_STRONGLY_TYPED_BOOL(AllowCompactionFailures);
+
 // Frontier should be copyable, but should still preserve its polymorphic nature. We cannot use
 // shared_ptr here, because we are planning to modify the copied value. If we used shared_ptr and
 // modified the copied value, the original value would also change.
