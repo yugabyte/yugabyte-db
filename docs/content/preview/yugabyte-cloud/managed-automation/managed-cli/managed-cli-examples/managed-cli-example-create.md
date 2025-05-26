@@ -224,6 +224,8 @@ ybm cluster update \
   --wait
 ```
 
+For more information, see [Scale and configure clusters](../../../../cloud-clusters/configure-clusters/)
+
 ## Encryption at rest
 
 YugabyteDB Aeon supports [encryption at rest](../../../../cloud-secure-clusters/managed-ear) (EAR). Before you can create a cluster with EAR, you need to create a customer managed key (CMK) in a cloud provider Key Management Service (KMS). See [Prerequisites](../../../../cloud-secure-clusters/managed-ear/#prerequisites).
@@ -418,8 +420,6 @@ ybm cluster encryption update-state \
 ```output
 Successfully ENABLED encryption at rest for cluster my-sandbox
 ```
-
-For more information, see [Scale and configure clusters](../../../../cloud-clusters/configure-clusters/)
 
 ## Pause, resume, and terminate
 
