@@ -521,6 +521,8 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 	if !userDetail.IsCurrent {
 		err = file.Chown(int(userDetail.UserID), int(userDetail.GroupID))
 		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in changing file owner %s - %s", filename, err.Error())
 			return status.Error(codes.Internal, err.Error())
 		}
 	}

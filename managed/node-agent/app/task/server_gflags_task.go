@@ -140,7 +140,8 @@ func (handler *ServerGflagsHandler) Handle(
 		gflagsContext,
 		ServerConfTemplateSubpath,
 		destination,
-		fs.FileMode(0755),
+		fs.FileMode(0644),
+		handler.username,
 	)
 	if err != nil {
 		return nil, err
