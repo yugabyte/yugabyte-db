@@ -225,20 +225,4 @@ To remove DR, do the following:
 
 Some situations, such as extended network partitions between the Source and Target, can cause a permanent failure of replication due to WAL logs being no longer available on the Source.
 
-In these cases, restart replication as follows:
-
-1. Navigate to your Source cluster **Disaster Recovery** tab and select the replication configuration.
-1. Click **Actions** and choose **Advanced** and **Resync DR Replica**.
-1. Select the databases to be copied to the Target.
-1. Click **Next: Confirm Full Copy**.
-1. Click **Create a New Full Copy**.
-
-This performs a full copy of the databases involved from the Source to the Target.
-
-### Remove disaster recovery
-
-To remove disaster recovery for a cluster, do the following:
-
-1. Navigate to your Source cluster **Disaster Recovery** tab and select the replication configuration you want to remove.
-
-1. Click **Actions** and choose **Remove Disaster Recovery**.
+In these cases, restart replication navigating to your Source cluster **Disaster Recovery** tab and click **Restart Replication**.
