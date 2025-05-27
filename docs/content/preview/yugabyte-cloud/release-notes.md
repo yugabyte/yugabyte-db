@@ -566,8 +566,8 @@ rightNav:
 ##### New features
 
 - Additional [performance metrics](../cloud-monitor/overview/). The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
-- Ability to review running queries using the [Live Queries](../cloud-monitor/cloud-queries-live/) on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
-- Ability to review slow YSQL queries using the [YSQL Slow Queries](../cloud-monitor/cloud-queries-slow/) on the cluster **Performance** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
+- Ability to review running queries using the [Live Queries](../cloud-monitor/cloud-queries-live/) on the cluster **Perf Advisor** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
+- Ability to review slow YSQL queries using the [YSQL Slow Queries](../cloud-monitor/cloud-queries-slow/) on the cluster **Perf Advisor** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
 
 ##### Database
 
@@ -627,7 +627,7 @@ This release includes the following features:
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
 - **Metrics** - For a cluster with read replicas with different IOPS provisioned (AWS only), the provisioned IOPS metric shows the same IOPS across all replicas.
-- **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
+- **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Insights, Slow Queries, and some metrics may not return any results.
 - **Maximum number of regions** - Multi-region clusters and their read replicas are limited to a maximum of 8 regions.
 
 #### Known issues in Cloud Shell

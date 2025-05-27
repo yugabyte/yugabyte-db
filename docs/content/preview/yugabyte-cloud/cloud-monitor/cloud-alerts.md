@@ -86,7 +86,7 @@ When you receive a cluster alert, the first step is to review the chart for the 
 | [CMK Unavailable](#fix-cmk-unavailable-alerts) | N/A |
 | [CPU Utilization](#fix-cpu-alerts) | CPU Usage metric |
 
-You can view metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
+You can view metrics on the cluster **Perf Advisor** tab. Refer to [Performance metrics](../overview/#performance-metrics).
 
 {{< note title="Note" >}}
 
