@@ -5028,6 +5028,7 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 		return false;
 
 	TransactionState s = CurrentTransactionState;
+
 	while (s != NULL)
 	{
 		if (s->name != NULL &&

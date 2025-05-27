@@ -1580,6 +1580,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			&& attnum != 0)
 		{
 			char	   *attname;
+
 			attname = get_attname(indexrelid, keyno + 1, false);
 			appendStringInfo(&buf, " AS %s", quote_identifier(attname));
 		}

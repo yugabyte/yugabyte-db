@@ -542,6 +542,7 @@ extern void YBCRestartWriteTransaction(void);
 extern void YbSetTxnWithPgOps(uint8 pg_op_type);
 extern uint8 YbGetPgOpsInCurrentTxn(void);
 extern void YbBeginInternalSubTransactionForReadCommittedStatement();
+
 /*
  * Determine if the transaction block contains a savepoint other than the
  * internal ones created for READ COMMITTED isolation level.

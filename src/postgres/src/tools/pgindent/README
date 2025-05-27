@@ -39,11 +39,7 @@ different.
 - The existing typedefs.list and exclude_file_patterns should not be touched
   and should be left under the control of upstream postgres.  In order to make
   use of the YB variants of these files, run yb_pgindent, a wrapper around
-  pgindent that merges the additional YB files with the PG ones.  If you do not
-  want to install pg_bsd_indent to PATH, you can reference the generated
-  executable with the --indent option:
-
-      src/tools/pgindent/yb_pgindent --indent=../../build/latest/postgres_build/src/tools/pg_bsd_indent/pg_bsd_indent
+  pgindent that merges the additional YB files with the PG ones.
 
 pgindent'ing the PostgreSQL source tree
 =======================================
