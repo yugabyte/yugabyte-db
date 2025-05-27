@@ -22,7 +22,7 @@ If the Source is terminated for some reason, do the following:
 
 1. Stop the application traffic to ensure no more updates are attempted.
 
-1. Navigate to your Source cluster **Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your Source cluster **Disaster Recovery** tab.
 
 1. Note the **Potential data loss on failover** to understand the extent of possible data loss as a result of the outage, and determine if the extent of data loss is acceptable for your situation.
 
@@ -47,14 +47,14 @@ At this point, the DR configuration is halted and needs to be repaired.
 
 There are two options to repair a DR that has failed over:
 
-- If the original Source has recovered and is fully functional with no active alerts, you can configure DR to use this cluster as a Target.
+- If the original Source has recovered and is fully functional with no active alerts, you can configure DR to use the cluster as a Target.
 - If the original Source cannot be recovered, create a new cluster to be configured to act as the Target (see [Prerequisites](../disaster-recovery-setup/#prerequisites)).
 
 In both cases, repairing DR involves making a full copy of the databases through the backup-restore process.
 
 To repair DR, do the following:
 
-1. Navigate to your (new) Source cluster **Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your (new) Source cluster **Disaster Recovery** tab.
 
 1. Click **Repair DR** to display the **Repair DR** dialog.
 

@@ -35,7 +35,7 @@ Use the following steps to perform a planned switchover:
 
 1. Stop the application traffic on the Source.
 
-1. Navigate to your Source cluster **Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your Source cluster **Disaster Recovery** tab.
 
 1. Click **Switchover** and choose **Switchover**.
 

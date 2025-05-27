@@ -107,6 +107,28 @@ If a failover were to occur at this moment (t = 50 ms) the Target will be restor
 
 In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T2) (the transaction that is lagging the most).
 
+### Disaster recovery alerts
+
+YugabyteDB Aeon sends a notification when lag exceeds the threshold, as follows:
+
+- Safe time lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+- Replication lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
+
+Replication lag measures how far behind in time the Target lags the Source. In a failover scenario, the longer the lag, the more data is at risk of being lost.
+
+Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
+
+<!--When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
+
+- there is a table schema mismatch between Source and Target.
+- tables are added or dropped from either Source or Target, but have not been added or dropped from the other.-->
+
+When you receive an alert, navigate to the Disaster Recovery [Database and Tables](#tables) to see the table status.
+
+YugabyteDB Aeon collects these metrics every 2 minutes, and fires the alert within 10 minutes of the error.
+
+For more information on alerting in YugabyteDB Aeon, refer to [Alerts](../../../cloud-monitor/cloud-alerts/).
+
 ### Tables
 
 After disaster recovery is set up and replicating, the **Disaster Recovery** tab lists all the databases and tables in replication and their status under **Databases and Tables**.
@@ -158,28 +180,6 @@ The following statuses describe replication errors. More than one of these error
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the Source. Create the same table on the Target. |
 | Auto flag config mismatch | Replication has stopped because one of the clusters is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
-
-### Disaster recovery alerts
-
-YugabyteDB Aeon sends a notification when lag exceeds the threshold, as follows:
-
-- Safe time lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
-- Replication lag exceeds 5 minutes (Warning) or 10 minutes (Severe).
-
-Replication lag measures how far behind in time the Target lags the Source. In a failover scenario, the longer the lag, the more data is at risk of being lost.
-
-Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
-
-<!--When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
-
-- there is a table schema mismatch between Source and Target.
-- tables are added or dropped from either Source or Target, but have not been added or dropped from the other.-->
-
-When you receive an alert, navigate to the Disaster Recovery [Database and Tables](#tables) to see the table status.
-
-YugabyteDB Aeon collects these metrics every 2 minutes, and fires the alert within 10 minutes of the error.
-
-For more information on alerting in YugabyteDB Aeon, refer to [Alerts](../../../cloud-monitor/cloud-alerts/).
 
 ## Manage replication
 
