@@ -5,6 +5,8 @@
 
 -- Enable partitionwise join, which by default is disabled.
 SET enable_partitionwise_join to true;
+-- YB: explicitly set enable_partitionwise_aggregate to original pg default.
+SET enable_partitionwise_aggregate to false;
 
 --
 -- partitioned by a single column
@@ -122,6 +124,8 @@ SELECT a, b FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b)
   GROUP BY 1, 2 ORDER BY 1, 2;
 
 RESET enable_partitionwise_aggregate;
+-- YB: explicitly set enable_partitionwise_aggregate to original pg default.
+SET enable_partitionwise_aggregate to false;
 RESET enable_hashjoin;
 
 --
