@@ -20,7 +20,7 @@ To gather insights, click the cluster **Perf Advisor** tab, choose **Insights**,
 
 For meaningful results, run your workload for at least an hour before running the scan.
 
-To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
+To monitor clusters in real time, use the performance metrics on the cluster [Overview and Perf Advisor](../overview/) tabs.
 
 ![Insights](/images/yb-cloud/managed-monitor-advisor.png)
 
