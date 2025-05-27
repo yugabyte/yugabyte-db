@@ -108,7 +108,11 @@ func upgradeCmd() *cobra.Command {
 			state, err := ybactlstate.Initialize()
 			// Can have no state if upgrading from a version before state existed.
 			if err != nil {
-				state = ybactlstate.New()
+				log.Fatal(fmt.Sprintf("Failed to initialize state: %v", err))
+			}
+			// Can have no state if upgrading from a version before state existed.
+			if state.CurrentStatus == ybactlstate.UninstalledStatus {
+				log.Warn("No state file found, assuming upgrade is from a version before state existed.")
 				state.CurrentStatus = ybactlstate.InstalledStatus
 			}
 
@@ -119,6 +123,7 @@ func upgradeCmd() *cobra.Command {
 			if err := state.ValidateReconfig(); err != nil {
 				log.Fatal("invalid reconfigure during upgrade: " + err.Error())
 			}
+			log.Info("Current state: " + state.Version)
 
 			// Upgrade yba-ctl first.
 			if err := ybaCtl.Install(); err != nil {
@@ -140,8 +145,8 @@ func upgradeCmd() *cobra.Command {
 					log.Info(fmt.Sprintf("Taking YBA backup to %s", backupDir))
 					usePromProtocol := true
 					// PLAT-14522 introduced prometheus_protocol which isn't present in <2.20.7.0-b40 or <2024.1.3.0-b55
-					if (common.LessVersions(state.Version, "2.20.7.0-b40") ||
-							(common.LessVersions("2024.1.0.0-b0", state.Version) && common.LessVersions(state.Version, "2024.1.3.0-b55"))) {
+					if common.LessVersions(state.Version, "2.20.7.0-b40") ||
+						(common.LessVersions("2024.1.0.0-b0", state.Version) && common.LessVersions(state.Version, "2024.1.3.0-b55")) {
 						usePromProtocol = false
 					}
 					if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),

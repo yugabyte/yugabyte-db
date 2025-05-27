@@ -600,8 +600,9 @@ func (plat Platform) FinishReplicatedMigrate() error {
 }
 
 func createPemFormatKeyAndCert() error {
-	keyFile := viper.GetString("server_key_path")
-	certFile := viper.GetString("server_cert_path")
+	paths := getServerKeyAndCert()
+	keyFile := paths.KeyPath
+	certFile := paths.CertPath
 	log.Info(fmt.Sprintf("Generating concatenated PEM from %s %s ", keyFile, certFile))
 
 	// Open and read the key file.
@@ -649,6 +650,18 @@ func createPemFormatKeyAndCert() error {
 		common.Chown(common.GetSelfSignedCertsDir(), userName, userName, true)
 	}
 	return nil
+}
+
+func getServerKeyAndCert() common.ServerCertPaths {
+	paths := common.ServerCertPaths{}
+	if len(viper.GetString("server_key_path")) == 0 {
+		paths.KeyPath = common.GetSelfSignedServerKeyPath()
+		paths.CertPath = common.GetSelfSignedServerCertPath()
+	} else {
+		paths.KeyPath = viper.GetString("server_key_path")
+		paths.CertPath = viper.GetString("server_cert_path")
+	}
+	return paths
 }
 
 func (plat Platform) symlinkReplicatedData() error {
