@@ -100,12 +100,6 @@ struct PgClientSessionContext {
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
 };
 
-class LeaseEpochValidator {
- public:
-  virtual ~LeaseEpochValidator() = default;
-  virtual bool IsLeaseValid(uint64_t lease_epoch) = 0;
-};
-
 class PgClientSession final {
  private:
   using SharedThisSource = std::shared_ptr<void>;
@@ -117,8 +111,8 @@ class PgClientSession final {
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
       client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-      uint64_t id, uint64_t lease_epoch, LeaseEpochValidator* lease_provider,
-      tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler);
+      uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+      rpc::Scheduler& scheduler);
   ~PgClientSession();
 
   uint64_t id() const;
