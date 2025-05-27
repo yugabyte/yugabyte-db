@@ -1623,7 +1623,7 @@ When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is
 
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL. If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-For information on how defaults for other memory division flags are set, and how memory is divided among processes when this flag is set, refer to [Memory division limits](../../../architecture/docdb-sharding/tablet-splitting/#memory-division-limits).
+For information on how defaults for other memory division flags are set, and how memory is divided among processes when this flag is set, refer to [Memory division defaults](../../configuration/smart-defaults/).
 
 #### Flags controlling the split of memory among processes
 

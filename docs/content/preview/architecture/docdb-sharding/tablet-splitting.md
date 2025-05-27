@@ -325,7 +325,7 @@ You can enable tablet limits using the following steps:
 
 1. Enable the flag [enforce_tablet_replica_limits](../../../reference/configuration/yb-master/#enforce-tablet-replica-limits) on all YB-Masters.
 1. Choose a resource to limit the total number of tablet replicas. Limits are supported by available CPU cores, GiB of RAM, or both.
-    * To limit by memory, if you're using YSQL, it is simplest to set the flag [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) to true.
+    * To limit by memory, if you're using YSQL, it is simplest to set the flag [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) to true. This [smart default](../../../reference/configuration/smart-defaults/) automatically optimizes tablet limits based on the amount of RAM and cores available.
     * To limit by CPU cores and GiB, or both, set the flags [tablet_replicas_per_core_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-core-limit) and [tablet_replicas_per_gib_limit](../../../reference/configuration/yb-tserver/#tablet-replicas-per-gib-limit) to the desired positive value on all YB-Masters and YB-TServers.
 
         These flags limit the number of tablets that can be created in the live placement group in terms of resources available to YB-TServers in the cluster. For example, if [tablet_overhead_size_percentage](../../../reference/configuration/yb-tserver/#tablet-overhead-size-percentage) is 10, each YB-TServer has 10 GiB available, `tablet_replicas_per_gib_limit` is 1000, and there are 3 YB-TServers in the cluster, this feature will prevent you from creating more than 3000 tablet replicas. Assuming a replication factor of 3, this is the same as 1000 tablets. Note that YugabyteDB creates a certain number of system tablets itself, so in this case you are not free to create 1000 tablets.
@@ -350,36 +350,6 @@ Currently, tablets created during a YSQL restore are not entirely covered by thi
 1. If necessary, new tablets are created so the number of tablets supporting the restored tables matches the number of tablets supporting the backed up tables. Any tablets created during this step are _not_ checked against the cluster limits.
 
 {{</note>}}
-
-### Memory division limits
-
-Using [use_memory_defaults_optimized_for_ysql](../../../reference/configuration/yb-tserver/#use-memory-defaults-optimized-for-ysql) flag to limit memory automatically sets defaults for the memory division settings that take into account the amount of RAM and cores available and are optimized for using YSQL.
-
-When the flag is false, the defaults are more suitable for YCQL but do not take into account the amount of RAM and cores available.
-
-If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
-
-If these defaults are used for both TServer and Master, then a node's available memory is partitioned as follows:
-
-| node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
-| :--- | ---: | ---: | ---: | ---: |
-| TServer %  | 45% | 48% | 57% | 60% |
-| Master %   | 20% | 15% | 10% | 10% |
-| PostgreSQL % | 25% | 27% | 28% | 27% |
-| other %    | 10% | 10% |  5% |  3% |
-
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
-
-For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
-
-The defaults for the Master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
-
-| flag | default |
-| :--- | :--- |
-| --db_block_cache_size_percentage | 25 |
-| --tablet_overhead_size_percentage | 0 |
-
-Currently these are the same as the defaults when `--use_memory_defaults_optimized_for_ysql` is `false`, but may change in future releases.
 
 ### Metrics
 
