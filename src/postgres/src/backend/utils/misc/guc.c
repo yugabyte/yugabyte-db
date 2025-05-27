@@ -1261,7 +1261,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&enable_partitionwise_aggregate,
-		false,
+		true,					/* YB: change default from false to true */
 		NULL, NULL, NULL
 	},
 	{
