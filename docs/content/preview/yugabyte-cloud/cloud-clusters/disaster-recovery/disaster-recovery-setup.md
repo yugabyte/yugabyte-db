@@ -207,7 +207,7 @@ To remove a database from DR, do the following:
 
 1. Click **Edit DR Configuration** and choose **Remove Database**.
 
-1. Deselect the databases to be removed.
+1. Select the databases to be removed.
 
 1. Click **Remove Databases**.
 
