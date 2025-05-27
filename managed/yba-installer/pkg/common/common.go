@@ -110,17 +110,9 @@ func Initialize() error {
 	}
 
 	// Generate certs if required.
-	var serverCertPath, serverKeyPath string
 	if len(viper.GetString("server_cert_path")) == 0 {
 		log.Info("Generating self-signed server certificates")
-		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
-		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
-			return err
-		}
-		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
-			return err
-		}
-		InitViper()
+		GenerateSelfSignedCerts()
 	}
 	return nil
 }
@@ -559,41 +551,34 @@ func FixConfigValues() error {
 }
 
 // GenerateSelfSignedCerts will create self signed certifacts and return their paths.
-func GenerateSelfSignedCerts() (string, string) {
+func GenerateSelfSignedCerts() error {
 	certsDir := GetSelfSignedCertsDir()
-	serverCertPath := filepath.Join(certsDir, ServerCertPath)
-	serverKeyPath := filepath.Join(certsDir, ServerKeyPath)
-
-	caCertPath := filepath.Join(certsDir, "ca_cert.pem")
-	caKeyPath := filepath.Join(certsDir, "ca_key.pem")
-
+	log.Info("create self signed certs dir " + certsDir)
 	err := MkdirAll(certsDir, DirMode)
 	if err != nil && !os.IsExist(err) {
-		log.Fatal(fmt.Sprintf("Unable to create dir %s", certsDir))
+		return fmt.Errorf("Unable to create dir %s", certsDir)
 	}
 	username := viper.GetString("service_username")
 	if err := Chown(certsDir, username, username, true); err != nil {
-		log.Fatal(fmt.Sprintf("Unable to chown dir %s", certsDir))
+		return fmt.Errorf("Unable to chown dir %s", certsDir)
 	}
 	log.Debug("Created dir " + certsDir)
 
 	generateSelfSignedServerCert(
-		serverCertPath,
-		serverKeyPath,
-		caCertPath,
-		caKeyPath,
+		GetSelfSignedServerCertPath(),
+		GetSelfSignedServerKeyPath(),
+		GetSelfSignedCACertPath(),
+		GetSelfSignedCAKeyPath(),
 		viper.GetString("host"),
 	)
 
-	return serverCertPath, serverKeyPath
-
+	return nil
 }
 
 // RegenerateSelfSignedCerts will recreate the server cert and server key file with existing
 // ca cert/key files.
 // No directories will be created, this should already exist.
-// Returns the path to the server cert and key.
-func RegenerateSelfSignedCerts() (string, string) {
+func RegenerateSelfSignedCerts() error {
 	certsDir := GetSelfSignedCertsDir()
 	caCertPath := filepath.Join(certsDir, "ca_cert.pem")
 	caKeyPath := filepath.Join(certsDir, "ca_key.pem")
@@ -603,17 +588,17 @@ func RegenerateSelfSignedCerts() (string, string) {
 	}
 	caCert, err := parseCertFromPem(caCertPath)
 	if err != nil {
-		log.Fatal("failed to parse certificate: " + err.Error())
+		return fmt.Errorf("failed to parse certificate: %s", err.Error())
 	}
 	caKey, err := parsePrivateKey(caKeyPath)
 	if err != nil {
-		log.Fatal("failed to parse private key: " + err.Error())
+		return fmt.Errorf("failed to parse private key: %s", err.Error())
 	}
 	serverCertPath := filepath.Join(certsDir, ServerCertPath)
 	serverKeyPath := filepath.Join(certsDir, ServerKeyPath)
 	generateCert(serverCertPath, serverKeyPath, false /*isCA*/, serverCertTimeout,
 		viper.GetString("host"), caCert, caKey)
-	return serverCertPath, serverKeyPath
+	return nil
 }
 
 // WaitForYBAReady waits for a YBA to be running with specified version

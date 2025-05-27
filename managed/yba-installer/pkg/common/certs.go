@@ -18,6 +18,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -29,6 +30,11 @@ const (
 	caCertTimeout     time.Duration = 10 * 365 * 24 * time.Hour // about 10 years
 	serverCertTimeout time.Duration = 4 * 365 * 24 * time.Hour  // about 4 years
 )
+
+type ServerCertPaths struct {
+	KeyPath  string
+	CertPath string
+}
 
 func publicKey(priv any) any {
 	switch k := priv.(type) {
@@ -177,4 +183,36 @@ func parsePrivateKey(filePath string) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("could not convert private key to rsa.Privatekey")
 	}
 	return privateKey, nil
+}
+
+// GetFirstCertInServerPem is mainly used to validate if the server.pem file is generated
+// from self-signed certs or not. YBA Installer self-signed certs are generated to have exactly
+// 1 cert and 1 private key in the server.pem file. We can assume the first cert we find in the
+// pem is the cert we want.
+func GetFirstCertInServerPem() (*x509.Certificate, error) {
+	// Open the CA cert file
+	serverPemPath := filepath.Join(GetSelfSignedCertsDir(), ServerPemPath)
+	log.Debug("Reading server.pem file from " + serverPemPath)
+	certData, err := os.ReadFile(serverPemPath)
+	// handle not exists as no error
+	if err != nil {
+		return nil, fmt.Errorf("failed to open CA cert file %s: %w", serverPemPath, err)
+	}
+
+	block := &pem.Block{}
+	for len(certData) > 0 {
+		block, certData = pem.Decode(certData)
+		if block == nil {
+			return nil, fmt.Errorf("failed to decode PEM block")
+		}
+		if strings.Contains(strings.ToLower(block.Type), "private key") {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse certificate: %w", err)
+		}
+		return cert, nil
+	}
+	return nil, fmt.Errorf("no cert found in pem file")
 }
