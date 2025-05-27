@@ -160,3 +160,27 @@ TRUNCATE test11;
 SELECT * FROM test11;
 ROLLBACK;
 SELECT * FROM test11;
+
+-- Savepoint allowed without any DDL.
+CREATE TABLE test12 (a int primary key, b int);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test12 VALUES (1, 1);
+SAVEPOINT test12_sp;
+INSERT INTO test12 VALUES (2, 2);
+SELECT * FROM test12;
+ROLLBACK TO SAVEPOINT test12_sp;
+COMMIT;
+SELECT * FROM test12;
+
+-- DDL after Savepoint disallowed.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test12 VALUES (3, 3);
+SAVEPOINT test12_sp;
+CREATE TABLE test13 (a int primary key, b int);
+ROLLBACK;
+
+-- Savepoint after DDL disallowed.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test13 (a int primary key, b int);
+SAVEPOINT test13_sp;
+ROLLBACK;
