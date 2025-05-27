@@ -65,4 +65,11 @@ Child tables: child
  c2     | integer |           |          |         | plain   |              | 
 Inherits: parent
 
+-- Test combining alter table cmds with inherit #27263
+ALTER TABLE child NO INHERIT parent, ADD COLUMN c3 int;
+SELECT * FROM child;
+ id | c1 | c2 | c3 
+----+----+----+----
+(0 rows)
+
 DROP TABLE parent, child;
