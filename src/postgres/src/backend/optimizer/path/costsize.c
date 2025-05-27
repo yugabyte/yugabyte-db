@@ -6705,7 +6705,7 @@ yb_compute_result_transfer_cost(double result_tuples,
 								Cost roundtrip_cost,
 								Cost transfer_cost)
 {
-	int			num_result_pages;
+	double		num_result_pages;
 	double		result_page_size;
 
 	/* Network costs */
@@ -7389,6 +7389,8 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
+	path->yb_plan_info.estimated_num_table_result_pages = num_result_pages;
+	path->yb_plan_info.estimated_num_index_result_pages = 0;
 
 	run_cost += (num_seeks * per_seek_cost) + (num_nexts * per_next_cost);
 
@@ -8387,6 +8389,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 												   baserel, baserel_oid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 
+	double		index_result_num_pages = 0;
+
 	/*
 	 * Compute the cost of transferring results over network from DocDB to
 	 * pggate.
@@ -8433,7 +8437,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		}
 
 		Cost baserel_ybctid_transfer_cost;
-		double		index_result_num_pages;
 
 		if (path->path.parallel_workers > 0)
 		{
@@ -8473,6 +8476,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 					  (1 - 1 / index_result_num_pages)));
 	}
 
+	double		num_baserel_result_pages = 0;
+
 	if (!is_primary_index && !index_only && !baserel_is_colocated)
 	{
 		/*
@@ -8494,7 +8499,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 		/* Add cost of fetching result from base table */
 		startup_cost += baserel_roundtrip_cost;
-		double		num_baserel_result_pages;
 		if (path->path.parallel_workers > 0)
 		{
 			num_baserel_result_pages = ceil(num_baserel_result_rows *
@@ -8582,6 +8586,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts_prevs;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
+	path->yb_plan_info.estimated_num_table_result_pages = num_baserel_result_pages;
+	path->yb_plan_info.estimated_num_index_result_pages = index_result_num_pages;
 
 	/* Local filter costs */
 	cost_qual_eval(&qual_cost, local_clauses, root);
@@ -8904,6 +8910,19 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	num_seeks = tuples_scanned;
 	num_nexts = (max_nexts_to_avoid_seek + 1) * tuples_scanned;
+
+	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
+	path->yb_plan_info.estimated_num_seeks = num_seeks;
+
+	/*
+	 * Initialize to -1 to indicate the values are not set.
+	 *
+	 * YB_TODO(#27232) : Enhance EXPLAIN to show round trips for
+	 * bitmap scans and check to see if we still need to set these
+	 * valuess to -1.
+	 */
+	path->yb_plan_info.estimated_num_table_result_pages = -1;
+	path->yb_plan_info.estimated_num_index_result_pages = -1;
 
 	run_cost += (num_seeks * per_seek_cost) + (num_nexts * per_next_cost);
 

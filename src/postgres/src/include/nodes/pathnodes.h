@@ -1271,6 +1271,8 @@ typedef struct YbPlanInfo
 	double		estimated_num_nexts_prevs;
 	double		estimated_num_seeks;
 	int			estimated_docdb_result_width;
+	double		estimated_num_table_result_pages;
+	double		estimated_num_index_result_pages;
 } YbPlanInfo;
 
 /*
