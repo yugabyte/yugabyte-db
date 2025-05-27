@@ -2325,7 +2325,7 @@ class PgClientSession::Impl {
     return status;
   }
 
-  Status AcquireObjectLock(
+  Status DoAcquireObjectLock(
       const PgAcquireObjectLockRequestPB& req, PgAcquireObjectLockResponsePB* resp,
       rpc::RpcContext* context) {
     RSTATUS_DCHECK(IsObjectLockingEnabled(), IllegalState, "Table Locking feature not enabled.");
@@ -2351,6 +2351,8 @@ class PgClientSession::Impl {
         << " lock_type: " << AsString(lock_type)
         << " req: " << req.ShortDebugString();
 
+    auto callback = MakeRpcOperationCompletionCallback(
+        std::move(*context), resp, nullptr /* clock */);
     if (IsTableLockTypeGlobal(lock_type)) {
       if (setup_session_result.is_plain) {
         plain_session_has_exclusive_object_locks_.store(true);
@@ -2359,16 +2361,25 @@ class PgClientSession::Impl {
           instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
           req.database_oid(), req.object_oid(), lock_type, lease_epoch_, context_.clock.get(),
           deadline, txn_meta_res->status_tablet);
-      auto status_future = MakeFuture<Status>([&](auto callback) {
-        client_.AcquireObjectLocksGlobalAsync(lock_req, callback, deadline);
-      });
-      return status_future.get();
+      client_.AcquireObjectLocksGlobalAsync(lock_req, std::move(callback), deadline);
+      return Status::OK();
     }
     auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
         instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
         req.database_oid(), req.object_oid(), lock_type, lease_epoch_, context_.clock.get(),
         deadline, txn_meta_res->status_tablet);
-    return ts_lock_manager()->AcquireObjectLocks(lock_req, deadline);
+    ts_lock_manager()->AcquireObjectLocksAsync(lock_req, deadline, std::move(callback));
+    return Status::OK();
+  }
+
+  void AcquireObjectLock(
+      const PgAcquireObjectLockRequestPB& req, PgAcquireObjectLockResponsePB* resp,
+      yb::rpc::RpcContext context) {
+    auto s = DoAcquireObjectLock(req, resp, &context);
+    if (!s.ok()) {
+      StatusToPB(s, resp->mutable_status());
+      context.RespondSuccess();
+    }
   }
 
   void StartShutdown() {
