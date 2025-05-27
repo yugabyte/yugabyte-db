@@ -360,4 +360,8 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropSequence) {
   ASSERT_OK(TestPgRegress("create_sequence.sql", "drop_sequence.sql"));
 }
 
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressNonconcurrentBackfills) {
+  ASSERT_OK(TestPgRegress("nonconcurrent_backfills1.sql", "nonconcurrent_backfills2.sql"));
+}
+
 }  // namespace yb

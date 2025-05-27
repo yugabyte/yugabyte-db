@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "catalog/partition.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_amop_d.h"
 #include "catalog/pg_amproc_d.h"
@@ -29,6 +30,7 @@
 #include "catalog/pg_foreign_data_wrapper_d.h"
 #include "catalog/pg_foreign_server_d.h"
 #include "catalog/pg_foreign_table_d.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace_d.h"
 #include "catalog/pg_opclass_d.h"
 #include "catalog/pg_operator_d.h"
@@ -156,6 +158,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_REVOKE) \
 	X(CMDTAG_SECURITY_LABEL)
 
+/* Struct Definitions. */
 typedef struct YbNewRelMapEntry
 {
 	char	   *name;
@@ -177,6 +180,10 @@ typedef struct YbNameToOidMapEntry
 	char	   *name;
 	Oid			oid;
 } YbNameToOidMapEntry;
+
+/* Forward Declarations. */
+static bool ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list, bool is_table_rewrite);
+
 
 bool
 IsIndex(Relation rel)
@@ -231,19 +238,35 @@ IsSequence(Oid rel_oid)
 	return relkind == RELKIND_SEQUENCE;
 }
 
+void
+ReplicateInheritedRelations(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
+{
+	List	   *children = find_inheritance_children(rel_oid, NoLock);
+	ListCell   *cell;
+
+	foreach(cell, children)
+	{
+		Oid			child_oid = lfirst_oid(cell);
+
+		ShouldReplicateNewRelation(child_oid, new_rel_list, is_table_rewrite);
+	}
+}
+
 /*
  * This function handles both new relation from create table/index,
  * and also new relations as a result of table rewrites.
+ * Returns whether the relation should be replicated (eg false if
+ * table is a temp table or a primary key index).
  *
  * This function does not handle sequences.
  */
 bool
-ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
+ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
 {
 	Relation	rel = RelationIdGetRelation(rel_oid);
 
 	if (!rel)
-		elog(ERROR, "Could not find relation with OID %d", rel_oid);
+		elog(ERROR, "Could not find relation with OID %u", rel_oid);
 
 	/* Ignore temporary tables. */
 	if (!IsYBBackedRelation(rel))
@@ -263,13 +286,69 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 
 	new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
 	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
-	new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel);
+	new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel, is_table_rewrite);
 	new_rel_entry->is_index = IsIndex(rel);
 
 	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
 
 	RelationClose(rel);
+
+	/* Also loop over children relations. */
+	ReplicateInheritedRelations(rel_oid, new_rel_list, is_table_rewrite);
+
 	return true;
+}
+
+void
+HandleAlterColumnAddIndex(AlterTableCmd *subcmd, Oid rel_oid,
+						  List **new_rel_list)
+{
+	/* Need to fetch the index oid from the index name. */
+	IndexStmt  *index = (IndexStmt *) subcmd->def;
+
+	/* Skip primary keys for YB. */
+	if (index->primary)
+		return;
+
+	if (index->idxname == NULL)
+	{
+		/*
+		 * Default name is being used. It is difficult for us to get the name
+		 * that did end up getting picked for this index. In this case, we
+		 * will just collect info for all indexes on the table.
+		 */
+		Relation	rel = RelationIdGetRelation(rel_oid);
+		List	   *indexes = RelationGetIndexList(rel);
+
+		RelationClose(rel);
+		ListCell   *cell;
+
+		foreach(cell, indexes)
+		{
+			Oid			index_oid = lfirst_oid(cell);
+
+			ShouldReplicateNewRelation(index_oid, new_rel_list, /* is_table_rewrite= */ false);
+		}
+
+		list_free(indexes);
+		return;
+	}
+
+	/* We do have the index name, so can use that. */
+	Relation	rel = RelationIdGetRelation(rel_oid);
+	Oid			index_oid = get_relname_relid(index->idxname,
+											  RelationGetNamespace(rel));
+
+	RelationClose(rel);
+
+	if (index_oid == InvalidOid)
+		elog(ERROR,
+			 "Could not find index with name %s for parent relation %d",
+			 index->idxname,
+			 rel_oid);
+
+	/* Once we have the OID, we can capture its info. */
+	ShouldReplicateNewRelation(index_oid, new_rel_list, /* is_table_rewrite= */ false);
 }
 
 void
@@ -301,24 +380,7 @@ CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
 				case AT_AddIndex:
 				case AT_ReAddIndex:
 					{
-						/* Need to fetch the index oid from the index name. */
-						IndexStmt  *index = (IndexStmt *) subcmd->def;
-
-						/*
-						 * Skip processing the index if null (eg adding
-						 * primary key).
-						 */
-						if (index->indexOid == InvalidOid)
-							break;
-
-						Relation	rel = RelationIdGetRelation(rel_oid);
-						Oid			index_oid = get_relname_relid(index->idxname,
-																  RelationGetNamespace(rel));
-
-						RelationClose(rel);
-
-						/* Once we have the oid, we can capture its info. */
-						ShouldReplicateNewRelation(index_oid, new_rel_list);
+						HandleAlterColumnAddIndex(subcmd, rel_oid, new_rel_list);
 						break;
 					}
 				default:
@@ -343,13 +405,8 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
-	/*
-	 * Also get colocation_id from yb_table_properties here.
-	 * Ideally we could use GetColocationIdFromRelation, but that returns stale
-	 * colocation_id for these rewritten indexes..
-	 */
 	appendStringInfo(&query_buf,
-					 "SELECT c.oid, (yb_table_properties(c.oid)).colocation_id FROM pg_class c "
+					 "SELECT c.oid FROM pg_class c "
 					 "JOIN pg_indexes i ON c.relname = i.indexname "
 					 "WHERE i.tablename = '%s' AND i.schemaname = '%s';",
 					 rewritten_table_name, schema_name);
@@ -371,17 +428,8 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	{
 		HeapTuple	spi_tuple = SPI_tuptable->vals[i];
 		Oid			rewritten_index_oid = SPI_GetOid(spi_tuple, 1);
-		Oid			colocation_id = SPI_GetOidIfExists(spi_tuple, 2);
-		Relation	rewritten_index = RelationIdGetRelation(rewritten_index_oid);
 
-		YbNewRelMapEntry *rewritten_index_entry = palloc(sizeof(struct YbNewRelMapEntry));
-
-		rewritten_index_entry->name = pstrdup(RelationGetRelationName(rewritten_index));
-		rewritten_index_entry->relfile_oid = YbGetRelfileNodeId(rewritten_index);
-		rewritten_index_entry->colocation_id = colocation_id;
-		rewritten_index_entry->is_index = true;
-		*new_rel_list = lappend(*new_rel_list, rewritten_index_entry);
-		RelationClose(rewritten_index);
+		ShouldReplicateNewRelation(rewritten_index_oid, new_rel_list, /* is_table_rewrite */ true);
 	}
 
 	SPI_processed = saved_processed;
@@ -679,7 +727,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			command_tag == CMDTAG_CREATE_INDEX)
 		{
 			should_replicate_ddl |=
-				ShouldReplicateNewRelation(obj_id, &new_rel_list);
+				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ false);
 		}
 		else if (command_tag == CMDTAG_CREATE_TYPE ||
 				 command_tag == CMDTAG_ALTER_TYPE)
@@ -733,7 +781,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			 * of the table is updated to reference this new DocDB table,
 			 */
 			should_replicate_ddl |=
-				ShouldReplicateNewRelation(obj_id, &new_rel_list);
+				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ true);
 
 			/*
 			 * Add all indexes that are associated with this table, as table
@@ -793,6 +841,13 @@ ProcessSourceEventTriggerTableRewrite()
 	HeapTuple	spi_tuple = SPI_tuptable->vals[0];
 	Oid			rewritten_table_oid = SPI_GetOid(spi_tuple, TABLE_REWRITE_OBJID_COLUMN_ID);
 
+	/* This event trigger doesn't trigger on parent tables, so need to check. */
+	Oid			parent_table_oid = InvalidOid;
+
+	if (has_superclass(rewritten_table_oid))
+		parent_table_oid = get_partition_parent(rewritten_table_oid,
+												 /* even_if_detached= */ true);
+
 	/*
 	 * Add the rewritten table to the list of rewritten tables, so that ddl end
 	 * event triggers can process the rewritten table.
@@ -800,6 +855,8 @@ ProcessSourceEventTriggerTableRewrite()
 	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	rewritten_table_oid_list = lappend_oid(rewritten_table_oid_list, rewritten_table_oid);
+	if (parent_table_oid != InvalidOid)
+		rewritten_table_oid_list = lappend_oid(rewritten_table_oid_list, parent_table_oid);
 	MemoryContextSwitchTo(oldcontext);
 }
 
