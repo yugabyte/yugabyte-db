@@ -1413,7 +1413,9 @@ TEST_F(ExternalObjectLockTestOneTS, ReleaseBlocksUntilBootstrap) {
       &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch, nullptr,
       std::nullopt, kTimeout));
   ASSERT_OK(cluster_->AddTabletServer(
-      false, {"--TEST_tserver_enable_ysql_lease_refresh=false"}, -1, false));
+      false,
+      {"--TEST_tserver_enable_ysql_lease_refresh=false", "--vmodule=ts_local_lock_manager=1"}, -1,
+      false));
 
   auto added_ts = cluster_->tablet_server(1);
   auto added_ts_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(1);

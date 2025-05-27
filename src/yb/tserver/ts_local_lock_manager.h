@@ -32,6 +32,9 @@ namespace yb {
 
 class ThreadPool;
 
+namespace master {
+class ReleaseObjectLocksGlobalRequestPB;
+}
 namespace tserver {
 
 struct ObjectLockContext {
@@ -108,6 +111,14 @@ class TSLocalLockManager {
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline);
 
+  void TrackDeadlineForGlobalAcquire(
+      const TransactionId& txn_id, const SubTransactionId& subtxn_id,
+      CoarseTimePoint apply_after_ht);
+  void ScheduleReleaseForLostMessages(
+      yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+      const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req);
+
   void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
 
   void Shutdown();
@@ -128,11 +139,22 @@ class TSLocalLockManager {
   void TEST_MarkBootstrapped();
   std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
       TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
+  bool IsShutdownInProgress() const;
 
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+void ReleaseWithRetriesGlobal(
+    yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+    const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req);
+
+void AcquireObjectLockLocallyWithRetries(
+    std::weak_ptr<TSLocalLockManager> lock_manager, AcquireObjectLockRequestPB&& req,
+    CoarseTimePoint deadline, StdStatusCallback&& lock_cb,
+    std::function<Status(CoarseTimePoint)> check_txn_running);
 
 }  // namespace tserver
 }  // namespace yb

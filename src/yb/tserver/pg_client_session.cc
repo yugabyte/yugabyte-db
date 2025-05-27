@@ -109,10 +109,6 @@ DEFINE_RUNTIME_bool(ysql_ddl_transaction_wait_for_ddl_verification, true,
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
 
-DEFINE_RUNTIME_int32(ysql_max_retries_for_release_object_lock_requests, 10,
-                      "Maximum retries for a object lock release request sent to the Master(s). "
-                      "This does not include the retries done internally at the ybclient layer.");
-
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
@@ -1326,71 +1322,6 @@ Request ReleaseRequestFor(
   return req;
 }
 
-void ReleaseWithRetries(
-    yb::client::YBClient& client, LeaseEpochValidator& lease_validator,
-    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req,
-    int attempt = 1) {
-  // Practically speaking, if the TServer cannot reach the master/leader for the ysql lease
-  // interval it can safely give up. The Master is responsible for cleaning up the locks for any
-  // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
-  // used here defaults to 60s, which is much larger than the default lease interval of 15s.
-  auto deadline = MonoTime::Now() +
-      MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
-  if (!lease_validator.IsLeaseValid(release_req->lease_epoch())) {
-    LOG(INFO) << "Lease epoch " << release_req->lease_epoch() << " is not valid. Will not retry "
-              << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-    return;
-  } else if (attempt > GetAtomicFlag(&FLAGS_ysql_max_retries_for_release_object_lock_requests)) {
-    LOG(ERROR) << "Release global locks failing completely after " << attempt
-               << " attempts. No more retries. req " << release_req->ShortDebugString();
-    return;
-  }
-  client.ReleaseObjectLocksGlobalAsync(
-      *release_req,
-      [&client, &lease_validator, release_req, attempt](const Status& s) {
-        if (s.ok()) {
-          VLOG(1) << "Release global request done. "
-                  << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-          return;
-        } else {
-          VLOG_WITH_FUNC(1) << "Release global locks failed. Will retry."
-                            << " status " << s
-                            << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-          ReleaseWithRetries(client, lease_validator, release_req, attempt + 1);
-        }
-      },
-      ToCoarse(deadline));
-}
-
-void AcquireObjectLockLocallyWithRetries(
-    std::weak_ptr<TSLocalLockManager> lock_manager, AcquireObjectLockRequestPB&& req,
-    CoarseTimePoint deadline, StdStatusCallback&& lock_cb,
-    std::function<Status(CoarseTimePoint)> check_txn_running) {
-  auto retry_cb = [lock_manager, req, lock_cb = std::move(lock_cb), deadline,
-                   check_txn_running](const Status& s) mutable {
-    if (!s.IsTryAgain()) {
-      return lock_cb(s);
-    }
-    auto txn_status = check_txn_running(deadline);
-    if (!txn_status.ok()) {
-      // Transaction has already failed.
-      return lock_cb(txn_status);
-    }
-    if (CoarseMonoClock::Now() < deadline) {
-      return AcquireObjectLockLocallyWithRetries(
-          lock_manager, std::move(req), deadline, std::move(lock_cb), check_txn_running);
-    }
-    return lock_cb(s);
-  };
-  auto shared_lock_manager = lock_manager.lock();
-  if (!shared_lock_manager) {
-    return retry_cb(STATUS_FORMAT(
-        IllegalState,
-        "TsLocalLockManager unavailable, tserver could have underwent lease apoch change"));
-  }
-  shared_lock_manager->AcquireObjectLocksAsync(req, deadline, std::move(retry_cb));
-}
-
 class SharedMemoryPerformListener : public PgTablesQueryListener {
  public:
   SharedMemoryPerformListener() = default;
@@ -1457,13 +1388,11 @@ class PgClientSession::Impl {
   Impl(
       TransactionBuilder&& transaction_builder, std::shared_ptr<PgClientSession> shared_this,
       client::YBClient& client, const PgClientSessionContext& context, uint64_t id,
-      uint64_t lease_epoch, LeaseEpochValidator* lease_validator,
-      TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
+      uint64_t lease_epoch, TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
       : client_(client),
         context_(context),
         shared_this_(std::move(shared_this)),
         id_(id),
-        lease_validator_(lease_validator),
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
         transaction_provider_(std::move(transaction_builder)),
@@ -2494,10 +2423,10 @@ class PgClientSession::Impl {
         : NextObjectLockingTxnMeta(deadline);
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(req.lock_type());
-    VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "txn_id " << txn_meta_res->transaction_id
-        << " lock_type: " << AsString(lock_type)
-        << " req: " << req.ShortDebugString();
+    VLOG_WITH_PREFIX_AND_FUNC(1) << "txn_id " << txn_meta_res->transaction_id
+                                 << " lock_type: " << AsString(lock_type)
+                                 << " req: " << req.ShortDebugString() << " deadline is : "
+                                 << ToStringRelativeToNow(deadline, CoarseMonoClock::now());
 
     auto callback = MakeRpcOperationCompletionCallback(
         std::move(*context), resp, nullptr /* clock */);
@@ -2505,6 +2434,8 @@ class PgClientSession::Impl {
       if (setup_session_result.is_plain) {
         plain_session_has_exclusive_object_locks_.store(true);
       }
+      ts_lock_manager()->TrackDeadlineForGlobalAcquire(
+          txn_meta_res->transaction_id, options.active_sub_transaction_id(), deadline);
       auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
           instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
           req.lock_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline,
@@ -3445,7 +3376,7 @@ class PgClientSession::Impl {
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_id, subtxn_id, lease_epoch_, context_.clock.get()));
-    ReleaseWithRetries(client_, *lease_validator_, release_req);
+    ReleaseWithRetriesGlobal(client_, ts_lock_manager(), txn_id, subtxn_id, release_req);
     return Status::OK();
   }
 
@@ -3487,7 +3418,6 @@ class PgClientSession::Impl {
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
-  LeaseEpochValidator* lease_validator_;
   const uint64_t lease_epoch_;
   const tserver::TSLocalLockManagerPtr ts_lock_manager_;
   TransactionProvider transaction_provider_;
@@ -3518,11 +3448,11 @@ class PgClientSession::Impl {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
     client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-    uint64_t id, uint64_t lease_epoch, LeaseEpochValidator* lease_validator,
-    tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler)
+    uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+    rpc::Scheduler& scheduler)
     : impl_(new Impl(
           std::move(transaction_builder), {std::move(shared_this_source), this}, client, context,
-          id, lease_epoch, lease_validator, std::move(ts_local_lock_manager), scheduler)) {}
+          id, lease_epoch, std::move(ts_local_lock_manager), scheduler)) {}
 
 PgClientSession::~PgClientSession() = default;
 
