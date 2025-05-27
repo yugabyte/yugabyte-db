@@ -19,12 +19,12 @@ Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failove
 
 A DR configuration consists of the following:
 
-- a DR primary cluster, which serves both reads and writes.
-- a DR replica cluster, which can also serve reads.
+- a Source cluster, which serves both reads and writes.
+- a Target cluster, which can also serve reads.
 
 ## RPO and RTO for failover and switchover
 
-Data from the DR primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data not yet committed on the DR replica _can be lost_ during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the clusters. By contrast, during a switchover RPO is zero, and no data is lost, because the switchover waits for all data to be committed on the DR replica _before_ switching over.
+Data from the Source is replicated asynchronously to the Target (which is read only). Due to the asynchronous nature of the replication, DR failover results in non-zero recovery point objective (RPO). In other words, data not yet committed on the Target _can be lost_ during a failover. The amount of data loss depends on the replication lag, which in turn depends on the network characteristics between the clusters. By contrast, during a switchover RPO is zero, and no data is lost, because the switchover waits for all data to be committed on the Target _before_ switching over.
 
 The recovery time objective (RTO) for failover or switchover is very low, and determined by how long it takes applications to switch their connections from one cluster to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
@@ -42,19 +42,19 @@ DR further allows for the role of each cluster to switch during planned switchov
 
   {{<index/item
     title="Set up Disaster Recovery"
-    body="Designate a cluster to act as a DR replica."
+    body="Designate a cluster to act as a Target."
     href="disaster-recovery-setup/"
     icon="fa-thin fa-umbrella">}}
 
   {{<index/item
     title="Unplanned failover"
-    body="Fail over to the DR replica in case of an unplanned outage."
+    body="Fail over to the Target in case of an unplanned outage."
     href="disaster-recovery-failover/"
     icon="fa-thin fa-cloud-bolt-sun">}}
 
   {{<index/item
     title="Planned switchover"
-    body="Switch over to the DR replica for planned testing and failback."
+    body="Switch over to the Target for planned testing and failback."
     href="disaster-recovery-switchover/"
     icon="fa-thin fa-toggle-on">}}
 
@@ -70,8 +70,8 @@ DR further allows for the role of each cluster to switch during planned switchov
 
 Table and index-level schema changes must be performed in the same order as follows:
 
-1. The DR primary cluster.
-2. The DR replica cluster.
+1. The Source cluster.
+2. The Target cluster.
 
 You don't need to make any changes to the DR configuration.
 
@@ -81,6 +81,6 @@ To learn more, refer to [Manage tables and indexes](./disaster-recovery-tables/)
 
 ## Limitations
 
-- Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Manage tables and indexes](./disaster-recovery-tables/).
+- Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the Source to the Target, see [Manage tables and indexes](./disaster-recovery-tables/).
 
-- If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the DR primary.
+- If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the Source.

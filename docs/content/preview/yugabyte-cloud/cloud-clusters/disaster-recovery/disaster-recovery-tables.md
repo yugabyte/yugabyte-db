@@ -12,19 +12,19 @@ menu:
 type: docs
 ---
 
-When making DDL changes to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), you must perform the changes at the SQL level on both the DR primary and replica.
+When making DDL changes to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), you must perform the changes at the SQL level on both the Source and Target.
 
 For each DDL statement:
 
-1. Execute the DDL on the DR primary, waiting for it to complete.
-1. Execute the DDL on the DR replica, waiting for it to complete.
+1. Execute the DDL on the Source, waiting for it to complete.
+1. Execute the DDL on the Target, waiting for it to complete.
 
 After both steps are complete, the YugabyteDB Aeon should reflect any added/removed tables in the Tables listing for this DR configuration.
 
 In addition, keep in mind the following:
 
-- If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
-- If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
+- If you are using Colocated tables, you CREATE TABLE on Source, then CREATE TABLE on Target making sure that you force the Colocation ID to be identical to that on Source.
+- If you try to make a DDL change on Source and it fails, you must also make the same attempt on Target and get the same failure.
 - TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both primary and standby, and resume replication.
 
 Use the following guidance when managing tables and indexes in clusters with DR configured.
@@ -37,13 +37,13 @@ Note: If you are performing application upgrades involving both adding and dropp
 
 To ensure that data is protected at all times, set up DR on a new table _before_ starting any workload.
 
-If a table already has data before adding it to DR, then adding the table to replication can result in a backup and restore of the entire database from DR primary to replica.
+If a table already has data before adding it to DR, then adding the table to replication can result in a backup and restore of the entire database from Source to Target.
 
 Add tables to DR in the following sequence:
 
-1. Create the table on the DR primary (if it doesn't already exist).
-1. Create the table on the DR replica.
-1. Navigate to your DR primary cluster **Disaster Recovery** tab and select the replication configuration.
+1. Create the table on the Source (if it doesn't already exist).
+1. Create the table on the Target.
+1. Navigate to your Source cluster **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the tables and click **Validate Selection**.
 1. If data needs to be copied, click **Next: Confirm Full Copy**.
@@ -51,42 +51,42 @@ Add tables to DR in the following sequence:
 
 Note the following:
 
-- If the newly added table already has data, then adding the table can trigger a full copy of that entire database from DR primary to replica.
+- If the newly added table already has data, then adding the table can trigger a full copy of that entire database from Source to Target.
 
 - It is recommended that you set up replication on the new table before starting any workload to ensure that data is protected at all times. This approach also avoids the full copy.
 
 - This operation also automatically adds any associated index tables of this table to the DR configuration.
 
-- If using colocation, colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup.
+- If using colocation, colocated tables on the Source and Target should be created with the same colocation ID if they already exist on both the Source and Target prior to DR setup.
 
 ### Remove a table from DR
 
-When dropping a table, remove the table from DR before dropping the table in the DR primary and replica databases.
+When dropping a table, remove the table from DR before dropping the table in the Source and Target databases.
 
 Remove tables from DR in the following sequence:
 
-1. Navigate to your DR primary cluster **Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your Source cluster **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Click **Apply Changes**.
-1. Drop the table from the DR replica database.
-1. Drop the table from the DR primary database.
+1. Drop the table from the Target database.
+1. Drop the table from the Source database.
 
 ## Indexes
 
 ### Add an index to DR
 
-Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on DR primary and replica. You don't need to stop the writes on the DR primary.
+Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on Source and Target. You don't need to stop the writes on the Source.
 
 CREATE INDEX may kill some in-flight transactions. This is a temporary error. Retry any failed transactions.
 
 Add indexes to replication in the following sequence:
 
-1. Create an index on the DR primary.
+1. Create an index on the Source.
 
 1. Wait for index backfill to finish.
 
-1. Create the same index on the DR replica.
+1. Create the same index on the Target.
 
 1. Wait for index backfill to finish.
 
@@ -100,9 +100,9 @@ When an index is dropped it is automatically removed from DR.
 
 Remove indexes from replication in the following sequence:
 
-1. Drop the index on the DR replica.
+1. Drop the index on the Target.
 
-1. Drop the index on the DR primary.
+1. Drop the index on the Source.
 
 1. [Reconcile the configuration](#reconcile-configuration).
 
@@ -148,5 +148,5 @@ To remove a table partition from DR, follow the same steps as [Remove a table fr
 
 To ensure changes made outside of YugabyteDB Aeon are reflected in YugabyteDB Aeon, you need to reconcile the configuration as follows:
 
-1. Navigate to your DR primary cluster **Disaster Recovery** tab and select the replication configuration.
+1. Navigate to your Source cluster **Disaster Recovery** tab and select the replication configuration.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.
