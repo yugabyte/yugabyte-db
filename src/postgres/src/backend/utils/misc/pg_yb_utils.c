@@ -3427,8 +3427,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 
 		case T_CreateFunctionStmt:
 			is_breaking_change = false;
-			if (!castNode(CreateFunctionStmt, parsetree)->replace)
-				is_version_increment = false;
 			break;
 
 		case T_DiscardStmt:		/* DISCARD ALL/SEQUENCES/TEMP */
