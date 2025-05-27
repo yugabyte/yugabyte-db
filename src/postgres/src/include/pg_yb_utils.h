@@ -776,6 +776,8 @@ extern bool yb_silence_advisory_locks_not_supported_error;
 
 extern bool yb_skip_data_insert_for_xcluster_target;
 
+extern bool yb_force_early_ddl_serialization;
+
 /*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.

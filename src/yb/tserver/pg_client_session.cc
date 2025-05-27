@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/pg_client_session.h"
+#include <sys/types.h>
 
 #include <algorithm>
 #include <array>
@@ -42,8 +43,9 @@
 #include "yb/common/common_util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/pgsql_error.h"
-#include "yb/common/transaction_error.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction_error.h"
+#include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/rpc/lightweight_message.h"
@@ -1389,9 +1391,9 @@ class PgClientSession::Impl {
     PgCreateTable helper(req);
     RETURN_NOT_OK(helper.Prepare());
 
-  if (xcluster_context()) {
-    xcluster_context()->PrepareCreateTableHelper(req, helper);
-  }
+    if (xcluster_context()) {
+      xcluster_context()->PrepareCreateTableHelper(req, helper);
+    }
 
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
@@ -2780,7 +2782,8 @@ class PgClientSession::Impl {
       kind = PgClientSessionKind::kDdl;
       EnsureSession(kind, deadline);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
-          true /* use_transaction */, false /* use_regular_transaction_block */, deadline));
+          true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
+          options.priority()));
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline);
@@ -3002,8 +3005,10 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
+  // All DDLs use kHighestPriority unless specified otherwise.
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
-    bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline) {
+      bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline,
+      uint64_t priority = kHighPriTxnUpperBound) {
     if (!use_transaction) {
       return nullptr;
     }
@@ -3032,6 +3037,7 @@ class PgClientSession::Impl {
           ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
       txn = transaction_provider_.Take<PgClientSessionKind::kDdl>(deadline);
       RETURN_NOT_OK(txn->Init(isolation));
+      txn->SetPriority(priority);
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
       EnsureSession(kSessionKind, deadline)->SetTransaction(txn);

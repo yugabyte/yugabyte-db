@@ -167,6 +167,16 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
     " right away without incurring a master lookup");
 
+DEFINE_RUNTIME_PG_FLAG(
+    bool, yb_force_early_ddl_serialization, true,
+    "If object locking is off (i.e., TEST_enable_object_locking_for_table_locks=false), concurrent "
+    "DDLs might face a conflict error on the catalog version increment at the end after doing all "
+    "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
+    "the start of DDLs, causing conflict errors to occur before useful work is done. This flag is "
+    "only applicable without object locking. If object locking is enabled, it ensures that "
+    "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
+    "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);

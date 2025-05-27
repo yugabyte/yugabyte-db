@@ -89,9 +89,10 @@ using TransactionConflictInfoMap = std::unordered_map<TransactionId,
                                                       TransactionIdHash>;
 
 Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
-                          const char* reason, tablet::TabletMetrics* tablet_metrics) {
+                          const std::string& reason, tablet::TabletMetrics* tablet_metrics) {
   tablet_metrics->Increment(tablet::TabletCounters::kTransactionConflicts);
-  return (STATUS(TryAgain, Format("$0 conflicts with $1 transaction: $2", our_id, reason, other_id),
+  return (STATUS(TryAgain, Format("$0 conflicts with $1: $2", our_id, reason, other_id),
+
                  Slice(), TransactionError(TransactionErrorCode::kConflict)));
 }
 
@@ -1078,7 +1079,10 @@ class ConflictResolverContextBase : public ConflictResolverContext {
       if (our_priority <= their_priority) {
         return MakeConflictStatus(
             our_transaction_id, transaction.id,
-            our_priority == their_priority ? "same priority" : "higher priority",
+            our_priority == their_priority ?
+              Format("same priority transaction (pri: $0)", our_priority) :
+              Format("higher priority transaction (our pri: $0, their pri: $1)",
+                     our_priority, their_priority),
             GetTabletMetrics());
       }
     }
@@ -1280,7 +1284,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
           return MakeConflictStatus(
-            *transaction_id_, transaction_data.id, "committed", GetTabletMetrics());
+            *transaction_id_, transaction_data.id, "committed transaction", GetTabletMetrics());
         }
       }
     }

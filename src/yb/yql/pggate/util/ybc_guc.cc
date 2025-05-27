@@ -124,3 +124,6 @@ bool yb_mixed_mode_expression_pushdown = true;
 bool yb_debug_log_catcache_events = false;
 
 bool yb_mixed_mode_saop_pushdown = false;
+
+// Internal GUC to help a backend identify that the connection is from the Auto-Analyze service.
+bool yb_use_internal_auto_analyze_service_conn = false;
