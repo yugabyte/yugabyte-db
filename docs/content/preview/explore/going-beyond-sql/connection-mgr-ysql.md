@@ -138,7 +138,7 @@ When using YSQL Connection Manager, sticky connections can form in the following
 
 ## Limitations
 
-- Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-server-options) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
+- Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
 - YSQL Connection Manager can route up to 10,000 connection pools. This includes pools corresponding to dropped users and databases.
 - Prepared statements may be visible to other sessions in the same connection pool. [#24652](https://github.com/yugabyte/yugabyte-db/issues/24652)
 - Attempting to use DEALLOCATE/DEALLOCATE ALL queries can result in unexpected behavior. [#24653](https://github.com/yugabyte/yugabyte-db/issues/24653)
