@@ -144,6 +144,31 @@ class TestWithTransactionalDDL: public PgObjectLocksTestRF1 {
   }
 };
 
+TEST_F_EX(PgObjectLocksTestRF1, TestLockTuple, TestWithTransactionalDDL) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE OR REPLACE FUNCTION add1(integer, integer) RETURNS integer "
+      "AS 'select $1 + $2 + 2;' LANGUAGE SQL IMMUTABLE RETURNS NULL ON NULL INPUT"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION add1(int, int) OWNER TO postgres"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Execute("ALTER FUNCTION add1(int, int) OWNER TO postgres"));
+    RETURN_NOT_OK(conn.CommitTransaction());
+    return Status::OK();
+  });
+
+  EXPECT_OK(WaitFor([&]() {
+    return NumWaitingLocks() >= 1 || NumWaitingLocksOnMaster() >= 1;
+  }, 5s * kTimeMultiplier, "Timed out waiting for num waiting locks >= 1"));
+  ASSERT_OK(conn.RollbackTransaction());
+  ASSERT_OK(status_future.get());
+}
+
 TEST_F(PgObjectLocksTestRF1, TestSanity) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));

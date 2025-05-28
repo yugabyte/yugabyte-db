@@ -953,7 +953,9 @@ typedef struct {
 
 typedef struct {
   uint32_t db_oid;
+  uint32_t relation_oid;
   uint32_t object_oid;
+  uint32_t object_sub_oid;
 } YbcObjectLockId;
 
 typedef enum {

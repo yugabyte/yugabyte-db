@@ -25,6 +25,7 @@ import "yb/common/transaction.proto";
 import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/docdb/docdb.proto";
 import "yb/dockv/dockv.proto";
 import "yb/master/master_types.proto";
 import "yb/tserver/tserver.proto";
@@ -407,15 +408,12 @@ message SysClusterConfigEntryPB {
 }
 
 message SysObjectLockEntryPB {
-  message LockTypesPB { repeated TableLockType lock_type = 1; }
-  message ObjectLocksMapPB {
-    // object_id -> Locks taken
-    map<uint64, LockTypesPB> objects = 1;
+  message ObjectLocksListPB {
+    repeated docdb.ObjectLockPB locks = 1;
   }
   message SubtxnDBMapPB {
-    optional uint64 db_id = 1;
     // subtxn -> object locks ...
-    map<uint32, ObjectLocksMapPB> subtxns = 2;
+    map<uint32, ObjectLocksListPB> subtxns = 1;
   }
   message TransactionSubtxnMapPB {
     // txn_id -> subtxn ...

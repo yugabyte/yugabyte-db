@@ -1208,8 +1208,8 @@ Status MergeStatus(Status&& main, Status&& aux) {
 template <typename Request>
 Request AcquireRequestFor(
     const std::string& session_host_uuid, const TransactionId& txn_id, SubTransactionId subtxn_id,
-    uint64_t database_id, uint64_t object_id, TableLockType lock_type, uint64_t lease_epoch,
-    ClockBase* clock, CoarseTimePoint deadline, const TabletId& status_tablet) {
+    auto lock_oid, TableLockType lock_type, uint64_t lease_epoch, ClockBase* clock,
+    CoarseTimePoint deadline, const TabletId& status_tablet) {
   auto now = clock->Now();
   Request req;
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
@@ -1225,8 +1225,10 @@ Request AcquireRequestFor(
     req.set_propagated_hybrid_time(now.ToUint64());
   }
   auto* lock = req.add_object_locks();
-  lock->set_database_oid(database_id);
-  lock->set_object_oid(object_id);
+  lock->set_database_oid(lock_oid.database_oid());
+  lock->set_relation_oid(lock_oid.relation_oid());
+  lock->set_object_oid(lock_oid.object_oid());
+  lock->set_object_sub_oid(lock_oid.object_sub_oid());
   lock->set_lock_type(lock_type);
   req.set_status_tablet(status_tablet);
   return req;
@@ -2359,15 +2361,15 @@ class PgClientSession::Impl {
       }
       auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
           instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
-          req.database_oid(), req.object_oid(), lock_type, lease_epoch_, context_.clock.get(),
-          deadline, txn_meta_res->status_tablet);
+          req.lock_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline,
+          txn_meta_res->status_tablet);
       client_.AcquireObjectLocksGlobalAsync(lock_req, std::move(callback), deadline);
       return Status::OK();
     }
     auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
         instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
-        req.database_oid(), req.object_oid(), lock_type, lease_epoch_, context_.clock.get(),
-        deadline, txn_meta_res->status_tablet);
+        req.lock_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline,
+        txn_meta_res->status_tablet);
     ts_lock_manager()->AcquireObjectLocksAsync(lock_req, deadline, std::move(callback));
     return Status::OK();
   }

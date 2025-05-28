@@ -846,7 +846,8 @@ Status PgTxnManager::RollbackToSubTransaction(SubTransactionId id) {
 
 Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
   if (!PREDICT_FALSE(enable_table_locking_)) {
-    // Locking is handled separately by YugaByte.
+    // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
+    // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     return Status::OK();
   }
   RETURN_NOT_OK(CalculateIsolation(
@@ -854,8 +855,11 @@ Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObject
       isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));
   tserver::PgAcquireObjectLockRequestPB req;
   RETURN_NOT_OK(SetupPerformOptions(req.mutable_options()));
-  req.set_database_oid(lock_id.db_oid);
-  req.set_object_oid(lock_id.object_oid);
+  auto* lock_oid = req.mutable_lock_oid();
+  lock_oid->set_database_oid(lock_id.db_oid);
+  lock_oid->set_relation_oid(lock_id.relation_oid);
+  lock_oid->set_object_oid(lock_id.object_oid);
+  lock_oid->set_object_sub_oid(lock_id.object_sub_oid);
   req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
   return client_->AcquireObjectLock(&req, CoarseTimePoint());
 }
