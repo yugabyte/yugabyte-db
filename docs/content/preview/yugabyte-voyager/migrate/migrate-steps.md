@@ -130,27 +130,35 @@ The export directory has the following sub-directories and files:
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
 
-## Setup configuration file
+## Set up a configuration file
 
-Starting with version 2025.5.2, Voyager supports using a configuration file to specify all the parameters required for a migration.
+Starting with version 2025.5.2, you can use a configuration file to specify the parameters required when running Voyager commands.
 
-To get started, copy the template config file for offline-migration.yaml from one of the following locations to the migration folder you created earlier:
+To get started, copy the `offline-migration.yaml` template configuration file from one of the following locations to the migration folder you created earlier:
 
-- Linux (apt/yum/airgapped installs):
+{{< tabpane text=true >}}
 
-  ```bash
-  /opt/yb-voyager/config-templates/offline-migration.yaml
-  ```
+  {{% tab header="Linux (apt/yum/airgapped)" lang="linux" %}}
 
-- Homebrew (macOS):
+```bash
+/opt/yb-voyager/config-templates/offline-migration.yaml
+```
 
-  ```bash
-  $(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/offline-migration.yaml
-  ```
+  {{% /tab %}}
 
-  Replace `<voyager-version>` with your installed Voyager version, e.g., `2025.5.2`
+  {{% tab header="MacOS (Homebrew)" lang="macos" %}}
 
-Set the export dir, source, and target arguments in the config file:
+```bash
+$(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/offline-migration.yaml
+```
+
+Replace `<voyager-version>` with your installed Voyager version, for example, `2025.5.2`.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+Set the export-dir, source, and target arguments in the configuration file:
 
 ```yaml
 # Replace the argument values with those applicable for your migration.
@@ -175,11 +183,13 @@ target:
   db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.   
 ```
 
-You can refer to the `offline-migration.yaml` template to explore all the available global, source, and target configuration parameters supported by Voyager.
+ Refer to the `offline-migration.yaml` template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Assess migration
 
-This step is optional and only applicable to PostgreSQL and Oracle database migrations. Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
+This step is optional and only applies to PostgreSQL and Oracle migrations.
+
+Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
 
 Refer to [Migration assessment](../../migrate/assess-migration/) for details.
 
@@ -198,6 +208,7 @@ The `yb-voyager export schema` command extracts the schema from the source datab
 {{< note title="Renaming index names for MySQL" >}}
 
 YugabyteDB Voyager renames the indexes for MySQL migrations while exporting the schema.
+
 MySQL supports two or more indexes to have the same name in the same database, provided they are for different tables. Similarly to PostgreSQL, YugabyteDB does not support duplicate index names in the same schema. To avoid index name conflicts during export schema, yb-voyager prefixes each index name with the associated table name.
 
 {{< /note >}}
@@ -212,13 +223,21 @@ The `db-schema` key inside the `source` section of the config file, or the `--so
 
 {{< /note >}}
 
-An example invocation of the `export schema` command using the config file (assuming you have completed the [Setup configuration file](#setup-configuration-file) step) is shown below:
+Run the command as follows:
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Config File" lang="config" %}}
 
 ```sh
 yb-voyager export schema --config-file <path-to-config-file>
 ```
 
-Alternatively, you can invoke the command using individual CLI arguments, as shown below:
+You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the `offline-migration.yaml` template.
+
+  {{% /tab %}}
+
+  {{% tab header="CLI" lang="cli" %}}
 
 ```bash
 # Replace the argument values with those applicable for your migration.
@@ -231,7 +250,9 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 ```
 
-Additionally, you can specify parameters specific to the `export schema` command under the `export-schema` section in the config file. For more details, refer to the `offline-migration.yaml` template.
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 Refer to [export schema](../../reference/schema-migration/export-schema/) for complete details about all the supported CLI arguments.
 
