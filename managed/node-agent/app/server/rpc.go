@@ -292,6 +292,17 @@ func (server *RPCServer) SubmitTask(
 		}
 		return res, nil
 	}
+	downloadSoftwareInput := req.GetDownloadSoftwareInput()
+	if downloadSoftwareInput != nil {
+		downloadSoftwareHandler := task.NewDownloadSoftwareHandler(downloadSoftwareInput, username)
+		err := task.GetTaskManager().Submit(ctx, taskID, downloadSoftwareHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running download software - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	installSoftwareInput := req.GetInstallSoftwareInput()
 	if installSoftwareInput != nil {
 		installSoftwareHandler := task.NewInstallSoftwareHandler(installSoftwareInput, username)

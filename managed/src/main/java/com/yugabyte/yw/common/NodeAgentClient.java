@@ -36,6 +36,8 @@ import com.yugabyte.yw.nodeagent.DescribeTaskRequest;
 import com.yugabyte.yw.nodeagent.DescribeTaskResponse;
 import com.yugabyte.yw.nodeagent.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.DownloadFileResponse;
+import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
+import com.yugabyte.yw.nodeagent.DownloadSoftwareOutput;
 import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.FileInfo;
@@ -945,6 +947,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), InstallSoftwareOutput.class);
+  }
+
+  public DownloadSoftwareOutput runDownloadSoftware(
+      NodeAgent nodeAgent, DownloadSoftwareInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setDownloadSoftwareInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), DownloadSoftwareOutput.class);
   }
 
   public InstallYbcOutput runInstallYbcSoftware(

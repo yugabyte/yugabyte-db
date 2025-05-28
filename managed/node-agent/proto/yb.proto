@@ -101,6 +101,17 @@ message ServerControlOutput {
 
 message InstallSoftwareInput {
     string ybPackage = 1;
+    string remoteTmp = 2;
+    string ybHomeDir = 3;
+    repeated string symLinkFolders = 4;
+}
+
+message InstallSoftwareOutput {
+    int32 pid = 1;
+}
+
+message DownloadSoftwareInput {
+    string ybPackage = 1;
     bool s3RemoteDownload = 2;
     string awsAccessKey = 3;
     string awsSecretKey = 4;
@@ -110,11 +121,9 @@ message InstallSoftwareInput {
     string httpPackageChecksum = 8;
     string iTestS3PackagePath = 9;
     string remoteTmp = 10;
-    string ybHomeDir = 11;
-    repeated string symLinkFolders = 12;
 }
 
-message InstallSoftwareOutput {
+message DownloadSoftwareOutput {
     int32 pid = 1;
 }
 
