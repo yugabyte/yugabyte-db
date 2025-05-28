@@ -4,6 +4,7 @@ import time
 import json
 import requests
 import os
+import sys
 
 
 class InstallNodeAgent(BaseYnpModule):
@@ -167,10 +168,13 @@ class InstallNodeAgent(BaseYnpModule):
                     json.dump(instance_data, f, indent=4)
             else:
                 logging.error(f"Request error: {http_err}")
+                sys.exit(1)
         except requests.exceptions.RequestException as req_err:
             logging.error(f"Request error: {req_err}")
+            sys.exit(1)
         except ValueError as json_err:
             logging.error(f"Error parsing JSON response: {json_err}")
+            sys.exit(1)
 
     def _cleanup(self, context):
         files_to_remove = [
@@ -238,8 +242,10 @@ class InstallNodeAgent(BaseYnpModule):
 
             except ValueError as json_err:
                 logging.error(f"Error parsing JSON response: {json_err}")
+                sys.exit(1)
         except requests.exceptions.RequestException as req_err:
             logging.error(f"Request error: {req_err}")
+            sys.exit(1)
 
         add_node_payload = self._generate_add_node_payload(context)
         add_node_payload_file = os.path.join(context.get(
