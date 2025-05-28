@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/tools/tools_test_utils.h"
 
@@ -67,6 +68,10 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
   Status WaitForSafeTimeToAdvanceToNowWithoutDDLQueue();
 
   Status PrintDDLQueue(Cluster& cluster);
+
+  Result<xcluster::SafeTimeBatch> FetchSafeTimeBatchFromReplicatedDdls();
+
+  Status StepDownDdlQueueTablet(Cluster& cluster);
 
   // We require at least one colocated table to exist before setting up replication.
   Status CreateInitialColocatedTable();
