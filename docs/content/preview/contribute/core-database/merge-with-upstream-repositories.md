@@ -540,10 +540,7 @@ We are trying to merge to `v0.103-0` (which doesn't exist at the time of writing
 The steps that follow will use pgaudit as an example.
 
 This merge can technically be handled similarly as [direct-descendant merge](#squash-direct-descendant-merge).
-However, there is a much faster alternative that should be taken.
-A prerequisite for using this alternative is that the target version contains all the commits of the source version (or, nearly equivalently, the target version was released later than the source version).
-For example, pgaudit `1.7.0` should contain all commits in pgaudit `1.3.2`, considering backports as equivalent to each other, and for any commits only in `1.3.2`, they are likely irrelevant for `1.7.0`.
-This prerequisite generally shouldn't fail since major version upgrades should aim for the latest minor version of a major version.
+See [squash non-direct-descendant merge](#squash-non-direct-descendant-merge) for whether an alternate strategy can be used instead, then proceed below.
 
 Suppose that YugabyteDB was based off a yugabyte/pgaudit repo `yb-pg11` branch constructed from `1.3.2` with commit [455cde5ec3a4374b18ad551aaabe6d60761b6503](https://github.com/pgaudit/pgaudit/commit/455cde5ec3a4374b18ad551aaabe6d60761b6503) cherry-picked.
 We are trying to merge to `1.7.0`.
