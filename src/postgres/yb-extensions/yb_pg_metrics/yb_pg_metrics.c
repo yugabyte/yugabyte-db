@@ -1307,6 +1307,9 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static void
 ybpgm_Store(YbStatementType type, uint64_t time, uint64_t rows)
 {
+	if (yb_is_calling_internal_sql_for_ddl)
+		return;
+
 	struct YbcPgmEntry *entry = &ybpgm_table[type];
 
 	entry->total_time += time;
@@ -1317,6 +1320,9 @@ ybpgm_Store(YbStatementType type, uint64_t time, uint64_t rows)
 static void
 ybpgm_StoreCount(YbStatementType type, uint64_t time, uint64_t count)
 {
+	if (yb_is_calling_internal_sql_for_ddl)
+		return;
+
 	struct YbcPgmEntry *entry = &ybpgm_table[type];
 
 	entry->total_time += time;

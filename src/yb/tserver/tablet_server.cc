@@ -238,8 +238,7 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
 
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
-DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
-    "Maximum number of invalidation messages we keep for a given database.");
+DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
 DECLARE_bool(enable_pg_cron);
 
