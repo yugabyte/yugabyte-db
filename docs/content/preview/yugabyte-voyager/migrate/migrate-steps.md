@@ -116,7 +116,7 @@ If you want yb-voyager to connect to the target YugabyteDB database over SSL, re
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, this export directory should be placed inside a parent folder named after your migration for better organization. Next, you should provide the path to the export directory using the mandatory config file parameter `export-dir` or by passing it as a CLI argument `--export-dir` with each invocation of the `yb-voyager` command.
+Before starting migration, create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#set-up-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
 
 ```sh
 mkdir -p $HOME/<migration-name>/export-dir
@@ -134,7 +134,7 @@ The export directory has the following sub-directories and files:
 
 Starting with version 2025.5.2, you can use a configuration file to specify the parameters required when running Voyager commands.
 
-To get started, copy the `offline-migration.yaml` template configuration file from one of the following locations to the migration folder you created earlier:
+To get started, copy the `offline-migration.yaml` template configuration file from one of the following locations to the migration folder you created (that is, `$HOME/<migration-name>/`):
 
 {{< tabpane text=true >}}
 
@@ -183,7 +183,7 @@ target:
   db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.   
 ```
 
- Refer to the `offline-migration.yaml` template for more information on the available global, source, and target configuration parameters supported by Voyager.
+Refer to the `offline-migration.yaml` template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Assess migration
 
@@ -213,15 +213,11 @@ MySQL supports two or more indexes to have the same name in the same database, p
 
 {{< /note >}}
 
-{{< note title="Usage for db-schema argument" >}}
-
-The `db-schema` key inside the `source` section of the config file, or the `--source-db-schema` flag on the command line, is used to specify the schema(s) to migrate from the source database.
+You specify the schema(s) to migrate from the source database using the `db-schema` parameter (configuration file), or `--source-db-schema` flag (CLI).
 
 - For MySQL, currently this argument is not applicable.
 - For PostgreSQL, this argument can take one or more schema names separated by comma.
 - For Oracle, this argument can take only one schema name and you can migrate _only one_ schema at a time.
-
-{{< /note >}}
 
 Run the command as follows:
 
