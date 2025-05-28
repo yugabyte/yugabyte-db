@@ -4356,7 +4356,8 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		shared_catalog_version - local_catalog_version;
 	YbcCatalogMessageLists message_lists = {0};
 	const bool	enable_inval_messages = YbIsInvalidationMessageEnabled();
-
+	/* The reason that we need a full catalog cache refresh. */
+	int reason = 0;
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
@@ -4378,6 +4379,17 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 			shared_catalog_version = YbGetSharedCatalogVersion();
 			num_catalog_versions = shared_catalog_version - local_catalog_version;
 		}
+
+		if (local_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+			/* catalog cache reset */
+			reason = 1;
+		else if (num_catalog_versions >
+				 *YBCGetGFlags()->ysql_max_invalidation_message_queue_size)
+			/* lagging far behind */
+			reason = 2;
+		else if (num_catalog_versions == 0)
+			/* same local catalog version and shared catalog version */
+			reason = 3;
 		/*
 		 * When num_catalog_versions == 0, it means that local_catalog_version
 		 * and shared_catalog_version are the same. This can happen when we come
@@ -4389,7 +4401,7 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		 * this case because tserver does not have the invalidation messages of
 		 * catalog_master_version yet.
 		 */
-		if (num_catalog_versions > 0)
+		else
 		{
 			HandleYBStatus(YBCGetTserverCatalogMessageLists(MyDatabaseId,
 															local_catalog_version,
@@ -4398,29 +4410,40 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 			elog(DEBUG1, "message_lists: num_lists: %u (%" PRIu64 ", %u)",
 				 message_lists.num_lists, local_catalog_version,
 				 num_catalog_versions);
+			if (message_lists.num_lists == 0)
+				/* no match found */
+				reason = 4;
 		}
 	}
-	if (message_lists.num_lists > 0 && YbApplyInvalidationMessages(&message_lists))
+	if (message_lists.num_lists > 0)
 	{
-		YbNumCatalogCacheDeltaRefreshes++;
-		elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
-			 "updating local catalog version from %" PRIu64 " to %" PRIu64,
-			 message_lists.num_lists,
-			 local_catalog_version, shared_catalog_version);
-		YbUpdateCatalogCacheVersion(shared_catalog_version);
-		if (yb_test_delay_after_applying_inval_message_ms > 0)
-			pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
-		/* TODO(myang): only invalidate affected entries in the pggate cache? */
-		HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
-		yb_need_cache_refresh = false;
-		return;
+		if (YbApplyInvalidationMessages(&message_lists))
+		{
+			YbNumCatalogCacheDeltaRefreshes++;
+			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
+				 "updating local catalog version from %" PRIu64 " to %" PRIu64,
+				 message_lists.num_lists,
+				 local_catalog_version, shared_catalog_version);
+			YbUpdateCatalogCacheVersion(shared_catalog_version);
+			if (yb_test_delay_after_applying_inval_message_ms > 0)
+				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
+			/* TODO(myang): only invalidate affected entries in the pggate cache? */
+			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+			yb_need_cache_refresh = false;
+			return;
+		}
+		/* apply failed */
+		reason = 5;
 	}
 
+	if (enable_inval_messages)
+		/* must have a reason for doing full catalog cache refresh. */
+		Assert(reason > 0);
 	ereport(enable_inval_messages ? LOG : DEBUG1,
-			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d",
+			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d",
 					message_lists.num_lists, local_catalog_version,
 					shared_catalog_version, catalog_master_version,
-					num_catalog_versions, is_retry)));
+					num_catalog_versions, is_retry, reason)));
 	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
 	YBRefreshCache();
 }

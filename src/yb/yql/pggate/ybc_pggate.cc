@@ -179,6 +179,7 @@ DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_bool(use_fast_backward_scan);
+DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -2280,7 +2281,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
       .TEST_enable_object_locking_for_table_locks =
-          &FLAGS_TEST_enable_object_locking_for_table_locks
+          &FLAGS_TEST_enable_object_locking_for_table_locks,
+      .ysql_max_invalidation_message_queue_size =
+          &FLAGS_ysql_max_invalidation_message_queue_size
   };
   // clang-format on
   return &accessor;
