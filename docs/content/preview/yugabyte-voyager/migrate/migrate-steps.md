@@ -250,7 +250,7 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
 
 {{< /tabpane >}}
 
-Refer to [export schema](../../reference/schema-migration/export-schema/) for complete details about all the supported CLI arguments.
+Refer to [export schema](../../reference/schema-migration/export-schema/) for more information on the use of the command.
 
 #### Analyze schema
 
