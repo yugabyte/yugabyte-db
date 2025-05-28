@@ -731,7 +731,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     }
 
     int64_t unacked_txn = 0;
-    if(!commit_meta_and_last_req_map_.empty()) {
+    if (!commit_meta_and_last_req_map_.empty()) {
       unacked_txn = (metadata.max_txn_id -
             commit_meta_and_last_req_map_.begin()->second.record_metadata.commit_txn_id);
     }
