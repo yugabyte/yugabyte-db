@@ -404,7 +404,7 @@ class YBClient {
   Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
-  Result<YBTableInfo> GetYBTableInfoById(const TableId& table_id);
+  Result<YBTableInfo> GetYBTableInfoById(const TableId& table_id, bool include_hidden);
 
   Status GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                             StatusCallback callback);
