@@ -355,10 +355,6 @@ public class XClusterScheduler {
     }
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
-    if (sourceUniverse.getUniverseDetails().updateInProgress
-        || targetUniverse.getUniverseDetails().updateInProgress) {
-      return metricsList;
-    }
     if (sourceUniverse.getUniverseDetails().universePaused
         || targetUniverse.getUniverseDetails().universePaused) {
       return metricsList;

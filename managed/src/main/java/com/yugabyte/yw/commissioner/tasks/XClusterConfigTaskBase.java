@@ -101,6 +101,7 @@ import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.jetbrains.annotations.NotNull;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
@@ -3247,7 +3248,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return requestedTableInfoList;
   }
 
-  protected void createUpdateWalRetentionTasks(Universe universe, XClusterUniverseAction action) {
+  protected void createUpdateWalRetentionTasks(
+      @NotNull Universe universe, XClusterUniverseAction action) {
     List<NodeDetails> tServerNodes = universe.getTServersInPrimaryCluster();
 
     createSetFlagInMemoryTasks(
