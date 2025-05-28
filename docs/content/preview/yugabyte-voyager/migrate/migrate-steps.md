@@ -32,7 +32,7 @@ The following page describes the steps to perform and verify a successful offlin
 | |[Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | DATA | [Export data](#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
 | | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
-| | [Finalize schema post data import](#finalize-schema-post-data-import) | Restore NOT VALID constraints and refresh materialized views (if any) in the target YugabyteDB database using the `yb-voyager finalize-schema-post-data-import` command with additional flag `--refresh-mviews`.|
+| | [Finalize schema post data import](#finalize-schema-post-data-import) | Restore NOT VALID constraints and refresh materialized views (if any) in the target YugabyteDB database using the `yb-voyager finalize-schema-post-data-import` command with additional config parameter `refresh-mviews` or CLI flag `--refresh-mviews`.|
 | | [Verify](#verify-migration) | Check if the offline migration is successful. |
 | END | [End migration](#end-migration) | Clean up the migration information stored in the export directory and databases (source and target). |
 
@@ -116,11 +116,10 @@ If you want yb-voyager to connect to the target YugabyteDB database over SSL, re
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command in an environment variable.
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, this export directory should be placed inside a parent folder named after your migration for better organization. Next, you should provide the path to the export directory using the mandatory config file parameter `export-dir` or by passing it as a CLI argument `--export-dir` with each invocation of the `yb-voyager` command.
 
 ```sh
-mkdir $HOME/export-dir
-export EXPORT_DIR=$HOME/export-dir
+mkdir -p $HOME/<migration-name>/export-dir
 ```
 
 The export directory has the following sub-directories and files:
@@ -130,6 +129,53 @@ The export directory has the following sub-directories and files:
 - `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
+
+## Setup configuration file
+
+Starting with version 2025.5.2, Voyager supports using a configuration file to specify all the parameters required for a migration.
+
+To get started, copy the template config file for offline-migration.yaml from one of the following locations to the migration folder you created earlier:
+
+- Linux (apt/yum/airgapped installs):
+
+  ```bash
+  /opt/yb-voyager/config-templates/offline-migration.yaml
+  ```
+
+- Homebrew (macOS):
+
+  ```bash
+  $(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/offline-migration.yaml
+  ```
+
+  Replace `<voyager-version>` with your installed Voyager version, e.g., `2025.5.2`
+
+Set the export dir, source, and target arguments in the config file:
+
+```yaml
+# Replace the argument values with those applicable for your migration.
+
+export-dir: <absolute-path-to-export-dir>  
+
+source:
+  db-type: <source-db-type>         
+  db-host: <source-db-host>            
+  db-port: <source-db-port>                 
+  db-name: <source-db-name>            
+  db-schema: <source-db-schema> # Not applicable for MySQL           
+  db-user: <source-db-user>             
+  db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.    
+
+target:
+  db-host: <target-db-host> 
+  db-port: <target-db-port> 
+  db-name: <target-db-name>               
+  db-schema: <target-db-schema> # MySQL and Oracle only                
+  db-user: <target-db-username>           
+  db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.   
+```
+
+You can refer to the `offline-migration.yaml` template to explore all the available global, source, and target configuration parameters supported by Voyager.
 
 ## Assess migration
 
@@ -156,19 +202,25 @@ MySQL supports two or more indexes to have the same name in the same database, p
 
 {{< /note >}}
 
-{{< note title="Usage for source_db_schema" >}}
+{{< note title="Usage for db-schema argument" >}}
 
-The `source_db_schema` argument specifies the schema of the source database.
+The `db-schema` key inside the `source` section of the config file, or the `--source-db-schema` flag on the command line, is used to specify the schema(s) to migrate from the source database.
 
-- For MySQL, currently the `source-db-schema` argument is not applicable.
-- For PostgreSQL, `source-db-schema` can take one or more schema names separated by comma.
-- For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
+- For MySQL, currently this argument is not applicable.
+- For PostgreSQL, this argument can take one or more schema names separated by comma.
+- For Oracle, this argument can take only one schema name and you can migrate _only one_ schema at a time.
 
 {{< /note >}}
 
-An example invocation of the command with required arguments is as follows:
+An example invocation of the `export schema` command using the config file (assuming you have completed the [Setup configuration file](#setup-configuration-file) step) is shown below:
 
 ```sh
+yb-voyager export schema --config-file <path-to-config-file>
+```
+
+Alternatively, you can invoke the command using individual CLI arguments, as shown below:
+
+```bash
 # Replace the argument values with those applicable for your migration.
 yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-type <SOURCE_DB_TYPE> \
@@ -177,27 +229,43 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
         --source-db-password <SOURCE_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --source-db-name <SOURCE_DB_NAME> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
-
 ```
 
-Note that if the source database is PostgreSQL and you haven't already run `assess-migration`, the schema is also assessed and a migration assessment report is generated.
+Additionally, you can specify parameters specific to the `export schema` command under the `export-schema` section in the config file. For more details, refer to the `offline-migration.yaml` template.
 
-Refer to [export schema](../../reference/schema-migration/export-schema/) for details about the arguments.
+Refer to [export schema](../../reference/schema-migration/export-schema/) for complete details about all the supported CLI arguments.
 
 #### Analyze schema
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
-The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command with required arguments is as follows:
+The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the `analyze-schema` command using the config file (assuming you have completed the [Setup configuration file](#setup-configuration-file) step) is shown below:
+
+Add output format argument to the config file:
+
+```yaml
+...
+analyze-schema:
+  output-format: <FORMAT>
+...
+```
+
+Invoke the command using:
+
+```sh
+yb-voyager analyze-schema --config-file <path-to-config-file>
+```
+
+Alternatively, you can invoke the command using individual CLI arguments, as shown below:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 ```
 
-The command generates a report file under the `EXPORT_DIR/reports/` directory.
+Additionally, you can specify parameters specific to the `analyze-schema` command under the `analyze-schema` section in the config file. For more details, refer to the `offline-migration.yaml` template.
 
-Refer to [analyze schema](../../reference/schema-migration/analyze-schema/) for details about the arguments.
+Refer to [analyze schema](../../reference/schema-migration/analyze-schema/) for complete details about all the supported CLI arguments.
 
 #### Manually edit the schema
 
@@ -221,12 +289,17 @@ Import the schema using the `yb-voyager import schema` command.
 
 {{< note title="Usage for target_db_schema" >}}
 
-The `target_db_schema` argument specifies the schema of the target YugabyteDB database and is applicable _only for_ MySQL and Oracle.
-`yb-voyager` imports the source database into the `public` schema of the target YugabyteDB database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
+The `db-schema` key inside the `target` section of the config file, or the `--target-db-schema` flag on the command line, is used to specify the schema in the target YugabyteDB database where the source schema will be imported and is applicable _only for_ MySQL and Oracle. `yb-voyager` imports the source database into the `public` schema of the target YugabyteDB database. By specifying this argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
 
 {{< /note >}}
 
-An example invocation of the command with required arguments is as follows:
+An example invocation of the `import schema` command using the config file (assuming you have completed the [setup configuration file](#setup-configuration-file) step) is shown below:
+
+```sh
+yb-voyager import schema --config-file <path-to-config-file>
+```
+
+Alternatively, you can invoke the command using individual CLI arguments, as shown below:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -238,7 +311,9 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
 ```
 
-Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+Additionally, you can specify parameters specific to the `import schema` command under the `import-schema` section in the config file. For more details, refer to the `offline-migration.yaml` template.
+
+Refer to [import schema](../../reference/schema-migration/import-schema/) for complete details about all the supported CLI arguments.
 
 {{< note title="NOT VALID constraints are not imported" >}}
 
@@ -248,11 +323,17 @@ Voyager will add these constraints back during [Finalize schema post data import
 
 {{< /note >}}
 
-yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
+yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If `yb-voyager` terminates before it imports the entire schema, you can rerun it by adding the `ignore-exist` argument in the `import-schema` section of the config file, or by using the `--ignore-exist` CLI flag.
 
 ### Export data
 
-Dump the source data into the `EXPORT_DIR/data` directory using the `yb-voyager export data` command as follows:
+An example invocation of the `export data` command using the config file (assuming you have completed the [Setup configuration file](#setup-configuration-file) step) is shown below:
+
+```sh
+yb-voyager export data --config-file <path-to-config-file>
+```
+
+Alternatively, you can invoke the command using individual CLI arguments and dump the source data into the `EXPORT_DIR/data` directory using the `yb-voyager export data` command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -265,14 +346,17 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 ```
 
+Additionally, you can specify parameters specific to the `export data` command under the `export-data` section in the config file. For more details, refer to the `offline-migration.yaml` template.
+
 {{< note title="PostgreSQL and parallel jobs" >}}
 For PostgreSQL, make sure that no other processes are running on the source database that can try to take locks; with more than one parallel job, Voyager will not be able to take locks to dump the data.
 {{< /note >}}
 
-Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
+Note that the `db-schema` argument in the source section of the config file or the `--source-db-schema` CLI flag is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
+
 Refer to [export data](../../reference/data-migration/export-data) for details about the arguments.
 
-The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
+The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of tables, provide a comma-separated list of table names using the `table-list` argument under the `export-data` section in the config file, or pass it via the `--table-list` CLI flag.
 
 {{< note title="Sequence migration considerations" >}}
 
@@ -291,25 +375,35 @@ If a table's row size on the source database is too large, and exceeds the defau
 
 #### Export data status
 
-Run the `yb-voyager export data status --export-dir <EXPORT_DIR>` command to get an overall progress of the export data operation.
+Assuming you have completed the [setup configuration file](#setup-configuration-file) step, run the `yb-voyager export data status --config-file <path-to-config-file>` command to get an overall progress of the export data operation.
+
+Alternatively, you can run the `yb-voyager export data status --export-dir <EXPORT_DIR>` command.
 
 Refer to [export data status](../../reference/data-migration/export-data/#export-data-status) for details about the arguments.
 
 #### Accelerate data export for MySQL and Oracle
 
-For MySQL and Oracle, you can optionally speed up data export by setting the environment variable `BETA_FAST_DATA_EXPORT=1` when you run `export data` using yb-voyager.
+For MySQL and Oracle, you can optionally speed up data export by setting the argument `beta-fast-data-export: 1` in the `export-data` section of the config file when you run `export data` using `yb-voyager`. Alternatively, you can set the environment variable `BETA_FAST_DATA_EXPORT=1`.
 
 Consider the following caveats before using the feature:
 
 - You need to perform additional steps when you [prepare the source database](#prepare-the-source-database).
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-mysql/).
-- `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) will have no effect.
+- `parallel-jobs` argument in the `export-data` section of the config file or the `--parallel-jobs` CLI Flag (specifies the number of tables to be exported in parallel from the source database at a time) will have no effect.
 - In MySQL RDS, writes are not allowed during the data export process.
 - Sequences that are not associated with any column or attached to columns of non-integer types are not supported for resuming value generation.
 
 ### Import data
 
-After you have successfully exported the source data and imported the schema in the target YugabyteDB database, you can import the data using the `yb-voyager import data` command with required arguments as follows:
+After you have successfully exported the source data and imported the schema in the target YugabyteDB database, you can import the data using the `yb-voyager import data` command with required arguments.
+
+An example invocation of the import data command using the config file (assuming you have completed the [setup configuration file](#setup-configuration-file) step) is shown below:
+
+```sh
+yb-voyager import data --config-file <path-to-config-file>
+```
+
+Alternatively, you can invoke the command using individual CLI arguments, as shown below:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -319,12 +413,13 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only.
-        --parallel-jobs <NUMBER_OF_JOBS>
 ```
 
-By default, yb-voyager creates C/2 connections where C is the total number of cores in the cluster. You can change the default number of connections using the `--parallel-jobs` argument. If yb-voyager fails to determine the number of cores in the cluster, it defaults to 2 connections per node.
+By default, yb-voyager imports data in parallel using multiple connections, and adapts the parallelism based on the resource usage of the cluster. Refer to [Techniques to improve performance](../../reference/reference/performance/#techniques-to-improve-performance) for more details on tuning performance.
 
-Refer to [import data](../../reference/data-migration/import-data/) for details about the arguments.
+Additionally, you can specify parameters specific to the `import data` command under the `import-data` section in the config file. For more details, refer to the `offline-migration.yaml` template.
+
+Refer to [import data](../../reference/data-migration/import-data/) for complete details about all the supported CLI arguments.
 
 yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
 
@@ -337,7 +432,14 @@ If the `yb-voyager import data` command terminates before completing the data in
 {{< /tip >}}
 
 {{< note title= "Migrating source databases with large row sizes" >}}
-When exporting data using the `BETA_FAST_DATA_EXPORT` flag, the import data process has a default row size limit of 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the following an environment variable to handle such rows:
+When exporting data using the `beta-fast-data-export` config parameter or the `BETA_FAST_DATA_EXPORT` env variable, the import data process has a default row size limit of 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the following config parameter in import data to handle such rows:
+
+```yaml
+import-data:
+  csv-reader-max-buffer-size-bytes: <MAX_ROW_SIZE_IN_BYTES>
+```
+
+Alternatively, you can export the following environment variable:
 
 ```sh
 export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
@@ -347,13 +449,23 @@ export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
 
 #### Import data status
 
-Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
+Assuming you have completed the [setup configuration file](#setup-configuration-file) step, run the `yb-voyager import data status --config-file <path-to-config-file>` command to get an overall progress of the data import operation.
+
+Alternatively, you can run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command.
 
 Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
 
 ### Finalize schema post data import
 
-If there are any NOT VALID constraints on the source, create them after the `import data` command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them by setting the `--refresh-mviews` flag to true.
+If there are any NOT VALID constraints on the source, create them after the import data command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them by setting the `refresh-mviews` argument in the `finalize-schema-post-data-import` section of the config file to true. Alternatively you can also pass the `--refresh-mviews` flag with the value true.
+
+A sample invocation of the command using config file is as follows:
+
+```sh
+yb-voyager finalize-schema-post-data-import --config-file <path-to-config-file>
+```
+
+Alternatively, you can invoke the command using CLI arguments as shown below:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -365,7 +477,7 @@ yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
 ```
 
-Refer to [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) for details about the arguments.
+Refer to [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) for complete details about all the supported CLI arguments.
 
 {{< note title ="Note" >}}
 The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
@@ -393,7 +505,27 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 To complete the migration, you need to clean up the export directory (export-dir) and Voyager state (Voyager-related metadata) stored in the target YugabyteDB database.
 
-Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
+Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related arguments (mandatory) in the config file (assuming you have completed the [setup configuration file](#setup-configuration-file) step) as follows:
+
+```yaml
+...
+end-migration:
+  backup-schema-files: <true, false, yes, no, 1, 0>
+  backup-data-files: <true, false, yes, no, 1, 0>
+  save-migration-reports: <true, false, yes, no, 1, 0>
+  backup-log-files: <true, false, yes, no, 1, 0>
+  # Set optional argument to store a back up of any of the above  arguments.
+  backup-dir: <BACKUP_DIR> 
+...
+```
+
+Invoke the command as follows:
+
+```sh
+yb-voyager end migration --config-file <path-to-config-file>
+```
+
+Alternatively, you can invoke the command using CLI arguments as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -408,9 +540,9 @@ yb-voyager end migration --export-dir <EXPORT_DIR> \
 
 After you run end migration, you will _not_ be able to continue further.
 
-If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `export data status` output, or `import data status` output) for future reference, use the `--backup-dir` argument, and provide the path of the directory where you want to save the backup content (based on what you choose to back up).
+If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `export data status` output, or `import data status` output) for future reference, use the backup-dir config argument or the `--backup-dir` flag, and provide the path of the directory where you want to save the backup content (based on what you choose to back up).
 
-Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
+Refer to [end migration](../../reference/end-migration/) for complete details about all the supported CLI arguments.
 
 ### Delete the ybvoyager user (Optional)
 

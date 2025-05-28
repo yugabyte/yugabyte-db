@@ -21,7 +21,9 @@ Usage: yb-voyager export schema [ <arguments> ... ]
 
 ### Arguments
 
-The valid *arguments* for export schema are described in the following table:
+The following table lists the valid CLI flags for the `export schema` command, along with their corresponding config file parameters.
+
+_Note: All the config file parameters can be overridden by their corresponding CLI flags._
 
 | <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
@@ -53,6 +55,14 @@ The valid *arguments* for export schema are described in the following table:
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 ### Example
+
+Config file example:
+
+```yaml
+yb-voyager export schema --config-file <path-to-config-file>
+```
+
+CLI example:
 
 ```sh
 yb-voyager export schema --export-dir /dir/export-dir \
