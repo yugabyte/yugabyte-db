@@ -252,8 +252,11 @@ public class Scheduler {
               log.debug("Scheduling a full backup for schedule {}", schedule.getScheduleUUID());
             } else if (isExpectedIncrementScheduleTaskTime || incrementBacklogStatus) {
               shouldRunTask = true;
-              log.debug(
-                  "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
+              // Schedule next incremental backup only if there is a full backup present else
+              // take a full instead.
+              if (baseBackupUUID == null) {
+                log.info("Scheduling full backup in place of incremental");
+              }
             }
           }
 
