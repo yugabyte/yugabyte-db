@@ -208,7 +208,7 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         log "Some tests that were run on Spark failed"
       fi
       set -u
-      unset extra_args
+      unset run_tests_extra_args
     else
       log "Neither C++ or Java tests are enabled, nothing to run on Spark."
     fi
