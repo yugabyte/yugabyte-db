@@ -394,24 +394,24 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
       if (t1 == kInt4Column) {
         for (const auto& mod_name : {get_mod_name(t1), "mod"}) {
           exprs.push_back(Expression(Format("($0($1, 10) = 0)", mod_name, t1),
-                                     Behaviour::kPushable, Behaviour::kMMPushable));
+                                     Behaviour::kMMPushable));
         }
         exprs.push_back(Expression(Format("(($0 % 10) = 0)", t1),
-                                   Behaviour::kPushable, Behaviour::kMMPushable));
+                                   Behaviour::kMMPushable));
       } else if (is_int(t1)) {
         for (const auto& mod_name : {get_mod_name(t1), "mod"}) {
           exprs.push_back(Expression(Format("($0($1, '10'::$2) = 0)", mod_name, t1, get_cast(t1)),
-                                     Behaviour::kPushable, Behaviour::kMMPushable));
+                                     Behaviour::kMMPushable));
         }
         exprs.push_back(Expression(Format("(($0 % '10'::$1) = 0)", t1, get_cast(t1)),
-                                   Behaviour::kPushable, Behaviour::kMMPushable));
+                                   Behaviour::kMMPushable));
       } else {
         for (const auto &mod_name : {"numeric_mod", "mod"}) {
           exprs.push_back(Expression(Format("($0($1, '10'::numeric) = 0.0)", mod_name, t1),
-                                     Behaviour::kPushable, Behaviour::kMMPushable));
+                                     Behaviour::kMMPushable));
         }
         exprs.push_back(Expression(Format("(($0 % '10'::numeric) = 0.0)", t1),
-                                   Behaviour::kPushable, Behaviour::kMMPushable));
+                                   Behaviour::kMMPushable));
       }
     }
 
@@ -697,15 +697,15 @@ TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestStringOperations) {
     Format("(\"substring\"($0, 2) = 'ello'::text)", kTextColumn), // F_SUBSTRING_TEXT_INT4
     Format("(\"substring\"($0, 2, 3) = 'ell'::text)", kTextColumn), // F_SUBSTRING_TEXT_INT4_INT4
   }) {
-    exprs.push_back(Expression(cond, Behaviour::kPushable, Behaviour::kMMPushable));
+    exprs.push_back(Expression(cond, Behaviour::kMMPushable));
   }
 
   // special cases: the formatting for these conditions changes in the output depending on the YSQL
   // version, so use a regex to check that the correct condition is present in the output
   exprs.push_back(Expression(Format("like($0, 'h%'::text)", kTextColumn), // F_LIKE_TEXT_TEXT
-                             Behaviour::kPushable, Behaviour::kMMPushable, ".*like.*"));
+                             Behaviour::kMMPushable, ".*like.*"));
   exprs.push_back(Expression(Format("notlike($0, 'h%'::text)", kTextColumn), // F_NOTLIKE_TEXT_TEXT
-                             Behaviour::kPushable, Behaviour::kMMPushable, ".*notlike.*"));
+                             Behaviour::kMMPushable, ".*notlike.*"));
 
   // these functions don't exist in PG11, so they can't be pushed
   exprs.push_back(Expression(Format("regexp_like($0, 'h.*'::text)", kTextColumn),

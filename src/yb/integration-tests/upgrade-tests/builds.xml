@@ -36,22 +36,22 @@ darwin_release_arm64
       https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.25.0.0-b340/yugabyte-2.25.0.0-6ad0081e6a0d760a657ae5cf43f376086b15edce-release-clang-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
-  <build version="2024.2.3.0">
-    <build_number>b76</build_number>
+  <build version="2024.2.4.0">
+    <build_number>b33</build_number>
     <linux_debug_x86>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-8151a102dfdd89f61eb5e2b470840df5f140dcbe-debug-clang17-centos-x86_64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.4.0-b33/yugabyte-2024.2.4.0-dad03e3cc65c059a2576e5ae2b927aab86f8961b-debug-clang17-centos-x86_64.tar.gz
     </linux_debug_x86>
     <linux_release_x86>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-b76-centos-x86_64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.4.0-b33/yugabyte-2024.2.4.0-b33-centos-x86_64.tar.gz
     </linux_release_x86>
     <linux_release_aarch64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-b76-almalinux8-aarch64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.4.0-b33/yugabyte-2024.2.4.0-b33-almalinux8-aarch64.tar.gz
     </linux_release_aarch64>
     <darwin_debug_arm64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-8151a102dfdd89f61eb5e2b470840df5f140dcbe-debug-clang-darwin-arm64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.4.0-b33/yugabyte-2024.2.4.0-dad03e3cc65c059a2576e5ae2b927aab86f8961b-debug-clang-darwin-arm64.tar.gz
     </darwin_debug_arm64>
     <darwin_release_arm64>
-      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.3.0-b76/yugabyte-2024.2.3.0-b76-darwin-arm64.tar.gz
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2024.2.4.0-b33/yugabyte-2024.2.4.0-b33-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
 </builds>
