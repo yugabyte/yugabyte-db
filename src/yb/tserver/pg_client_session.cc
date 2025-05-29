@@ -124,6 +124,8 @@ DECLARE_string(ysql_sequence_cache_method);
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_int32(tserver_yb_client_default_timeout_ms);
+DECLARE_int32(txn_print_trace_every_n);
+DECLARE_int32(txn_slow_op_threshold_ms);
 
 namespace yb::tserver {
 namespace {
@@ -2530,19 +2532,42 @@ class PgClientSession::Impl {
     auto* session = setup_session_result.session_data.session.get();
     auto& transaction = setup_session_result.session_data.transaction;
 
-    if (context) {
-      if (options.trace_requested()) {
+    TracePtr trace = Trace::CurrentTrace();
+    bool trace_created_locally = false;
+    MonoTime start_time = MonoTime::kUninitialized;
+    if (options.trace_requested()) {
+      if (transaction) {
+        transaction->EnsureTraceCreated();
+        trace = transaction->trace();
+        trace->set_must_print(true);
+      }
+      if (context) {
         context->EnsureTraceCreated();
+        // If available, prefer to use the current Rpc's trace for logging.
+        trace = context->trace();
         if (transaction) {
-          transaction->EnsureTraceCreated();
-          context->trace()->AddChildTrace(transaction->trace());
+          // Make current Rpc-trace the child of the transaction trace.
+          // Traces will be printed at the end of the transaction.
+          transaction->trace()->AddChildTrace(context->trace());
           transaction->trace()->set_must_print(true);
         } else {
+          // There is no transaction here, so the trace will be printed at the end of the Rpc.
           context->trace()->set_must_print(true);
         }
       }
+      if (!context && !transaction) {
+        // This is the codepath where there is no rpc (because we are using shared memory) and
+        // no transaction. A trace will be locally created and printed at the end of the
+        // session->FlushAsync callback.
+        DCHECK(!trace) << "trace should not be set if context and transaction are not set";
+        trace = new Trace();
+        TRACE_TO(trace.get(), "DoPerform performing operation with no context or transaction");
+        trace_created_locally = true;
+        start_time = ToSteady(CoarseMonoClock::now());
+        trace->set_must_print(true);
+      }
     }
-    ADOPT_TRACE(context ? context->trace() : Trace::CurrentTrace());
+    ADOPT_TRACE(trace.get());
 
     data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, options);
     data->used_in_txn_limit = in_txn_limit;
@@ -2553,8 +2578,8 @@ class PgClientSession::Impl {
     data->ops = VERIFY_RESULT(PrepareOperations(
         &data->req, session, &data->sidecars, tables, vector_index_query_data_));
     data->vector_index_query = vector_index_query_data_;
-    TracePtr trace(Trace::CurrentTrace());
-    session->FlushAsync([this, data, trace](client::FlushStatus* flush_status) {
+    session->FlushAsync([this, data, trace, trace_created_locally,
+                         start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
       data->FlushDone(flush_status);
       const auto ops_count = data->ops.size();
@@ -2567,6 +2592,11 @@ class PgClientSession::Impl {
             << "FlushAsync of " << ops_count << " ops completed for non-distributed transaction";
       }
       VLOG_WITH_PREFIX(5) << "Perform resp: " << data->resp.ShortDebugString();
+      if (trace_created_locally) {
+        const bool must_log_trace =
+            ToSteady(CoarseMonoClock::now()) - start_time >= FLAGS_txn_slow_op_threshold_ms * 1ms;
+        Trace::DumpTraceIfNecessary(trace.get(), FLAGS_txn_print_trace_every_n, must_log_trace);
+      }
     });
     if (setup_session_result.is_plain) {
       const auto& read_point = *session->read_point();

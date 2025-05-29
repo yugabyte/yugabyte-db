@@ -83,7 +83,7 @@ namespace yb {
 
 using strings::internal::SubstituteArg;
 
-__thread Trace* Trace::threadlocal_trace_;
+__thread Trace* Trace::threadlocal_trace_ = nullptr;
 
 namespace {
 
@@ -514,6 +514,22 @@ void Trace::AddChildTrace(Trace* child_trace) {
 size_t Trace::DynamicMemoryUsage() const {
   auto arena = arena_.load();
   return arena ? arena->memory_footprint() : 0;
+}
+
+void Trace::DumpTraceIfNecessary(Trace* trace, int print_trace_every_n, bool must_print) {
+  if (!trace) {
+    return;
+  }
+  if (must_print || trace->must_print()) {
+    print_trace_every_n = 1;  // Force printing if must_print is set.
+  }
+  bool was_printed = false;
+  YB_LOG_IF_EVERY_N(INFO, print_trace_every_n > 0, print_trace_every_n)
+      << "Trace: \n"
+      << Trace::SetTrue(&was_printed);
+  if (was_printed) {
+    trace->DumpToLogInfo();
+  }
 }
 
 PlainTrace::PlainTrace() {

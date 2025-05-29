@@ -42,19 +42,19 @@ using std::string;
 using namespace yb::size_literals;
 using namespace std::literals;
 
-DECLARE_bool(rpc_dump_all_traces);
-DECLARE_uint64(rpc_max_message_size);
-
 DEFINE_UNKNOWN_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
 
 DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
                  "rpc_throttle_threshold_bytes");
 
+DECLARE_bool(rpc_dump_all_traces);
 DECLARE_bool(ysql_yb_enable_ash);
-DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_int32(print_trace_every);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
+DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_uint64(rpc_max_message_size);
 
 namespace yb {
 namespace rpc {
@@ -351,34 +351,25 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
 
 void YBInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
-  auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+  auto total_time_ms = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
+  bool must_log_trace = false;
   if (header_.timeout_ms > 0) {
     double log_threshold = header_.timeout_ms * 0.75f;
-    if (total_time > log_threshold) {
+    if (total_time_ms > log_threshold) {
       // TODO: consider pushing this onto another thread since it may be slow.
-      // The traces may also be too large to fit in a log message.
-      LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
+      LOG(WARNING) << ToString() << " took " << total_time_ms << "ms (client timeout "
                    << header_.timeout_ms << "ms).";
-      auto my_trace = trace();
-      if (my_trace) {
-        LOG(INFO) << "Trace:";
-        my_trace->DumpToLogInfo(true);
-      }
-      return;
+      must_log_trace = true;
     }
   }
-
-  auto my_trace = trace();
-  if (PREDICT_FALSE(
-          (my_trace && my_trace->must_print()) ||
-          FLAGS_rpc_dump_all_traces ||
-          total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    if (my_trace) {
-      my_trace->DumpToLogInfo(true);
-    }
+  if (!must_log_trace && total_time_ms > FLAGS_rpc_slow_query_threshold_ms) {
+    // If the call is slow, log it.
+    LOG(INFO) << ToString() << " took " << total_time_ms << "ms.";
+    must_log_trace = true;
   }
+  must_log_trace = must_log_trace || FLAGS_rpc_dump_all_traces;
+  Trace::DumpTraceIfNecessary(trace(), FLAGS_print_trace_every, must_log_trace);
 }
 
 void YBInboundCall::DoSerialize(ByteBlocks* output) {

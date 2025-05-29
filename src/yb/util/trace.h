@@ -173,7 +173,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
   void Dump(std::ostream* out, int32_t tracing_depth, bool include_time_deltas) const;
 
   // Dumps the trace to Log(INFO)
-  void DumpToLogInfo(bool include_time_deltas) const;
+  void DumpToLogInfo(bool include_time_deltas = true) const;
 
   // Sets the given flag to true, and
   // returns and empty string ("")
@@ -242,6 +242,9 @@ class Trace : public RefCountedThreadSafe<Trace> {
     std::lock_guard l(lock_);
     end_to_end_traces_requested_ = flag;
   }
+
+  static void DumpTraceIfNecessary(
+      Trace* trace, int print_trace_every_n, bool must_print = false);
 
  private:
   friend class ScopedAdoptTrace;
