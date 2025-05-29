@@ -277,6 +277,12 @@ func main() {
     // GetClusterConnections - Get the node address for the current node
     e.GET("/api/node_address", c.GetNodeAddress)
 
+    // GetCreatedOn - Get cluster creation date from config file
+    e.GET("/api/created_on", c.GetCreatedOn)
+
+    // Forward callhome request
+    e.POST("/api/callhome", c.PostCallhome)
+
     render_htmls := templates.NewTemplate()
 
     // Code for rendering UI Without embedding the files
