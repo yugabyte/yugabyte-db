@@ -809,7 +809,7 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 	 * that properly here to make sure that any collisions based on filename
 	 * are properly detected.
 	 */
-	rnode.backend = GetBackendOidFromRelPersistence(relpersistence);;
+	rnode.backend = GetBackendOidFromRelPersistence(relpersistence);
 
 	/*
 	 * All the shared relations have relfilenode value as 0, which suggests
