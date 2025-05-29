@@ -55,8 +55,10 @@ Therefore, in case of port-imports, YugabyteDB must create a fork of the externa
 
 To make matters more complicated, the upstream repository might be tracked differently across [yugabyte/yugabyte-db][repo-yugabyte-db] branches.
 For example, pgaudit has different branches for each PG version while pg_cron has a single branch where, at any point, there is multi-version support.
-In case of the former, it is necessary to track separate upstream commits across [yugabyte/yugabyte-db][repo-yugabyte-db] branches, and if a fork is required, then a branch should be created for each PG version that YugabyteDB supports, conventionally named `yb-pg<version>`.
-In case of the latter, you may do the same, or a single `yb` branch can be used across all [yugabyte/yugabyte-db][repo-yugabyte-db] branches.
+In case of the former, it is necessary to track separate upstream commits across [yugabyte/yugabyte-db][repo-yugabyte-db] branches, and if a fork is required, then a branch should be created for each PG version that YugabyteDB supports, conventionally named `yb-pg<version>` for `master` and `yb-pg<version>-<yb_branch>` otherwise.
+In case of the latter, you may have to do the same in case changes aren't always fully backported.
+Otherwise, a single `yb` branch can be used across all [yugabyte/yugabyte-db][repo-yugabyte-db] branches provided the PG versions of those branches are all within support.
+Typically, this is possible for low-traffic third-party extensions.
 Branches can be renamed, so if the single `yb` branch ever needs to be split to two, it can switch to the `yb-pg<version>` format from that point.
 It's fine as long as historical commits are not lost so that old commits still have a valid upstream commit that can be referenced.
 
@@ -513,7 +515,7 @@ At the time of writing, YugabyteDB is based off PG 15.12.
 
    - ...if the PG version is the same, the previously constructed subtree commit can be reused for [subtree merge](#git-subtrees).
    - ...if the PG version is different and a single multi-PG-version compatible `yb` branch is used in the upstream repository, same thing.
-   - ...otherwise, the same process should be repeated using the `yb-pg<version>` branch corresponding to that stable branch's PG version.
+   - ...otherwise, the same process should be repeated using the `yb-pg<version>-<yb_branch>` branch corresponding to that stable branch.
 
 #### Subtree direct-descendant merge
 
