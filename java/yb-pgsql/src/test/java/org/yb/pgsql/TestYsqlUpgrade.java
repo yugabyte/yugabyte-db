@@ -1880,7 +1880,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       final int initialMinorVersion = appliedMigrations.get(0).getInt(1);
       final int latestMajorVersion = reinitdbMigrations.get(0).getInt(0);
       final int latestMinorVersion = reinitdbMigrations.get(0).getInt(1);
-      final int totalMigrations = latestMajorVersion + latestMinorVersion - initialMajorVersion;
+      final int totalMigrations = latestMajorVersion + latestMinorVersion
+          - (initialMajorVersion + initialMinorVersion);
       assertRow(new Row(latestMajorVersion, latestMinorVersion, "<baseline>", null),
                 reinitdbMigrations.get(0));
       assertEquals(
