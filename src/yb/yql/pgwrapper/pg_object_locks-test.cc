@@ -34,7 +34,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(TEST_check_broadcast_address);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -57,7 +57,7 @@ constexpr uint64_t kDefaultYSQLLeaseRefreshIntervalMilli = 500;
 class PgObjectLocksTestRF1 : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     PgMiniTestBase::SetUp();
     ts_lock_manager_ = cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager();
@@ -457,14 +457,18 @@ class PgObjectLocksTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     const bool table_locks_enabled = EnableTableLocks();
     opts->extra_tserver_flags.emplace_back(
-        yb::Format("--TEST_enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks"));
+    opts->extra_tserver_flags.emplace_back(
+        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
     opts->extra_master_flags.emplace_back(
-        yb::Format("--TEST_enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks"));
+    opts->extra_master_flags.emplace_back(
+        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));

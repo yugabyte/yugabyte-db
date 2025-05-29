@@ -2270,8 +2270,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
-      .TEST_enable_object_locking_for_table_locks =
-          &FLAGS_TEST_enable_object_locking_for_table_locks,
+      .enable_object_locking_for_table_locks =
+          &FLAGS_enable_object_locking_for_table_locks,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size
   };

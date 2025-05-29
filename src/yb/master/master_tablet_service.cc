@@ -37,7 +37,7 @@
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
     "Reject specified percentage of writes to the YSQL catalog tables.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 DEFINE_test_flag(bool, ysql_require_force_catalog_modifications, false,
     "Fail YSQL catalog writes requests if force_catalog_modifications is not set.");

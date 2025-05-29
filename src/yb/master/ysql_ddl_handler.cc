@@ -53,7 +53,7 @@ DEFINE_test_flag(bool, disable_release_object_locks_on_ddl_verification, false,
     "When set, skip release object lock rpcs to tservers triggered at the end of DDL verification, "
     "that release object locks acquired by the DDL.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -646,7 +646,7 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
       // 1. Either the alter waits inline successfully before issuing the commit,
       // 2. or when the above times out, this branch is involed by the multi step
       //    TableSchemaVerificationTask's callback post the schema changes have been applied.
-      if (FLAGS_TEST_enable_object_locking_for_table_locks &&
+      if (FLAGS_enable_object_locking_for_table_locks &&
           !FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
         WARN_NOT_OK(
             background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {

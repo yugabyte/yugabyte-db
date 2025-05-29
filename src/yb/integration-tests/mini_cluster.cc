@@ -101,7 +101,7 @@ DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeM
                  "Time to wait for tservers to register to master.");
 
 DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_int32(memstore_size_mb);

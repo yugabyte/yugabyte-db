@@ -42,7 +42,7 @@ DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
 DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
                  "Skip remove tserver shared memory object in tests.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 using namespace std::literals;
 

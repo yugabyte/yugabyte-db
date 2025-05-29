@@ -137,7 +137,7 @@ DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "and catalog version numbers to hide such details or omit the message entirely.");
 TAG_FLAG(TEST_hide_details_for_pg_regress, hidden);
 
-DEFINE_test_flag(bool, enable_object_locking_for_table_locks, false,
+DEFINE_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
     "This test flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
