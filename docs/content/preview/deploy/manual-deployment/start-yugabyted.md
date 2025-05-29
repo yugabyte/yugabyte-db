@@ -26,6 +26,8 @@ type: docs
 
 This section describes how to deploy YugabyteDB a single region or data center in a multi-zone/multi-rack configuration using the [yugabyted](../../../reference/configuration/yugabyted/) configuration utility.
 
+The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home bin directory.
+
 Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.
 
 For instructions on running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to [Multi-DC deployments](../../../deploy/multi-dc/).
@@ -62,7 +64,7 @@ To create a secure multi-zone cluster:
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
-    ./bin/yugabyted start --secure --advertise_address=<host-ip> \
+    ./bin/yugabyted start --secure --advertise_address=<IP_of_VM_2> \
         --join=<ip-address-first-yugabyted-node> \
         --backup-daemon=true \
         --cloud_location=aws.us-east-1.us-east-1b \
@@ -70,9 +72,13 @@ To create a secure multi-zone cluster:
     ```
 
     ```sh
-    ./bin/yugabyted start --secure --advertise_address=<host-ip> \
+    ./bin/yugabyted start --secure --advertise_address=<IP_of_VM_3> \
         --join=<ip-address-first-yugabyted-node> \
         --backup-daemon=true \
         --cloud_location=aws.us-east-1.us-east-1c \
         --fault_tolerance=zone
     ```
+
+## Grow the cluster
+
+To grow the cluster, add additional nodes just as you do when creating the cluster.
