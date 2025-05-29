@@ -287,6 +287,12 @@ func main() {
     // GetPITRConfig - Get the PITR configuration for YugabyteDB cluster
     e.GET("/api/pitr", c.GetPITRConfigurations)
 
+    // GetCreatedOn - Get cluster creation date from config file
+    e.GET("/api/created_on", c.GetCreatedOn)
+
+    // Forward callhome request
+    e.POST("/api/callhome", c.PostCallhome)
+
     render_htmls := templates.NewTemplate()
 
     // Code for rendering UI Without embedding the files
