@@ -9717,9 +9717,6 @@ getForeignDataWrappers(Archive *fout, int *numForeignDataWrappers)
 
 	query = createPQExpBuffer();
 
-	/*
-	 * YB_TODO(neil) Must reintro to pg_dump dopt->include_yb_metadata
-	 */
 	appendPQExpBuffer(query, "SELECT tableoid, oid, fdwname, "
 					  "fdwowner, "
 					  "fdwhandler::pg_catalog.regproc, "
@@ -9811,9 +9808,6 @@ getForeignServers(Archive *fout, int *numForeignServers)
 
 	query = createPQExpBuffer();
 
-	/*
-	 * YB_TODO(neil) Must reintro to pg_dump dopt->include_yb_metadata
-	 */
 	appendPQExpBuffer(query, "SELECT tableoid, oid, srvname, "
 					  "srvowner, "
 					  "srvfdw, srvtype, srvversion, srvacl, "
@@ -9906,9 +9900,6 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 
 	query = createPQExpBuffer();
 
-	/*
-	 * YB_TODO(neil) Must reintro to pg_dump dopt->include_yb_metadata
-	 */
 	/*
 	 * Global entries (with defaclnamespace=0) replace the hard-wired default
 	 * ACL for their object type.  We should dump them as deltas from the
@@ -16165,9 +16156,6 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 		PGresult   *res;
 		int			i;
 
-		/*
-		 * YB_TODO(neil) Must reintro to pg_dump dopt->include_yb_metadata
-		 */
 		if (!fout->is_prepared[PREPQUERY_GETCOLUMNACLS])
 		{
 			/* Set up query for column ACLs */
