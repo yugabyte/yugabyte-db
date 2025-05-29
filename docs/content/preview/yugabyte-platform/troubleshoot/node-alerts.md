@@ -35,7 +35,7 @@ This alert fires when Prometheus is unable to scrape a node for metrics for (by 
 
     If necessary, follow the steps in [Replace a live or unreachable node](../../manage-deployments/remove-nodes/#replace-a-live-or-unreachable-node) to replace the node.
 
-1. If the host is running, check the status of the node_exporter process. Prometheus uses the node_exporter service to export logs, and if the service is down, the node will appear unreachable.
+1. If the host is running, check the status of the node_exporter process. Prometheus uses the node_exporter service to export metrics, and if the service is down, the node will appear unreachable.
 
     - Connect to the node and check the status of node_exporter by running the following command:
 
@@ -50,13 +50,11 @@ This alert fires when Prometheus is unable to scrape a node for metrics for (by 
         sudo systemctl restart node_exporter
         ```
 
-    - Confirm Prometheus access at `http://<node_ip>:9300`.
+    - Confirm node_exporter access at `http://<node_ip>:9300`.
 
 ## DB Node Restart
 
 This alert tracks OS-level restarts using the `node_boot_time` metric.
-
-Note that the alert doesn't differentiate between TServer/Master process restarts, and full OS-level reboots.
 
 #### What to do
 
@@ -84,8 +82,10 @@ This alert fires when Yugabyte process (TServer or Master) restarts without a pl
 
 1. SSH into the node and inspect the following logs:
 
-    - Yugabyte logs (`/home/yugabyte/tserver/logs/` or `/mnt/d0/yb-data/tserver/logs/`)
-    - OS logs, for memory pressure or crash signals
+    - Yugabyte logs (`/home/yugabyte/tserver/logs/` or `/mnt/d0/yb-data/tserver/logs/`).
+    - OS logs, for memory pressure or crash signals.
+
+    Look for FATAL logs; the presence of a FATAL log file that corresponds with the time of the failure is a positive indicator for a crash and analyzing this log will likely point to the root cause.
 
 1. Check whether a core dump or out of memory event occurred.
 
