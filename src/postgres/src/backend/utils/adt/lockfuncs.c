@@ -53,6 +53,7 @@ HandleStatusIgnoreLockNotFound(YbcStatus status, YbcAdvisoryLockMode mode)
 	if (status && YBCStatusPgsqlError(status) == ERRCODE_YB_TXN_LOCK_NOT_FOUND)
 	{
 		const char *lock_type = (mode == YB_ADVISORY_LOCK_SHARED) ? "ShareLock" : "ExclusiveLock";
+
 		elog(WARNING, "you don't own a lock of type %s", lock_type);
 		YBCFreeStatus(status);
 		return false;

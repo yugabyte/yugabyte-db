@@ -839,7 +839,7 @@ typedef struct RelOptInfo
 	List	  **nullable_partexprs; /* Nullable partition key expressions */
 
 	/* used for YB relations */
-	bool		is_yb_relation;	/* Is a YbRelation */
+	bool		is_yb_relation; /* Is a YbRelation */
 
 	/*
 	 * YB: unique identifer (across all blocks) for a base rel - starting at
@@ -979,7 +979,7 @@ struct IndexOptInfo
 	/* YB */
 	int			nhashcolumns;	/* number of hash key columns in index */
 	bool		yb_amhasgetbitmap;	/* does AM have yb_amgetbitmap interface? */
-	bool		yb_amiscopartitioned; /* is AM for YB a copartitioned index? */
+	bool		yb_amiscopartitioned;	/* is AM for YB a copartitioned index? */
 	/* Used for YB base scans cost model */
 	int32_t		yb_cached_ybctid_size;
 };
@@ -1346,8 +1346,8 @@ typedef struct Path
 	YbPlanInfo	yb_plan_info;
 	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
 	uint32		ybUniqueId;		/* unique id of Path */
-	bool		ybIsHinted;	/* does this represent a hint path? */
-	bool		ybHasHintedUid;	/* force this path using UID? */
+	bool		ybIsHinted;		/* does this represent a hint path? */
+	bool		ybHasHintedUid; /* force this path using UID? */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */

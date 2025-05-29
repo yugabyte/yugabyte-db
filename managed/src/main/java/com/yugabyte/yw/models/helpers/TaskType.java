@@ -655,6 +655,11 @@ public enum TaskType {
       CustomerTask.TaskType.CloneNamespace,
       CustomerTask.TargetType.Universe),
 
+  TlsToggleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.upgrade.TlsToggleKubernetes.class,
+      CustomerTask.TaskType.TlsToggle,
+      CustomerTask.TargetType.Universe),
+
   UpdateOOMServiceState(
       UpdateOOMServiceState.class,
       CustomerTask.TaskType.UpdateOOMServiceState,

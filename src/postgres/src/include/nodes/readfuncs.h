@@ -35,6 +35,6 @@ extern void *nodeRead(const char *token, int tok_len);
  */
 extern Node *parseNodeString(void);
 
-extern int GetYbExpressionVersion(void);
+extern int	GetYbExpressionVersion(void);
 
 #endif							/* READFUNCS_H */

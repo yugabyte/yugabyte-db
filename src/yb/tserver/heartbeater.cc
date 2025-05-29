@@ -505,18 +505,21 @@ Status HeartbeatPoller::TryHeartbeat() {
                           << " db inval messages: "
                           << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
       }
-      server_.SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
       if (FLAGS_ysql_yb_enable_invalidation_messages) {
         if (last_hb_response_.has_db_catalog_inval_messages_data()) {
-          server_.SetYsqlDBCatalogInvalMessages(
+          server_.SetYsqlDBCatalogVersionsWithInvalMessages(
+              last_hb_response_.db_catalog_version_data(),
               last_hb_response_.db_catalog_inval_messages_data());
         } else {
+          server_.SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
           // If we only have catalog versions but not invalidation messages, it means that the last
           // heartbeat response was only able to read pg_yb_catalog_version, but the reading of
           // pg_yb_invalidation_messages failed. Clear the fingerprint so that next heartbeat
           // can read pg_yb_invalidation_messages again.
           server_.ResetCatalogVersionsFingerprint();
         }
+      } else {
+        server_.SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
       }
     } else {
       // The master does not pass back any catalog versions. This can happen in

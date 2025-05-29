@@ -1429,6 +1429,7 @@ internal_flush(void)
 	while (bufptr < bufend)
 	{
 		int			r;
+
 		/* YB: For compatibility reasons, cap at ysql_output_flush_size. */
 		int			yb_send_len = Min(bufend - bufptr,
 									  *YBCGetGFlags()->ysql_output_flush_size);

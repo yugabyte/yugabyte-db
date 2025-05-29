@@ -242,10 +242,6 @@ DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
 DEFINE_test_flag(
     string, mini_cluster_pg_host_port, "", "The PG host:port used in PostgresMiniclusterTest");
 
-DEFINE_test_flag(
-    int32, clone_pg_schema_inject_latency_ms, 0,
-    "Number of milliseconds the clone state manager will sleep in CloneNamespace.");
-
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
     "If true, setup an error status in AlterSchema and respond success to rpc call. "
     "This failure should not cause the TServer to crash but "
@@ -3398,6 +3394,18 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetObjectLockStatus(const GetObjectLockStatusRequestPB* req,
+                                            GetObjectLockStatusResponsePB* resp,
+                                            rpc::RpcContext context) {
+  auto ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found."), &context);
+  }
+  ts_local_lock_manager->PopulateObjectLocks(resp->mutable_object_lock_infos());
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
@@ -3765,6 +3773,27 @@ void TabletServiceAdminImpl::TestRetry(
   } else {
     context.RespondSuccess();
   }
+}
+
+void TabletServiceAdminImpl::GetActiveRbsInfo(
+    const GetActiveRbsInfoRequestPB* req, GetActiveRbsInfoResponsePB* resp,
+    rpc::RpcContext context) {
+  for (const auto& peer : server_->tablet_manager()->GetTabletPeers()) {
+    auto rbs_info = peer->status_listener()->GetRbsProgressInfo();
+    if (!rbs_info) continue;
+    auto* rbs_resp_info = resp->add_rbs_infos();
+    rbs_resp_info->set_tablet_id(peer->tablet_id());
+    rbs_resp_info->set_source_ts_uuid(rbs_info->source_ts_uuid);
+    rbs_resp_info->set_sst_bytes_to_download(rbs_info->sst_bytes_to_download);
+    rbs_resp_info->set_sst_bytes_downloaded(rbs_info->sst_bytes_downloaded);
+
+    auto sst_end_time_micros = (rbs_info->sst_end_time_micros == 0) ?
+                               GetCurrentTimeMicros() :
+                               rbs_info->sst_end_time_micros;
+    rbs_resp_info->set_sst_download_elapsed_sec(
+        (sst_end_time_micros - rbs_info->sst_start_time_micros) / 1000000);
+  }
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::Shutdown() {

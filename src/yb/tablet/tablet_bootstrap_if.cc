@@ -103,6 +103,39 @@ void TabletStatusListener::SetStatusPrefix(const std::string& prefix) {
   status_prefix_ = prefix + "\n";
 }
 
+std::optional<RbsProgressInfo> TabletStatusListener::GetRbsProgressInfo() {
+  std::lock_guard l(lock_);
+  return rbs_progress_info_;
+}
+
+void TabletStatusListener::SetInitialRbsProgressInfo(
+    const TabletServerId& source_ts_uuid, int64_t sst_bytes_to_download,
+    int64_t start_time_micros) {
+  std::lock_guard l(lock_);
+  rbs_progress_info_ = RbsProgressInfo {
+    .source_ts_uuid = source_ts_uuid,
+    .sst_bytes_to_download = sst_bytes_to_download,
+    .sst_bytes_downloaded = 0,
+    .sst_start_time_micros = start_time_micros,
+    .sst_end_time_micros = 0,
+  };
+}
+
+void TabletStatusListener::IncrementSstDownloadProgress(int64_t bytes_downloaded) {
+  std::lock_guard l(lock_);
+  rbs_progress_info_->sst_bytes_downloaded += bytes_downloaded;
+}
+
+void TabletStatusListener::SetSstDownloadDone() {
+  std::lock_guard l(lock_);
+  rbs_progress_info_->sst_end_time_micros = GetCurrentTimeMicros();
+}
+
+void TabletStatusListener::ClearRbsProgressInfo() {
+  std::lock_guard l(lock_);
+  rbs_progress_info_ = std::nullopt;
+}
+
 Status BootstrapTablet(
     const BootstrapTabletData& data,
     TabletPtr* rebuilt_tablet,

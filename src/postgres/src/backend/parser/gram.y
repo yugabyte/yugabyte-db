@@ -696,7 +696,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <rowbounds> YbRowBounds
 %type <splitopt> SplitClause YbOptSplit
 %type <str>		OptTableSpaceLocation opt_for_bfinstr partition_key row_key
-				read_time row_key_end row_key_start
+				read_time row_key_end row_key_start yb_opt_alias
 
 
 /*
@@ -2916,10 +2916,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> INHERIT <parent> */
 			| INHERIT qualified_name
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "ALTER action INHERIT", 1124);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -2930,10 +2926,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> NO INHERIT <parent> */
 			| NO INHERIT qualified_name
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "ALTER action NO INHERIT", 1124);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -4553,10 +4545,6 @@ ConstraintElem:
 
 opt_no_inherit:	NO INHERIT
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "NO INHERIT", 1129);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = true;
 				}
@@ -4741,10 +4729,6 @@ key_action:
 
 OptInherit: INHERITS '(' qualified_name_list ')'
 				{
-					if (!*YBCGetGFlags()->ysql_enable_inheritance)
-					{
-						parser_ybc_signal_unsupported(@1, "INHERITS", 1129);
-					}
 					parser_ybc_beta_feature(@1, "inheritance", false);
 					$$ = $3;
 				}
@@ -8636,6 +8620,18 @@ access_method_clause:
 			| /*EMPTY*/								{ $$ = IsYugaByteEnabled() ? NULL : DEFAULT_INDEX_TYPE;	}
 		;
 
+yb_opt_alias:
+			AS ColId
+				{
+					if (!IsBinaryUpgrade)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("syntax error at or near \"AS\"")));
+					$$ = $2;
+				}
+			| /* empty */								{ $$ = NULL; }
+		;
+
 yb_index_params: index_elem
 				{
 					$$ = list_make1($1);
@@ -8674,24 +8670,24 @@ yb_index_params: index_elem
 
 
 index_elem_options:
-	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
+	opt_collate opt_class opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
 			$$ = makeNode(IndexElem);
 			$$->name = NULL;
 			$$->expr = NULL;
-			$$->indexcolname = NULL;
+			$$->indexcolname = $5;
 			$$->collation = $1;
 			$$->opclass = $2;
 			$$->opclassopts = NIL;
 			$$->ordering = $3;
 			$$->nulls_ordering = $4;
 		}
-	| opt_collate any_name reloptions opt_yb_index_sort_order opt_nulls_order
+	| opt_collate any_name reloptions opt_yb_index_sort_order opt_nulls_order yb_opt_alias
 		{
 			$$ = makeNode(IndexElem);
 			$$->name = NULL;
 			$$->expr = NULL;
-			$$->indexcolname = NULL;
+			$$->indexcolname = $6;
 			$$->collation = $1;
 			$$->opclass = $2;
 			$$->opclassopts = $3;

@@ -28,11 +28,11 @@
 #include "c.h"
 
 extern void
-yb_write_struct_to_file(const char *tempfile_name, const char *file_name,
-						void *struct_ptr, size_t struct_size, int32 format_id);
+			yb_write_struct_to_file(const char *tempfile_name, const char *file_name,
+									void *struct_ptr, size_t struct_size, int32 format_id);
 
 extern void
-yb_read_struct_from_file(const char *file_name, void *struct_ptr,
-						 size_t struct_size, int32 expected_format_id);
+			yb_read_struct_from_file(const char *file_name, void *struct_ptr,
+									 size_t struct_size, int32 expected_format_id);
 
 #endif							/* YB_FILE_UTILS_H */

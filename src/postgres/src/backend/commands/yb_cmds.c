@@ -117,7 +117,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 		 */
 		int64_t		num_databases = YbGetNumberOfDatabases();
 		int64_t		num_reserved =
-		*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
+			*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
 
 		if (kYBCMaxNumDbCatalogVersions - num_databases <= num_reserved)
 			ereport(ERROR,
@@ -176,6 +176,7 @@ YBCDropDBSequences(Oid dboid)
 	 */
 	Assert(CurTransactionContext != NULL);
 	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+
 	HandleYBStatus(YBCPgNewDropDBSequences(dboid, &sequences_handle));
 	YBSaveDdlHandle(sequences_handle);
 	MemoryContextSwitchTo(oldcontext);
@@ -604,7 +605,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	Oid			databaseId = YBCGetDatabaseOidFromShared(is_shared_relation);
 	bool		is_matview = relkind == RELKIND_MATVIEW;
 	bool		is_colocated_tables_with_tablespace_enabled =
-	*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 	char	   *db_name = get_database_name(databaseId);
 	char	   *schema_name = stmt->relation->schemaname;
@@ -1015,6 +1016,7 @@ YBCDropSequence(Oid sequence_oid)
 	 */
 	Assert(CurTransactionContext != NULL);
 	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+
 	HandleYBStatus(YBCPgNewDropSequence(MyDatabaseId, sequence_oid, &handle));
 	YBSaveDdlHandle(handle);
 	MemoryContextSwitchTo(oldcontext);
@@ -1648,53 +1650,44 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				/*
 				 * For drop foreign key case, assigning the primary key table
 				 * as dependent relation.
+				 * For partition and inheritance children, we do not need to identify foreign
+				 * key dependent relations separately. For partition children, the foreign key
+				 * dependent relation is the same as the parent. For inheritance, foreign key
+				 * constraints do not recurse down to children.
 				 */
-				else if (cmd->subtype == AT_DropConstraintRecurse)
+				else if (cmd->subtype == AT_DropConstraintRecurse && !isPartitionOfAlteredTable)
 				{
-					HeapTuple	reltup = SearchSysCache1(RELOID,
-														 ObjectIdGetDatum(relationId));
+					Oid			constraint_oid = get_relation_constraint_oid(relationId,
+																			 cmd->name,
+																			 cmd->missing_ok);
 
-					if (!HeapTupleIsValid(reltup))
-						elog(ERROR,
-							 "cache lookup failed for relation %u",
-							 relationId);
-					Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
-
-					ReleaseSysCache(reltup);
-					if (!relform->relispartition)
+					/*
+					 * If the constraint doesn't exists and IF EXISTS is specified,
+					 * A NOTICE will be reported later in ATExecDropConstraint.
+					 */
+					if (!OidIsValid(constraint_oid))
 					{
-						Oid			constraint_oid = get_relation_constraint_oid(relationId,
-																				 cmd->name,
-																				 cmd->missing_ok);
+						return handles;
+					}
+					HeapTuple	tuple = SearchSysCache1(CONSTROID,
+														ObjectIdGetDatum(constraint_oid));
 
-						/*
-						 * If the constraint doesn't exists and IF EXISTS is specified,
-						 * A NOTICE will be reported later in ATExecDropConstraint.
-						 */
-						if (!OidIsValid(constraint_oid))
-						{
-							return handles;
-						}
-						HeapTuple	tuple = SearchSysCache1(CONSTROID,
-															ObjectIdGetDatum(constraint_oid));
-
-						if (!HeapTupleIsValid(tuple))
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_SYSTEM_ERROR),
-									 errmsg("cache lookup failed for constraint %u",
-											constraint_oid)));
-						}
-						Form_pg_constraint con =
+					if (!HeapTupleIsValid(tuple))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_SYSTEM_ERROR),
+								 errmsg("cache lookup failed for constraint %u",
+										constraint_oid)));
+					}
+					Form_pg_constraint con =
 						(Form_pg_constraint) GETSTRUCT(tuple);
 
-						ReleaseSysCache(tuple);
-						if (con->contype == CONSTRAINT_FOREIGN &&
-							relationId != con->confrelid)
-						{
-							dependent_rels = lappend(dependent_rels,
-													 table_open(con->confrelid, AccessExclusiveLock));
-						}
+					ReleaseSysCache(tuple);
+					if (con->contype == CONSTRAINT_FOREIGN &&
+						relationId != con->confrelid)
+					{
+						dependent_rels = lappend(dependent_rels,
+												 table_open(con->confrelid, AccessExclusiveLock));
 					}
 				}
 				/*
@@ -1827,21 +1820,23 @@ YBCPrepareAlterTable(List **subcmds,
 	handles = lappend(handles, db_handle);
 	ListCell   *lcmd;
 	int			col = 1;
-	bool		needsYBAlter = false;
+	bool		needs_yb_alter = false;
 
 	for (int cmd_idx = 0; cmd_idx < subcmds_size; ++cmd_idx)
 	{
 		foreach(lcmd, subcmds[cmd_idx])
 		{
+			bool subcmd_needs_yb_alter = false;
 			handles = YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd),
 											  rel, handles, &col,
-											  &needsYBAlter, rollbackHandle,
+											  &subcmd_needs_yb_alter, rollbackHandle,
 											  isPartitionOfAlteredTable);
+			needs_yb_alter |= subcmd_needs_yb_alter;
 		}
 	}
 	relation_close(rel, NoLock);
 
-	if (!needsYBAlter)
+	if (!needs_yb_alter)
 	{
 		return NULL;
 	}

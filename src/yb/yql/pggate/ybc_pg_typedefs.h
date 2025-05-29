@@ -425,8 +425,8 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
   const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
-  const bool*     ysql_enable_inheritance;
   const bool*     TEST_enable_object_locking_for_table_locks;
+  const uint32_t* ysql_max_invalidation_message_queue_size;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -954,7 +954,9 @@ typedef struct {
 
 typedef struct {
   uint32_t db_oid;
+  uint32_t relation_oid;
   uint32_t object_oid;
+  uint32_t object_sub_oid;
 } YbcObjectLockId;
 
 typedef enum {

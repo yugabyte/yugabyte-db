@@ -826,7 +826,8 @@ Result<uint32> AddHistoricalPackedSchemaForColocatedTable(
   Schema new_schema;
   RETURN_NOT_OK(SchemaFromPB(schema, &new_schema));
 
-  dockv::SchemaPackingStorage old_packings(TableType::PGSQL_TABLE_TYPE);
+  dockv::SchemaPackingStorage old_packings(
+      TableType::PGSQL_TABLE_TYPE, std::make_shared<dockv::SchemaPackingRegistry>("XCluster: "));
   RETURN_NOT_OK(old_packings.LoadFromPB(historical_schema_packings.old_schema_packings()));
   const auto existing_version =
       old_packings.GetSchemaPackingVersion(TableType::PGSQL_TABLE_TYPE, new_schema);

@@ -18,8 +18,8 @@ LogOpts		log_opts;
 
 static void pg_log_v(eLogType type, const char *fmt, va_list ap) pg_attribute_printf(2, 0);
 
-bool yb_current_check_failed = false;
-bool yb_has_check_fatal = false;
+bool		yb_current_check_failed = false;
+bool		yb_has_check_fatal = false;
 
 /*
  * report_status()
@@ -338,10 +338,10 @@ is_yugabyte_enabled()
 }
 
 int
-yb_fprintf_and_log(FILE *stream, const char *fmt, ...)
+yb_fprintf_and_log(FILE *stream, const char *fmt,...)
 {
-	int len;
-	va_list args;
+	int			len;
+	va_list		args;
 
 	if (!yb_current_check_failed)
 	{
@@ -361,9 +361,9 @@ yb_fprintf_and_log(FILE *stream, const char *fmt, ...)
 }
 
 void
-yb_fatal(const char *fmt, ...)
+yb_fatal(const char *fmt,...)
 {
-	va_list args;
+	va_list		args;
 
 	pg_log(PG_REPORT, "\n");
 

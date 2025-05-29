@@ -23,6 +23,9 @@
 #include "yb/rpc/poller.h"
 
 #include "yb/server/server_base.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
@@ -39,6 +42,174 @@ DEFINE_RUNTIME_int64(olm_poll_interval_ms, 100,
     "with the signaling mechanism if any.");
 
 namespace yb::tserver {
+
+// This class tracks object locks specifically for the pg_locks view.
+// An alternative would be to extract and decrypt locks directly from ObjectLockManager,
+// but for simplicity, we decided to maintain a separate tracker here.
+class ObjectLockTracker {
+ public:
+
+  Status TrackLocks(
+    const std::vector<ObjectLockContext>& lock_contexts, ObjectLockState lock_state,
+    HybridTime wait_start = HybridTime::kInvalid) {
+    for (const auto& lock_context : lock_contexts) {
+      RETURN_NOT_OK(TrackLock(lock_context, lock_state, wait_start));
+    }
+    return Status::OK();
+  }
+
+  Status TrackLock(
+      const ObjectLockContext& lock_context, ObjectLockState lock_state,
+      HybridTime wait_start = HybridTime::kInvalid) {
+    const auto txn_id = lock_context.txn_id;
+    const auto subtxn_id = lock_context.subtxn_id;
+    const auto lock_id = LockId{
+      .database_oid = lock_context.database_oid,
+      .relation_oid = lock_context.relation_oid,
+      .object_oid = lock_context.object_oid,
+      .object_sub_oid = lock_context.object_sub_oid,
+      .lock_type = lock_context.lock_type
+    };
+
+    std::lock_guard l(mutex_);
+    auto& lock_id_map = lock_map_[txn_id][subtxn_id];
+
+    auto lock_it = lock_id_map.find(lock_id);
+    if (lock_it != lock_id_map.end()) {
+      auto& existing = lock_it->second;
+      existing.counter++;
+      if (existing.lock_state == ObjectLockState::WAITING &&
+          lock_state == ObjectLockState::GRANTED) {
+        // Upgrade from WAITING to GRANTED state and
+        // keep the wait_start time as it is for pg_locks view.
+        existing.lock_state = ObjectLockState::GRANTED;
+      }
+      return Status::OK();
+    }
+
+    LockInfo new_lock{
+      .lock_state = lock_state,
+      .wait_start = (lock_state == ObjectLockState::WAITING) ? wait_start : HybridTime::kInvalid,
+      .counter = 1
+    };
+    lock_id_map.emplace(lock_id, new_lock);
+
+    return Status::OK();
+  }
+
+  Status UntrackLocks(const std::vector<ObjectLockContext>& lock_contexts) {
+    for (const auto& lock_context : lock_contexts) {
+      RETURN_NOT_OK(UntrackLock(lock_context));
+    }
+    return Status::OK();
+  }
+
+  Status UntrackLock(const ObjectLockContext& lock_context) {
+    if (lock_context.subtxn_id == 0) {
+      return UntrackAllLocks(lock_context.txn_id, lock_context.subtxn_id);
+    }
+
+    std::lock_guard l(mutex_);
+    auto txn_it = lock_map_.find(lock_context.txn_id);
+    if (txn_it == lock_map_.end()) {
+      return Status::OK();
+    }
+    auto subtxn_it = txn_it->second.find(lock_context.subtxn_id);
+    if (subtxn_it == txn_it->second.end()) {
+      return Status::OK();
+    }
+
+    auto& lock_id_map = subtxn_it->second;
+    const auto lock_id = LockId{
+      .database_oid = lock_context.database_oid,
+      .relation_oid = lock_context.relation_oid,
+      .object_oid = lock_context.object_oid,
+      .object_sub_oid = lock_context.object_sub_oid,
+      .lock_type = lock_context.lock_type
+    };
+    auto lock_it = lock_id_map.find(lock_id);
+    DCHECK(lock_it != lock_id_map.end());
+    if (lock_it->second.counter > 1) {
+      lock_it->second.counter--;
+      return Status::OK();
+    }
+
+    // cleanup
+    lock_id_map.erase(lock_it);
+    if (lock_id_map.empty()) {
+      txn_it->second.erase(subtxn_it);
+      if (txn_it->second.empty()) {
+        lock_map_.erase(txn_it);
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status UntrackAllLocks(TransactionId txn_id, SubTransactionId subtxn_id) {
+    std::lock_guard l(mutex_);
+    if (subtxn_id == 0) {
+      // Remove all subtransactions for this transaction
+      lock_map_.erase(txn_id);
+    } else {
+      auto txn_iter = lock_map_.find(txn_id);
+      if (txn_iter != lock_map_.end()) {
+        txn_iter->second.erase(subtxn_id);
+        if (txn_iter->second.empty()) {
+          lock_map_.erase(txn_iter);
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  void PopulateObjectLocks(
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
+    object_lock_infos->Clear();
+    SharedLock l(mutex_);
+    for (const auto& [txn_id, subtxn_map] : lock_map_) {
+      for (const auto& [subtxn_id, lock_id_map] : subtxn_map) {
+        for (const auto& [lock_id, lock_info] : lock_id_map) {
+          auto* object_lock_info_pb = object_lock_infos->Add();
+          object_lock_info_pb->set_transaction_id(txn_id.data(), txn_id.size());
+          object_lock_info_pb->set_subtransaction_id(subtxn_id);
+          object_lock_info_pb->set_database_oid(lock_id.database_oid);
+          object_lock_info_pb->set_relation_oid(lock_id.relation_oid);
+          object_lock_info_pb->set_object_oid(lock_id.object_oid);
+          object_lock_info_pb->set_object_sub_oid(lock_id.object_sub_oid);
+          object_lock_info_pb->set_mode(lock_id.lock_type);
+          object_lock_info_pb->set_lock_state(lock_info.lock_state);
+          DCHECK_NE(lock_info.wait_start, HybridTime::kInvalid);
+          object_lock_info_pb->set_wait_start_ht(lock_info.wait_start.ToUint64());
+        }
+      }
+    }
+  }
+
+ private:
+  mutable std::shared_mutex mutex_;
+
+  struct LockId {
+    YB_STRUCT_DEFINE_HASH(
+        LockId, database_oid, relation_oid, object_oid, object_sub_oid, lock_type);
+    auto operator<=>(const LockId&) const = default;
+    uint64_t database_oid;
+    uint64_t relation_oid;
+    uint64_t object_oid;
+    uint64_t object_sub_oid;
+    TableLockType lock_type;
+  };
+
+  struct LockInfo {
+    ObjectLockState lock_state;
+    HybridTime wait_start = HybridTime::kInvalid;
+    size_t counter = 0;
+  };
+
+  std::unordered_map<TransactionId,
+      std::unordered_map<SubTransactionId,
+          std::unordered_map<LockId, LockInfo>>> lock_map_;
+};
 
 class TSLocalLockManager::Impl {
  public:
@@ -120,13 +291,39 @@ class TSLocalLockManager::Impl {
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
 
     auto keys_to_lock = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    object_lock_manager_.Lock(docdb::LockData {
-      .key_to_lock = std::move(keys_to_lock),
-      .deadline = deadline,
-      .object_lock_owner = std::move(object_lock_owner),
-      .status_tablet = req.status_tablet(),
-      .start_time = MonoTime::FromUint64(req.propagated_hybrid_time()),
-      .callback = std::move(callback)});
+
+    // Track all locks as waiting
+    std::vector<ObjectLockContext> lock_contexts;
+    lock_contexts.reserve(req.object_locks_size());
+    for (const auto& object_lock : req.object_locks()) {
+      lock_contexts.emplace_back(
+          txn, req.subtxn_id(), object_lock.database_oid(), object_lock.relation_oid(),
+          object_lock.object_oid(), object_lock.object_sub_oid(), object_lock.lock_type());
+    }
+    auto tracker_status =
+        lock_tracker_.TrackLocks(lock_contexts, ObjectLockState::WAITING, clock_->Now());
+    DCHECK_OK(tracker_status);
+
+    object_lock_manager_.Lock(
+      docdb::LockData{
+          .key_to_lock = std::move(keys_to_lock),
+          .deadline = deadline,
+          .object_lock_owner = std::move(object_lock_owner),
+          .status_tablet = req.status_tablet(),
+          .start_time = MonoTime::FromUint64(req.propagated_hybrid_time()),
+          .callback = [this, lock_contexts = std::move(lock_contexts),
+                       cb = std::move(callback)](Status status) -> void {
+            Status tracker_status;
+            if (status.ok()) {
+              tracker_status = lock_tracker_.TrackLocks(lock_contexts, ObjectLockState::GRANTED);
+            } else {
+              tracker_status = lock_tracker_.UntrackLocks(lock_contexts);
+            }
+            DCHECK_OK(tracker_status);
+            // Call the original callback with the final status
+            cb(status);
+          }
+      });
     return Status::OK();
   }
 
@@ -184,6 +381,8 @@ class TSLocalLockManager::Impl {
         ? StatusFromPB(req.abort_status())
         : Status::OK();
     object_lock_manager_.Unlock(object_lock_owner, abort_status);
+    auto tracker_status = lock_tracker_.UntrackAllLocks(txn, req.subtxn_id());
+    DCHECK_OK(tracker_status);
     return Status::OK();
   }
 
@@ -306,6 +505,11 @@ class TSLocalLockManager::Impl {
 
   server::ClockPtr clock() const { return clock_; }
 
+  void PopulateObjectLocks(
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
+    lock_tracker_.PopulateObjectLocks(object_lock_infos);
+  }
+
  private:
   const server::ClockPtr clock_;
   std::atomic_bool is_bootstrapped_{false};
@@ -319,6 +523,7 @@ class TSLocalLockManager::Impl {
   docdb::ObjectLockManager object_lock_manager_;
   std::atomic<bool> shutdown_{false};
   rpc::Poller poller_;
+  ObjectLockTracker lock_tracker_;
 };
 
 TSLocalLockManager::TSLocalLockManager(
@@ -374,6 +579,11 @@ bool TSLocalLockManager::IsBootstrapped() const {
 
 server::ClockPtr TSLocalLockManager::clock() const {
   return impl_->clock();
+}
+
+void TSLocalLockManager::PopulateObjectLocks(
+    google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const {
+  impl_->PopulateObjectLocks(object_lock_infos);
 }
 
 size_t TSLocalLockManager::TEST_WaitingLocksSize() const {

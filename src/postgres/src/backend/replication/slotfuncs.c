@@ -397,7 +397,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		bool		yb_stream_active;
 		uint64		yb_restart_commit_ht;
 		const char *yb_lsn_type;
-		bool        yb_stream_expired;
+		bool		yb_stream_expired;
 
 		if (IsYugaByteEnabled())
 		{

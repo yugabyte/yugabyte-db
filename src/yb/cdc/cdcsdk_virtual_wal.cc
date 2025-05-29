@@ -208,24 +208,27 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     // list of tables and provide the information in one shot.
     auto s = GetTabletListAndCheckpoint(table_id, hostport, deadline);
     if (!s.ok()) {
-      LOG_WITH_PREFIX(ERROR) << s.CloneAndPrepend(
-          Format("Error fetching tablet list & checkpoints for table_id: $0", table_id));
-      RETURN_NOT_OK(s);
+      s = s.CloneAndPrepend(Format(
+          "Error fetching tablet list & checkpoints for table_id $0: $1", table_id));
+      LOG_WITH_PREFIX(DFATAL) << s;
+      return s;
     }
     publication_table_list_.insert(table_id);
   }
 
   auto s = InitLSNAndTxnIDGenerators(*slot_entry_opt);
   if (!s.ok()) {
-    LOG_WITH_PREFIX(ERROR) << Format(
-        "Init LSN & TxnID generators failed for stream_id: $0", stream_id_);
-    RETURN_NOT_OK(s.CloneAndPrepend(Format("Init LSN & TxnID generators failed")));
+    s = s.CloneAndPrepend(Format(
+          "Init LSN & TxnID generators failed for stream_id: $0", stream_id_));
+    LOG_WITH_PREFIX(DFATAL) << s;
+    return s;
   }
 
   s = CreatePublicationRefreshTabletQueue();
   if (!s.ok()) {
-    LOG_WITH_PREFIX(ERROR) << "Could not create and initialize Publication Refresh Tablet Queue";
-    RETURN_NOT_OK(s);
+    s = s.CloneAndPrepend("Could not create and initialize Publication Refresh Tablet Queue");
+    LOG_WITH_PREFIX(DFATAL) << s;
+    return s;
   }
 
   std::ostringstream oss;

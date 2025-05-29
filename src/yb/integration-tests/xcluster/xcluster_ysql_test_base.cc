@@ -24,17 +24,19 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/server/server_base.h"
+
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/thread.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -339,7 +341,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
   bool verify_schema_name =
       !schema_name.empty() && !FLAGS_TEST_create_table_with_empty_pgschema_name;
   return GetYsqlTable(
-      cluster, namespace_name, schema_name, table_name, true /* verify_table_name */,
+      cluster, namespace_name, schema_name, table_name, /*verify_table_name=*/true,
       verify_schema_name);
 }
 
@@ -610,18 +612,19 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
   return VerifyWrittenRecords(producer_table->name(), consumer_table->name());
 }
 
-Status XClusterYsqlTestBase::VerifyWrittenRecords(ExpectNoRecords expect_no_records) {
-    return VerifyWrittenRecords(
-        producer_table_->name(), consumer_table_->name(), expect_no_records);
+Status XClusterYsqlTestBase::VerifyWrittenRecords(
+    ExpectNoRecords expect_no_records, CheckColumnCounts check_col_counts) {
+  return VerifyWrittenRecords(
+      producer_table_->name(), consumer_table_->name(), expect_no_records, check_col_counts);
 }
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
     const YBTableName& producer_table_name, const YBTableName& consumer_table_name,
-    ExpectNoRecords expect_no_records) {
+    ExpectNoRecords expect_no_records, CheckColumnCounts check_col_counts) {
   int prod_row_count, cons_row_count = 0, prod_col_count = 0, cons_col_count = 0;
   const Status s = LoggedWaitFor(
       [this, producer_table_name, consumer_table_name, &prod_row_count, &cons_row_count,
-          &prod_col_count, &cons_col_count, expect_no_records]()-> Result<bool> {
+       &prod_col_count, &cons_col_count, expect_no_records, check_col_counts]() -> Result<bool> {
         auto producer_results =
             VERIFY_RESULT(ScanToStrings(producer_table_name, &producer_cluster_));
         prod_row_count = PQntuples(producer_results.get());
@@ -638,6 +641,9 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
         }
         prod_col_count = PQnfields(producer_results.get());
         cons_col_count = PQnfields(consumer_results.get());
+        SCHECK(
+            !check_col_counts || prod_col_count == cons_col_count, Corruption,
+            Format("Expected $0 columns but got $1 columns", prod_col_count, cons_col_count));
         int col_count = std::min(prod_col_count, cons_col_count);
         for (int row = 0; row < prod_row_count; ++row) {
           for (int col = 0; col < col_count; ++col) {
@@ -848,15 +854,20 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
 
   // Verify single value inserts are replicated correctly and can be read
   ASSERT_OK(InsertRowsInProducer(51, 52));
-  ASSERT_OK(VerifyWrittenRecords());
+  auto verify_written_records_without_column_counts = [this]() {
+    // Don't check column counts as they are different now.
+    return VerifyWrittenRecords(ExpectNoRecords::kFalse, CheckColumnCounts::kFalse);
+  };
+
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // 5. Verify batch inserts are replicated correctly and can be read
   ASSERT_OK(InsertGenerateSeriesOnProducer(52, 100));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // Verify transactional inserts are replicated correctly and can be read
   ASSERT_OK(InsertTransactionalBatchOnProducer(101, 150));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // Alter the table on the producer side by adding the same column and insert some rows
   // and verify
@@ -910,7 +921,7 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
   ASSERT_OK(consumer_cluster()->FlushTablets());
 
   ASSERT_OK(InsertRowsInProducer(301, 350));
-  ASSERT_OK(VerifyWrittenRecords(nullptr, nullptr));
+  ASSERT_OK(verify_written_records_without_column_counts());
 }
 
 Status XClusterYsqlTestBase::SetUpWithParams(
@@ -1154,5 +1165,19 @@ Status XClusterYsqlTestBase::EnablePITROnClusters() {
         2s * kTimeMultiplier, 20h));
     return Status::OK();
   });
+}
+
+Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
+  auto yb_admin_client = std::make_unique<tools::ClusterAdminClient>(
+      consumer_cluster_.mini_cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  RETURN_NOT_OK(yb_admin_client->Init());
+  auto j = VERIFY_RESULT(yb_admin_client->ListSnapshotSchedules(SnapshotScheduleId::Nil()));
+  auto snapshot_schedule_id =
+      VERIFY_RESULT(SnapshotScheduleIdFromString(j["schedules"].GetArray()[0]["id"].GetString()));
+  auto sink = RegexWaiterLogSink(".*Marking restoration.*as complete in sys catalog");
+  RETURN_NOT_OK(yb_admin_client->RestoreSnapshotSchedule(snapshot_schedule_id, time));
+  RETURN_NOT_OK(sink.WaitFor(300s));
+  LOG(INFO) << "PITR has been completed";
+  return Status::OK();
 }
 }  // namespace yb

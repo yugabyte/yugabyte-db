@@ -13,6 +13,8 @@
 
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 
+#include <rapidjson/error/en.h>
+
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
@@ -21,6 +23,7 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(enable_xcluster_api_v2);
@@ -216,6 +219,25 @@ Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
   LOG(INFO) << ss.str();
 
   return Status::OK();
+}
+
+Result<xcluster::SafeTimeBatch>
+XClusterDDLReplicationTestBase::FetchSafeTimeBatchFromReplicatedDdls() {
+  auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  RETURN_NOT_OK(tserver::XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(&conn));
+  return tserver::XClusterDDLQueueHandler::FetchSafeTimeBatchFromReplicatedDdls(&conn);
+}
+
+Status XClusterDDLReplicationTestBase::StepDownDdlQueueTablet(Cluster& cluster) {
+  auto ddl_queue_table = VERIFY_RESULT(GetYsqlTable(
+      &cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  RETURN_NOT_OK(cluster.client_->GetTabletsFromTableId(ddl_queue_table.table_id(), 1, &tablets));
+  DCHECK_EQ(tablets.size(), 1);
+
+  const auto leader_peer =
+      VERIFY_RESULT(GetLeaderPeerForTablet(cluster.mini_cluster_.get(), tablets[0].tablet_id()));
+  return StepDown(leader_peer, /*new_leader_uuid=*/"", ForceStepDown::kTrue);
 }
 
 Status XClusterDDLReplicationTestBase::CreateInitialColocatedTable() {

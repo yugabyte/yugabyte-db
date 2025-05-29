@@ -140,6 +140,7 @@ extern PGDLLIMPORT double yb_local_transfer_cost;
 extern PGDLLIMPORT double yb_seek_cost_factor;
 extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool yb_enable_geolocation_costing;
+
 /*
  * YB: If true, we will always prefer batched nested loop join plans over
  * nested loop join plans.

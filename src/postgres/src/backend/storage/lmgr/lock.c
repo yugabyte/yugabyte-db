@@ -385,7 +385,9 @@ GetYBObjectLockId(const LOCKTAG *locktag)
 	return (YbcObjectLockId)
 	{
 		.db_oid = locktag->locktag_field1,
-		.object_oid = locktag->locktag_field2,
+			.relation_oid = locktag->locktag_field2,
+			.object_oid = locktag->locktag_field3,
+			.object_sub_oid = locktag->locktag_field4,
 	};
 }
 
@@ -678,7 +680,11 @@ LockHasWaiters(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, signaling logic is executed
+		 * on the tserver side. And when object locking is disabled, we revert
+		 * back to older behavior of skipping the signal.
+		 */
 		return false;
 	}
 
@@ -789,12 +795,6 @@ LockAcquire(const LOCKTAG *locktag,
 			bool sessionLock,
 			bool dontWait)
 {
-	if (!YBIsPgLockingEnabled())
-	{
-		/* Locking is handled separately by YugaByte. */
-		return LOCKACQUIRE_OK;
-	}
-
 	return LockAcquireExtended(locktag, lockmode, sessionLock, dontWait,
 							   true, NULL);
 }
@@ -836,12 +836,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/*
-		 * Oids < FirstNormalObjectId seem to be reserved for both manual assignment and assignment
-		 * during initdb. Hence, lock requests corresponding to user objects/tables would have oids
-		 * greater than FirstNormalObjectId. */
-		if (locktag->locktag_field2 >= FirstNormalObjectId)
-			HandleYBStatus(YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode));
+		HandleYBStatus(YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode));
 		return LOCKACQUIRE_OK;
 	}
 
@@ -1845,7 +1840,11 @@ MarkLockClear(LOCALLOCK *locallock)
 {
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, tserver catalog cache is
+		 * refreshed on exclusive lock release path. When disabled, we revert
+		 * to older behavior of ignoring it.
+		 */
 		return;
 	}
 
@@ -2036,7 +2035,11 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, YB releases all object
+		 * locks on transaction finish. When disbaled, we revert to older
+		 * behavior of skipping all object lock/release operations.
+		 */
 		return true;
 	}
 
@@ -2248,7 +2251,11 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, we release all object locks
+		 * on transaction finish. When disbaled, we revert back to older
+		 * behavior of skipping all object lock/release operations.
+		 */
 		return;
 	}
 
@@ -2531,7 +2538,10 @@ LockReleaseSession(LOCKMETHODID lockmethodid)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27120): Propagate call to tserver once support for session
+		 * object locking is enabled.
+		 */
 		return;
 	}
 
@@ -2564,7 +2574,11 @@ LockReleaseCurrentOwner(LOCALLOCK **locallocks, int nlocks)
 {
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27156): In YB, locks are managed at the tserver. Figure out
+		 * a mechanism to acheive the same functionality as below when object
+		 * locking feature is enabled.
+		 */
 		return;
 	}
 
@@ -2666,7 +2680,13 @@ LockReassignCurrentOwner(LOCALLOCK **locallocks, int nlocks)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, object locks are tied to a
+		 * docdb transaction. There is no way to reassign locks, will need
+		 * some rework if we deem this to be necessary at some point. When
+		 * disbaled, we revert back to older behavior of skipping all object
+		 * lock/release operations.
+		 */
 		return;
 	}
 
@@ -3019,7 +3039,12 @@ GetLockConflicts(const LOCKTAG *locktag, LOCKMODE lockmode, int *countp)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27119): When object locking is enabled in YB, we could still
+		 * return an empty set if the upstream code calls the tserver with the
+		 * intended lock mode to wait on. When disabled, we revert back to
+		 * older behavior of skipping all object lock/release operations.
+		 */
 		vxids = (VirtualTransactionId *)
 			palloc0(sizeof(VirtualTransactionId));
 		vxids[0].backendId = InvalidBackendId;
@@ -3427,7 +3452,11 @@ AtPrepare_Locks(void)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27156): In YB, locks are managed at the tserver. Figure out
+		 * a mechanism to acheive the same functionality as below when object
+		 * locking feature is enabled.
+		 */
 		return;
 	}
 
@@ -4585,7 +4614,10 @@ VirtualXactLockTableInsert(VirtualTransactionId vxid)
 {
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * Immaterial of whether object locking is enabled in YB or not, we
+		 * don't acquire locks on any shared memory structures.
+		 */
 		return;
 	}
 	Assert(VirtualTransactionIdIsValid(vxid));
@@ -4616,7 +4648,10 @@ VirtualXactLockTableCleanup(void)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * Immaterial of whether object locking is enabled in YB or not, we
+		 * don't acquire locks on any shared memory structures.
+		 */
 		return;
 	}
 
@@ -4723,7 +4758,10 @@ VirtualXactLock(VirtualTransactionId vxid, bool wait)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * Immaterial of whether object locking is enabled in YB or not, we
+		 * don't acquire locks on any shared memory structures.
+		 */
 		return false;
 	}
 
@@ -4843,7 +4881,10 @@ LockWaiterCount(const LOCKTAG *locktag)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27156): In YB, locks are managed at the tserver. Figure out
+		 * if this function needs to be supported at the first place.
+		 */
 		return 0;
 	}
 

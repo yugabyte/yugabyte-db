@@ -35,7 +35,6 @@ public class TestPgRegressAggregates extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_enable_inheritance", "true");
     appendToYsqlPgConf(flags, TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
     return flags;
   }

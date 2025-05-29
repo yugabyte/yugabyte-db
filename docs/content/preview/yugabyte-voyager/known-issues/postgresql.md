@@ -1550,6 +1550,8 @@ Note that if the table is colocated, this hotspot concern can safely be ignored,
 
 To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. The new sharding key will be a modulo of the hash of the timestamp column value, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
 
+To fully implement this solution also requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, include the new sharding key values in the query filters to benefit from distributed execution.
+
 Ensure that the index on the column is configured to be range-sharded.
 
 **Example**
@@ -1563,10 +1565,17 @@ CREATE TABLE orders (
     created_at timestamp
 );
 CREATE INDEX idx_orders_created ON orders(created_at DESC);
+```
 
+And a related read query might look like the following:
+
+```sql
+SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
 ```
 
 Suggested change to the schema is to add the sharding key as the modulo of the hash of the timestamp column value, which gives a key in a range (for example, 0-15). This can change depending on the use case. This key will be used to distribute the data among various tablets and hence help in distributing the data evenly.
+
+In addition, modify range queries to include the modulo of the hash of timestamp column value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
 
 ```sql
 CREATE TABLE orders (
@@ -1574,7 +1583,9 @@ CREATE TABLE orders (
     ...
     created_at timestamp
 );
-CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) ASC, created_at DESC);
+CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) HASH, created_at DESC);
+
+SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- fetch orders for the previous month
 ```
 
 ---
@@ -1612,7 +1623,7 @@ CREATE INDEX idx_orders_order_id on orders(order_id);
 
 **Description**:
 
-In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](./../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns. Avoid using low-cardinality columns, such as boolean values, ENUMs, or days of the week, as sharding keys, as they result in data being distributed across only a few tablets.
 
@@ -1683,7 +1694,7 @@ CREATE INDEX idx_order_status_order_id on orders (order_id, status); --reorderin
 
 **Description**:
 
-In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](./../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
 
@@ -1738,7 +1749,7 @@ CREATE INDEX idx_users_middle_name_user_id on users (middle_name ASC, user_id);
 
 **Description**:
 
-In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](./../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
 

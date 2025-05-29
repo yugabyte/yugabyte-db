@@ -70,7 +70,8 @@ typedef struct YbTerminatedQuery
 } YbTerminatedQuery;
 
 /* Structure defining the circular buffer used to store terminated queries in the shared memory. */
-typedef struct YbTerminatedQueries {
+typedef struct YbTerminatedQueries
+{
 	size_t		curr;
 	YbTerminatedQuery queries[YB_TERMINATED_QUERIES_SIZE];
 } YbTerminatedQueriesBuffer;
@@ -98,17 +99,17 @@ YbTerminatedQueriesShmemInit(void)
 {
 	bool		found;
 
-	yb_terminated_queries_lock = (LWLock *)ShmemInitStruct("YbTerminatedQueries Lock",
-														   sizeof(LWLock), &found);
+	yb_terminated_queries_lock = (LWLock *) ShmemInitStruct("YbTerminatedQueries Lock",
+															sizeof(LWLock), &found);
 
 	if (!found)
 		LWLockInitialize(yb_terminated_queries_lock,
 						 LWTRANCHE_YB_TERMINATED_QUERIES);
 
 	yb_terminated_queries = (YbTerminatedQueriesBuffer *)
-									ShmemInitStruct("YbTerminatedQueries",
-													sizeof(YbTerminatedQueriesBuffer),
-													&found);
+		ShmemInitStruct("YbTerminatedQueries",
+						sizeof(YbTerminatedQueriesBuffer),
+						&found);
 
 	if (!found)
 	{
@@ -141,7 +142,7 @@ yb_report_query_termination(char *message, int pid)
 
 			LWLockAcquire(yb_terminated_queries_lock, LW_EXCLUSIVE);
 
-			curr_idx = yb_terminated_queries->curr%YB_TERMINATED_QUERIES_SIZE;
+			curr_idx = yb_terminated_queries->curr % YB_TERMINATED_QUERIES_SIZE;
 			curr_entry = &yb_terminated_queries->queries[curr_idx];
 
 #define SUB_SET(shfld, befld) curr_entry->shfld = befld
@@ -194,6 +195,7 @@ yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries)
 	}
 
 	size_t		db_terminated_queries = 0;
+
 	for (size_t idx = 0; idx < queries_size; idx++)
 		db_terminated_queries += yb_terminated_queries->queries[idx].databaseoid == db_oid ? 1 : 0;
 
@@ -201,6 +203,7 @@ yb_fetch_terminated_queries(Oid db_oid, size_t *num_queries)
 	YbTerminatedQuery *queries = (YbTerminatedQuery *) palloc(total_expected_size);
 
 	size_t		counter = 0;
+
 	for (size_t idx = 0; idx < queries_size; idx++)
 	{
 		if (yb_terminated_queries->queries[idx].databaseoid == db_oid)
@@ -276,6 +279,7 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 	Oid			db_oid = PG_ARGISNULL(0) ? -1 : PG_GETARG_OID(0);
 	size_t		num_queries = 0;
 	YbTerminatedQuery *queries = yb_fetch_terminated_queries(db_oid, &num_queries);
+
 	for (size_t i = 0; i < num_queries; i++)
 	{
 		if (has_privs_of_role(GetUserId(), queries[i].userid) ||

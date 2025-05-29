@@ -1196,11 +1196,21 @@ Foreign-key constraints:
     "test_foreign_constraints_id1_fkey" FOREIGN KEY (id1) REFERENCES test_primary_constraints(id)
 Child tables: test_foreign_constraints_inh
 
-/* YB: pending issue with inherits #26216 should not attempt to propagate to child in this case
 ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id1_fkey;
 \d+ test_foreign_constraints
+                         Table "public.test_foreign_constraints"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id1    | integer |           |          |         | plain   |              | 
+Child tables: test_foreign_constraints_inh
+
 \d+ test_foreign_constraints_inh
-*/ -- YB
+                       Table "public.test_foreign_constraints_inh"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id1    | integer |           |          |         | plain   |              | 
+Inherits: test_foreign_constraints
+
 DROP TABLE test_foreign_constraints_inh;
 DROP TABLE test_foreign_constraints;
 DROP TABLE test_primary_constraints;

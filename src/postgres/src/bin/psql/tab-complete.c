@@ -2637,7 +2637,7 @@ psql_completion(const char *text, int start, int end)
 					  "PROCEDURE", "PROCEDURAL LANGUAGE", "PUBLICATION", "ROLE",
 					  "ROUTINE", "RULE", "SCHEMA", "SEQUENCE", "SERVER",
 					  "STATISTICS", "SUBSCRIPTION", "TABLE",
-					  "TABLEGROUP",	/* YB */
+					  "TABLEGROUP", /* YB */
 					  "TABLESPACE", "TEXT SEARCH", "TRANSFORM FOR",
 					  "TRIGGER", "TYPE", "VIEW");
 	else if (Matches("COMMENT", "ON", "ACCESS", "METHOD"))
@@ -3896,7 +3896,7 @@ psql_completion(const char *text, int start, int end)
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_sequences);
 		else if (TailMatches("TABLE"))
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_grantables);
-		else if (TailMatches("TABLEGROUP"))	/* YB */
+		else if (TailMatches("TABLEGROUP")) /* YB */
 			COMPLETE_WITH_QUERY(Query_for_list_of_tablegroups);
 		else if (TailMatches("TABLESPACE"))
 			COMPLETE_WITH_QUERY(Query_for_list_of_tablespaces);

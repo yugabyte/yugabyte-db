@@ -225,7 +225,7 @@ class TransactionStatusController {
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
   struct TransactionInfo {
     MicrosTime start_us;
-    boost::optional<PgSessionRequestVersion> pg_session_req_version = boost::none;
+    std::optional<PgSessionRequestVersion> pg_session_req_version;
 
     std::string ToString() const {
       return YB_STRUCT_TO_STRING(start_us, pg_session_req_version);

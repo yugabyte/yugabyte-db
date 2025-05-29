@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "catalog/partition.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_amop_d.h"
 #include "catalog/pg_amproc_d.h"
@@ -29,6 +30,7 @@
 #include "catalog/pg_foreign_data_wrapper_d.h"
 #include "catalog/pg_foreign_server_d.h"
 #include "catalog/pg_foreign_table_d.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace_d.h"
 #include "catalog/pg_opclass_d.h"
 #include "catalog/pg_operator_d.h"
@@ -156,9 +158,10 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_REVOKE) \
 	X(CMDTAG_SECURITY_LABEL)
 
+/* Struct Definitions. */
 typedef struct YbNewRelMapEntry
 {
-	char *name;
+	char	   *name;
 	Oid			relfile_oid;
 	Oid			colocation_id;
 	bool		is_index;
@@ -166,17 +169,21 @@ typedef struct YbNewRelMapEntry
 
 typedef struct YbEnumLabelMapEntry
 {
-	Oid enum_oid;
-	Oid label_oid;
-	char *label_name;
+	Oid			enum_oid;
+	Oid			label_oid;
+	char	   *label_name;
 } YbEnumLabelMapEntry;
 
 typedef struct YbNameToOidMapEntry
 {
-	char       *schema;
-	char       *name;
-	Oid         oid;
+	char	   *schema;
+	char	   *name;
+	Oid			oid;
 } YbNameToOidMapEntry;
+
+/* Forward Declarations. */
+static bool ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list, bool is_table_rewrite);
+
 
 bool
 IsIndex(Relation rel)
@@ -221,26 +228,45 @@ static bool
 IsSequence(Oid rel_oid)
 {
 	Relation	rel = RelationIdGetRelation(rel_oid);
+
 	if (!rel)
 		elog(ERROR, "Could not find relation with OID %d", rel_oid);
 
-	const char relkind = rel->rd_rel->relkind;
+	const char	relkind = rel->rd_rel->relkind;
+
 	RelationClose(rel);
 	return relkind == RELKIND_SEQUENCE;
+}
+
+void
+ReplicateInheritedRelations(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
+{
+	List	   *children = find_inheritance_children(rel_oid, NoLock);
+	ListCell   *cell;
+
+	foreach(cell, children)
+	{
+		Oid			child_oid = lfirst_oid(cell);
+
+		ShouldReplicateNewRelation(child_oid, new_rel_list, is_table_rewrite);
+	}
 }
 
 /*
  * This function handles both new relation from create table/index,
  * and also new relations as a result of table rewrites.
+ * Returns whether the relation should be replicated (eg false if
+ * table is a temp table or a primary key index).
  *
  * This function does not handle sequences.
  */
 bool
-ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
+ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
 {
 	Relation	rel = RelationIdGetRelation(rel_oid);
+
 	if (!rel)
-		elog(ERROR, "Could not find relation with OID %d", rel_oid);
+		elog(ERROR, "Could not find relation with OID %u", rel_oid);
 
 	/* Ignore temporary tables. */
 	if (!IsYBBackedRelation(rel))
@@ -260,13 +286,69 @@ ShouldReplicateNewRelation(Oid rel_oid, List **new_rel_list)
 
 	new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
 	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
-	new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel);
+	new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel, is_table_rewrite);
 	new_rel_entry->is_index = IsIndex(rel);
 
 	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
 
-  RelationClose(rel);
+	RelationClose(rel);
+
+	/* Also loop over children relations. */
+	ReplicateInheritedRelations(rel_oid, new_rel_list, is_table_rewrite);
+
 	return true;
+}
+
+void
+HandleAlterColumnAddIndex(AlterTableCmd *subcmd, Oid rel_oid,
+						  List **new_rel_list)
+{
+	/* Need to fetch the index oid from the index name. */
+	IndexStmt  *index = (IndexStmt *) subcmd->def;
+
+	/* Skip primary keys for YB. */
+	if (index->primary)
+		return;
+
+	if (index->idxname == NULL)
+	{
+		/*
+		 * Default name is being used. It is difficult for us to get the name
+		 * that did end up getting picked for this index. In this case, we
+		 * will just collect info for all indexes on the table.
+		 */
+		Relation	rel = RelationIdGetRelation(rel_oid);
+		List	   *indexes = RelationGetIndexList(rel);
+
+		RelationClose(rel);
+		ListCell   *cell;
+
+		foreach(cell, indexes)
+		{
+			Oid			index_oid = lfirst_oid(cell);
+
+			ShouldReplicateNewRelation(index_oid, new_rel_list, /* is_table_rewrite= */ false);
+		}
+
+		list_free(indexes);
+		return;
+	}
+
+	/* We do have the index name, so can use that. */
+	Relation	rel = RelationIdGetRelation(rel_oid);
+	Oid			index_oid = get_relname_relid(index->idxname,
+											  RelationGetNamespace(rel));
+
+	RelationClose(rel);
+
+	if (index_oid == InvalidOid)
+		elog(ERROR,
+			 "Could not find index with name %s for parent relation %d",
+			 index->idxname,
+			 rel_oid);
+
+	/* Once we have the OID, we can capture its info. */
+	ShouldReplicateNewRelation(index_oid, new_rel_list, /* is_table_rewrite= */ false);
 }
 
 void
@@ -289,31 +371,18 @@ CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
 			switch (subcmd->subtype)
 			{
 				case AT_AlterColumnType:
-				{
-					if (is_table_rewrite)
-						elog(ERROR, "Table Rewrite ALTER COLUMN TYPE is not "
-									"supported\n");
-					break;
-				}
+					{
+						if (is_table_rewrite)
+							elog(ERROR, "Table Rewrite ALTER COLUMN TYPE is not "
+								 "supported\n");
+						break;
+					}
 				case AT_AddIndex:
 				case AT_ReAddIndex:
-				{
-					/* Need to fetch the index oid from the index name. */
-					IndexStmt *index = (IndexStmt *) subcmd->def;
-
-					/* Skip processing the index if null (eg adding primary key). */
-					if (index->indexOid == InvalidOid)
+					{
+						HandleAlterColumnAddIndex(subcmd, rel_oid, new_rel_list);
 						break;
-
-					Relation rel = RelationIdGetRelation(rel_oid);
-					Oid index_oid = get_relname_relid(index->idxname,
-																						RelationGetNamespace(rel));
-					RelationClose(rel);
-
-					/* Once we have the oid, we can capture its info. */
-					ShouldReplicateNewRelation(index_oid, new_rel_list);
-					break;
-				}
+					}
 				default:
 					break;
 			}
@@ -336,13 +405,8 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
-	/*
-	 * Also get colocation_id from yb_table_properties here.
-	 * Ideally we could use GetColocationIdFromRelation, but that returns stale
-	 * colocation_id for these rewritten indexes..
-	 */
 	appendStringInfo(&query_buf,
-					 "SELECT c.oid, (yb_table_properties(c.oid)).colocation_id FROM pg_class c "
+					 "SELECT c.oid FROM pg_class c "
 					 "JOIN pg_indexes i ON c.relname = i.indexname "
 					 "WHERE i.tablename = '%s' AND i.schemaname = '%s';",
 					 rewritten_table_name, schema_name);
@@ -364,16 +428,8 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	{
 		HeapTuple	spi_tuple = SPI_tuptable->vals[i];
 		Oid			rewritten_index_oid = SPI_GetOid(spi_tuple, 1);
-		Oid			colocation_id = SPI_GetOidIfExists(spi_tuple, 2);
-		Relation	rewritten_index = RelationIdGetRelation(rewritten_index_oid);
 
-		YbNewRelMapEntry *rewritten_index_entry = palloc(sizeof(struct YbNewRelMapEntry));
-		rewritten_index_entry->name = pstrdup(RelationGetRelationName(rewritten_index));
-		rewritten_index_entry->relfile_oid = YbGetRelfileNodeId(rewritten_index);
-		rewritten_index_entry->colocation_id = colocation_id;
-		rewritten_index_entry->is_index = true;
-		*new_rel_list = lappend(*new_rel_list, rewritten_index_entry);
-		RelationClose(rewritten_index);
+		ShouldReplicateNewRelation(rewritten_index_oid, new_rel_list, /* is_table_rewrite */ true);
 	}
 
 	SPI_processed = saved_processed;
@@ -390,8 +446,9 @@ ProcessNewRelationsList(JsonbParseState *state, List **rel_list)
 	AddJsonKey(state, "new_rel_map");
 	(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
 
-	ListCell *l;
-	foreach (l, *rel_list)
+	ListCell   *l;
+
+	foreach(l, *rel_list)
 	{
 		YbNewRelMapEntry *entry = (YbNewRelMapEntry *) lfirst(l);
 
@@ -433,23 +490,26 @@ static void
 GetEnumLabels(Oid enum_oid, List **enum_label_list)
 {
 	StringInfoData query;
+
 	initStringInfo(&query);
 	appendStringInfo(&query,
 					 "SELECT enumlabel, oid FROM pg_catalog.pg_enum WHERE "
 					 "enumtypid = %u",
 					 enum_oid);
-	int exec_result = SPI_execute(query.data, /* readonly */ true, /* tcount */ 0);
+	int			exec_result = SPI_execute(query.data, /* readonly */ true, /* tcount */ 0);
+
 	if (exec_result != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_result, query.data);
 	pfree(query.data);
 
 	for (int i = 0; i < SPI_processed; i++)
 	{
-		HeapTuple tuple = SPI_tuptable->vals[i];
-		TupleDesc tupdesc = SPI_tuptable->tupdesc;
+		HeapTuple	tuple = SPI_tuptable->vals[i];
+		TupleDesc	tupdesc = SPI_tuptable->tupdesc;
 
 		YbEnumLabelMapEntry *enum_label_entry =
 			palloc(sizeof(YbEnumLabelMapEntry));
+
 		enum_label_entry->enum_oid = enum_oid;
 		enum_label_entry->label_name =
 			SPI_GetText(tuple, SPI_fnumber(tupdesc, "enumlabel"));
@@ -465,6 +525,7 @@ AddNameToOidInfo(char *schema, char *name, Oid oid,
 {
 	YbNameToOidMapEntry *name_to_oid_info_entry =
 		palloc(sizeof(YbNameToOidMapEntry));
+
 	name_to_oid_info_entry->name = name;
 	name_to_oid_info_entry->schema = pstrdup(schema);
 	name_to_oid_info_entry->oid = oid;
@@ -475,7 +536,8 @@ AddNameToOidInfo(char *schema, char *name, Oid oid,
 static void
 AddSequenceInfo(Oid pg_class_oid, char *schema, List **sequence_info_list)
 {
-	char       *name = get_rel_name(pg_class_oid);
+	char	   *name = get_rel_name(pg_class_oid);
+
 	if (!name)
 		elog(ERROR, "Unable to find name of sequence with pg_class OID %u",
 			 pg_class_oid);
@@ -488,7 +550,8 @@ AddSequenceInfo(Oid pg_class_oid, char *schema, List **sequence_info_list)
 static void
 AddTypeInfo(Oid pg_type_oid, char *schema, List **type_info_list)
 {
-	char       *name = get_typname(pg_type_oid);
+	char	   *name = get_typname(pg_type_oid);
+
 	if (!name)
 		elog(ERROR, "Unable to find name of type with pg_type OID %u",
 			 pg_type_oid);
@@ -500,9 +563,9 @@ AddTypeInfo(Oid pg_type_oid, char *schema, List **type_info_list)
 
 typedef struct YbCommandInfo
 {
-	Oid         oid;
-	char       *command_tag_name;
-	char       *schema;             /* may be NULL */
+	Oid			oid;
+	char	   *command_tag_name;
+	char	   *schema;			/* may be NULL */
 	CollectedCommand *command;
 } YbCommandInfo;
 
@@ -510,24 +573,29 @@ static int
 GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 {
 	StringInfoData query_buf;
+
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf,
 					 "SELECT objid, command_tag, schema_name, command FROM "
 					 "pg_catalog.pg_event_trigger_ddl_commands()");
-	int			exec_res = SPI_execute(query_buf.data, /* readonly */ true,
-									   /* tcount */ 0);
+	int			exec_res = SPI_execute(query_buf.data,
+									   true,	/* readonly */
+									   0);	/* tcount */
+
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
 	YbCommandInfo *info_array = palloc(SPI_processed * sizeof(YbCommandInfo));
-	int num_of_rows = SPI_processed;
+	int			num_of_rows = SPI_processed;
+
 	for (int row = 0; row < num_of_rows; row++)
 	{
-		HeapTuple   spi_tuple = SPI_tuptable->vals[row];
+		HeapTuple	spi_tuple = SPI_tuptable->vals[row];
 		YbCommandInfo *info = &info_array[row];
+
 		info->command_tag_name =
 			SPI_GetText(spi_tuple, DDL_END_COMMAND_TAG_COLUMN_ID);
-		CommandTag command_tag = GetCommandTagEnum(info->command_tag_name);
+		CommandTag	command_tag = GetCommandTagEnum(info->command_tag_name);
 
 		/* Only commands that don't have an oid are GRANT, REVOKE */
 		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE)
@@ -560,8 +628,9 @@ PushEnumLabelMap(JsonbParseState *state, char *map_key,
 	AddJsonKey(state, map_key);
 	(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
 
-	ListCell *l;
-	foreach (l, enum_label_list)
+	ListCell   *l;
+
+	foreach(l, enum_label_list)
 	{
 		YbEnumLabelMapEntry *entry = (YbEnumLabelMapEntry *) lfirst(l);
 
@@ -596,8 +665,9 @@ PushNameToOidMap(JsonbParseState *state, char *map_key,
 	AddJsonKey(state, map_key);
 	(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
 
-	ListCell *l;
-	foreach (l, name_to_oid_info_list)
+	ListCell   *l;
+
+	foreach(l, name_to_oid_info_list)
 	{
 		YbNameToOidMapEntry *entry = (YbNameToOidMapEntry *) lfirst(l);
 
@@ -626,36 +696,38 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	 * context, which would be inconvenient .)
 	 */
 	YbCommandInfo *info_array;
-	int num_of_rows = GetSourceEventTriggerDDLCommands(&info_array);
+	int			num_of_rows = GetSourceEventTriggerDDLCommands(&info_array);
 
 	List	   *new_rel_list = NIL;
-	List       *enum_label_list = NIL;
-	List       *sequence_info_list = NIL;
-	List       *type_info_list = NIL;
+	List	   *enum_label_list = NIL;
+	List	   *sequence_info_list = NIL;
+	List	   *type_info_list = NIL;
+
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
 	 * will set this to true and replicate the entire query string.
 	 */
 	bool		should_replicate_ddl = false;
+
 	for (int row = 0; row < num_of_rows; row++)
 	{
 		YbCommandInfo *info = &info_array[row];
-		Oid         obj_id = info->oid;
+		Oid			obj_id = info->oid;
 		const char *command_tag_name = info->command_tag_name;
-		CommandTag  command_tag = GetCommandTagEnum(info->command_tag_name);
-		char       *schema = info->schema;
+		CommandTag	command_tag = GetCommandTagEnum(info->command_tag_name);
+		char	   *schema = info->schema;
 
 		/*
 		 * The below works for objects with names but not nameless parts.
 		 * TODO(#25885): add code to handle nameless parts.
 		 */
-		bool is_temporary_object = IsTempSchema(schema);
+		bool		is_temporary_object = IsTempSchema(schema);
 
 		if (command_tag == CMDTAG_CREATE_TABLE ||
 			command_tag == CMDTAG_CREATE_INDEX)
 		{
 			should_replicate_ddl |=
-				ShouldReplicateNewRelation(obj_id, &new_rel_list);
+				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ false);
 		}
 		else if (command_tag == CMDTAG_CREATE_TYPE ||
 				 command_tag == CMDTAG_ALTER_TYPE)
@@ -695,8 +767,9 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			 * resolving issue #24007.
 			 */
 			CollectedCommand *cmd = info->command;
+
 			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
-									/* is_table_rewrite */ true,
+									 /* is_table_rewrite */ true,
 									is_temporary_object);
 
 			rewritten_table_oid_list = list_delete_oid(rewritten_table_oid_list, obj_id);
@@ -708,13 +781,14 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			 * of the table is updated to reference this new DocDB table,
 			 */
 			should_replicate_ddl |=
-				ShouldReplicateNewRelation(obj_id, &new_rel_list);
+				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ true);
 
 			/*
 			 * Add all indexes that are associated with this table, as table
 			 * rewrite will also rewrite all dependent index tables.
 			 */
 			const char *schema_name = info->schema;
+
 			ProcessRewrittenIndexes(obj_id, schema_name, &new_rel_list);
 		}
 		else if (command_tag == CMDTAG_ALTER_TABLE ||
@@ -722,8 +796,9 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			/* Perform additional checks on subcommands. */
 			CollectedCommand *cmd = info->command;
+
 			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
-									/* is_table_rewrite */ false,
+									 /* is_table_rewrite */ false,
 									is_temporary_object);
 
 			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
@@ -766,6 +841,13 @@ ProcessSourceEventTriggerTableRewrite()
 	HeapTuple	spi_tuple = SPI_tuptable->vals[0];
 	Oid			rewritten_table_oid = SPI_GetOid(spi_tuple, TABLE_REWRITE_OBJID_COLUMN_ID);
 
+	/* This event trigger doesn't trigger on parent tables, so need to check. */
+	Oid			parent_table_oid = InvalidOid;
+
+	if (has_superclass(rewritten_table_oid))
+		parent_table_oid = get_partition_parent(rewritten_table_oid,
+												 /* even_if_detached= */ true);
+
 	/*
 	 * Add the rewritten table to the list of rewritten tables, so that ddl end
 	 * event triggers can process the rewritten table.
@@ -773,6 +855,8 @@ ProcessSourceEventTriggerTableRewrite()
 	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	rewritten_table_oid_list = lappend_oid(rewritten_table_oid_list, rewritten_table_oid);
+	if (parent_table_oid != InvalidOid)
+		rewritten_table_oid_list = lappend_oid(rewritten_table_oid_list, parent_table_oid);
 	MemoryContextSwitchTo(oldcontext);
 }
 
@@ -783,10 +867,11 @@ ProcessSourceEventTriggerDroppedObjects()
 
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf, "SELECT classid, is_temporary, object_type, "
-								 "schema_name, object_name, address_names FROM "
-								 "pg_catalog.pg_event_trigger_dropped_objects()");
-	int exec_res =
+					 "schema_name, object_name, address_names FROM "
+					 "pg_catalog.pg_event_trigger_dropped_objects()");
+	int			exec_res =
 		SPI_execute(query_buf.data, /* readonly */ true, /* tcount */ 0);
+
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
@@ -796,15 +881,17 @@ ProcessSourceEventTriggerDroppedObjects()
 	 */
 	bool		should_replicate_ddl = false;
 	bool		found_temp = false;
+
 	for (int row = 0; row < SPI_processed; row++)
 	{
 		HeapTuple	spi_tuple = SPI_tuptable->vals[row];
 		Oid			class_id = SPI_GetOid(spi_tuple, SQL_DROP_CLASS_ID_COLUMN_ID);
-		char       *first_address_name = SPI_TextArrayGetElement(spi_tuple,
-			SQL_DROP_ADDRESS_NAMES_COLUMN_ID, 0);
+		char	   *first_address_name = SPI_TextArrayGetElement(spi_tuple,
+																 SQL_DROP_ADDRESS_NAMES_COLUMN_ID, 0);
 
 		/* The following works for named objects */
 		bool		is_temp = SPI_GetBool(spi_tuple, SQL_DROP_IS_TEMP_COLUMN_ID);
+
 		/* And following works for unnamed objects */
 		if (first_address_name && IsTempSchema(first_address_name))
 			is_temp = true;

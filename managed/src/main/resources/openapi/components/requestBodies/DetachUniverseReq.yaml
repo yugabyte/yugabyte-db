@@ -1,0 +1,6 @@
+required: true
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/DetachUniverseSpec.yaml"
+x-yba-api-visibility: internal

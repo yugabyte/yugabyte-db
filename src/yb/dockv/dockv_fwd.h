@@ -41,6 +41,7 @@ class PrimitiveValue;
 class RowPackerV1;
 class RowPackerV2;
 class SchemaPacking;
+class SchemaPackingRegistry;
 class SchemaPackingStorage;
 class SubDocKey;
 class YBPartialRow;

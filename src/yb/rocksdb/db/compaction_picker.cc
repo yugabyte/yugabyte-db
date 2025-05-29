@@ -49,9 +49,9 @@
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 
-DEFINE_UNKNOWN_bool(aggressive_compaction_for_read_amp, false,
-            "Determines if we should compact aggressively to reduce read amplification based on "
-            "number of files alone, without regards to relative sizes of the SSTable files.");
+DEFINE_RUNTIME_bool(aggressive_compaction_for_read_amp, false,
+    "Determines if we should compact aggressively to reduce read amplification based on "
+    "number of files alone, without regards to relative sizes of the SSTable files.");
 
 namespace rocksdb {
 
@@ -1595,8 +1595,8 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
         // if the number of files is greater than level0_file_num_compaction_trigger.
         // This was causing a lot of read/write amplification.
         //
-        // Ideally, we should just remove this block below. For now, putting this
-        // under a gflag.
+        // TODO: this block's conditions should be reworked, refer to the vanilla RocksDB
+        // implementation details.
         if (FLAGS_aggressive_compaction_for_read_amp) {
           // Size amplification and file size ratios are within configured limits.
           // If max read amplification is exceeding configured limits, then force
@@ -1887,9 +1887,9 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
 
   CompactionReason compaction_reason;
   if (max_number_of_files_to_compact == UINT_MAX) {
-    compaction_reason = CompactionReason::kUniversalSortedRunNum;
-  } else {
     compaction_reason = CompactionReason::kUniversalSizeRatio;
+  } else {
+    compaction_reason = CompactionReason::kUniversalSortedRunNum;
   }
   return Compaction::Create(
       vstorage, mutable_cf_options, std::move(inputs), output_level,

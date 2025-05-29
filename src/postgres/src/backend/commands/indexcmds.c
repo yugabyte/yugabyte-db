@@ -1026,7 +1026,7 @@ DefineIndex(Oid relationId,
 
 		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
 		bool		is_colocated_tables_with_tablespace_enabled =
-		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 		/*
 		 * For colocated index tables in a colocation database, the implicit
@@ -1216,7 +1216,8 @@ DefineIndex(Oid relationId,
 		}
 		else if (IsYBRelation(rel))
 		{
-			char *new_name = NULL;
+			char	   *new_name = NULL;
+
 			/* YB: Keeping the gin/hnsw index substitution message silent. */
 			if (strcmp(accessMethodName, "gin") == 0 ||
 				strcmp(accessMethodName, "hnsw") == 0)
@@ -1224,7 +1225,7 @@ DefineIndex(Oid relationId,
 				new_name = psprintf("yb%s", accessMethodName);
 				ereport(LOG,
 						(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
-							new_name, accessMethodName)));
+								new_name, accessMethodName)));
 				accessMethodName = new_name;
 			}
 			else
@@ -1240,7 +1241,7 @@ DefineIndex(Oid relationId,
 				{
 					ereport(NOTICE,
 							(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
-								new_name, accessMethodName)));
+									new_name, accessMethodName)));
 					accessMethodName = new_name;
 				}
 			}
@@ -1457,7 +1458,10 @@ DefineIndex(Oid relationId,
 			{
 				if (key->partattrs[i] == indexInfo->ii_IndexAttrNumbers[j])
 				{
-					/* Matched the column, now what about the collation and equality op? */
+					/*
+					 * Matched the column, now what about the collation and
+					 * equality op?
+					 */
 					Oid			idx_opfamily;
 					Oid			idx_opcintype;
 
@@ -2195,9 +2199,10 @@ DefineIndex(Oid relationId,
 
 		StartTransactionCommand();
 
-		YbDdlMode ddl_mode = (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) ?
-							  YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
-							  YB_DDL_MODE_VERSION_INCREMENT;
+		YbDdlMode	ddl_mode = (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) ?
+			YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
+			YB_DDL_MODE_VERSION_INCREMENT;
+
 		YBIncrementDdlNestingLevel(ddl_mode);
 
 		/* Wait for all backends to have up-to-date version. */

@@ -262,3 +262,56 @@ CREATE SEQUENCE regtest_seq;
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 DROP SEQUENCE regtest_seq;
 COMMIT;
+CREATE TABLE test11(id INT PRIMARY KEY, val TEXT);
+INSERT INTO test11 VALUES (1, 'text');
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+TRUNCATE test11;
+TRUNCATE test11;
+SELECT * FROM test11;
+ id | val 
+----+-----
+(0 rows)
+
+ROLLBACK;
+SELECT * FROM test11;
+ id | val  
+----+------
+  1 | text
+(1 row)
+
+-- Savepoint allowed without any DDL.
+CREATE TABLE test12 (a int primary key, b int);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test12 VALUES (1, 1);
+SAVEPOINT test12_sp;
+INSERT INTO test12 VALUES (2, 2);
+SELECT * FROM test12;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 2
+(2 rows)
+
+ROLLBACK TO SAVEPOINT test12_sp;
+COMMIT;
+SELECT * FROM test12;
+ a | b 
+---+---
+ 1 | 1
+(1 row)
+
+-- DDL after Savepoint disallowed.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test12 VALUES (3, 3);
+SAVEPOINT test12_sp;
+CREATE TABLE test13 (a int primary key, b int);
+ERROR:  interleaving SAVEPOINT & DDL in transaction block not supported by YugaByte yet
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/26734. React with thumbs up to raise its priority.
+ROLLBACK;
+-- Savepoint after DDL disallowed.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TABLE test13 (a int primary key, b int);
+SAVEPOINT test13_sp;
+ERROR:  interleaving SAVEPOINT & DDL in transaction block not supported by YugaByte yet
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/26734. React with thumbs up to raise its priority.
+ROLLBACK;

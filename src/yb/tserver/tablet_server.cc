@@ -238,8 +238,7 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
 
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
-DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
-    "Maximum number of invalidation messages we keep for a given database.");
+DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
 DECLARE_bool(enable_pg_cron);
 
@@ -1055,49 +1054,80 @@ Status TabletServer::GetTserverCatalogMessageLists(
   const auto db_oid = req.db_oid();
   const auto ysql_catalog_version = req.ysql_catalog_version();
   const auto num_catalog_versions = req.num_catalog_versions();
-  DCHECK_GT(db_oid, 0);
-  DCHECK_GT(num_catalog_versions, 0);
+  SCHECK_GT(db_oid, 0, IllegalState, "Invalid db_oid");
+  SCHECK_GT(num_catalog_versions, 0, IllegalState, "Invalid num_catalog_versions");
   auto it = ysql_db_invalidation_messages_map_.find(db_oid);
   if (it == ysql_db_invalidation_messages_map_.end()) {
-    DCHECK_EQ(resp->entries_size(), 0);
+    SCHECK_EQ(resp->entries_size(), 0, IllegalState, "Invalid entries_size");
     LOG(WARNING) << "Could not find messages for database " << db_oid;
     return Status::OK();
   }
   const auto& messages_vec = it->second.queue;
   uint64_t expected_version = ysql_catalog_version + 1;
-  std::set<uint64_t> current_versions;
-  for (const auto& info : messages_vec) {
-    CHECK(current_versions.insert(info.first).second);
-    if (info.first <= ysql_catalog_version) {
-      continue;
+  // Because messages_vec is sorted, we can use std::lower_bound with a custom
+  // comparator function to find expected_version.
+  auto comp = [](const std::pair<uint64_t, std::optional<std::string>>& p,
+                 uint64_t expected_version) {
+                return p.first < expected_version;
+              };
+  auto it2 = std::lower_bound(messages_vec.begin(), messages_vec.end(),
+                              expected_version, comp);
+  // std::lower_bound: returns an iterator pointing to the first element in the range
+  // that is not less than (i.e., greater than or equal to) expected_version.
+  while (it2 != messages_vec.end() && it2->first == expected_version) {
+    auto* entry = resp->add_entries();
+    if (it2->second.has_value()) {
+      entry->set_message_list(it2->second.value());
     }
-    if (info.first == expected_version) {
-      auto* entry = resp->add_entries();
-      if (info.second.has_value()) {
-        entry->set_message_list(info.second.value());
-      }
-      ++expected_version;
-    }
+    ++expected_version;
     if (expected_version > ysql_catalog_version + num_catalog_versions) {
       break;
     }
+    ++it2;
   }
   // We find a consecutive list (without any holes) matching with what the client asks for.
   if (resp->entries_size() == static_cast<int32_t>(num_catalog_versions)) {
     return Status::OK();
   }
 
-  if (resp->entries_size() < static_cast<int32_t>(num_catalog_versions)) {
-    LOG(INFO) << "Could not find a matching consecutive list"
-              << ", db_oid: " << db_oid
-              << ", ysql_catalog_version: " << ysql_catalog_version
-              << ", num_catalog_versions: " << num_catalog_versions
-              << ", current_versions: " << yb::ToString(current_versions)
-              << ", messages_vec.size(): " << messages_vec.size();
-    // Clear any entries that might have matched and added to ensure PG backend
-    // will do a full catalog cache refresh.
-    resp->mutable_entries()->Clear();
+  // The way we populate resp->entries() should ensure this assertion.
+  DCHECK_LT(resp->entries_size(), static_cast<int32_t>(num_catalog_versions));
+  std::set<uint64_t> current_versions;
+  uint64_t last_version = 0;
+  for (const auto& info : messages_vec) {
+    const auto current_version = info.first;
+    SCHECK_LT(last_version, current_version, IllegalState, "Not sorted by catalog version");
+    last_version = current_version;
+    // Because we have verified last_version < current_version, we can assume insert will
+    // be successful.
+    current_versions.insert(current_version);
   }
+  std::string current_versions_str;
+  if (!current_versions.empty()) {
+    auto max_version = *current_versions.rbegin();
+    auto min_version = *current_versions.begin();
+    if (max_version - min_version + 1 > current_versions.size()) {
+      // There are holes from min_version to max_version. Print the entire list
+      // of versions to allow one to find out the holes.
+      current_versions_str = yb::ToString(current_versions);
+    } else {
+      // There are no holes from min_version to max_version. Print a shorthand
+      // rather than the entire list of versions.
+      current_versions_str = Format("[$0--$1]", min_version, max_version);
+    }
+  } else {
+    current_versions_str = "[]";
+  }
+  LOG(INFO) << "Could not find a matching consecutive list"
+            << ", db_oid: " << db_oid
+            << ", ysql_catalog_version: " << ysql_catalog_version
+            << ", num_catalog_versions: " << num_catalog_versions
+            << ", entries_size: " << resp->entries_size()
+            << ", current_versions: " << current_versions_str
+            << ", messages_vec.size(): " << messages_vec.size();
+  // Clear any entries that might have matched and added to ensure PG backend
+  // will do a full catalog cache refresh.
+  resp->mutable_entries()->Clear();
   return Status::OK();
 }
 
@@ -1214,10 +1244,9 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
   InvalidatePgTableCache();
 }
 
-void TabletServer::SetYsqlDBCatalogVersions(
+void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   const tserver::DBCatalogVersionDataPB& db_catalog_version_data) {
   DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
-  std::lock_guard l(lock_);
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
@@ -1472,12 +1501,19 @@ void TabletServer::UpdateCatalogVersionsFingerprintUnlocked() {
                     << ", new fingerprint: " << new_fingerprint;
 }
 
-void TabletServer::SetYsqlDBCatalogInvalMessages(
+void TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages(
+    const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
+    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
+  std::lock_guard l(lock_);
+  SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data);
+  SetYsqlDBCatalogInvalMessagesUnlocked(db_catalog_inval_messages_data);
+}
+
+void TabletServer::SetYsqlDBCatalogInvalMessagesUnlocked(
   const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
   if (db_catalog_inval_messages_data.db_catalog_inval_messages_size() == 0) {
     return;
   }
-  std::lock_guard l(lock_);
   uint32_t current_db_oid = 0;
   // ysql_db_invalidation_messages_map_ is just an extended history of pg_yb_invalidation_messages
   // except message_time column. Merge the incoming db_catalog_inval_messages_data from the

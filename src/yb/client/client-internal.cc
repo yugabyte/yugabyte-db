@@ -267,6 +267,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetObjectLockStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Encryption, GetFullUniverseKeyRegistry);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AreNodesSafeToTakeDown);
@@ -1522,8 +1523,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
       resp.partition_schema(), internal::GetSchema(&info->schema), &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
-  if (!resp.schema().depricated_pgschema_name().empty()) {
-    info->table_name.set_pgschema_name(resp.schema().depricated_pgschema_name());
+  if (!resp.schema().deprecated_pgschema_name().empty()) {
+    info->table_name.set_pgschema_name(resp.schema().deprecated_pgschema_name());
   }
   info->table_id = resp.identifier().table_id();
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));

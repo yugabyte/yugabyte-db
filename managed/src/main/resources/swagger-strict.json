@@ -1899,6 +1899,7 @@
             "Upload",
             "Upgrade",
             "Import",
+            "Attach",
             "Pause",
             "Resume",
             "Restart",
@@ -2023,8 +2024,8 @@
             "CreateImageBundle",
             "DeleteImageBundle",
             "EditImageBundle",
-            "Export",
-            "DeleteMetadata",
+            "Detach",
+            "DeleteAttachDetachMetadata",
             "Unlock",
             "LdapUniverseSync",
             "UpdateProxyConfig",
@@ -2558,6 +2559,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -4304,6 +4306,23 @@
         }
       ]
     },
+    "BasicAuthCredentials" : {
+      "properties" : {
+        "password" : {
+          "description" : "Password",
+          "type" : "string"
+        },
+        "username" : {
+          "description" : "Username",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "password",
+        "username"
+      ],
+      "type" : "object"
+    },
     "BootstrapBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
@@ -5185,6 +5204,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -8174,6 +8194,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -8946,6 +8967,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -10336,6 +10358,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -10850,6 +10873,43 @@
         "lines"
       ],
       "type" : "object"
+    },
+    "LokiConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "Loki Config",
+          "properties" : {
+            "authType" : {
+              "description" : "Auth Type",
+              "enum" : [
+                "BasicAuth",
+                "NoAuth"
+              ],
+              "type" : "string"
+            },
+            "basicAuth" : {
+              "$ref" : "#/definitions/BasicAuthCredentials",
+              "description" : "Basic Auth Credentials"
+            },
+            "endpoint" : {
+              "description" : "End Point",
+              "type" : "string"
+            },
+            "organizationID" : {
+              "description" : "Organization/Tenant ID",
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "authType",
+            "endpoint"
+          ],
+          "type" : "object"
+        }
+      ]
     },
     "MaintenanceWindow" : {
       "description" : "Maintenance Window",
@@ -14449,6 +14509,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -15428,6 +15489,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -16231,6 +16293,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -17715,6 +17778,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -18250,6 +18314,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -18627,6 +18692,7 @@
               "EnableNodeAgentInUniverse",
               "DecommissionNode",
               "CloneNamespace",
+              "TlsToggleKubernetes",
               "UpdateOOMServiceState",
               "SendUserNotification",
               "KubernetesCheckVolumeExpansion",
@@ -19425,6 +19491,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -20493,6 +20560,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -21392,7 +21460,8 @@
             "DATA_DOG",
             "SPLUNK",
             "AWS_CLOUDWATCH",
-            "GCP_CLOUD_MONITORING"
+            "GCP_CLOUD_MONITORING",
+            "LOKI"
           ],
           "type" : "string"
         }
@@ -21762,6 +21831,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -22408,6 +22478,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -23309,6 +23380,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -23919,6 +23991,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -24529,6 +24602,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -25541,6 +25615,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -26659,6 +26734,7 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
@@ -36646,7 +36722,7 @@
     },
     "/api/v1/customers/{cUUID}/restore" : {
       "post" : {
-        "description" : "",
+        "description" : "Restore from a backup V2. Running restore preflight before calling actual restore is recommended.",
         "operationId" : "restoreBackupV2",
         "parameters" : [
           {
@@ -36700,7 +36776,7 @@
     },
     "/api/v1/customers/{cUUID}/restore/advanced_restore_preflight" : {
       "post" : {
-        "description" : "WARNING: This is a preview API that could change. Advanced Restore Preflight checks.",
+        "description" : "WARNING: This is a preview API that could change. Advanced restore preflight checks. Recommended to run before actual restore to retrieve the metadata associated with the backup, as well as check for conflicts with existing keyspaces. Additionally, this checks for unsupported tablespaces. In case of restore to PIT this checks whether backup can restore to the timestamp provided, fails otherwise.",
         "operationId" : "advancedRestorePreflight",
         "parameters" : [
           {
@@ -36807,7 +36883,7 @@
     },
     "/api/v1/customers/{cUUID}/restore/preflight" : {
       "post" : {
-        "description" : "Restore preflight checks.",
+        "description" : "Restore preflight checks. Recommended to run before actual restore to retrieve the metadata associated with the backup, as well as check for conflicts with existing keyspaces. Additionally, this checks for unsupported tablespaces. In case of restore to PIT this returns the backup from the backup chain which can be restored to the timestamp provided, fails otherwise.",
         "operationId" : "restorePreflight",
         "parameters" : [
           {

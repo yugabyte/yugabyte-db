@@ -4,6 +4,7 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
@@ -11,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync/atomic"
 )
 
 const (
@@ -25,10 +25,9 @@ var (
 )
 
 type ServerGflagsHandler struct {
-	taskStatus *atomic.Value
-	param      *pb.ServerGFlagsInput
-	username   string
-	logOut     util.Buffer
+	param    *pb.ServerGFlagsInput
+	username string
+	logOut   util.Buffer
 }
 
 // NewServerGflagsHandler returns a new instance of ServerControlHandler.
@@ -63,7 +62,7 @@ func (handler *ServerGflagsHandler) postmasterCgroupPath(ctx context.Context) (s
 		User:   handler.username,
 		Desc:   "DetermineCgroupVersion",
 		Cmd:    "stat",
-		Args:   []string{"-fc", "%%T", "/sys/fs/cgroup/"},
+		Args:   []string{"-fc", "%T", "/sys/fs/cgroup/"},
 		StdOut: util.NewBuffer(module.MaxBufferCapacity),
 	}
 	err = cmdInfo.RunCmd(ctx)
@@ -75,11 +74,9 @@ func (handler *ServerGflagsHandler) postmasterCgroupPath(ctx context.Context) (s
 	stdout := strings.TrimSpace(cmdInfo.StdOut.String())
 	if stdout == "cgroup2fs" {
 		postmasterCgroupPath = filepath.Join(
-			"/sys/fs/cgroup/user.slice/user-",
-			userID,
-			".slice/user@",
-			userID,
-			".service/ysql")
+			fmt.Sprintf("user.slice/user-%s.slice", userID),
+			fmt.Sprintf("user@%s.service", userID),
+			"ysql")
 	}
 	return postmasterCgroupPath, nil
 }
@@ -125,7 +122,7 @@ func (handler *ServerGflagsHandler) Handle(
 		if err != nil {
 			return nil, err
 		}
-		processedGflags := map[string]any{}
+		processedGflags = map[string]string{}
 		for k, v := range gflags {
 			if k == "postmaster_cgroup" {
 				processedGflags["postmaster_cgroup"] = path
@@ -143,7 +140,8 @@ func (handler *ServerGflagsHandler) Handle(
 		gflagsContext,
 		ServerConfTemplateSubpath,
 		destination,
-		fs.FileMode(0755),
+		fs.FileMode(0644),
+		handler.username,
 	)
 	if err != nil {
 		return nil, err

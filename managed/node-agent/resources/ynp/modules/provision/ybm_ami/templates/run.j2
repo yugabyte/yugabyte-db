@@ -106,8 +106,6 @@ mkdir -p $dest_path
 chown -R {{ yb_user }}:{{ yb_user }} "$dest_path"
 chmod 0755 "$dest_path"
 
-export AWS_ACCESS_KEY_ID="{{ aws_access_key | default('$AWS_ACCESS_KEY_ID') }}"
-export AWS_SECRET_ACCESS_KEY="{{ aws_secret_key | default('$AWS_SECRET_ACCESS_KEY') }}"
 s3_package_path={{ s3_package_path }}
 
 # Only run if s3_package_path is defined
@@ -121,7 +119,7 @@ if [ ! -f "$dest_path/$package_name" ]; then
 
   attempt=1
   while [ $attempt -le $retries ]; do
-    if s3cmd get "$s3_package_path" "$dest_path/"; then
+    if curl -o "$dest_path/$package_name" "$s3_package_path"; then
       echo "Download succeeded"
       break
     else

@@ -111,7 +111,6 @@ public class TestYbBackup extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_enable_inheritance", "true");
     flagMap.put("ysql_num_tablets", "2");
     return flagMap;
   }
@@ -822,83 +821,6 @@ public class TestYbBackup extends BasePgSQLTest {
       runInvalidQuery(stmt, "CREATE TABLE e3(a text) TABLEGROUP test_grant",
                       "permission denied for tablegroup test_grant");
     }
-  }
-
-  private void doColocatedDatabaseRestoreToOriginalDB() throws Exception {
-    String initialDBName = "yb_colocated";
-    int num_tables = 2;
-
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=TRUE", initialDBName));
-    }
-
-    try (Connection connection2 = getConnectionBuilder().withDatabase(initialDBName).connect();
-         Statement stmt = connection2.createStatement()) {
-      stmt.execute("CREATE TABLE test_tbl1 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATION=TRUE)");
-      stmt.execute("CREATE TABLE test_tbl2 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATION=TRUE)");
-
-      // Insert random rows/values for tables to snapshot
-      for (int j = 1; j <= num_tables; ++j) {
-        for (int i = 1; i <= 2000; ++i) {
-          stmt.execute("INSERT INTO test_tbl" + String.valueOf(j) + " (h, a, b) VALUES" +
-            " (" + String.valueOf(i * j) +                       // h
-            ", " + String.valueOf((100 + i) * j) +               // a
-            ", " + String.valueOf((2.14 + (float)i) * j) + ")"); // b
-        }
-      }
-
-      String backupDir = YBBackupUtil.getTempBackupDir();
-      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-          "--keyspace", "ysql." + initialDBName);
-      if (!TestUtils.useYbController()) {
-        backupDir = new JSONObject(output).getString("snapshot_url");
-      }
-
-      // Delete all rows from the tables after taking a snapshot.
-      for (int j = 1; j <= num_tables; ++j) {
-        stmt.execute("DELETE FROM test_tbl" + String.valueOf(j));
-      }
-
-      // Restore back into this same database, this way all the ids will happen to be the same.
-      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + initialDBName);
-
-      // Verify rows.
-      for (int j = 1; j <= num_tables; ++j) {
-        for (int i : new int[] {1, 500, 2000}) {
-          assertQuery(stmt, String.format("SELECT * FROM test_tbl%d WHERE h=%d", j, i * j),
-            new Row(i * j, (100 + i) * j, (2.14 + (float)i) * j));
-          assertQuery(stmt, String.format("SELECT h FROM test_tbl%d WHERE h=%d", j, i * j),
-            new Row(i * j));
-          assertQuery(stmt, String.format("SELECT a FROM test_tbl%d WHERE h=%d", j, i * j),
-            new Row((100 + i) * j));
-          assertQuery(stmt, String.format("SELECT b FROM test_tbl%d WHERE h=%d", j, i * j),
-            new Row((2.14 + (float)i) * j));
-        }
-      }
-    }
-
-    // Cleanup.
-    try (Statement stmt = connection.createStatement()) {
-      if (isTestRunningWithConnectionManager())
-        waitForStatsToGetUpdated();
-      stmt.execute(String.format("DROP DATABASE %s", initialDBName));
-    }
-  }
-
-  @Test
-  public void testColocatedDatabaseRestoreToOriginalDB() throws Exception {
-    doColocatedDatabaseRestoreToOriginalDB();
-  }
-
-  @Test
-  public void testLegacyColocatedDatabaseRestoreToOriginalDB() throws Exception {
-    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
-                                                     "true"),
-                            Collections.emptyMap());
-    initYBBackupUtil();
-    doColocatedDatabaseRestoreToOriginalDB();
   }
 
   @Test

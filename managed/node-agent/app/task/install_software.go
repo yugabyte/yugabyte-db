@@ -72,31 +72,9 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	if err != nil {
 		return nil, err
 	}
-
-	// 2) download (if remote)
 	tmpDir := filepath.Join(h.param.GetRemoteTmp(), pkgName)
-	cmdStr, err := module.DownloadSoftwareCommand(h.param, tmpDir)
-	if err != nil {
-		util.FileLogger().Errorf(ctx, "Download cmd generation failed: %s", err)
-		return nil, err
-	}
-	util.FileLogger().Infof(ctx, "Download command %s", cmdStr)
-	h.logOut.WriteLine("Download command %s", cmdStr)
-	if cmdStr != "" {
-		h.logOut.WriteLine("Dowloading software")
-		if _, err := module.RunShellCmd(ctx, h.username, "download-software", cmdStr, h.logOut); err != nil {
-			return nil, err
-		}
-		// optional checksum
-		if h.param.GetHttpRemoteDownload() && h.param.GetHttpPackageChecksum() != "" {
-			if err := module.VerifyChecksum(tmpDir, h.param.GetHttpPackageChecksum()); err != nil {
-				return nil, err
-			}
-		}
-		util.FileLogger().Debugf(ctx, "Successfully downloaded the software")
-	}
 
-	// 3) figure out home dir
+	// 2) figure out home dir
 	home := ""
 	if h.param.GetYbHomeDir() != "" {
 		home = h.param.GetYbHomeDir()
@@ -107,13 +85,13 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	}
 	ybSoftwareDir := filepath.Join(home, "yb-software", pkgFolder)
 
-	// 4) define our sequence of shell steps
+	// 3) define our sequence of shell steps
 	err = h.execShellCommands(ctx, home, ybSoftwareDir, releaseVersion, tmpDir)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5) symlink for master & tserver
+	// 4) symlink for master & tserver
 	err = h.setupSymlinks(ctx, home, ybSoftwareDir)
 	if err != nil {
 		return nil, err

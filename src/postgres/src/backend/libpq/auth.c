@@ -48,7 +48,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
 #include "pg_yb_utils.h"
-#include "utils/builtins.h"	/* TODO: may not be needed */
+#include "utils/builtins.h"		/* TODO: may not be needed */
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

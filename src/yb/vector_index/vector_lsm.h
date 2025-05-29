@@ -142,9 +142,10 @@ class VectorLSM {
   using  ImmutableChunkPtr  = std::shared_ptr<ImmutableChunk>;
   using  ImmutableChunkPtrs = std::vector<ImmutableChunkPtr>;
 
-  class CompactionTask;
-
-  struct CompactionScope;
+  class  CompactionScope;
+  struct CompactionContext;
+  class  CompactionTask;
+  using  CompactionTaskPtr = std::unique_ptr<CompactionTask>;
 
   friend class  VectorLSMInsertTask<Vector, DistanceResult>;
   friend struct MutableChunk;
@@ -170,12 +171,15 @@ class VectorLSM {
   // The argument `chunk` must be the very first chunk from `updates_queue_`.
   Status UpdateManifest(WritableFile* manifest_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
 
+  void AcquireManifest() EXCLUDES(mutex_);
+  void ReleaseManifest() EXCLUDES(mutex_);
+  void ReleaseManifestUnlocked() REQUIRES(mutex_);
+  Result<WritableFile*> RollManifest() REQUIRES(mutex_);
+
   // Creates vector index and reserve at least for `min_vectors` entries.
   Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
 
   Status CreateNewMutableChunk(size_t min_vectors) REQUIRES(mutex_);
-
-  Status RemoveUpdateQueueEntry(size_t order_no) REQUIRES(mutex_);
 
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
@@ -197,17 +201,31 @@ class VectorLSM {
   // to keep iterators to the selected range as they could become invalidated.
   CompactionScope PickChunksForFullCompaction() const EXCLUDES(mutex_);
 
+  // TODO(vector_index): update description (covered by #27089).
+  CompactionScope PickChunksForCompaction() const EXCLUDES(mutex_);
+
   // Returns new chunk - a product of input chunks compaction; the new chunk is saved to a disk.
-  Result<ImmutableChunkPtr> DoCompaction(const ImmutableChunkPtrs& input_chunks);
+  Result<ImmutableChunkPtr> DoCompactChunks(const ImmutableChunkPtrs& input_chunks);
 
-  Status DoManualCompaction() EXCLUDES(mutex_);
-  Status ScheduleManualCompaction(StdStatusCallback callback = {});
+  Status DoCompact(const CompactionContext& context, CompactionScope&& scope) EXCLUDES(mutex_);
 
-  void Register(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
-  void Deregister(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
+  void ScheduleBackgroundCompaction() EXCLUDES(mutex_);
 
   // Creates compaction task and tries to submit it to the thread pool. Triggres callback only if
   // compation task has been successfully submitted.
+  Status ScheduleManualCompaction(StdStatusCallback callback) EXCLUDES(mutex_);
+
+  Result<CompactionTaskPtr> RegisterManualCompaction(StdStatusCallback callback) EXCLUDES(mutex_);
+
+  void Deregister(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
+  void Register(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
+  void RegisterUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
+
+  // Requirement: taks must be registered.
+  Status SubmitTask(CompactionTaskPtr task);
+
+  template<typename Lock>
+  void WaitForCompactionTasksDone(Lock& lock) REQUIRES(compaction_tasks_mutex_);
 
   Status TEST_SkipManifestUpdateDuringShutdown() REQUIRES(mutex_);
 
@@ -227,19 +245,24 @@ class VectorLSM {
   // May be changed if new manifest file is created (due to absence or compaction).
   size_t next_manifest_file_no_ = 0;
   std::unique_ptr<WritableFile> manifest_file_ GUARDED_BY(mutex_);
+  // TODO(vector_index): maybe replace writing_manifest_ with a mutex-like object.
   bool writing_manifest_ GUARDED_BY(mutex_) = false;
-  std::condition_variable_any writing_manifest_done_;
+  std::condition_variable_any writing_manifest_done_cv_;
 
   bool stopping_ GUARDED_BY(mutex_) = false;
 
   // The map contains only chunks being saved, i.e. chunks in kInMemory and kOnDisk states -- this
   // invariant must be kept. The value of order_no is used as key in this map.
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
-  std::condition_variable_any updates_queue_empty_;
+  std::condition_variable_any updates_queue_empty_cv_;
 
   rw_spinlock compaction_tasks_mutex_;
   std::condition_variable_any compaction_tasks_cv_;
   std::unordered_set<CompactionTask*> compaction_tasks_ GUARDED_BY(compaction_tasks_mutex_);
+
+  // Used to inform background compactions that there's a manual compaction task which is
+  // waiting for background
+  bool has_pending_manual_compaction_ GUARDED_BY(compaction_tasks_mutex_) = false;
 
   // Currently this mutex is used only in DeleteObsoleteChunks, which are not allowed to run in
   // parallel, hence it is enough to use simple spin lock.
@@ -250,7 +273,7 @@ class VectorLSM {
   Status failed_status_ GUARDED_BY(mutex_);
 };
 
-template <template<class, class> class Factory, class VectorIndex>
+template<template<class, class> class Factory, class VectorIndex>
 using MakeVectorIndexFactory =
     Factory<typename VectorIndex::Vector, typename VectorIndex::DistanceResult>;
 

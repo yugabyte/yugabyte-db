@@ -288,7 +288,8 @@ static const FormData_pg_attribute *YbSysAtt[] = {&yb_a1, &yb_a2};
 const FormData_pg_attribute *
 YbSystemAttributeDefinition(AttrNumber attno)
 {
-	int index = attno - YBSystemFirstLowInvalidAttributeNumber - 1;
+	int			index = attno - YBSystemFirstLowInvalidAttributeNumber - 1;
+
 	if (index < 0 || index >= lengthof(YbSysAtt))
 		elog(ERROR, "invalid YB system attribute number %d", attno);
 	return YbSysAtt[index];
@@ -1368,7 +1369,7 @@ heap_create_with_catalog(const char *relname,
 									   CStringGetDatum(relname),
 									   ObjectIdGetDatum(relnamespace));
 	}
-	else	/* YB */
+	else						/* YB */
 	{
 		existing_relid = InvalidOid;
 		old_type_oid = InvalidOid;
@@ -1401,11 +1402,13 @@ heap_create_with_catalog(const char *relname,
 	{
 		bool		yb_heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore &&
 			!yb_extension_upgrade;
+
 		if (yb_binary_restore && !yb_ignore_pg_class_oids)
 			yb_heap_pg_class_oids_supplied = true;
 
 		bool		yb_heap_relfilenode_supplied = IsBinaryUpgrade && !yb_binary_restore &&
 			!yb_extension_upgrade;
+
 		if (yb_binary_restore && !yb_ignore_relfilenode_ids)
 			yb_heap_relfilenode_supplied = true;
 
@@ -1452,7 +1455,7 @@ heap_create_with_catalog(const char *relname,
 				 */
 				if ((RELKIND_HAS_STORAGE(relkind) ||
 					 (IsYugaByteEnabled() && relkind == RELKIND_PARTITIONED_TABLE)) &&
-					 yb_heap_relfilenode_supplied)
+					yb_heap_relfilenode_supplied)
 				{
 					if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
 						ereport(ERROR,

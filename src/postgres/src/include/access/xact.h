@@ -542,12 +542,19 @@ extern void YBCRestartWriteTransaction(void);
 extern void YbSetTxnWithPgOps(uint8 pg_op_type);
 extern uint8 YbGetPgOpsInCurrentTxn(void);
 extern void YbBeginInternalSubTransactionForReadCommittedStatement();
+
+/*
+ * Determine if the transaction block contains a savepoint other than the
+ * internal ones created for READ COMMITTED isolation level.
+ */
+extern bool YBTransactionContainsNonReadCommittedSavepoint(void);
 extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
 extern void YBMarkDataSent(void);
 extern void YBMarkDataNotSent(void);
 extern void YBMarkDataNotSentForCurrQuery(void);
 extern bool YBIsDataSent(void);
 extern bool YBIsDataSentForCurrQuery(void);
+
 /*
  * YB: Utilities for postponed pggate DDL statement handles, that can be
  * executed after the YSQL DDL transaction has commited. To qualify for this
@@ -565,6 +572,7 @@ extern bool YBIsDataSentForCurrQuery(void);
 extern void YBSaveDdlHandle(YbcPgStatement handle);
 extern List *YBGetDdlHandles(void);
 extern void YBClearDdlHandles(void);
+
 /*
  * YB: Utility for clearing transaction ID.
 */

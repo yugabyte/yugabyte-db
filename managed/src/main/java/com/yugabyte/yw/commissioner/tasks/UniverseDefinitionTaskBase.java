@@ -3593,7 +3593,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param shellContext the shell context to be used.
    * @return the subtask group.
    */
-  protected SubTaskGroup createRunEnableLinger(
+  protected SubTaskGroup createRunEnableLingerTask(
       Universe universe,
       Collection<NodeDetails> nodes,
       @Nullable ShellProcessContext shellContext) {
@@ -3912,5 +3912,48 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subtask.initialize(params);
     persistClockboundSubtaskGroup.addSubTask(subtask);
     getRunnableTask().addSubTaskGroup(persistClockboundSubtaskGroup);
+  }
+
+  protected void updateUniverseHttpsEnabledUI(int nodeToNodeChange) {
+    boolean isNodeUIHttpsEnabled =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.nodeUIHttpsEnabled);
+    // HTTPS_ENABLED_UI will piggyback node-to-node encryption.
+    if (nodeToNodeChange != 0) {
+      String httpsEnabledUI =
+          (nodeToNodeChange > 0
+                  && Universe.shouldEnableHttpsUI(
+                      true, getUserIntent().ybSoftwareVersion, isNodeUIHttpsEnabled))
+              ? "true"
+              : "false";
+      saveUniverseDetails(
+          u -> {
+            u.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, httpsEnabledUI));
+          });
+    }
+  }
+
+  protected void createUniverseSetTlsParamsTask(
+      UUID universeUUID,
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt,
+      boolean allowInsecure,
+      boolean rootAndClientRootCASame,
+      UUID rootCA,
+      UUID clientRootCA) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UniverseSetTlsParams", SubTaskGroupType.ConfigureUniverse);
+    UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
+    params.setUniverseUUID(universeUUID);
+    params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
+    params.allowInsecure = allowInsecure;
+    params.clientRootCA = clientRootCA;
+    params.rootAndClientRootCASame = rootAndClientRootCASame;
+    params.rootCA = rootCA;
+    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

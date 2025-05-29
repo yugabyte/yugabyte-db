@@ -1483,8 +1483,8 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 			 * value of relpages for the parent is always set to -1 by
 			 * `do_analyze_rel`.
 			 */
-			relpages = (childrel->rd_rel->reltuples < 0?
-						YBC_DEFAULT_NUM_ROWS: childrel->rd_rel->reltuples);
+			relpages = (childrel->rd_rel->reltuples < 0 ?
+						YBC_DEFAULT_NUM_ROWS : childrel->rd_rel->reltuples);
 		}
 		else if (childrel->rd_rel->relkind == RELKIND_RELATION ||
 				 childrel->rd_rel->relkind == RELKIND_MATVIEW)

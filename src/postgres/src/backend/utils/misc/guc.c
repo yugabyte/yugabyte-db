@@ -966,7 +966,7 @@ const char *const config_type_names[] =
 {
 	 /* PGC_BOOL */ "bool",
 	 /* PGC_INT */ "integer",
-	 /* PGC_OID */ "oid",	/* YB added */
+	 /* PGC_OID */ "oid",		/* YB added */
 	 /* PGC_REAL */ "real",
 	 /* PGC_STRING */ "string",
 	 /* PGC_ENUM */ "enum"
@@ -2267,7 +2267,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&jit_enabled,
-		false,	/* YB: change to false */
+		false,					/* YB: change to false */
 		NULL, NULL, NULL
 	},
 
@@ -7668,7 +7668,7 @@ static struct config_generic *
 find_option(const char *name, bool create_placeholders, bool skip_errors,
 			int elevel)
 {
-#ifdef ADDRESS_SANITIZER	/* YB */
+#ifdef ADDRESS_SANITIZER		/* YB */
 	struct config_generic config_placeholder;
 
 	config_placeholder.name = name;
@@ -9003,8 +9003,8 @@ ReportGUCOption(struct config_generic *record)
 		 */
 		bool		guc_report_not_enabled = !(record->flags & GUC_REPORT);
 		bool		guc_report_enabled_same_value = (record->flags & GUC_REPORT) &&
-		record->last_reported &&
-		strcmp(val, record->last_reported) == 0;
+			record->last_reported &&
+			strcmp(val, record->last_reported) == 0;
 
 		if (YbIsClientYsqlConnMgr() && (guc_report_not_enabled || guc_report_enabled_same_value))
 			pq_beginmessage(&msgbuf, 'r');
@@ -10618,9 +10618,9 @@ set_config_option_ext(const char *name, const char *value,
 						(void) set_config_option_ext("role",
 													 value ? "none" : NULL,
 													 orig_context,
-													  (orig_source == PGC_S_OVERRIDE)
-													  ? PGC_S_DYNAMIC_DEFAULT
-													  : orig_source,
+													 (orig_source == PGC_S_OVERRIDE)
+													 ? PGC_S_DYNAMIC_DEFAULT
+													 : orig_source,
 													 orig_srole,
 													 action,
 													 true,
@@ -11809,7 +11809,7 @@ static void
 define_custom_variable(struct config_generic *variable)
 {
 	const char *name = variable->name;
-#ifdef ADDRESS_SANITIZER	/* YB */
+#ifdef ADDRESS_SANITIZER		/* YB */
 	struct config_generic config_placeholder;
 
 	config_placeholder.name = name;
@@ -15779,7 +15779,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	yb_enable_optimizer_statistics = false;
 	yb_ignore_stats = false;
 
-	switch(new_value)
+	switch (new_value)
 	{
 		case YB_COST_MODEL_OFF:
 			yb_ignore_stats = true;
@@ -15802,9 +15802,9 @@ static void
 assign_yb_enable_optimizer_statistics(bool new_value, void *extra)
 {
 	yb_enable_optimizer_statistics = new_value;
-	yb_enable_cbo = (new_value? YB_COST_MODEL_LEGACY_STATS:
-							(yb_enable_base_scans_cost_model? YB_COST_MODEL_ON:
-							 YB_COST_MODEL_LEGACY));
+	yb_enable_cbo = (new_value ? YB_COST_MODEL_LEGACY_STATS :
+					 (yb_enable_base_scans_cost_model ? YB_COST_MODEL_ON :
+					  YB_COST_MODEL_LEGACY));
 	yb_ignore_stats = false;
 }
 
@@ -15812,10 +15812,10 @@ static void
 assign_yb_enable_base_scans_cost_model(bool new_value, void *extra)
 {
 	yb_enable_base_scans_cost_model = new_value;
-	yb_enable_cbo = (new_value? YB_COST_MODEL_ON:
-							(yb_enable_optimizer_statistics?
-							 YB_COST_MODEL_LEGACY_STATS:
-							 YB_COST_MODEL_LEGACY));
+	yb_enable_cbo = (new_value ? YB_COST_MODEL_ON :
+					 (yb_enable_optimizer_statistics ?
+					  YB_COST_MODEL_LEGACY_STATS :
+					  YB_COST_MODEL_LEGACY));
 	yb_ignore_stats = false;
 }
 
@@ -15898,6 +15898,7 @@ static const char *
 show_tcmalloc_sample_period(void)
 {
 	static char nbuf[32];
+
 	snprintf(nbuf, sizeof(nbuf), "%" PRId64, YBCGetTCMallocSamplingPeriod());
 	return nbuf;
 }
@@ -15998,7 +15999,7 @@ check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source)
 	ereport(WARNING,
 			(errmsg("the parameter \"yb_enable_advisory_locks\" is deprecated, "
 					"toggle the runtime flag \"ysql_yb_enable_advisory_locks\" instead.")));
-	return true; /* still allow usage, but warn */
+	return true;				/* still allow usage, but warn */
 }
 
 static void

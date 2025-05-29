@@ -53,10 +53,14 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.dbAuditLoggingEnabled.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowLoki.getKey(), "true");
 
     doNothing().when(mockTelemetryProviderService).validateBean(any());
     doNothing().when(mockTelemetryProviderService).validateTelemetryProvider(any());
     doNothing().when(mockTelemetryProviderService).throwExceptionIfRuntimeFlagDisabled();
+    doNothing()
+        .when(mockTelemetryProviderService)
+        .throwExceptionIfLokiExporterRuntimeFlagDisabled(any());
   }
 
   @Test

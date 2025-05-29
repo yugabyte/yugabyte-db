@@ -53,7 +53,8 @@ GetInt64FromVariable(const char *var, const char *var_name)
 	return ret;
 }
 
-static Oid	cached_extension_owner_oid = InvalidOid;	/* Cached for a pg connection. */
+static Oid	cached_extension_owner_oid = InvalidOid;	/* Cached for a pg
+														 * connection. */
 Oid
 XClusterExtensionOwner(void)
 {
@@ -98,6 +99,7 @@ SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id)
 	bool		is_null;
 	Oid			oid = DatumGetObjectId(SPI_getbinval(spi_tuple, SPI_tuptable->tupdesc,
 													 column_id, &is_null));
+
 	if (is_null)
 		return InvalidOid;
 	return oid;
@@ -173,6 +175,7 @@ SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id, int element_index)
 
 	array = DatumGetArrayTypeP(array_datum);
 	element_type = ARR_ELEMTYPE(array);
+
 	if (element_type != TEXTOID)
 		elog(ERROR, "Expected text[] but found different type %u",
 			 element_type);
@@ -198,9 +201,43 @@ IsTempSchema(const char *schema_name)
 }
 
 Oid
-GetColocationIdFromRelation(Relation *rel)
+GetColocationIdForTableRewrite(Relation *rel)
 {
-  YbcTableProperties table_props = YbTryGetTableProperties(*rel);
+	/*
+	 * Table rewrites have some staleness with updating the relcache and
+	 * yb_table_properties, especially with indexes. Need to explicitly get a
+	 * new table desc to get the up to date values.
+	 */
+	Oid			dbid = YBCGetDatabaseOid(*rel);
+	Oid			relfileNodeId = YbGetRelfileNodeId(*rel);
+	bool		not_found = false;
+	YbcPgTableDesc yb_tabledesc = NULL;
+	YbcTablePropertiesData table_props;
+
+	HandleYBStatusIgnoreNotFound(YBCPgGetTableDesc(dbid,
+												   relfileNodeId,
+												   &yb_tabledesc),
+								 &not_found);
+	if (not_found)
+		return InvalidOid;
+
+	HandleYBStatusIgnoreNotFound(YBCPgGetTableProperties(yb_tabledesc,
+														 &table_props),
+								 &not_found);
+	if (not_found || !table_props.is_colocated)
+		return InvalidOid;
+
+	return table_props.colocation_id;
+}
+
+Oid
+GetColocationIdFromRelation(Relation *rel, bool is_table_rewrite)
+{
+	if (is_table_rewrite)
+		return GetColocationIdForTableRewrite(rel);
+
+	YbcTableProperties table_props = YbTryGetTableProperties(*rel);
+
 	if (!table_props || !table_props->is_colocated)
 		return InvalidOid;
 
@@ -210,8 +247,9 @@ GetColocationIdFromRelation(Relation *rel)
 char *
 get_typname(Oid pg_type_oid)
 {
-	HeapTuple type_tuple = SearchSysCache1(TYPEOID,
-										   ObjectIdGetDatum(pg_type_oid));
+	HeapTuple	type_tuple = SearchSysCache1(TYPEOID,
+											 ObjectIdGetDatum(pg_type_oid));
+
 	if (!HeapTupleIsValid(type_tuple))
 	{
 		ereport(ERROR,
@@ -220,7 +258,7 @@ get_typname(Oid pg_type_oid)
 	}
 
 	Form_pg_type type_form = (Form_pg_type) GETSTRUCT(type_tuple);
-	char *type_name = pstrdup(NameStr(type_form->typname));
+	char	   *type_name = pstrdup(NameStr(type_form->typname));
 
 	ReleaseSysCache(type_tuple);
 	return type_name;

@@ -228,6 +228,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 		filepath.Join(ServerTemplateSubpath, "yb-server-ctl.sh.j2"),
 		filepath.Join(home, "bin", "yb-server-ctl.sh"),
 		fs.FileMode(0755),
+		h.username,
 	)
 	if err != nil {
 		return err
@@ -240,6 +241,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 		filepath.Join(ServerTemplateSubpath, "clock-sync.sh.j2"),
 		filepath.Join(home, "bin", "clock-sync.sh"),
 		fs.FileMode(0755),
+		h.username,
 	)
 	if err != nil {
 		return err
@@ -252,6 +254,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 		filepath.Join(ServerTemplateSubpath, "clean_cores.sh.j2"),
 		filepath.Join(home, "bin", "clean_cores.sh"),
 		fs.FileMode(0755),
+		h.username,
 	)
 	if err != nil {
 		return err
@@ -264,6 +267,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 		filepath.Join(ServerTemplateSubpath, "zip_purge_yb_logs.sh.j2"),
 		filepath.Join(home, "bin", "zip_purge_yb_logs.sh"),
 		fs.FileMode(0755),
+		h.username,
 	)
 	if err != nil {
 		return err
@@ -276,6 +280,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 		filepath.Join(ServerTemplateSubpath, "collect_metrics_wrapper.sh.j2"),
 		filepath.Join(home, "bin", "collect_metrics_wrapper.sh"),
 		fs.FileMode(0755),
+		h.username,
 	)
 	if err != nil {
 		return err

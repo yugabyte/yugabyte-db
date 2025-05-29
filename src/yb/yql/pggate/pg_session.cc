@@ -71,6 +71,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
                        "caused by this DDL statement. This effetively turns off incremental "
                        "catalog cache refresh for this new catalog version.");
 
+DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
+                      "Maximum number of invalidation messages we keep for a given database.");
+
 namespace yb::pggate {
 namespace {
 

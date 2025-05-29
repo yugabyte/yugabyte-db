@@ -152,6 +152,8 @@ message ApplyTransactionStatePB {
 // test gflag that is disabled by default. The message shouldn't be re-used for production code.
 message ObjectLockPB {
   optional uint64 database_oid = 1;
-  optional uint64 object_oid = 2;
-  optional TableLockType lock_type = 3;
+  optional uint64 relation_oid = 2;
+  optional uint64 object_oid = 3;
+  optional uint64 object_sub_oid = 4;
+  optional TableLockType lock_type = 5;
 }

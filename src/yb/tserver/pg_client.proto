@@ -545,6 +545,8 @@ message PgGetLockStatusResponsePB {
 
   // Map of transactions keyed by the host node uuid.
   map<string, TransactionList> transactions_by_node = 3;
+
+  repeated ObjectLockInfoPB object_lock_infos = 4;
 }
 
 message PgGetReplicationSlotRequestPB {
@@ -1246,11 +1248,18 @@ enum ObjectLockMode {
 message PgAcquireObjectLockRequestPB {
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
-  uint64 database_oid = 3;
-  uint64 object_oid = 4;
+
+  message LockOId {
+    uint64 database_oid = 1;
+    uint64 relation_oid = 2;
+    uint64 object_oid = 3;
+    uint64 object_sub_oid = 4;
+  }
+  LockOId lock_oid = 3;
+
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
-  ObjectLockMode lock_type = 5;
-  AshMetadataPB ash_metadata = 6;
+  ObjectLockMode lock_type = 4;
+  AshMetadataPB ash_metadata = 5;
 }
 
 message PgAcquireObjectLockResponsePB {

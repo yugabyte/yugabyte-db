@@ -21,4 +21,4 @@
 
 #include "access/htup_details.h"
 
-extern Datum	YbRecordOut(HeapTupleHeader rec, TupleDesc tupdesc);
+extern Datum YbRecordOut(HeapTupleHeader rec, TupleDesc tupdesc);

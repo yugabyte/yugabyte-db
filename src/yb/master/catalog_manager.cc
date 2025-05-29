@@ -594,8 +594,7 @@ DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using std::shared_ptr;
 using std::string;
@@ -874,8 +873,8 @@ bool IsPgCronJobTable(const CreateTableRequestPB& req) {
   }
 
   // (DEPRECATE_EOL 2.27) In upgrade mode - process request from old TS.
-  return req.has_schema() &&
-         req.schema().depricated_pgschema_name() == "cron" && req.name() == "job";
+  return req.has_schema() && req.schema().deprecated_pgschema_name() == "cron" &&
+         req.name() == "job";
 }
 
 bool IsXClusterDDLReplicationTable(const CreateTableRequestPB& req) {
@@ -885,9 +884,9 @@ bool IsXClusterDDLReplicationTable(const CreateTableRequestPB& req) {
 
   // (DEPRECATE_EOL 2.27) In upgrade mode - process request from old TS.
   return req.has_schema() &&
-         req.schema().depricated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         req.schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          (req.name() == xcluster::kDDLQueueTableName ||
-             req.name() == xcluster::kDDLReplicatedTableName);
+          req.name() == xcluster::kDDLReplicatedTableName);
 }
 
 Result<QLWriteRequestPB::QLStmtType> ToQLStmtType(
@@ -3969,12 +3968,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   const bool is_vector_index = req.index_info().has_vector_idx_options();
-  const bool colocated =
-      (is_colocated_via_database || req.has_tablegroup_id() || is_vector_index) &&
-      // Any tables created in the xCluster DDL replication extension should not be colocated.
-      !IsXClusterDDLReplicationTable(req);
-  SCHECK(!colocated || req.has_table_id(),
-         InvalidArgument, "Colocated table should specify a table ID");
+  const bool colocated = is_colocated_via_database || req.has_tablegroup_id() || is_vector_index;
+  SCHECK(
+      !colocated || req.has_table_id(), InvalidArgument,
+      "Colocated table should specify a table ID");
 
   // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
   // specified for indexes on colocated tables.
@@ -4771,7 +4768,7 @@ Status CatalogManager::CreateTransactionStatusTable(
     rpc::RpcContext *rpc, const LeaderEpoch& epoch) {
   const string& table_name = req->table_name();
   Status s = CreateTransactionStatusTableInternal(
-      rpc, table_name, nullptr /* tablespace_id */, epoch,
+      rpc, table_name, /*tablespace_id=*/nullptr, epoch,
       req->has_replication_info() ? &req->replication_info() : nullptr);
   if (s.IsAlreadyPresent()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
@@ -4916,7 +4913,7 @@ Status CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
   }
 
   return CreateTransactionStatusTableInternal(
-      rpc, table_name, &tablespace_id, epoch, nullptr /* replication_info */);
+      rpc, table_name, &tablespace_id, epoch, /*replication_info=*/nullptr);
 }
 
 Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
@@ -4943,8 +4940,8 @@ Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
 Status CatalogManager::CreateGlobalTransactionStatusTableIfNotPresent(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   Status s = CreateTransactionStatusTableInternal(
-      rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */, epoch,
-      nullptr /* replication_info */);
+      rpc, kGlobalTransactionsTableName, /*tablespace_id=*/nullptr, epoch,
+      /*replication_info=*/nullptr);
   if (s.IsAlreadyPresent()) {
     VLOG(1) << "Transaction status table already exists, not creating.";
     return Status::OK();
@@ -5544,7 +5541,7 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   SchemaToPB(schema, metadata->mutable_schema());
   if (FLAGS_TEST_create_table_with_empty_pgschema_name) {
     // Use empty string (default proto val) so that this passes has_pgschema_name() checks.
-    metadata->mutable_schema()->set_depricated_pgschema_name("");
+    metadata->mutable_schema()->set_deprecated_pgschema_name("");
   }
   partition_schema.ToPB(metadata->mutable_partition_schema());
   // For index table, set index details (indexed table id and whether the index is local).
@@ -6336,6 +6333,21 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   }
 
   LOG(WARNING) << "Index " << index_table_id << " not found in indexed table " << indexed_table_id;
+  return Status::OK();
+}
+
+Status CatalogManager::GetObjectLockStatus(
+    const GetObjectLockStatusRequestPB* req, GetObjectLockStatusResponsePB* resp) {
+  std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, this);
+    if (!l.IsInitializedAndIsLeader()) {
+      return STATUS(IllegalState, "Fail to get object lock status, master is not the leader");
+    }
+    local_lock_manager = object_lock_info_manager_->ts_local_lock_manager();
+  }
+  local_lock_manager->PopulateObjectLocks(resp->mutable_object_lock_infos());
+  VLOG(3) << "GetObjectLockStatus: " << resp->ShortDebugString();
   return Status::OK();
 }
 
@@ -7389,8 +7401,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   if (table->GetTableType() == PGSQL_TABLE_TYPE) {
     LOG_WITH_PREFIX(INFO) << "PG table OID for AlterTable request: " << table->GetPgTableOid();
   }
-  NamespaceId new_namespace_id;
 
+  NamespaceId new_namespace_id;
   if (req->has_new_namespace()) {
     // Lookup the new namespace and verify if it exists.
     TRACE("Looking up new namespace");
@@ -7439,6 +7451,14 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SleepFor(kSleepFor);
   }
 
+  // IsNamespaceInAutomaticDDLMode can't be called once we have the
+  // catalog manager lock in exclusive mode, so check for automatic mode now.
+  bool is_automatic_mode = false;
+  if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+    is_automatic_mode =
+        xcluster_manager_.get()->IsNamespaceInAutomaticDDLMode(table->namespace_id());
+  }
+
   UniqueLock lock(mutex_);
   VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
 
@@ -7477,7 +7497,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   Schema previous_schema;
   RETURN_NOT_OK(SchemaFromPB(l->pb.schema(), &previous_schema));
   string previous_table_name = l->pb.name();
-  ColumnId next_col_id = ColumnId(l->pb.next_column_id());
+  auto next_col_id = ColumnId(l->pb.next_column_id());
+  ColumnId initial_next_col_id = next_col_id;
   if (req->alter_schema_steps_size() || req->has_alter_properties() || req->has_pgschema_name()) {
     TRACE("Apply alter schema");
     Status s = ApplyAlterSteps(
@@ -7623,6 +7644,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
         SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
         ddl_state->set_previous_table_name(previous_table_name);
+        if (is_automatic_mode) {
+          ddl_state->set_previous_next_column_id(initial_next_col_id);
+        }
         schedule_ysql_txn_verifier = true;
       }
       txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
@@ -7833,9 +7857,8 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
     // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
     if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-        resp->schema().depricated_pgschema_name().empty() &&
-        !table->is_system() && !table->IsSequencesSystemTable() &&
-        !table->IsColocationParentTable()) {
+        resp->schema().deprecated_pgschema_name().empty() && !table->is_system() &&
+        !table->IsSequencesSystemTable() && !table->IsColocationParentTable()) {
       TRACE("Acquired catalog manager lock for schema name lookup");
 
       auto pgschema_name = GetPgSchemaName(table->id(), l.data());
@@ -7844,7 +7867,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
             "Unable to find schema name for YSQL table $0.$1 due to error: $2",
             table->namespace_name(), table->name(), pgschema_name.ToString());
       } else {
-        resp->mutable_schema()->set_depricated_pgschema_name(*pgschema_name);
+        resp->mutable_schema()->set_deprecated_pgschema_name(*pgschema_name);
       }
     }
 
@@ -8138,7 +8161,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       table->set_indexed_table_id(table_info->indexed_table_id());
     }
     table->set_state(ltm->pb.state());
-    table->set_pgschema_name(ltm->schema().depricated_pgschema_name());
+    table->set_pgschema_name(ltm->schema().deprecated_pgschema_name());
     if (table_info->colocated()) {
       table->mutable_colocated_info()->set_colocated(true);
       if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
@@ -8192,7 +8215,7 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
     auto& table_pb = l->pb;
 
     if (!l->started_deleting() && table_pb.namespace_id() == ns->id() &&
-        boost::iequals(table_pb.schema().depricated_pgschema_name(), pg_schema_name) &&
+        boost::iequals(table_pb.schema().deprecated_pgschema_name(), pg_schema_name) &&
         boost::iequals(table_pb.name(), table_name)) {
       return table;
     }
@@ -10608,20 +10631,19 @@ Status CatalogManager::SendAlterTableRequestInternal(
     const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
     const AlterTableRequestPB* req) {
   for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
-     std::shared_ptr<AsyncAlterTable> call;
+    std::shared_ptr<AsyncAlterTable> call;
 
     // CDC SDK Create Stream context
     if (req && req->has_cdc_sdk_stream_id()) {
       LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
       xrepl::StreamId stream_id =
-        VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
-      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
-                                               txn_id, epoch,
-                                               stream_id,
-                                               req->cdc_sdk_require_history_cutoff());
+          VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
+      call = std::make_shared<AsyncAlterTable>(
+          master_, AsyncTaskPool(), tablet, table, txn_id, epoch, stream_id,
+          req->cdc_sdk_require_history_cutoff());
     } else {
-      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
-                                               txn_id, epoch);
+      call =
+          std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id, epoch);
     }
     table->AddTask(call);
     if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
@@ -13700,5 +13722,4 @@ void CatalogManager::RemoveNamespaceFromMaps(
   }
 }
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

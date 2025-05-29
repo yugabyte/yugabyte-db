@@ -36,8 +36,8 @@ PG_MODULE_MAGIC;
  */
 
 static bool enable_manual_ddl_replication = false;
-char *ddl_queue_primary_key_ddl_end_time = NULL;
-char *ddl_queue_primary_key_queue_id = NULL;
+char	   *ddl_queue_primary_key_ddl_end_time = NULL;
+char	   *ddl_queue_primary_key_queue_id = NULL;
 
 typedef enum YbXClusterReplicationRole
 {
@@ -62,14 +62,14 @@ static const struct config_enum_entry replication_role_overrides[] = {
 	{"AUTOMATIC_SOURCE", AUTOMATIC_SOURCE, /* hidden */ true},
 	{"TARGET", AUTOMATIC_TARGET, /* hidden */ false},
 	{"AUTOMATIC_TARGET", AUTOMATIC_TARGET, /* hidden */ true},
-	{NULL, 0, false}};
+{NULL, 0, false}};
 
 /*
  * Call FetchReplicationRole() at the start of every DDL to fill this variable
  * in before using it.
  */
-static int replication_role = UNAVAILABLE;
-static int replication_role_override = UNSPECIFIED;
+static int	replication_role = UNAVAILABLE;
+static int	replication_role_override = UNSPECIFIED;
 
 /*
  * Util functions.
@@ -130,14 +130,14 @@ _PG_init(void)
 							   NULL, NULL, NULL);
 
 	DefineCustomEnumVariable("yb_xcluster_ddl_replication.TEST_replication_role_override",
-								 gettext_noop("Test override for replication role."),
-								 NULL,
-								 &replication_role_override,
-								 UNSPECIFIED,
-								 replication_role_overrides,
-								 PGC_SUSET,
-								 0,
-								 NULL, NULL, NULL);
+							 gettext_noop("Test override for replication role."),
+							 NULL,
+							 &replication_role_override,
+							 UNSPECIFIED,
+							 replication_role_overrides,
+							 PGC_SUSET,
+							 0,
+							 NULL, NULL, NULL);
 }
 
 void
@@ -180,7 +180,8 @@ Datum
 get_replication_role(PG_FUNCTION_ARGS)
 {
 	FetchReplicationRole();
-	char *role_name;
+	char	   *role_name;
+
 	switch (replication_role)
 	{
 		case UNSPECIFIED:
@@ -423,7 +424,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 		 * applied, we are fine at this point to catch up the pg catalog changes.
 		 */
 		TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
-		int64 query_id = random();
+		int64		query_id = random();
 
 		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
 
@@ -453,7 +454,7 @@ HandleTargetDDLEnd(EventTriggerData *trig_data)
 	 * the transaction by the ddl_queue handler.
 	 */
 	int64		pkey_ddl_end_time = GetInt64FromVariable(ddl_queue_primary_key_ddl_end_time,
-															 "ddl_queue_primary_key_ddl_end_time");
+														 "ddl_queue_primary_key_ddl_end_time");
 	int64		pkey_query_id = GetInt64FromVariable(ddl_queue_primary_key_queue_id,
 													 "ddl_queue_primary_key_query_id");
 

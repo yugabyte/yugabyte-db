@@ -16,6 +16,7 @@
 #include "yb/cdc/xrepl_types.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/util/hash_util.h"
 
 namespace yb::xcluster {
@@ -68,6 +69,18 @@ struct XClusterTabletInfo {
   bool automatic_ddl_mode;
 
   const std::string& producer_tablet_id() const { return producer_tablet_info.tablet_id; }
+};
+
+struct SafeTimeBatch {
+  HybridTime apply_safe_time;
+  // Use set instead of unordered_set to ensure that the commit times are in order.
+  std::set<HybridTime> commit_times;
+  bool IsComplete() const { return !apply_safe_time.is_special(); }
+
+  bool operator==(const SafeTimeBatch& other) const {
+    return apply_safe_time == other.apply_safe_time && commit_times == other.commit_times;
+  }
+  bool operator!=(const SafeTimeBatch& other) const { return !(*this == other); }
 };
 
 }  // namespace yb::xcluster

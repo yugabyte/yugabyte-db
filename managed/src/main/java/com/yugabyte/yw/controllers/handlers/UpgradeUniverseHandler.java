@@ -632,7 +632,9 @@ public class UpgradeUniverseHandler {
     String typeName = generateTypeName(userIntent, requestParams);
 
     return submitUpgradeTask(
-        TaskType.TlsToggle,
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.TlsToggleKubernetes
+            : TaskType.TlsToggle,
         CustomerTask.TaskType.TlsToggle,
         requestParams,
         customer,

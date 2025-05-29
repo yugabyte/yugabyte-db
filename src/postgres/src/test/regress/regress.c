@@ -1411,6 +1411,7 @@ yb_cacheinfo(PG_FUNCTION_ARGS)
 	{
 		TupleDesc	tupdesc;
 		MemoryContext oldcontext;
+
 		funcctx = SRF_FIRSTCALL_INIT();
 
 		/*
@@ -1434,14 +1435,14 @@ yb_cacheinfo(PG_FUNCTION_ARGS)
 		 */
 		tupdesc = CreateTemplateTupleDesc(10);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "cache_id", INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "name",     TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "reloid",   OIDOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "indoid",   OIDOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "nkeys",    INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "key1",     INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "key2",     INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "key3",     INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "key4",     INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "name", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "reloid", OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "indoid", OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "nkeys", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "key1", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "key2", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "key3", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "key4", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "nbuckets", INT4OID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
@@ -1488,8 +1489,8 @@ PG_FUNCTION_INFO_V1(catalog_cache_compute_hash_tuple);
 Datum
 catalog_cache_compute_hash_tuple(PG_FUNCTION_ARGS)
 {
-	Datum *values;
-	bool *nulls;
+	Datum	   *values;
+	bool	   *nulls;
 	HeapTupleData tmptup;
 
 	/*
@@ -1508,21 +1509,25 @@ catalog_cache_compute_hash_tuple(PG_FUNCTION_ARGS)
 	 * From the tuple header, fetch the rowtype's OID and typmod so we can look up
 	 * its TupleDesc (layout info).
 	 */
-	Oid tupType = HeapTupleHeaderGetTypeId(td);
-	int32 tupTypmod = HeapTupleHeaderGetTypMod(td);
-	TupleDesc tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	Oid			tupType = HeapTupleHeaderGetTypeId(td);
+	int32		tupTypmod = HeapTupleHeaderGetTypMod(td);
+	TupleDesc	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+
 	tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 	ItemPointerSetInvalid(&(tmptup.t_self));
 	tmptup.t_tableOid = InvalidOid;
 	tmptup.t_data = td;
 
-	/* Deform the tuple into a Datum array so we can pass the keys to the hash function. */
+	/*
+	 * Deform the tuple into a Datum array so we can pass the keys to the hash
+	 * function.
+	 */
 	values = (Datum *) palloc0(sizeof(Datum) * tupdesc->natts);
-	nulls  = (bool *)  palloc0(sizeof(bool)  * tupdesc->natts);
+	nulls = (bool *) palloc0(sizeof(bool) * tupdesc->natts);
 	heap_deform_tuple(&tmptup, tupdesc, values, nulls);
 
 	/* Compute the hash value. */
-	uint32 hashval = YbSysCacheComputeHashValue(values[0], values[1], values[2], values[3], values[4]);
+	uint32		hashval = YbSysCacheComputeHashValue(values[0], values[1], values[2], values[3], values[4]);
 
 	ReleaseTupleDesc(tupdesc);
 	PG_RETURN_UINT32(hashval);

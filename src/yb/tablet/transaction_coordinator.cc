@@ -333,7 +333,7 @@ class TransactionState {
     return req;
   }
 
-  boost::optional<PgSessionRequestVersion> pg_session_req_version() const {
+  std::optional<PgSessionRequestVersion> pg_session_req_version() const {
     return pg_session_req_version_;
   }
 
@@ -1089,7 +1089,7 @@ class TransactionState {
 
   // Tablets participating in this transaction.
   std::unordered_map<
-      TabletId, InvolvedTabletState, StringHash, std::equal_to<void>> involved_tablets_;
+      TabletId, InvolvedTabletState, StringHash, std::equal_to<>> involved_tablets_;
   // Number of tablets that have not yet replicated all batches.
   size_t tablets_with_not_replicated_batches_ = 0;
   // Number of tablets that have not yet applied intents.
@@ -1101,22 +1101,22 @@ class TransactionState {
   // Metadata tracking aborted subtransaction IDs in this transaction.
   std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info_;
 
-  // The operation that we a currently replicating in RAFT.
+  // The operation that we are currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
-  tablet::UpdateTxnOperation* replicating_ = nullptr;
+  UpdateTxnOperation* replicating_ = nullptr;
   // Hybrid time before submitting replicating operation.
   // It is guaranteed to be less then actual operation hybrid time.
   HybridTime replicating_submit_time_;
-  std::deque<std::unique_ptr<tablet::UpdateTxnOperation>> request_queue_;
+  std::deque<std::unique_ptr<UpdateTxnOperation>> request_queue_;
 
   std::vector<TransactionAbortCallback> abort_waiters_;
   // Node uuid hosting the transaction at the query layer.
   std::string host_node_uuid_;
-  boost::optional<PgSessionRequestVersion> pg_session_req_version_ = boost::none;
+  std::optional<PgSessionRequestVersion> pg_session_req_version_;
   // For pg session level transactions, we introduce wait-for dependencies from the session level
   // transaction to the current active regular transaction, if any. This is necessary for detecting
   // deadlocks spanning advisory locks and row-level locks.
-  boost::optional<TransactionMetadata> background_transaction_meta_ = boost::none;
+  std::optional<TransactionMetadata> background_transaction_meta_;
   // Indicates whether the wait-for dependency from session level txn to the regular txn has changed
   // based on which the coordinator forwards the wait-for probe to the deadlock detector.
   bool forward_probe_to_detector_ = false;

@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 )
 
+const OtelCollectorService = "otel-collector.service"
+
 type InstallOtelCollector struct {
 	shellTask *ShellTask
 	param     *pb.InstallOtelCollectorInput
@@ -69,14 +71,14 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		"yb_home_dir": home,
 	}
 
-	unit := "otel-collector.service"
 	// Copy otel-collector.service
 	err = module.CopyFile(
 		ctx,
 		otelCollectorServiceContext,
-		filepath.Join(ServerTemplateSubpath, unit),
-		filepath.Join(home, SystemdUnitPath, unit),
+		filepath.Join(ServerTemplateSubpath, OtelCollectorService),
+		filepath.Join(home, SystemdUnitPath, OtelCollectorService),
 		fs.FileMode(0755),
+		h.username,
 	)
 
 	if err != nil {
@@ -84,7 +86,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	}
 
 	// 4) stop the systemd-unit if it's running.
-	stopCmd := module.StopSystemdUnit(h.username, unit)
+	stopCmd := module.StopSystemdUnit(h.username, OtelCollectorService)
 	h.logOut.WriteLine("Running otel-collector server phase: %s", stopCmd)
 	if _, err := module.RunShellCmd(ctx, h.username, "stop-otel-collector", stopCmd, h.logOut); err != nil {
 		return nil, err
@@ -98,7 +100,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	}
 
 	// 6) Start and enable the otel-collector service.
-	startCmd := module.StartSystemdUnit(h.username, unit)
+	startCmd := module.StartSystemdUnit(h.username, OtelCollectorService)
 	h.logOut.WriteLine("Running otel-collector phase: %s", startCmd)
 	if _, err = module.RunShellCmd(ctx, h.username, "start-otel-collector", startCmd, h.logOut); err != nil {
 		return nil, err

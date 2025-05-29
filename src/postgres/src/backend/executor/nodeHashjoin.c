@@ -1150,7 +1150,7 @@ ExecParallelHashJoinNewBatch(HashJoinState *hjstate)
 		{
 			SharedTuplestoreAccessor *inner_tuples;
 			Barrier    *batch_barrier =
-			&hashtable->batches[batchno].shared->batch_barrier;
+				&hashtable->batches[batchno].shared->batch_barrier;
 
 			switch (BarrierAttach(batch_barrier))
 			{
@@ -1569,7 +1569,7 @@ ExecHashJoinInitializeWorker(HashJoinState *state,
 	HashState  *hashNode;
 	int			plan_node_id = state->js.ps.plan->plan_node_id;
 	ParallelHashJoinState *pstate =
-	shm_toc_lookup(pwcxt->toc, plan_node_id, false);
+		shm_toc_lookup(pwcxt->toc, plan_node_id, false);
 
 	/* Attach to the space for shared temporary files. */
 	SharedFileSetAttach(&pstate->fileset, pwcxt->seg);

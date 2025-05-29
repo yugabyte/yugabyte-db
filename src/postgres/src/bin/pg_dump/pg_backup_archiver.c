@@ -158,12 +158,12 @@ static void StrictNamesCheck(RestoreOptions *ropt);
  * compatiblity, check for the presence of the GUC before setting it.
  */
 static const char *yb_disable_auto_analyze_cmd =
-		"DO $$\n"
-		"BEGIN\n"
-		"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
-		"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
-		"END IF;\n"
-		"END $$;\n";
+"DO $$\n"
+"BEGIN\n"
+"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
+"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
+"END IF;\n"
+"END $$;\n";
 
 /*
  * Allocate a new DumpOptions block containing all default values.
@@ -3325,17 +3325,18 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 				 "\\set use_roles true\n"
 				 "\\endif\n");
 
-		/* If the --create option is specified, the target database will be created and connected to.
-		 * The current connection is to another database and we don't want to disable auto analyze on
-		 * that.
+		/*
+		 * If the --create option is specified, the target database will be
+		 * created and connected to. The current connection is to another
+		 * database and we don't want to disable auto analyze on that.
 		 *
-		 * TODO: If --create is specified, disable auto analyze after the target database is created
-		 * and we connect to it.
+		 * TODO: If --create is specified, disable auto analyze after the
+		 * target database is created and we connect to it.
 		 */
 		if (!AH->public.ropt->createDB)
 		{
 			ahprintf(AH,
-				"\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
+					 "\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
 			ahprintf(AH, yb_disable_auto_analyze_cmd, "on");
 		}
 	}
@@ -3802,10 +3803,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 	 * "public" that is a comment.  We have to do this when --no-owner mode is
 	 * selected.  This is ugly, but I see no other good way ...
 	 *
-	 * Entries with a defnDumper need to call it to generate the
-	 * definition.  This is primarily intended to provide a way to save memory
-	 * for objects that would otherwise need a lot of it (e.g., statistics
-	 * data).
+	 * Entries with a defnDumper need to call it to generate the definition.
+	 * This is primarily intended to provide a way to save memory for objects
+	 * that would otherwise need a lot of it (e.g., statistics data).
 	 */
 	if (ropt->noOwner &&
 		strcmp(te->desc, "SCHEMA") == 0 && strncmp(te->defn, "--", 2) != 0)
@@ -3955,14 +3955,15 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 				if (AH->public.dopt->yb_dump_role_checks)
 				{
 					PQExpBuffer role_buf = createPQExpBuffer();
+
 					appendStringLiteralAHX(role_buf, te->owner, AH);
 					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
-								 ") AS role_exists \\gset\n"
-								 "\\if :role_exists\n"
-								 "    %s\n"
-								 "\\else\n"
-								 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
-								 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
+							 ") AS role_exists \\gset\n"
+							 "\\if :role_exists\n"
+							 "    %s\n"
+							 "\\else\n"
+							 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
+							 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
 					destroyPQExpBuffer(role_buf);
 				}
 				else

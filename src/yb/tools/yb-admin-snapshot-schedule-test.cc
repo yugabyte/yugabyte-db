@@ -91,7 +91,7 @@ constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
 constexpr char pg15_old_sys_catalog_snapshot_name[] =
-    "initial_sys_catalog_snapshot_2025.1.0.0-pg15-12-2";
+    "initial_sys_catalog_snapshot_2025.1.0.0-pg15-12-3";
 constexpr char pg11_old_sys_catalog_snapshot_name[] =
     "initial_sys_catalog_snapshot_2.0.9.0";
 

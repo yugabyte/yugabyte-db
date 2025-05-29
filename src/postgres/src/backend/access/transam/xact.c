@@ -219,8 +219,9 @@ typedef struct TransactionStateData
 	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to
 										 * frontend as part of current query's
 										 * execution */
-	uint8		ybPostgresOpsInTxn; /* An OR'ed list of operations performed on
-									 * postgres (temp) tables by current txn. */
+	uint8		ybPostgresOpsInTxn; /* An OR'ed list of operations performed
+									 * on postgres (temp) tables by current
+									 * txn. */
 	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
 									 * DocDB operations (e.g. drop
 									 * table/index) until the rest of the txn
@@ -1387,10 +1388,13 @@ RecordTransactionCommit(void)
 
 	if (IsYugaByteEnabled() && !YbGetPgOpsInCurrentTxn())
 		return InvalidTransactionId;
-	/* TODO(kramanathan): The bitwise flags returned by YbGetPgOpsInCurrentTxn()
-	 * are not independent of each other. The flag YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY
-	 * only requires a subset of YB_TXN_USES_TEMPORARY_RELATIONS's operations at
-	 * commit. Logical equality is used intentionally here to exit early.
+
+	/*
+	 * TODO(kramanathan): The bitwise flags returned by
+	 * YbGetPgOpsInCurrentTxn() are not independent of each other. The flag
+	 * YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY only requires a subset of
+	 * YB_TXN_USES_TEMPORARY_RELATIONS's operations at commit. Logical
+	 * equality is used intentionally here to exit early.
 	 */
 	else if (IsYugaByteEnabled() &&
 			 YbGetPgOpsInCurrentTxn() == YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY)
@@ -2394,7 +2398,8 @@ CommitTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+		bool		increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+
 		/*
 		 * Firing the triggers may abort current transaction.
 		 * At this point all the them has been fired already.
@@ -5011,6 +5016,29 @@ YbBeginInternalSubTransactionForReadCommittedStatement()
 
 	StartSubTransaction();
 	s->blockState = TBLOCK_SUBINPROGRESS;
+}
+
+bool
+YBTransactionContainsNonReadCommittedSavepoint(void)
+{
+	if (!IsTransactionBlock())
+		return false;
+
+	if (!IsSubTransaction())
+		return false;
+
+	TransactionState s = CurrentTransactionState;
+
+	while (s != NULL)
+	{
+		if (s->name != NULL &&
+			strcmp(s->name, YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) != 0)
+			return true;
+
+		s = s->parent;
+	}
+
+	return false;
 }
 
 /*
