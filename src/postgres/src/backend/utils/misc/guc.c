@@ -3409,7 +3409,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_force_early_ddl_serialization", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("If object locking is off (i.e., "
-						 "TEST_enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
+						 "enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
 						 "conflict error on the catalog version increment at the end after doing all the work. "
 						 "Setting this flag enables a fail-fast strategy by locking the catalog version at the "
 						 "start of DDLs, causing conflict errors to occur before useful work is done. This "

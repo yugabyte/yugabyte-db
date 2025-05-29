@@ -295,7 +295,7 @@ constexpr bool kRejectWritesWhenDiskFullDefault = true;
 DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
     "Reject incoming writes to the tablet if we are running out of disk space.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -1114,7 +1114,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
     }
 
     auto skip_aborting_active_transactions =
-        FLAGS_TEST_enable_object_locking_for_table_locks ||
+        FLAGS_enable_object_locking_for_table_locks ||
         FLAGS_TEST_skip_aborting_active_transactions_during_schema_change;
     // After write operation is paused, active transactions will be aborted for YSQL transactions.
     if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE &&
@@ -3665,7 +3665,7 @@ void TabletServiceImpl::ClearMetacache(
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+  if (!FLAGS_enable_object_locking_for_table_locks) {
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
@@ -3688,7 +3688,7 @@ void TabletServiceImpl::AcquireObjectLocks(
 void TabletServiceImpl::ReleaseObjectLocks(
     const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+  if (!PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);

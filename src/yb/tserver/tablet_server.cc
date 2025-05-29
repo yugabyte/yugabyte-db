@@ -236,7 +236,7 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
     "version that is retrieved from a tserver-master heartbeat response.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
@@ -805,7 +805,7 @@ tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
 
 void TabletServer::StartTSLocalLockManager() {
   if (opts_.server_type == TabletServerOptions::kServerType &&
-      PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+      PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
     std::lock_guard l(lock_);
     ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
@@ -866,7 +866,7 @@ Status TabletServer::KillPg() const {
 }
 
 bool TabletServer::IsYsqlLeaseEnabled() {
-  return GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
+  return GetAtomicFlag(&FLAGS_enable_object_locking_for_table_locks) ||
          GetAtomicFlag(&FLAGS_enable_ysql_operation_lease);
 }
 

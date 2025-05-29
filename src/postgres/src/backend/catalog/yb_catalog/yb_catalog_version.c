@@ -118,7 +118,7 @@ YbMaybeLockMasterCatalogVersion(YbDdlMode mode)
 	 *		 version mode is enabled.
 	 */
 	if (yb_force_early_ddl_serialization &&
-		!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks &&
+		!*YBCGetGFlags()->enable_object_locking_for_table_locks &&
 		(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{

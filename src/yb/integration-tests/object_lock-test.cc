@@ -54,7 +54,7 @@
 using namespace std::chrono_literals;
 
 DECLARE_bool(TEST_check_broadcast_address);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
 DECLARE_bool(persist_tserver_registry);
@@ -99,7 +99,7 @@ class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
   ObjectLockTest() {}
 
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
         kDefaultMasterYSQLLeaseTTLMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_lease_refresher_interval_ms) =
@@ -1588,13 +1588,15 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
   opts.replication_factor = ReplicationFactor();
   opts.enable_ysql = true;
   opts.extra_master_flags = {
-    "--TEST_enable_object_locking_for_table_locks",
-    Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
-    Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
-    "--enable_load_balancing=false",
-    "--TEST_olm_skip_sending_wait_for_probes=false"};
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+      "--enable_object_locking_for_table_locks",
+      Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
+      Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
+      "--enable_load_balancing=false",
+      "--TEST_olm_skip_sending_wait_for_probes=false"};
   opts.extra_tserver_flags = {
-      "--TEST_enable_object_locking_for_table_locks",
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+      "--enable_object_locking_for_table_locks",
       Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
       "--TEST_olm_skip_sending_wait_for_probes=false"};
   return opts;
@@ -1651,14 +1653,16 @@ ExternalObjectLockTestOneTSWithoutLease::MakeExternalMiniClusterOptions() {
   opts.enable_ysql = true;
   opts.wait_for_tservers_to_accept_ysql_connections = false;
   opts.extra_master_flags = {
-      "--TEST_enable_object_locking_for_table_locks",
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+      "--enable_object_locking_for_table_locks",
       Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
       Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
       "--enable_load_balancing=false"};
   opts.extra_tserver_flags = {
-    "--TEST_enable_object_locking_for_table_locks",
-    Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
-    "--TEST_tserver_enable_ysql_lease_refresh=false"};
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+      "--enable_object_locking_for_table_locks",
+      Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
+      "--TEST_tserver_enable_ysql_lease_refresh=false"};
   return opts;
 }
 

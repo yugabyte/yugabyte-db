@@ -78,7 +78,7 @@ DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(send_wait_for_report_interval_ms);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
 namespace master {
@@ -903,7 +903,7 @@ void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
 Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
     const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
     const LeaderEpoch& epoch) {
-  if (!FLAGS_enable_ysql_operation_lease && !FLAGS_TEST_enable_object_locking_for_table_locks) {
+  if (!FLAGS_enable_ysql_operation_lease && !FLAGS_enable_object_locking_for_table_locks) {
     return STATUS(NotSupported, "The ysql lease is currently disabled.");
   }
   if (!req.has_local_request_send_time_ms()) {

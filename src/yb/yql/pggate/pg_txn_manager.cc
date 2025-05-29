@@ -64,7 +64,7 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 namespace {
@@ -203,7 +203,7 @@ PgTxnManager::PgTxnManager(
     : client_(client),
       clock_(std::move(clock)),
       pg_callbacks_(pg_callbacks),
-      enable_table_locking_(FLAGS_TEST_enable_object_locking_for_table_locks) {
+      enable_table_locking_(FLAGS_enable_object_locking_for_table_locks) {
 }
 
 PgTxnManager::~PgTxnManager() {

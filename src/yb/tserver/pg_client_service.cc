@@ -150,7 +150,7 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 METRIC_DEFINE_event_stats(
     server, pg_client_exchange_response_size, "The size of PgClient exchange response in bytes",
@@ -1215,7 +1215,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
   Status GetObjectLockStatus(
       const std::vector<RemoteTabletServerPtr>& remote_tservers,
       PgGetLockStatusResponsePB* resp) {
-    if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+    if (!FLAGS_enable_object_locking_for_table_locks) {
       return Status::OK();
     }
 

@@ -165,7 +165,7 @@ DEFINE_RUNTIME_PREVIEW_bool(
 
 DEFINE_RUNTIME_PG_FLAG(
     bool, yb_force_early_ddl_serialization, true,
-    "If object locking is off (i.e., TEST_enable_object_locking_for_table_locks=false), concurrent "
+    "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
     "DDLs might face a conflict error on the catalog version increment at the end after doing all "
     "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
     "the start of DDLs, causing conflict errors to occur before useful work is done. This flag is "
@@ -2280,8 +2280,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
-      .TEST_enable_object_locking_for_table_locks =
-          &FLAGS_TEST_enable_object_locking_for_table_locks,
+      .enable_object_locking_for_table_locks =
+          &FLAGS_enable_object_locking_for_table_locks,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size
   };
