@@ -231,6 +231,12 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     name_col = kTableNameColName;
   }
 
+  VLOG(3) << "Checking PG catalog for table " << table->ToString()
+                    << " with id: " << table->id()
+                    << " with oid " << oid
+                    << " in pg_catalog table " << pg_catalog_table_id
+                    << " at read time " << read_time;
+
   auto read_data = VERIFY_RESULT(sys_catalog->TableReadData(pg_catalog_table_id, read_time));
   auto oid_col_id = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
   auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
@@ -272,17 +278,30 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     table_found = true;
     if (check_relfilenode) {
       const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
-      if (relfilenode_col->uint32_value() != VERIFY_RESULT(table->GetPgRelfilenodeOid())) {
+      const auto& docdb_relfilenodeOid = VERIFY_RESULT(table->GetPgRelfilenodeOid());
+      if (relfilenode_col->uint32_value() != docdb_relfilenodeOid) {
+        VLOG(3) << "Table rewrite detected for " << table->ToString()
+                << " with oid " << oid
+                << " and pg_class relfilenode " << relfilenode_col->uint32_value()
+                << ", docdb relfilenode " << docdb_relfilenodeOid;
         table_found = false;
         table_rewritten = true;
       }
     }
   }
 
-  // Table not found in pg_class. This can only happen in three cases:
-  // * Table creation failed,
-  // * A table deletion went through successfully,
-  // * In some unit tests where --TEST_yb_test_table_rewrite_keep_old_table=true
+  // Table not found in pg_class. This can only happen in the following cases:
+  // 1. Table was created in the current transaction and:
+  //   a. the transaction was aborted. BEGIN; CREATE TABLE; ROLLBACK;
+  //   b. the table was dropped as well and the transaction was committed.
+  //      BEGIN; CREATE TABLE; DROP TABLE; COMMIT;
+  //   c. the table was dropped as well and the transaction was aborted.
+  //      BEGIN; CREATE TABLE; DROP TABLE; ROLLBACK;
+  //   Note that we cannot differentiate between the 1b and 1c cases here since in both the cases,
+  //   the table won't be found in the PG catalog.
+  // 2. Table existed before the transaction and its deletion went through successfully.
+  //    BEGIN; DROP TABLE; COMMIT;
+  // 3. In some unit tests where --TEST_yb_test_table_rewrite_keep_old_table=true
   //   is set on yb-master and PG GUC yb_test_table_rewrite_keep_old_table is true,
   //   an ALTER TABLE statement that involves a table rewrite will not have
   //   "contains_drop_table_op" set, therefore is_being_deleted_by_ysql_ddl_txn()
@@ -291,23 +310,36 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   //   for testing purpose.
   if (!table_found) {
     *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
+    // Case 1.b. and 1.c.
+    if (l->is_being_created_by_ysql_ddl_txn() && l->is_being_deleted_by_ysql_ddl_txn()) {
+      VLOG(3) << "Ysql transaction for " << table->ToString()
+              << " cannot be concluded as commit or rollback as it was created and deleted in the"
+              << " same transaction";
+      *result = std::nullopt;
+      return Status::OK();
+    }
+    // Case 1.a.
+    if (l->is_being_created_by_ysql_ddl_txn()) {
+      VLOG(3) << "Ysql Create transaction for " << table->ToString()
+              << " detected to have failed as table not found in PG catalog";
+      *result = false;
+      return Status::OK();
+    }
+    // Case 2.
     if (l->is_being_deleted_by_ysql_ddl_txn()) {
+      VLOG(3) << "Ysql Drop transaction for " << table->ToString()
+              << " detected to have succeeded as table not found in PG catalog";
       *result = true;
       return Status::OK();
     }
-    if (FLAGS_TEST_yb_test_table_rewrite_keep_old_table) {
-      // If alter table resulted in a table rewrite and the old table is
-      // already deleted from PG catalog after the ddl transaction completes,
-      // then the ddl transaction must have committed because the old table
-      // should still exist if the ddl transaction aborted.
-      if (l->is_being_altered_by_ysql_ddl_txn() && table_rewritten) {
-        *result = true;
-        return Status::OK();
-      }
-    }
-    CHECK(l->is_being_created_by_ysql_ddl_txn())
+    // Must be case 3 where alter table resulted in a table rewrite and the old table was
+    // successfully deleted from the PG catalog after the DDL transaction completed. If the
+    // transaction had aborted, the old table would not exist in the catalog.
+    CHECK(FLAGS_TEST_yb_test_table_rewrite_keep_old_table &&
+          l->is_being_altered_by_ysql_ddl_txn() &&
+          table_rewritten)
         << table->ToString() << " " << l->pb.ysql_ddl_txn_verifier_state(0).ShortDebugString();
-    *result = false;
+    *result = true;
     return Status::OK();
   }
 
@@ -322,6 +354,8 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   }
 
   if (l->is_being_created_by_ysql_ddl_txn()) {
+    VLOG(3) << "Ysql Create transaction for " << table->ToString()
+      << " detected to have succeeded as table found in PG catalog";
     *result = true;
     return Status::OK();
   }
