@@ -321,7 +321,7 @@ class ThreadPool {
 
   struct Task {
     std::shared_ptr<Runnable> runnable;
-    Trace* trace;
+    Trace* trace = nullptr;
 
     // Time at which the entry was submitted to the pool.
     MonoTime submit_time;
