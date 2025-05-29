@@ -1413,7 +1413,7 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	 */
 	set_restrict_relation_kind(AH, "view, foreign-table");
 
-	if (dopt->include_yb_metadata)
+	if (dopt->include_yb_metadata || (IsYugabyteEnabled && dopt->binary_upgrade))
 	{
 		ExecuteSqlStatement(AH, "SET yb_format_funcs_include_yb_metadata = true");
 	}
@@ -17907,7 +17907,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 
 		if (dump_index_for_constraint)
 		{
-			if (dopt->include_yb_metadata)
+			if (dopt->include_yb_metadata || (IsYugabyteEnabled && dopt->binary_upgrade))
 			{
 				/*
 				 * In 'include_yb_metadata' mode all Indexes already have NONCONCURRENTLY flag.
