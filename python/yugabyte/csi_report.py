@@ -161,7 +161,7 @@ def upload_log(item: str, time_sec: float, path_list: List[str]) -> int:
                                  headers=csi['headers'],
                                  data=json.dumps(req_data))
         if response.status_code == 201:
-            logging.info("CSI upload: " + response.json()['message'])
+            logging.info("CSI upload: " + response.json()['id'])
         else:
             logging.error(f"CSI Error: Log of {path} failed: {response.text}")
             failed_num += 1
@@ -187,7 +187,7 @@ def upload_attachment(item: str, time_sec: float, message: str, file_path: str) 
                              headers=csi['headers'],
                              files=file_data)
     if response.status_code == 200:
-        logging.info("CSI upload: " + response.json()['message'])
+        logging.info("CSI upload: " + response.json()['id'])
         return 0
     else:
         logging.error(f"CSI Error: Log of {file_path} failed: {response.text}")
