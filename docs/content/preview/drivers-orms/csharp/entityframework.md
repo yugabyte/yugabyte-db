@@ -41,7 +41,7 @@ If you are using Visual Studio, add the Npgsql package to the project as follows
 To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
 
 ```csharp
-dotnet add package NpgsqlYB.EntityFrameworkCore.YugabyteDB --version 8.0.4-yb-1-preview
+dotnet add package NpgsqlYB.EntityFrameworkCore.YugabyteDB --version 8.0.4.1
 ```
 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql.EntityFrameworkCore.PostgreSQL) for EntityFramework.
