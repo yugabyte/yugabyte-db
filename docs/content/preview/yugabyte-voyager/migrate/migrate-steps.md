@@ -116,11 +116,13 @@ If you want yb-voyager to connect to the target YugabyteDB database over SSL, re
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. You need to provide the full path to the export directory in the `export-dir` parameter of your [configuration file](#set-up-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
+Before starting migration, create the export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. For example:
 
 ```sh
-mkdir -p $HOME/<migration-name>/export-dir
+mkdir -p $HOME/my-migration/export
 ```
+
+You need to provide the full path to your export directory in the `export-dir` parameter of your [configuration file](#set-up-a-configuration-file), or in the `--export-dir` flag when running `yb-voyager` commands.
 
 The export directory has the following sub-directories and files:
 
@@ -134,7 +136,7 @@ The export directory has the following sub-directories and files:
 
 Starting with version 2025.5.2, you can use a configuration file to specify the parameters required when running Voyager commands.
 
-To get started, copy the `offline-migration.yaml` template configuration file from one of the following locations to the migration folder you created (that is, `$HOME/<migration-name>/`):
+To get started, copy the `offline-migration.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):
 
 {{< tabpane text=true >}}
 
