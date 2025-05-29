@@ -14,13 +14,13 @@ type: docs
 
 This tutorial guides you through constructing a Retrieval-Augmented Generation (RAG) pipeline using YugabyteDB, a distributed SQL database. By integrating YugabyteDB with vector search capabilities, you can enhance your AI applications with scalable, resilient, and low-latency access to semantically rich data.
 
-## Why Use RAG?
+## Why use RAG?
 
 RAG combines large language models (LLM) with external knowledge sources to produce more accurate and context-aware responses. In this setup, YugabyteDB serves as the retrieval layer, storing vector representations of your data, and enabling efficient similarity searches.
 
 One of the more compelling AI applications is frontline customer support.
 
-However, support content typically resides across many spaces, including public documentation, internal knowledge bases, Slack threads, support tickets, and more. To leverage this content effectively, you need to vectorize it. This means converting it into embeddings that preserve semantic meaning and can be searched efficiently. Many companies can't store this data externally. Hosting your own vector database ensures control, privacy, and security—key requirements for enterprise adoption.
+However, support content typically resides across many spaces, including public documentation, internal knowledge bases, Slack threads, support tickets, and more. To leverage this content effectively, you need to vectorize it. This means converting it into embeddings that preserve semantic meaning and enable efficient searching. Many companies can't store this data externally. Hosting your own vector database ensures control, privacy, and security—key requirements for enterprise adoption.
 
 To have support documents on premises and supply the LLM with needed context from the documents, you do the following:
 
@@ -51,7 +51,7 @@ This same approach isn't limited to just "Ask Your Support Knowledge Base" scena
 
 - Python 3
 - YugabyteDB v2.25.1 or later
-- An [OpenAI API key](https://platform.openai.com/docs/introduction).
+- An [OpenAI API key](https://platform.openai.com/api-keys).
 
 ## Set up the application
 
