@@ -334,7 +334,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ResumeKubernetesUniverse,
           TaskType.ReadOnlyClusterDelete,
           TaskType.FailoverDrConfig,
-          TaskType.ResumeUniverse);
+          TaskType.ResumeUniverse,
+          TaskType.MigrateUniverse);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
@@ -712,6 +713,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected void validateUniverseState(Universe universe) {
     TaskType taskType = getTaskExecutor().getTaskType(getClass());
+    validateUniverseMigrationPending(taskType, universe);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     boolean isResumeOrDelete =
         (taskType == TaskType.ResumeUniverse
@@ -747,7 +749,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param universe the locked universe.
    */
-  protected void createPrecheckTasks(Universe universe) {}
+  protected void createPrecheckTasks(Universe universe) {
+    validateUniverseMigrationPending(getRunnableTask().getTaskType(), universe);
+  }
+
+  private void validateUniverseMigrationPending(TaskType taskType, Universe universe) {
+    if (taskType != null && taskType != TaskType.MigrateUniverse) {
+      if (universe.getUniverseDetails().clusters.stream()
+          .anyMatch(c -> c.userIntent != null && c.userIntent.getMigrationConfig() != null)) {
+        String msg = "Migration is pending for universe " + universe.getName();
+        log.error(msg);
+        throw new IllegalStateException(msg);
+      }
+    }
+  }
 
   protected Universe getUniverse() {
     return Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -6983,6 +6998,40 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Fetch conf file information from the given IPs for the specific server type and name.
+   *
+   * @param ips the given IPs.
+   * @param serverType the given server type.
+   * @param serviceName the service name.
+   * @param userSystemd true if it is user systemd else false.
+   * @param consumer the callback for further processing of the output.
+   * @return the SubTaskGroup.
+   */
+  public SubTaskGroup createFetchServerConfTasks(
+      Set<String> ips,
+      ServerType serverType,
+      String serviceName,
+      boolean userSystemd,
+      Consumer<FetchServerConf.Output> consumer) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(FetchServerConf.class.getSimpleName(), SubTaskGroupType.Configuring);
+    ips.forEach(
+        ip -> {
+          FetchServerConf task = createTask(FetchServerConf.class);
+          FetchServerConf.Params params = new FetchServerConf.Params();
+          params.ip = ip;
+          params.serverType = serverType;
+          params.serviceName = serviceName;
+          params.userSystemd = userSystemd;
+          params.consumer = consumer;
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

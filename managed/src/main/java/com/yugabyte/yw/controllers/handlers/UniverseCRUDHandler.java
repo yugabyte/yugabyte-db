@@ -63,9 +63,11 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.ImportUniverseTaskParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
@@ -77,6 +79,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -117,6 +120,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.YBClient;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Status;
@@ -126,30 +130,32 @@ public class UniverseCRUDHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
 
-  @Inject Commissioner commissioner;
+  @Inject private Commissioner commissioner;
 
-  @Inject EncryptionAtRestManager keyManager;
+  @Inject private EncryptionAtRestManager keyManager;
 
-  @Inject Config appConfig;
+  @Inject private Config appConfig;
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject SettableRuntimeConfigFactory settableRuntimeConfigFactory;
+  @Inject private SettableRuntimeConfigFactory settableRuntimeConfigFactory;
 
-  @Inject RuntimeConfGetter confGetter;
+  @Inject private RuntimeConfGetter confGetter;
 
-  @Inject KubernetesManagerFactory kubernetesManagerFactory;
-  @Inject PasswordPolicyService passwordPolicyService;
+  @Inject private KubernetesManagerFactory kubernetesManagerFactory;
+  @Inject private PasswordPolicyService passwordPolicyService;
 
-  @Inject UpgradeUniverseHandler upgradeUniverseHandler;
+  @Inject private UpgradeUniverseHandler upgradeUniverseHandler;
 
-  @Inject YbcManager ybcManager;
+  @Inject private YbcManager ybcManager;
 
-  @Inject ReleaseManager releaseManager;
+  @Inject private ReleaseManager releaseManager;
 
-  @Inject CertificateHelper certificateHelper;
+  @Inject private CertificateHelper certificateHelper;
 
-  @Inject GFlagsValidation gFlagsValidation;
+  @Inject private GFlagsValidation gFlagsValidation;
+
+  @Inject private YBClientService ybService;
 
   public enum OpType {
     CONFIGURE,
@@ -547,6 +553,33 @@ public class UniverseCRUDHandler {
     taskParams.xClusterInfo.sourceRootCertDirPath =
         XClusterConfigTaskBase.getProducerCertsDir(
             taskParams.getPrimaryCluster().userIntent.provider);
+  }
+
+  public UUID importUniverse(Customer customer, ImportUniverseTaskParams taskParams) {
+    taskParams.universeUuid = getClusterUuid(taskParams);
+    taskParams.customerUuid = customer.getUuid();
+    UUID taskUuid = commissioner.submit(TaskType.ImportUniverse, taskParams);
+    CustomerTask.create(
+        customer,
+        taskParams.universeUuid,
+        taskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ImportUniverse,
+        taskParams.universeName);
+    return taskUuid;
+  }
+
+  public UniverseResp migrateUniverse(Customer customer, UpgradeTaskParams taskParams) {
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    UUID taskUuid = commissioner.submit(TaskType.MigrateUniverse, taskParams);
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        universe.getName());
+    return UniverseResp.create(universe, taskUuid, confGetter);
   }
 
   public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
@@ -2574,6 +2607,19 @@ public class UniverseCRUDHandler {
             String.format(
                 "Invalid value for %s (accepted values: %s)",
                 userTag, StringUtils.join(acceptedValuesSet, ", ")));
+    }
+  }
+
+  private UUID getClusterUuid(ImportUniverseTaskParams taskParams) {
+    String masterAddrs = String.join(",", taskParams.masterAddrs);
+    String certificate = null;
+    if (taskParams.certUuid != null) {
+      certificate = CertificateInfo.get(taskParams.certUuid).getCertificate();
+    }
+    try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
+      return UUID.fromString(client.getMasterClusterConfig().getConfig().getClusterUuid());
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 }
