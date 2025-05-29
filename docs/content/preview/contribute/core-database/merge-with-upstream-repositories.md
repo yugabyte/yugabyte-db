@@ -665,9 +665,7 @@ However, that should be weighed against an alternate approach to do an actual me
 1. After completing the unofficial merge to the best of your ability, sync this new content back to [yugabyte/yugabyte-db][repo-yugabyte-db]'s upstream repository directory.
    Now, build can be attempted in [yugabyte/yugabyte-db][repo-yugabyte-db] to catch compilation and test issues, leading to further changes.
 
-In all cases, cross-repository merge conflicts may arise, in which case resolution details should be noted in the commit messages.
-See MERGE.
-TODO(jason): where is MERGE?
+In all cases, cross-repository [merge conflicts](#merge) may arise, in which case resolution details should be noted in the commit messages.
 
 ### Merge
 
