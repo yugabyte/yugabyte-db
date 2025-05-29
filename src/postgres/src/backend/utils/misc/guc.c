@@ -5290,18 +5290,6 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-	{
-		{"yb_major_version_upgrade_compatibility", PGC_SIGHUP, CUSTOM_OPTIONS,
-			gettext_noop("The compatibility level to use during a YSQL Major version upgrade. "
-						 "Allowed values are 0 and 11."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_major_version_upgrade_compatibility,
-		0, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
 	{{"yb_tcmalloc_sample_period", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("TCMalloc sample interval in bytes, i.e. approximately "
 						 "how many bytes between sampling allocation call stacks"), NULL,
