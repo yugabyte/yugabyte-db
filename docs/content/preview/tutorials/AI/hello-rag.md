@@ -29,7 +29,7 @@ To have support documents on premises and supply the LLM with needed context fro
 
 The following basic example does the following:
 
-1. Loads a directory of files (`rag_example/data/`).
+1. Loads a directory of files (`hello_rag/data/`).
 1. Splits them into chunks.
 1. Converts the chunks into vectors using OpenAI embeddings.
 1. Stores each chunk's ID, text, and vector in a YugabyteDB table called `vectors`.
@@ -74,7 +74,7 @@ Download the application and provide settings specific to your deployment:
     git clone https://github.com/YugabyteDB-Samples/hello_rag.git
     ```
 
-    The `rag_example/data` directory includes a file about "paul_graham". You can place any text data in this directory to supplement the LLM retrieval.
+    The `hello_rag/data` directory includes a file about "paul_graham". You can place any text data in this directory to supplement the LLM retrieval.
 
 ## Set up YugabyteDB
 
@@ -112,7 +112,7 @@ Download the application and provide settings specific to your deployment:
 
 ## Run the application
 
-In the `rag_example` directory, do the following:
+In the `hello_rag` directory, do the following:
 
 1. Edit `insert.py` and `question.py` to set `connection_string` for your YugabyteDB database.
 
