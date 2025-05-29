@@ -169,12 +169,16 @@ public class UniverseMetricProvider implements MetricsProvider {
               getEncryptionKeyExpiryDays(
                   activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
           if (encryptionKeyExpiryDays != null) {
-            universeGroup.metric(
+            KmsHistory kmsHistory = activeEncryptionKeys.get(universe.getUniverseUUID());
+            KmsConfig kmsConfig = kmsConfigMap.get(kmsHistory.getConfigUuid());
+            Metric encryptionKeyMetric =
                 createUniverseMetric(
                     customer,
                     universe,
                     PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
-                    encryptionKeyExpiryDays));
+                    encryptionKeyExpiryDays);
+            encryptionKeyMetric.setLabel(KnownAlertLabels.KMS_CONFIG_NAME, kmsConfig.getName());
+            universeGroup.metric(encryptionKeyMetric);
           }
           universeGroup.metric(
               createUniverseMetric(
