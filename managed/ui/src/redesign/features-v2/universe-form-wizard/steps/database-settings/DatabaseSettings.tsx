@@ -10,25 +10,22 @@ import { FormProvider, useForm } from 'react-hook-form';
 import { DatabaseSettingsProps } from './dtos';
 import { YCQLFIELD, YSQLField, ConnectionPoolingField, PGCompatibiltyField } from '../../fields';
 import { mui } from '@yugabyte-ui-library/core';
-import { StyledPanel, StyledHeader } from '../../components/DefaultComponents';
+import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
+import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
-const { Box, styled, Typography } = mui;
-
-const StyledContent = styled('div')(({ theme }) => ({
-  padding: `${theme.spacing(1)}px ${theme.spacing(2.5)}px ${theme.spacing(2.5)}px ${theme.spacing(
-    2.5
-  )}px`,
-  display: 'flex',
-  gap: theme.spacing(3),
-  flexDirection: 'column'
-}));
+const { Box } = mui;
 
 export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const methods = useForm<DatabaseSettingsProps>();
+  const methods = useForm<DatabaseSettingsProps>({
+    defaultValues: {
+      ysqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort,
+      internalYsqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort
+    }
+  });
 
   useImperativeHandle(
     forwardRef,

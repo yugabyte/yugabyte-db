@@ -246,7 +246,12 @@ export default (store) => {
       <Route path="/login" component={Login} />
       <Route path="/jwt_token" component={OIDCJWTToken} />
       <Route path="/register" component={Register} />
-      {/* <Route path="/create-universe" component={CreateUniverse} onEnter={authenticatedSession} onChange={checkIfAuthenticated} /> */}
+      <Route
+        path="/create-universe"
+        component={CreateUniverse}
+        onEnter={authenticatedSession}
+        onChange={checkIfAuthenticated}
+      />
       <Route
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}
