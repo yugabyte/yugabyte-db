@@ -71,7 +71,7 @@ Download the application and provide settings specific to your deployment:
 1. Clone the repository.
 
     ```sh
-    git clone https://github.com/kyle-hailey/rag_example.git
+    git clone https://github.com/YugabyteDB-Samples/hello_rag.git
     ```
 
     The `rag_example/data` directory includes a file about "paul_graham". You can place any text data in this directory to supplement the LLM retrieval.
