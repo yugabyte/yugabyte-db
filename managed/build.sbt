@@ -389,7 +389,7 @@ versionGenerate := {
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
-  var downloadYbcCmd = "./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -i"
+  var downloadYbcCmd = "./download_ybc.sh -c " + (Compile / resourceDirectory).value / "ybc_version.conf" + " -i"
   if (moveYbcPackage) {
     downloadYbcCmd = downloadYbcCmd + " -s"
   }
