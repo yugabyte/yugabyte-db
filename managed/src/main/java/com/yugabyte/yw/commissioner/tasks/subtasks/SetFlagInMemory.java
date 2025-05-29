@@ -89,8 +89,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     if (gflags == null) {
       throw new IllegalArgumentException("Gflags cannot be null during a setFlag operation.");
     }
-    YBClient client = getClient();
-    try {
+    try (YBClient client = getClient()) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
       if (!taskParams().updateMasterAddrs) {
@@ -132,8 +131,6 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
-    } finally {
-      closeClient(client);
     }
   }
 

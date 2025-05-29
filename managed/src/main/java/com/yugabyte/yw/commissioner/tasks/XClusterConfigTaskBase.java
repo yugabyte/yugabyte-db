@@ -797,8 +797,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static CatalogEntityInfo.SysClusterConfigEntryPB getClusterConfig(
       YBClientService ybService, Universe universe) {
-    try (YBClient client =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return getClusterConfig(client, universe.getUniverseUUID());
     } catch (Exception e) {
       log.error("Error getting cluster config for universe: " + universe.getUniverseUUID(), e);
@@ -1201,10 +1200,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                     .filter(tableIds::contains)
                     .collect(Collectors.toSet())));
     // In replication as target.
-    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
-    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    try (YBClient client =
-        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
           getClusterConfig(client, targetUniverse.getUniverseUUID());
       tableIdsInReplicationOnTargetUniverse.addAll(
@@ -1454,9 +1450,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       return Collections.emptyMap();
     }
     Map<String, GetTableSchemaResponse> tableSchemaMap = new HashMap<>();
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       for (String tableUuid : mainTableUuidList) {
         // To make sure there is no `-` in the table UUID.
         tableUuid = tableUuid.replace("-", "");
@@ -1591,9 +1585,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
       YBClientService ybService, Universe universe) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListTablesResponse listTablesResponse =
           client.getTablesList(
               null /* nameFilter */, false /* excludeSystemTables */, null /* namespace */);
@@ -2578,9 +2570,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     executorService.submit(
         () -> {
-          try (YBClient client =
-              ybClientService.getClient(
-                  targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode())) {
+          try (YBClient client = ybClientService.getUniverseClient(targetUniverse)) {
             CatalogEntityInfo.SysClusterConfigEntryPB config =
                 getClusterConfig(client, targetUniverse.getUniverseUUID());
             data.setClusterConfig(config);
@@ -3191,8 +3181,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static Set<MasterTypes.NamespaceIdentifierPB> getNamespaces(
       YBClientService ybService, Universe universe, Set<String> dbIds) {
-    try (YBClient client =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       List<MasterTypes.NamespaceIdentifierPB> namespaces =
           client.getNamespacesList().getNamespacesList();
       if (CollectionUtils.isEmpty(dbIds)) {
@@ -3357,10 +3346,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static GetUniverseReplicationInfoResponse getUniverseReplicationInfo(
       YBClientService ybService, Universe universe, String replicationGroup) throws Exception {
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return client.getUniverseReplicationInfo(replicationGroup);
     }
   }
@@ -3368,10 +3354,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static GetXClusterOutboundReplicationGroupInfoResponse
       getXClusterOutboundReplicationGroupInfo(
           YBClientService ybService, Universe universe, String replicationGroup) throws Exception {
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return client.getXClusterOutboundReplicationGroupInfo(replicationGroup);
     }
   }

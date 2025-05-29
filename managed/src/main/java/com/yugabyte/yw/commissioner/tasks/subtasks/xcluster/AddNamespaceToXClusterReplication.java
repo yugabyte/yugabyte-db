@@ -66,9 +66,7 @@ public class AddNamespaceToXClusterReplication extends XClusterConfigTaskBase {
     }
     String dbId = taskParams().getDbToAdd();
 
-    try (YBClient client =
-        ybService.getClient(
-            sourceUniverse.getMasterAddresses(), sourceUniverse.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
       Set<CommonNet.HostPortPB> targetMasterAddresses =
           new HashSet<>(
               NetUtil.parseStringsAsPB(

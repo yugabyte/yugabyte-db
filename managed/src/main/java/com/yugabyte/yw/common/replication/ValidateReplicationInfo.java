@@ -27,12 +27,11 @@ public class ValidateReplicationInfo {
 
   public List<Tablespace> getUnsupportedTablespacesOnUniverse(
       Universe universe, Collection<Tablespace> tablespaces) {
-    String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
-    String universeCertificate = universe.getCertificateNodetoNode();
+    String masterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
+    String certificate = universe.getCertificateNodetoNode();
     UUID primaryClusterPlacementUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
     if (CollectionUtils.isNotEmpty(tablespaces)) {
-      try (YBClient client =
-          ybClientService.getClient(universeMasterAddresses, universeCertificate)) {
+      try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
         return tablespaces.stream()
             .filter(
                 t -> {

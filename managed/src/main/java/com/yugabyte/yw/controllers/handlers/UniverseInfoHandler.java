@@ -170,32 +170,22 @@ public class UniverseInfoHandler {
   }
 
   public HostAndPort getMasterLeaderIP(Universe universe) {
-    final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
     // Get and return Leader IP
-    try {
-      client = ybService.getClient(hostPorts, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
       if (leaderMasterHostAndPort == null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Leader master not found for universe " + universe.getUniverseUUID());
       }
       return leaderMasterHostAndPort;
-    } catch (RuntimeException e) {
+    } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
   }
 
   public List<MasterInfo> getMasterInfos(Universe universe) {
-    final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
     // Get and return Leader IP
-    try {
-      client = ybService.getClient(hostPorts, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       List<GetMasterRegistrationResponse> masterRegistrationResponseList =
           client.getMasterRegistrationResponseList();
       if (masterRegistrationResponseList == null) {
@@ -206,10 +196,8 @@ public class UniverseInfoHandler {
       return masterRegistrationResponseList.stream()
           .map(MasterInfo::convertFrom)
           .collect(Collectors.toList());
-    } catch (RuntimeException e) {
+    } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
   }
 

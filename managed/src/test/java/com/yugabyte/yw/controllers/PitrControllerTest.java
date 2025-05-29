@@ -79,7 +79,7 @@ public class PitrControllerTest extends FakeDBApplication {
     mockClient = mock(YBClient.class);
     mockListSnapshotSchedulesResponse = mock(ListSnapshotSchedulesResponse.class);
     mockDeleteSnapshotScheduleResponse = mock(DeleteSnapshotScheduleResponse.class);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());

@@ -81,9 +81,7 @@ public class TabletReportComponent implements SupportBundleComponent {
     }
 
     // Create tablet report from each tserver.
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       universe.getTServersInPrimaryCluster().parallelStream()
           .forEach(
               tserver -> {
@@ -215,9 +213,7 @@ public class TabletReportComponent implements SupportBundleComponent {
     Map<String, Long> res = new HashMap<>();
     // ~12KB for universe details.
     long size = 12000;
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       List<NodeDetails> tservers = universe.getTServersInPrimaryCluster();
       int numTservers = tservers.size();
       NodeDetails tserver = tservers.get(0);

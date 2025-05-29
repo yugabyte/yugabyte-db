@@ -202,6 +202,7 @@ import org.yb.util.PeerInfo;
 import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 import play.mvc.Http;
+import reactor.core.Exceptions;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -2500,9 +2501,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public Set<String> getLeaderlessTablets(UUID universeUuid) {
     Universe universe = Universe.getOrBadRequest(universeUuid);
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(masterAddresses, certificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
       if (leaderMasterHostAndPort == null) {
         throw new RuntimeException(
@@ -2571,9 +2570,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param universe the universe.
    */
   public void verifyNoTabletsOnBlacklistedTservers(Universe universe) {
-    String masterAddresses = universe.getMasterAddresses();
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       Set<HostAndPort> backlistedHostAndPorts = getBlacklistedHostAndPorts(universe, client);
       if (CollectionUtils.isEmpty(backlistedHostAndPorts)) {
         log.info("No tserver is blacklisted for universe {}", universe.getUniverseUUID());
@@ -2691,10 +2688,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean nodeInMasterConfig(Universe universe, NodeDetails node) {
     String ip = node.cloudInfo.private_ip;
     String secondaryIp = node.cloudInfo.secondary_private_ip;
-    String masterAddresses = universe.getMasterAddresses();
-
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListMasterRaftPeersResponse response = client.listMasterRaftPeers();
       List<PeerInfo> peers = response.getPeersList();
       return peers.stream().anyMatch(p -> p.hasHost(ip) || p.hasHost(secondaryIp));
@@ -2715,8 +2709,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected Set<NodeDetails> getRemoteMasterNodes(Universe universe) {
     String masterAddresses = universe.getMasterAddresses();
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return client.listMasterRaftPeers().getPeersList().stream()
           .map(
               peerInfo -> {
@@ -3447,9 +3440,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     HashMap<String, BackupTableParams> keyspaceMap = new HashMap<>();
     // Todo: add comments. Backup the whole keyspace.
     Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListTablesResponse listTablesResponse =
           client.getTablesList(
               null /* nameFilter */, true /* excludeSystemTables */, null /* namespace */);
@@ -5193,9 +5184,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean isChangeMasterConfigDone(
       Universe universe, NodeDetails node, boolean isAddMasterOp, String ipToUse) {
-    String masterAddresses = universe.getMasterAddresses();
-    YBClient client = ybService.getClient(masterAddresses, universe.getCertificateNodetoNode());
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListMasterRaftPeersResponse response = client.listMasterRaftPeers();
       List<PeerInfo> peers = response.getPeersList();
       boolean anyMatched = peers.stream().anyMatch(p -> p.hasHost(ipToUse));
@@ -5207,8 +5196,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               node.nodeName, ipToUse, node.masterRpcPort, e.getMessage());
       log.error(msg, e);
       throw new RuntimeException(msg);
-    } finally {
-      ybService.closeClient(client, masterAddresses);
     }
   }
 
@@ -5216,9 +5203,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // "follower_unavailable_considered_failed_sec" time, the tserver will be instantly marked as
   // "dead" and not "live".
   public List<TabletServerInfo> getLiveTabletServers(Universe universe) {
-    String masterAddresses = universe.getMasterAddresses();
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       ListLiveTabletServersResponse response = client.listLiveTabletServers();
 
       return response.getTabletServers();
@@ -5247,15 +5232,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(masterAddrs, certificate);
-    try {
+    try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
       HostAndPort hp =
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,
               server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
       return client.waitForServer(hp, 5000);
-    } finally {
-      ybService.closeClient(client, masterAddrs);
+    } catch (Exception e) {
+      throw Exceptions.propagate(e);
     }
   }
 
@@ -5430,17 +5414,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   private int getClusterConfigVersion(Universe universe) {
-    final String hostPorts = universe.getMasterAddresses();
-    final String certificate = universe.getCertificateNodetoNode();
     int version;
-    YBClient client = ybService.getClient(hostPorts, certificate);
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       version = client.getMasterClusterConfig().getConfig().getVersion();
     } catch (Exception e) {
       log.error("Error occurred retrieving cluster config version", e);
       throw new RuntimeException("Error incrementing cluster config version", e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
     return version;
   }
@@ -5504,10 +5483,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Increment the cluster config version */
   private synchronized void incrementClusterConfigVersion(UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    final String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(hostPorts, certificate);
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       int version = universe.getVersion();
       ModifyClusterConfigIncrementVersion modifyConfig =
           new ModifyClusterConfigIncrementVersion(client, version);
@@ -5521,8 +5497,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.error(
           "Error occurred incrementing cluster config version for universe " + universeUUID, e);
       throw new RuntimeException("Error incrementing cluster config version", e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
   }
 

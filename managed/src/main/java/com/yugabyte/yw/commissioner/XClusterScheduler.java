@@ -216,9 +216,7 @@ public class XClusterScheduler {
 
     // Get the cluster configuration for the target universe
     CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
-    try (YBClient client =
-        ybClientService.getClient(
-            targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode())) {
+    try (YBClient client = ybClientService.getUniverseClient(targetUniverse)) {
       clusterConfig =
           XClusterConfigTaskBase.getClusterConfig(client, config.getTargetUniverseUUID());
     } catch (Exception e) {

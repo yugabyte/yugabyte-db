@@ -338,6 +338,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     YBTable mockTable = mock(YBTable.class);
     when(mockTable.getName()).thenReturn("redis");
@@ -785,14 +786,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
-
-    String masters =
-        String.format(
-            "yb-master-0.%s.svc.cluster.local:7100,"
-                + "yb-master-0.%s.svc.cluster.local:7100,"
-                + "yb-master-0.%s.svc.cluster.local:7100",
-            ns1, ns2, ns3);
-    verify(mockYBClient, times(11)).getClient(masters, null);
 
     long timeout = 300000;
     verify(mockClient, times(1))

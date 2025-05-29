@@ -124,6 +124,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
               u.getUniverseDetails().rootCA = certInfo.getUuid();
             });
     mockClient = mock(YBClient.class);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
