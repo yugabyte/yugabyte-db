@@ -20,15 +20,15 @@ main {
         display: table;
 
         @media (max-width:900px) {
-          min-width:650px;
+          min-width: 650px;
         }
 
         tbody {
-          border-bottom:0;
+          border-bottom: 0;
 
           tr:last-child {
             td {
-              border-bottom:0px;
+              border-bottom: 0;
             }
           }
         }
@@ -48,7 +48,7 @@ main {
     .table > :not(caption) > * > *,
     .td-table:not(.td-initial) > :not(caption) > * > *,
     .td-content table:not(.td-initial) > :not(caption) > * > *,
-    .td-box table:not(.td-initial) > :not(caption) > * > *{
+    .td-box table:not(.td-initial) > :not(caption) > * > * {
       padding: 12.75px 15px;
     }
 
@@ -61,7 +61,6 @@ main {
       background-color: transparent;
       border-width: 0;
     }
-
 
     table {
       box-shadow: 0 0 0 1px #e9eef2;
