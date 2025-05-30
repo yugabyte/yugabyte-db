@@ -2622,9 +2622,14 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	size_t		starter_idx = kStartersCount - 1;
 
 	/*
-	 * YB_TODO: Decide whether skipping this block during IsBinaryUpgrade is the
-	 * right solution to avoid catalog refreshes during pg_upgrade, which can
-	 * confuse various DDLs we do on the PG15 catalog during the upgrade.
+	 * IsBinaryUpgrade=true indicates we are doing catalog restore during a major
+	 * version update. In this situation the only DDLs allowed are being performed
+	 * by the new-major-version ysqlsh and pg_restore process and they do not
+	 * increment catalog version. If we used response cache, because catalog version
+	 * does not change but these DDLs do change catalogs, the cached metadata will
+	 * become stale for subsequent connections used for restoring catalog metadata.
+	 * When a subsequent connection works with stale catalog metadata to do retore
+	 * work, it can lead to incorrect catalog restore result.
 	 */
 	if (!YBCIsInitDbModeEnvVarSet() &&
 		!IsBinaryUpgrade &&
