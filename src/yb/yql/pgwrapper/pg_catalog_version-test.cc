@@ -2599,7 +2599,7 @@ EXECUTE PROCEDURE log_ddl();
   ASSERT_OK(conn_yugabyte.Execute(
       "GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER"));
   auto v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
-  ASSERT_EQ(v, 3);
+  ASSERT_EQ(v, 4);
   // The next GRANT statement is a no-op because it is identical to the first GRANT.
   // However we used to increment the catalog version because of the INSERT inside
   // function log_ddl() which is executed as part of the GRANT statement so the GRANT
@@ -2610,7 +2610,7 @@ EXECUTE PROCEDURE log_ddl();
   ASSERT_OK(conn_yugabyte.Execute(
       "GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER"));
   v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
-  ASSERT_EQ(v, 3);
+  ASSERT_EQ(v, 4);
 }
 
 // We have made a special case to allow expression pushdown for table pg_yb_catalog_version
@@ -2912,6 +2912,41 @@ TEST_F(PgCatalogVersionTest, InvalMessageDuplicateVersion) {
       "SELECT COUNT(*) FROM pg_yb_invalidation_messages"));
   ASSERT_EQ(count, 2);
   thread_holder.Stop();
+}
+
+// This test verifies that CREATE FUNCTION bumps the catalog version.
+// It does so by checking that a function defined on anyenum is not shadowed by a later
+// function defined on a specific enum type.
+TEST_F(PgCatalogVersionTest, CreateFunction) {
+  auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  // Connection 1: Create enum type and a function on anyenum
+  ASSERT_OK(conn1.Execute("CREATE TYPE rainbow AS ENUM ('red','orange','yellow')"));
+  ASSERT_OK(conn1.Execute(R"(
+    CREATE FUNCTION echo_me(v anyenum)
+    RETURNS text
+    LANGUAGE sql
+    IMMUTABLE
+    AS $$ SELECT 'omg' $$;
+  )"));
+
+  // Connection 2: Call the function with the enum value
+  auto result = ASSERT_RESULT(conn2.FetchRow<std::string>("SELECT echo_me('red'::rainbow)"));
+  ASSERT_EQ(result, "omg");
+
+  // Connection 1: Create a function specifically for the rainbow enum type
+  ASSERT_OK(conn1.Execute(R"(
+    CREATE FUNCTION echo_me(v rainbow)
+    RETURNS text
+    LANGUAGE sql
+    IMMUTABLE
+    AS $$ SELECT 'dom' $$;
+  )"));
+
+  // Connection 2: Call the function again; should now return 'dom'
+  result = ASSERT_RESULT(conn2.FetchRow<std::string>("SELECT echo_me('red'::rainbow)"));
+  ASSERT_EQ(result, "dom");
 }
 
 } // namespace pgwrapper
