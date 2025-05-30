@@ -65,15 +65,15 @@ main {
     > pre,
     .highlight {
       margin: 20px 0;
-	  position: relative;
-	  display: flex;
-	  flex-direction: column;
-	  min-width: 0;
-	  word-wrap: break-word;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      word-wrap: break-word;
       background-color: #fff;
-	  background-clip: border-box;
-	  border: 1px solid rgba(0, 0, 0, .125);
-	  border-radius: .25rem;
+      background-clip: border-box;
+      border: 1px solid rgba(0, 0, 0, .125);
+      border-radius: .25rem;
     }
 
     li > p + pre,
@@ -230,6 +230,16 @@ main {
       pre {
         > code {
           white-space: pre-line !important;
+        }
+      }
+    }
+
+    div.custom-yb-table {
+      table {
+        pre > code {
+          > span {
+            white-space: pre;
+          }
         }
       }
     }
