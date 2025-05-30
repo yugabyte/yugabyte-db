@@ -44,6 +44,8 @@ DECLARE_string(TEST_block_alter_table);
 
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
+DECLARE_uint64(refresh_waiter_timeout_ms);
+DECLARE_uint64(transaction_heartbeat_usec);
 
 using namespace std::literals;
 
@@ -655,6 +657,90 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
   }
   ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
   ASSERT_OK(ts1->Restart());
+}
+
+TEST_F(PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(k INT)"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 5000;
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // Deadlock at the tserver's object lock manager
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS SHARE mode"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE mode"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto s = conn1.Execute("LOCK TABLE test1 in ACCESS SHARE mode");
+    EXPECT_OK(conn1.RollbackTransaction());
+    return s;
+  });
+
+  auto s = conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode");
+  ASSERT_OK(conn2.RollbackTransaction());
+  if (s.ok()) {
+    s = status_future.get();
+  } else {
+    ASSERT_OK(status_future.get());
+  }
+  ASSERT_STR_CONTAINS(s.ToString(), "aborted due to a deadlock");
+
+  // Deadlock between row-level locks and object locks.
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  ASSERT_OK(conn1.Execute("UPDATE test SET v=v+1 where k=1"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE mode"));
+
+  status_future = std::async(std::launch::async, [&]() -> Status {
+    auto s = conn1.Execute("LOCK TABLE test1 in ACCESS SHARE mode");
+    SleepFor(FLAGS_transaction_heartbeat_usec * 1us * kTimeMultiplier * 2);
+    if (s.ok()) {
+      s = conn1.Execute("UPDATE test SET v=v+1 where k=1");
+    }
+    EXPECT_OK(conn1.RollbackTransaction());
+    return s;
+  });
+  s = conn2.Execute("UPDATE test SET v=v+1 where k=1");
+  if (s.ok()) {
+    // Give time for the transaction heartheat to realize the abort. That way, conn1's
+    // lock request would fail. If not, it will falsely report success, but fail the
+    // subsequent statements.
+    SleepFor(FLAGS_transaction_heartbeat_usec * 1us * kTimeMultiplier * 2);
+    s = conn2.Execute("UPDATE test SET v=v+1 where k=1");
+  }
+  ASSERT_OK(conn2.RollbackTransaction());
+  if (s.ok()) {
+    s = status_future.get();
+  } else {
+    ASSERT_OK(status_future.get());
+  }
+  ASSERT_STR_CONTAINS(s.ToString(), "aborted due to a deadlock");
+
+  // Deadlock at the master's object lock manager
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE mode"));
+  status_future = std::async(std::launch::async, [&]() -> Status {
+    auto s = conn1.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE mode");
+    EXPECT_OK(conn1.RollbackTransaction());
+    return s;
+  });
+  s = conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode");
+  ASSERT_OK(conn2.RollbackTransaction());
+  if (s.ok()) {
+    s = status_future.get();
+  } else {
+    ASSERT_OK(status_future.get());
+  }
+  ASSERT_STR_CONTAINS(s.ToString(), "aborted due to a deadlock");
 }
 
 }  // namespace yb::pgwrapper
