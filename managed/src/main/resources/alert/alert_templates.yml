@@ -700,6 +700,28 @@ templates:
         Encryption At Rest config for universe '{{ $labels.source_name }}' with KMS config '{{ $labels.kms_config_name }}'
         will expire in {{ $value | printf "%.0f" }} days.
 
+  UNIVERSE_KMS_KEY_STATUS:
+    name: Universe KMS Key Failed Validation
+    description: Validation failed for the last active KMS Key on a universe
+    queryTemplate: last_over_time(ybp_universe_kms_key_status{universe_uuid = "__universeUuid__"}[1d])
+      {{ query_condition }} 1
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 1.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Validation of KMS Config '{{ $labels.kms_config_name }}' failed for universe '{{ $labels.source_name }}'
+
   HEALTH_CHECK_ERROR:
     name: Health Check Error
     description: Failed to perform health check
