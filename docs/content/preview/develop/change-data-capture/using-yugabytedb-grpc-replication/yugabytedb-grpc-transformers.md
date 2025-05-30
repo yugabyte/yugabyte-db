@@ -47,15 +47,99 @@ UPDATE test SET aura = NULL WHERE id = 1;
 DELETE FROM test WHERE id = 1;
 ```
 
+By default, the YugabyteDB CDC service publishes events with a schema that only includes columns that have been modified. The source connector then sends the value as `null` for columns that are missing in the payload. Each column payload includes a `set` field that is used to signal if a column has been set to `null` because it wasn't present in the payload from YugabyteDB.
+
+## YBExtractNewRecordState
+
+**Transformer class:** `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState`
+
+The SMT `YBExtractNewRecordState` is used to flatten the records published by the connector and just keep the payload field in a flattened format.
+
+The following examples show what the payload would look like for each [before image mode](../using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes). Note that in this example, we have set the property `delete.handling.mode` to `none` for the transformer so it will neither drop the delete records from the stream. Additionally, this SMT works on the `after` field of the payload and since the `after` field for the DELETE record is `null`, the output after applying this transformer on a DELETE record is also `null`.
+
+### CHANGE
+
+```output
+-- statement 1
+{"id":1,"name":"Vaibhav","aura":9876}
+
+-- statement 2
+{"id":1,"aura":9999}
+
+-- statement 3
+{"id":1,"name":"Vaibhav Kushwaha","aura":10}
+
+-- statement 4
+{"id":1,"aura":null}
+
+-- statement 5
+null
+```
+
+### FULL_ROW_NEW_IMAGE
+
+```output
+-- statement 1
+{"id":1,"name":"Vaibhav","aura":9876}
+
+-- statement 2
+{"id":1,"name":"Vaibhav","aura":9999}
+
+-- statement 3
+{"id":1,"name":"Vaibhav Kushwaha","aura":10}
+
+-- statement 4
+{"id":1,"name":"Vaibhav Kushwaha","aura":null}
+
+-- statement 5
+null
+```
+
+### MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
+
+```output
+-- statement 1
+{"id":1,"name":"Vaibhav","aura":9876}
+
+-- statement 2
+{"id":1,"name":null,"aura":9999}
+
+-- statement 3
+{"id":1,"name":"Vaibhav Kushwaha","aura":10}
+
+-- statement 4
+{"id":1,"name":null,"aura":null}
+
+-- statement 5
+null
+```
+
+### ALL
+
+```output
+-- statement 1
+{"id":1,"name":"Vaibhav","aura":9876}
+
+-- statement 2
+{"id":1,"name":"Vaibhav","aura":9999}
+
+-- statement 3
+{"id":1,"name":"Vaibhav Kushwaha","aura":10}
+
+-- statement 4
+{"id":1,"name":"Vaibhav Kushwaha","aura":null}
+
+-- statement 5
+null
+```
+
 ## PGCompatible
 
 **Transformer class:** `io.debezium.connector.yugabytedb.transforms.PGCompatible`
 
-By default, the YugabyteDB CDC service publishes events with a schema that only includes columns that have been modified. The source connector then sends the value as `null` for columns that are missing in the payload. Each column payload includes a `set` field that is used to signal if a column has been set to `null` because it wasn't present in the payload from YugabyteDB.
+Some sink connectors may not understand the payload format published by the connector. `PGCompatible` transforms the payload to a format that is compatible with the format of standard change data events. Specifically, it transforms column schema and value to remove the `set` field and collapse the payload such that it only contains the data type schema and value.
 
-However, some sink connectors may not understand the preceding format. PGCompatible transforms the payload to a format that is compatible with the format of the standard change data events. Specifically, it transforms column schema and value to remove the `set` field and collapse the payload such that it only contains the data type schema and value.
-
-PGCompatible differs from YBExtractNewRecordState by recursively modifying all the fields in a payload.
+`PGCompatible` differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
 
 The following examples show what the payload would look like for each [before image mode](../using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
 
