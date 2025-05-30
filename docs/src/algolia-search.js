@@ -363,6 +363,24 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Shoe "Ask AI" button in search results dropdown.
+   */
+  function kapaAskAI() {
+    const askAI = document.getElementById('yb-ask-ai');
+    if (askAI) {
+      askAI.addEventListener('click', () => {
+        if (window.Kapa) {
+          window.Kapa.open({
+            mode: 'ai',
+            query: encodedSearchedTerm(),
+            submit: true,
+          });
+        }
+      });
+    }
+  }
+
+  /**
    * Trigger AI Search on clicking custom button.
    */
   function kapaSearch() {
@@ -372,7 +390,7 @@ import algoliasearch from 'algoliasearch';
         if (window.Kapa) {
           window.Kapa.open({
             mode: 'search',
-            query: searchInput.value.trim(),
+            query: encodedSearchedTerm(),
             submit: true,
           });
         }
@@ -449,6 +467,11 @@ import algoliasearch from 'algoliasearch';
           if (searchSummary !== null) {
             searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
           }
+
+          document.querySelector('.yb-kapa-button span').innerHTML = `${searchedTerm}`
+          setTimeout(() => {
+            document.querySelector('.yb-kapa-button').style.display = 'block';
+          }, 500);
         } else {
           const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
           if (searchSummary) {
@@ -456,6 +479,8 @@ import algoliasearch from 'algoliasearch';
           } else {
             document.getElementById('doc-hit').innerHTML = `<li class="no-result">${noResultMessage}</li>`;
           }
+
+          document.querySelector('.yb-kapa-button').style.display = 'none';
         }
 
         kapaSearch();
@@ -536,6 +561,7 @@ import algoliasearch from 'algoliasearch';
   }
 
   addSearchEvents();
+  kapaAskAI();
 
   document.addEventListener('keydown', (event) => {
     if (event.target.nodeName === 'TEXTAREA') {

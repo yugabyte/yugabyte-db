@@ -55,7 +55,7 @@ body:not(.td-searchpage) {
       border-radius: 5px;
 
       nav {
-        >a {
+        > a {
           position: absolute;
           right: 15px;
           bottom: 7px;
@@ -359,7 +359,7 @@ body.td-searchpage .td-content {
 
     &:hover,
     &:focus {
-      +.reset-input {
+      + .reset-input {
         opacity: 1;
       }
     }
@@ -513,5 +513,22 @@ body.td-searchpage .td-content {
   body > header .td-navbar.navbar-expand .page-header .navbar-nav form .td-search-input,
   body > header .td-navbar.navbar-expand .top-nav .navbar-nav form .td-search-input {
     width: 100% !important;
+  }
+}
+
+.yb-kapa-button {
+  .ask-ai-about {
+    border-radius: 8px;
+    width: calc(100% - 20px);
+    margin: 10px auto;
+    text-align: center;
+    padding: 6px;
+    font-weight: 600;
+    background: #7879f1;
+    color: #fff;
+  }
+
+  :hover {
+    background: #5d5fef;
   }
 }
