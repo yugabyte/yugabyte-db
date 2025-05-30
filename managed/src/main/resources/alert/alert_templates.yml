@@ -697,7 +697,7 @@ templates:
         (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
-        Encryption At Rest config for universe '{{ $labels.source_name }}'
+        Encryption At Rest config for universe '{{ $labels.source_name }}' with KMS config '{{ $labels.kms_config_name }}'
         will expire in {{ $value | printf "%.0f" }} days.
 
   HEALTH_CHECK_ERROR:
