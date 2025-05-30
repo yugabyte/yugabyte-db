@@ -14,11 +14,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../start-yugabyted/" class="nav-link active">
+      <img src="/icons/database.svg" alt="Server Icon">
       yugabyted
     </a>
   </li>
   <li >
     <a href="../start-masters/" class="nav-link">
+      <i class="icon-shell"></i>
       Manual
     </a>
   </li>
@@ -78,6 +80,8 @@ To create a secure multi-zone cluster:
         --cloud_location=aws.us-east-1.us-east-1c \
         --fault_tolerance=zone
     ```
+
+For more information on the yugabyted start command, refer to [start](../../../reference/configuration/yugabyted/#start).
 
 ## Grow the cluster
 

@@ -16,17 +16,19 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../start-yugabyted/" class="nav-link">
+      <img src="/icons/database.svg" alt="Server Icon">
       yugabyted
     </a>
   </li>
   <li >
     <a href="../start-masters/" class="nav-link active">
+      <i class="icon-shell"></i>
       Manual
     </a>
   </li>
 </ul>
 
-This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.
+This section covers manual deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.
 
 For instructions on running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to [Multi-DC deployments](../../../deploy/multi-dc/).
 
