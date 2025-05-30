@@ -76,13 +76,13 @@ This alert tracks OS-level restarts using the `node_boot_time` metric.
 
 ## DB Instance Restart
 
-This alert fires when Yugabyte process (TServer or Master) restarts without a planned update.
+This alert fires when a YugabyteDB process (TServer or Master) restarts without a planned update.
 
 #### What to do
 
 1. SSH into the node and inspect the following logs:
 
-    - Yugabyte logs (`/home/yugabyte/tserver/logs/` or `/mnt/d0/yb-data/tserver/logs/`).
+    - YugabyteDB logs (`/home/yugabyte/tserver/logs/` or `/mnt/d0/yb-data/tserver/logs/`).
     - OS logs, for memory pressure or crash signals.
 
     Look for FATAL logs; the presence of a FATAL log file that corresponds with the time of the failure is a positive indicator for a crash and analyzing this log will likely point to the root cause.
