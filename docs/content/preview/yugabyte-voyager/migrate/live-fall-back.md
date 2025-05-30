@@ -923,7 +923,7 @@ Perform the following steps as part of the cutover process:
 
     ```
 
-    If the target database is on [YugabyteDB Aeon](/preview/yugabyte-cloud), use `--use-yb-grpc-connector false` to allow the workflow to use the [YugabyteDB connector](../../../develop/change-data-capture/using-logical-replication/).
+    If the target database is on [YugabyteDB Aeon](/preview/yugabyte-cloud), use `--use-yb-grpc-connector false` to allow the workflow to use the [YugabyteDB connector](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/).
 
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
