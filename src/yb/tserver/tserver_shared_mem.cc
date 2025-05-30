@@ -78,6 +78,16 @@ std::chrono::system_clock::time_point ToSystem(CoarseTimePoint tp) {
 YB_DEFINE_ENUM(SharedExchangeState,
                (kIdle)(kRequestSent)(kProcessingRequest)(kResponseSent)(kShutdown));
 
+std::string MakeSharedMemoryPrefix(std::string_view instance_id) {
+  return Format("yb_pg_$0_", instance_id);
+}
+
+std::string MakeSharedMemoryName(std::string_view instance_id, uint64_t session_id) {
+  return MakeSharedMemoryPrefix(instance_id) + std::to_string(session_id);
+}
+
+} // namespace
+
 class SharedExchangeHeader {
  public:
   SharedExchangeHeader() = default;
@@ -192,13 +202,12 @@ class SharedExchangeHeader {
   std::byte data_[0];
 };
 
-std::string MakeSharedMemoryPrefix(const std::string& instance_id) {
-  return Format("yb_pg_$0_", instance_id);
-}
+namespace {
 
-std::string MakeSharedMemoryName(const std::string& instance_id, uint64_t session_id) {
-  return MakeSharedMemoryPrefix(instance_id) + std::to_string(session_id);
-}
+struct PgSessionSharedHeader {
+  // This must be the last field, since it uses a zero length array.
+  SharedExchangeHeader exchange_header_;
+};
 
 } // namespace
 
@@ -343,197 +352,58 @@ Status SharedMemoryManager::InitializeChildAllocatorsAndObjects(std::string_view
   return Status::OK();
 }
 
-class SharedExchange::Impl {
- public:
-  template <class T>
-  Impl(T type, const std::string& instance_id, uint64_t session_id)
-      : instance_id_(instance_id),
-        session_id_(session_id),
-        owner_(std::is_same_v<T, boost::interprocess::create_only_t>),
-        shared_memory_object_(type, MakeSharedMemoryName(instance_id, session_id).c_str(),
-                              boost::interprocess::read_write) {
-    if (owner_) {
-      shared_memory_object_.truncate(boost::interprocess::mapped_region::get_page_size());
-    }
-    mapped_region_ = boost::interprocess::mapped_region(
-        shared_memory_object_, boost::interprocess::read_write);
-    if (owner_) {
-      new (mapped_region_.get_address()) SharedExchangeHeader();
-    }
-  }
-
-  ~Impl() {
-    if (!owner_ || FLAGS_TEST_skip_remove_tserver_shared_memory_object) {
-      return;
-    }
-    std::string shared_memory_object_name(shared_memory_object_.get_name());
-    shared_memory_object_ = boost::interprocess::shared_memory_object();
-    boost::interprocess::shared_memory_object::remove(shared_memory_object_name.c_str());
-  }
-
-  std::byte* Obtain(size_t required_size) {
-    last_size_ = required_size;
-    auto* header = &this->header();
-    required_size += header->header_size();
-    auto region_size = mapped_region_.get_size();
-    if (required_size > region_size) {
-      return nullptr;
-    }
-    return header->data();
-  }
-
-  const std::string& instance_id() const {
-    return instance_id_;
-  }
-
-  uint64_t session_id() const {
-    return session_id_;
-  }
-
-  Status SendRequest() {
-    return header().SendRequest(failed_previous_request_, last_size_);
-  }
-
-  bool ResponseReady() {
-    return header().ResponseReady();
-  }
-
-  Result<Slice> FetchResponse(CoarseTimePoint deadline) {
-    auto& header = this->header();
-    auto size_res = header.FetchResponse(ToSystem(deadline));
-    if (!size_res.ok()) {
-      failed_previous_request_ = true;
-      return size_res.status();
-    }
-    failed_previous_request_ = false;
-    if (*size_res + header.header_size() > mapped_region_.get_size()) {
-      return Slice(static_cast<const char*>(nullptr), bit_cast<const char*>(*size_res));
-    }
-    return Slice(header.data(), *size_res);
-  }
-
-  bool ReadyToSend() const {
-    return header().ReadyToSend(failed_previous_request_);
-  }
-
-  void Respond(size_t size) {
-    header().Respond(size);
-  }
-
-  Result<size_t> Poll() {
-    return header().Poll();
-  }
-
-  void SignalStop() {
-    header().SignalStop();
-  }
-
- private:
-  SharedExchangeHeader& header() {
-    return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
-  }
-
-  const SharedExchangeHeader& header() const {
-    return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
-  }
-
-  const std::string instance_id_;
-  const uint64_t session_id_;
-  const bool owner_;
-  boost::interprocess::shared_memory_object shared_memory_object_;
-  boost::interprocess::mapped_region mapped_region_;
-  size_t last_size_;
-  bool failed_previous_request_ = false;
-};
-
-Result<SharedExchange> SharedExchange::Make(
-      const std::string& instance_id, uint64_t session_id, Create create) {
-  try {
-    std::unique_ptr<Impl> impl;
-    if (create) {
-      impl = std::make_unique<Impl>(boost::interprocess::create_only, instance_id, session_id);
-    } else {
-      impl = std::make_unique<Impl>(boost::interprocess::open_only, instance_id, session_id);
-    }
-    return SharedExchange(std::move(impl));
-  } catch (boost::interprocess::interprocess_exception& exc) {
-    auto result = STATUS_FORMAT(
-        RuntimeError, "Failed to create shared exchange for $0/$1, mode: $2, error: $3",
-        instance_id, session_id, create, exc.what());
-    LOG(DFATAL) << result;
-    return result;
-  }
-}
-
-SharedExchange::SharedExchange(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {
-}
-
-SharedExchange::SharedExchange(SharedExchange&& rhs) : impl_(std::move(rhs.impl_)) {
-}
-
-SharedExchange::~SharedExchange() = default;
-
-Status SharedExchange::Cleanup(const std::string& instance_id) {
-  std::string dir;
-#if defined(BOOST_INTERPROCESS_POSIX_SHARED_MEMORY_OBJECTS)
-  dir = "/dev/shm";
-#else
-  boost::interprocess::ipcdetail::get_shared_dir(dir);
-#endif
-  auto& env = *Env::Default();
-  auto files = VERIFY_RESULT(env.GetChildren(dir, ExcludeDots::kTrue));
-  auto prefix = MakeSharedMemoryPrefix(instance_id);
-  for (const auto& file : files) {
-    if (boost::starts_with(file, prefix)) {
-      boost::interprocess::shared_memory_object::remove(file.c_str());
-    }
-  }
-  return Status::OK();
-}
+SharedExchange::SharedExchange(SharedExchangeHeader& header, size_t exchange_size)
+    : header_(header), exchange_size_(exchange_size) {}
 
 std::byte* SharedExchange::Obtain(size_t required_size) {
-  return impl_->Obtain(required_size);
+  last_size_ = required_size;
+  required_size += header_.header_size();
+  if (required_size > exchange_size_) {
+    return nullptr;
+  }
+  return header_.data();
 }
 
 Status SharedExchange::SendRequest() {
-  return impl_->SendRequest();
+  return header_.SendRequest(failed_previous_request_, last_size_);
 }
 
-bool SharedExchange::ResponseReady() const {
-  return impl_->ResponseReady();
+bool SharedExchange::ResponseReady() {
+  return header_.ResponseReady();
 }
 
 Result<Slice> SharedExchange::FetchResponse(CoarseTimePoint deadline) {
-  return impl_->FetchResponse(deadline);
+  auto size_res = header_.FetchResponse(ToSystem(deadline));
+  if (!size_res.ok()) {
+    failed_previous_request_ = true;
+    return size_res.status();
+  }
+  failed_previous_request_ = false;
+  if (*size_res + header_.header_size() > exchange_size_) {
+    return Slice(static_cast<const char*>(nullptr), bit_cast<const char*>(*size_res));
+  }
+  return Slice(header_.data(), *size_res);
 }
 
-bool SharedExchange::ReadyToSend() const {
-  return impl_->ReadyToSend();
+bool SharedExchange::ReadyToSend() {
+  return header_.ReadyToSend(failed_previous_request_);
 }
 
 void SharedExchange::Respond(size_t size) {
-  return impl_->Respond(size);
+  header_.Respond(size);
 }
 
 Result<size_t> SharedExchange::Poll() {
-  return impl_->Poll();
+  return header_.Poll();
 }
 
 void SharedExchange::SignalStop() {
-  impl_->SignalStop();
-}
-
-const std::string& SharedExchange::instance_id() const {
-  return impl_->instance_id();
-}
-
-uint64_t SharedExchange::session_id() const {
-  return impl_->session_id();
+  header_.SignalStop();
 }
 
 SharedExchangeRunnable::SharedExchangeRunnable(
-    SharedExchange exchange, const SharedExchangeListener& listener)
-    : exchange_(std::move(exchange)), listener_(listener) {
+    SharedExchange& exchange, uint64_t session_id, const SharedExchangeListener& listener)
+    : exchange_(exchange), session_id_(session_id), listener_(listener) {
 }
 
 Status SharedExchangeRunnable::Start(ThreadPool& thread_pool) {
@@ -547,7 +417,7 @@ void SharedExchangeRunnable::Run() {
     auto query_size = exchange_.Poll();
     if (!query_size.ok()) {
       if (!query_size.status().IsShutdownInProgress()) {
-        LOG(DFATAL) << "Poll session " << exchange_.session_id() <<  " failed: "
+        LOG(DFATAL) << "Poll session " << session_id_ <<  " failed: "
                     << query_size.status();
       }
       break;
@@ -570,6 +440,131 @@ void SharedExchangeRunnable::StartShutdown() {
 
 void SharedExchangeRunnable::CompleteShutdown() {
   stop_latch_.Wait();
+}
+
+class PgSessionSharedMemoryManager::Impl {
+ public:
+  Impl(std::string_view instance_id, uint64_t session_id, Create create)
+      : instance_id_(instance_id),
+        session_id_(session_id),
+        owner_(create == Create::kTrue),
+        shared_memory_object_(MakeSharedMemoryObject(owner_, instance_id, session_id)),
+        mapped_region_(MakeMappedRegion(owner_, shared_memory_object_)),
+        exchange_(header().exchange_header_,
+                  mapped_region_.get_size() - offsetof(PgSessionSharedHeader, exchange_header_)) {}
+
+  ~Impl() {
+    if (!owner_ || FLAGS_TEST_skip_remove_tserver_shared_memory_object) {
+      return;
+    }
+    std::string shared_memory_object_name(shared_memory_object_.get_name());
+    shared_memory_object_ = boost::interprocess::shared_memory_object();
+    boost::interprocess::shared_memory_object::remove(shared_memory_object_name.c_str());
+  }
+
+  const std::string& instance_id() const {
+    return instance_id_;
+  }
+
+  uint64_t session_id() const {
+    return session_id_;
+  }
+
+  SharedExchange& exchange() {
+    return exchange_;
+  }
+
+ private:
+  static boost::interprocess::shared_memory_object MakeSharedMemoryObject(
+      bool owner, std::string_view instance_id, uint64_t session_id) {
+    auto name = MakeSharedMemoryName(instance_id, session_id);
+    if (owner) {
+      boost::interprocess::shared_memory_object object(
+          boost::interprocess::create_only, name.c_str(), boost::interprocess::read_write);
+      object.truncate(boost::interprocess::mapped_region::get_page_size());
+      return object;
+    } else {
+      return boost::interprocess::shared_memory_object(
+          boost::interprocess::open_only, name.c_str(), boost::interprocess::read_write);
+    }
+  }
+
+  static boost::interprocess::mapped_region MakeMappedRegion(
+      bool owner, const boost::interprocess::shared_memory_object& shared_memory_object) {
+    boost::interprocess::mapped_region region(
+        shared_memory_object, boost::interprocess::read_write);
+    if (owner) {
+      new (region.get_address()) PgSessionSharedHeader();
+    }
+    return region;
+  }
+
+  PgSessionSharedHeader& header() {
+    return *static_cast<PgSessionSharedHeader*>(mapped_region_.get_address());
+  }
+
+  const std::string instance_id_;
+  const uint64_t session_id_;
+  const bool owner_;
+  boost::interprocess::shared_memory_object shared_memory_object_;
+  boost::interprocess::mapped_region mapped_region_;
+  SharedExchange exchange_;
+};
+
+PgSessionSharedMemoryManager::PgSessionSharedMemoryManager() = default;
+
+PgSessionSharedMemoryManager::PgSessionSharedMemoryManager(std::unique_ptr<Impl> impl)
+    : impl_(std::move(impl)) {}
+
+PgSessionSharedMemoryManager::PgSessionSharedMemoryManager(
+    PgSessionSharedMemoryManager&& rhs) = default;
+
+PgSessionSharedMemoryManager::~PgSessionSharedMemoryManager() = default;
+
+PgSessionSharedMemoryManager& PgSessionSharedMemoryManager::operator=(
+    PgSessionSharedMemoryManager&&) = default;
+
+Result<PgSessionSharedMemoryManager> PgSessionSharedMemoryManager::Make(
+    const std::string& instance_id, uint64_t session_id, Create create) {
+  try {
+    return PgSessionSharedMemoryManager(std::make_unique<Impl>(instance_id, session_id, create));
+  } catch (boost::interprocess::interprocess_exception& exc) {
+    auto result = STATUS_FORMAT(
+        RuntimeError, "Failed to create shared exchange for $0/$1, mode: $2, error: $3",
+        instance_id, session_id, create, exc.what());
+    LOG(DFATAL) << result;
+    return result;
+  }
+}
+
+Status PgSessionSharedMemoryManager::Cleanup(const std::string& instance_id) {
+  std::string dir;
+#if defined(BOOST_INTERPROCESS_POSIX_SHARED_MEMORY_OBJECTS)
+  dir = "/dev/shm";
+#else
+  boost::interprocess::ipcdetail::get_shared_dir(dir);
+#endif
+  auto& env = *Env::Default();
+  auto files = VERIFY_RESULT(env.GetChildren(dir, ExcludeDots::kTrue));
+  auto prefix = MakeSharedMemoryPrefix(instance_id);
+  for (const auto& file : files) {
+    if (boost::starts_with(file, prefix)) {
+      boost::interprocess::shared_memory_object::remove(file.c_str());
+    }
+  }
+  return Status::OK();
+}
+
+SharedExchange& PgSessionSharedMemoryManager::exchange() {
+  return impl_->exchange();
+}
+
+const std::string& PgSessionSharedMemoryManager::instance_id() const {
+  return impl_->instance_id();
+}
+
+uint64_t PgSessionSharedMemoryManager::session_id() const {
+  return impl_->session_id();
 }
 
 bool TServerSharedData::IsCronLeader() const {
