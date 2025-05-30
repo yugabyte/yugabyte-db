@@ -2954,5 +2954,41 @@ TEST_F(PgCatalogVersionTest, CreateFunction) {
   ASSERT_EQ(result, "dom");
 }
 
+// Tests that CREATE RULE increments the catalog version.
+TEST_F(PgCatalogVersionTest, CreateRule) {
+  auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE source_table(id int, name text)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE intermediate_table(id int, name text)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE destination_table(id int, name text)"));
+
+  // First backend: rule that forwards some inserts from source_table -> intermediate_table
+  ASSERT_OK(conn1.Execute(R"(
+      CREATE RULE forward_to_intermediate AS ON INSERT TO source_table
+          WHERE NEW.id >= 20 AND NEW.id < 30 DO
+      INSERT INTO intermediate_table VALUES (NEW.id, NEW.name);
+  )"));
+
+  // Second backend: INSTEAD rule on intermediate_table that forwards to destination_table
+  ASSERT_OK(conn2.Execute(R"(
+      CREATE RULE redirect_to_destination AS ON INSERT TO intermediate_table
+          WHERE NEW.id > 25 DO INSTEAD
+      INSERT INTO destination_table VALUES (NEW.id, NEW.name);
+  )"));
+
+  // Back on backend 1: insert should ultimately land in destination_table, not intermediate_table
+  // Note that conn1 and conn2 are on the same node, so we don't need to wait for the heartbeat
+  // to propagate the new version of the rule.
+  ASSERT_OK(conn1.Execute("INSERT INTO intermediate_table VALUES (32,'custom entry')"));
+
+  auto intermediate_count =
+      ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT count(*) FROM intermediate_table"));
+  auto destination_count =
+      ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT count(*) FROM destination_table"));
+  ASSERT_EQ(intermediate_count, 0);
+  ASSERT_EQ(destination_count, 1);
+}
+
 } // namespace pgwrapper
 } // namespace yb
