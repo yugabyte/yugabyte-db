@@ -508,6 +508,17 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRangeLevel0WithSizeLimit(
     // the storage, which means there's no sense to continue if we met a file which is under
     // compaction, as all subsequent files will be also under compaction.
     if (f->being_compacted) {
+      if (inputs.files.empty()) {
+        // Nothing collected, it's safe to skip and try to find a continuous interval.
+        continue;
+      }
+
+      // Need to have a continuous interval without breaks. Let's compact what is currently picked
+      // even if it is less than input_size_limit.
+      RLOG(InfoLogLevel::INFO_LEVEL, ioptions_.info_log,
+          "[%s] CompactRange: level 0 size limit picking: stopping on "
+          "file %" PRIu64 " undergoing compaction with picked size %" PRIu64 "\n",
+          cf_name.c_str(), f->fd.GetNumber(), total_size);
       break;
     }
 
