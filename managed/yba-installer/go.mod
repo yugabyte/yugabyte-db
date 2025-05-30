@@ -22,6 +22,8 @@ require (
 )
 
 require (
+	github.com/goccy/go-yaml v1.17.1 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
@@ -31,6 +33,7 @@ require (
 )
 
 require (
+	github.com/aws/aws-sdk-go v1.55.7
 	github.com/cyphar/filepath-securejoin v0.2.5 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
