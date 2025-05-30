@@ -54,6 +54,7 @@ message BackfillJobPB {
 
     optional SchemaPB previous_schema = 4;
     optional string previous_table_name = 5;
+    optional int32 previous_next_column_id = 6;
   }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

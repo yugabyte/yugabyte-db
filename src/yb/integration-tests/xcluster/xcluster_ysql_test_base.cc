@@ -24,17 +24,19 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/server/server_base.h"
+
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/thread.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -339,7 +341,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
   bool verify_schema_name =
       !schema_name.empty() && !FLAGS_TEST_create_table_with_empty_pgschema_name;
   return GetYsqlTable(
-      cluster, namespace_name, schema_name, table_name, true /* verify_table_name */,
+      cluster, namespace_name, schema_name, table_name, /*verify_table_name=*/true,
       verify_schema_name);
 }
 
@@ -1163,5 +1165,19 @@ Status XClusterYsqlTestBase::EnablePITROnClusters() {
         2s * kTimeMultiplier, 20h));
     return Status::OK();
   });
+}
+
+Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
+  auto yb_admin_client = std::make_unique<tools::ClusterAdminClient>(
+      consumer_cluster_.mini_cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  RETURN_NOT_OK(yb_admin_client->Init());
+  auto j = VERIFY_RESULT(yb_admin_client->ListSnapshotSchedules(SnapshotScheduleId::Nil()));
+  auto snapshot_schedule_id =
+      VERIFY_RESULT(SnapshotScheduleIdFromString(j["schedules"].GetArray()[0]["id"].GetString()));
+  auto sink = RegexWaiterLogSink(".*Marking restoration.*as complete in sys catalog");
+  RETURN_NOT_OK(yb_admin_client->RestoreSnapshotSchedule(snapshot_schedule_id, time));
+  RETURN_NOT_OK(sink.WaitFor(300s));
+  LOG(INFO) << "PITR has been completed";
+  return Status::OK();
 }
 }  // namespace yb

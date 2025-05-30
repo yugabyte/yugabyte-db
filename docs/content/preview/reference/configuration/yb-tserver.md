@@ -23,6 +23,7 @@ Flags are organized in the following categories.
 | Category                     | Description |
 |------------------------------|-------------|
 | [General configuration](#general-configuration)        | Basic server setup including overall system settings, logging, and web interface configurations. |
+| [PostgreSQL configuration parameters](#postgresql-configuration-parameters)        | PostgreSQL settings, and YSQL-specific configuration parameters. |
 | [Networking](#networking)                   | Flags that control network interfaces, RPC endpoints, DNS caching, and geo-distribution settings. |
 | [Storage and data management](#storage-data-management)    | Parameters for managing data directories, WAL configurations, sharding, CDC, and TTL-based file expiration. |
 | [Performance tuning](#performance-tuning)           | Options for resource allocation, memory management, compaction settings, and overall performance optimizations. |
@@ -106,300 +107,6 @@ Default: `""`
 {{% /tags/wrap %}}
 
 Specifies the time source used by the database. Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
-
-### PostgreSQL server options
-
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
-
-#### Modify configuration parameters
-
-You can modify these parameters in the following ways:
-
-- If a flag is available with the same name and `ysql_` prefix, then set the flag directly.
-
-- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
-
-- Set the option per-database:
-
-    ```sql
-    ALTER DATABASE database_name SET temp_file_limit=-1;
-    ```
-
-- Set the option per-role:
-
-    ```sql
-    ALTER ROLE yugabyte SET temp_file_limit=-1;
-    ```
-
-    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
-
-- Set the option for the current session:
-
-    ```sql
-    SET temp_file_limit=-1;
-    --- alternative way
-    SET SESSION temp_file_limit=-1;
-    ```
-
-    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
-
-    If the surrounding transaction commits, the effects will persist for the whole session.
-
-- Set the option for the current transaction:
-
-    ```sql
-    SET LOCAL temp_file_limit=-1;
-    ```
-
-- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
-
-    ```sql
-    --- To change the minimum transaction age to 5 seconds:
-    SET session yb_locks_min_txn_age = 5000;
-    ```
-
-- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
-
-    ```sql
-    --- To change the maximum number of transactions to display to 10:
-    SET session yb_locks_max_transactions = 10;
-    ```
-
-For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
-
-#### YSQL configuration parameters
-
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
-
-##### log_line_prefix
-
-YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
-
-- %C = cloud name
-- %R = region / data center name
-- %Z = availability zone / rack name
-- %U = cluster UUID
-- %N = node and cluster name
-- %H = current hostname
-
-For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
-
-##### suppress_nonpg_logs (boolean)
-
-{{% tags/wrap %}}
-
-
-Default: `off`
-{{% /tags/wrap %}}
-
-When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
-
-##### temp_file_limit
-
-{{% tags/wrap %}}
-
-
-Default: `1GB`
-{{% /tags/wrap %}}
-
-Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
-
-Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
-
-You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
-
-Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
-
-##### enable_bitmapscan
-
-{{% tags/wrap %}}
-
-
-Default: `true`
-{{% /tags/wrap %}}
-
-PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
-
-Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with `AND` or `OR` operators to create a final bitmap that is used to collect rows from the main table.
-
-Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
-
-Bitmap scans are only supported for LSM indexes.
-
-##### yb_enable_bitmapscan
-
-{{% tags/wrap %}}
-{{<tags/feature/tp>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
-
-| enable_bitmapscan | yb_enable_bitmapscan | Result |
-| :--- | :---  | :--- |
-| true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
-| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
-| false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
-| false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
-
-##### yb_bnl_batch_size
-
-{{% tags/wrap %}}
-
-
-Default: `1024`
-{{% /tags/wrap %}}
-
-Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
-
-##### yb_enable_batchednl
-
-{{% tags/wrap %}}
-
-
-Default: `true`
-{{% /tags/wrap %}}
-
-Enable or disable the query planner's use of batched nested loop join.
-
-##### yb_enable_base_scans_cost_model
-
-{{% tags/wrap %}}
-{{<tags/feature/ea idea="483">}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
-
-When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
-
-##### yb_enable_optimizer_statistics
-
-{{% tags/wrap %}}
-{{<tags/feature/tp>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
-
-##### yb_fetch_size_limit
-
-{{% tags/wrap %}}
-{{<tags/feature/tp>}}
-Default: `0`
-{{% /tags/wrap %}}
-
-Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
-
-If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
-
-See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If the flag is set, this parameter takes precedence.
-
-##### yb_fetch_row_limit
-
-{{% tags/wrap %}}
-{{<tags/feature/tp>}}
-Default: `1024`
-{{% /tags/wrap %}}
-
-Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
-
-See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
-
-##### yb_use_hash_splitting_by_default
-
-{{% tags/wrap %}}
-{{<tags/feature/ea>}}
-{{<tags/feature/restart-needed>}}
-Default: `true`
-{{% /tags/wrap %}}
-
-When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
-
-##### yb_insert_on_conflict_read_batch_size
-
-{{% tags/wrap %}}
-{{<tags/feature/ea idea="1455">}}
-{{<tags/feature/restart-needed>}}
-Default: `0` (disabled)
-{{% /tags/wrap %}}
-
-Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
-
-- temporary relations
-- foreign relations
-- system relations
-- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
-
-The higher the number, the more batching is done. 1024 is recommended.
-
-##### yb_read_from_followers
-
-{{% tags/wrap %}}
-
-
-Default: `false`
-{{% /tags/wrap %}}
-
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
-
-##### yb_follower_read_staleness_ms
-
-{{% tags/wrap %}}
-
-
-Default: `30000` (30 seconds)
-{{% /tags/wrap %}}
-
-Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
-
-##### default_transaction_read_only
-
-{{% tags/wrap %}}
-
-
-Default: `false`
-{{% /tags/wrap %}}
-
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
-
-##### default_transaction_isolation
-
-{{% tags/wrap %}}
-
-
-Default: `read committed`
-{{% /tags/wrap %}}
-
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
-
-See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
-
-##### yb_skip_redundant_update_ops
-
-{{% tags/wrap %}}
-
-
-Default: `true`
-{{% /tags/wrap %}}
-
-Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
-
-This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
-
-##### yb_read_time
-
-{{% tags/wrap %}}
-
-
-Default: `0`
-{{% /tags/wrap %}}
-
-Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
-
-To reset the session to normal behavior (current time), set `yb_read_time` to 0.
-
-Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
 
 ### Webserver configuration
 
@@ -559,6 +266,306 @@ Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric
 
 To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
+## PostgreSQL configuration parameters
+
+YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/15/config-setting.html) to apply server configuration settings to new server instances.
+
+### How to modify configuration parameters
+
+You can modify these parameters in the following ways:
+
+- If a flag is available with the same name and `ysql_` prefix, then set the flag directly.
+
+- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+
+- Set the option per-database:
+
+    ```sql
+    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ```
+
+- Set the option per-role:
+
+    ```sql
+    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ```
+
+    Parameters set at the role or database level only take effect on new sessions.
+
+- Set the option for the current session:
+
+    ```sql
+    SET temp_file_limit=-1;
+    --- alternative way
+    SET SESSION temp_file_limit=-1;
+    ```
+
+    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
+
+    If the surrounding transaction commits, the effects will persist for the whole session.
+
+- Set the option for the current transaction:
+
+    ```sql
+    SET LOCAL temp_file_limit=-1;
+    ```
+
+- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
+
+    ```sql
+    --- To change the minimum transaction age to 5 seconds:
+    SET session yb_locks_min_txn_age = 5000;
+    ```
+
+- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
+
+    ```sql
+    --- To change the maximum number of transactions to display to 10:
+    SET session yb_locks_max_transactions = 10;
+    ```
+
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
+
+### YSQL configuration parameters
+
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
+
+Note that if a corresponding flag is available (with the same name as the parameter and `ysql_` prefix), then set the flag directly.
+
+##### log_line_prefix
+
+YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
+
+- %C = cloud name
+- %R = region / data center name
+- %Z = availability zone / rack name
+- %U = cluster UUID
+- %N = node and cluster name
+- %H = current hostname
+
+For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/15/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
+
+##### suppress_nonpg_logs (boolean)
+
+{{% tags/wrap %}}
+
+
+Default: `off`
+{{% /tags/wrap %}}
+
+When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
+
+##### temp_file_limit
+
+{{% tags/wrap %}}
+
+
+Default: `1GB`
+{{% /tags/wrap %}}
+
+Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
+
+Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
+
+You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
+
+Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
+
+##### enable_bitmapscan
+
+{{% tags/wrap %}}
+
+
+Default: `true`
+{{% /tags/wrap %}}
+
+PostgreSQL parameter to enable or disable the query planner's use of bitmap-scan plan types.
+
+Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with `AND` or `OR` operators to create a final bitmap that is used to collect rows from the main table.
+
+Bitmap scans follow the same `work_mem` behavior as PostgreSQL: each individual bitmap is bounded by `work_mem`. If there are n bitmaps, it means we may use `n * work_mem` memory.
+
+Bitmap scans are only supported for LSM indexes.
+
+##### yb_enable_bitmapscan
+
+{{% tags/wrap %}}
+{{<tags/feature/tp>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+
+| enable_bitmapscan | yb_enable_bitmapscan | Result |
+| :--- | :---  | :--- |
+| true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
+| false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
+
+##### yb_bnl_batch_size
+
+{{% tags/wrap %}}
+
+
+Default: `1024`
+{{% /tags/wrap %}}
+
+Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../architecture/query-layer/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+Can be set using the [--ysql_yb_bnl_batch_size](#ysql-yb-bnl-batch-size) flag.
+
+##### yb_enable_batchednl
+
+{{% tags/wrap %}}
+
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Enable or disable the query planner's use of batched nested loop join.
+
+##### yb_enable_base_scans_cost_model
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="483">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
+
+##### yb_enable_optimizer_statistics
+
+{{% tags/wrap %}}
+{{<tags/feature/tp>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+
+##### yb_fetch_size_limit
+
+{{% tags/wrap %}}
+{{<tags/feature/tp>}}
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+
+If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
+
+See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If the flag is set, this parameter takes precedence.
+
+##### yb_fetch_row_limit
+
+{{% tags/wrap %}}
+{{<tags/feature/tp>}}
+Default: `1024`
+{{% /tags/wrap %}}
+
+Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+
+See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
+
+##### yb_use_hash_splitting_by_default
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
+
+##### yb_insert_on_conflict_read_batch_size
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="1455">}}
+{{<tags/feature/restart-needed>}}
+Default: `0` (disabled)
+{{% /tags/wrap %}}
+
+Set the level of batching for [INSERT ... ON CONFLICT](../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause). Set to 0 to disable batching. Batching is always disabled for the following:
+
+- temporary relations
+- foreign relations
+- system relations
+- relations that have row triggers (excluding those created internally for FOREIGN KEY constraints)
+
+The higher the number, the more batching is done. 1024 is recommended.
+
+##### yb_read_from_followers
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+
+##### yb_follower_read_staleness_ms
+
+{{% tags/wrap %}}
+
+
+Default: `30000` (30 seconds)
+{{% /tags/wrap %}}
+
+Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+
+##### default_transaction_read_only
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+
+##### default_transaction_isolation
+
+{{% tags/wrap %}}
+
+
+Default: `read committed`
+{{% /tags/wrap %}}
+
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+
+See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
+
+See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+
+##### yb_skip_redundant_update_ops
+
+{{% tags/wrap %}}
+
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Enables skipping updates to columns that are part of secondary indexes and constraint checks when the column values remain unchanged.
+
+This parameter can only be configured during cluster startup, and adjusting this parameter does not require a cluster restart.
+
+##### yb_read_time
+
+{{% tags/wrap %}}
+
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Enables [time travel queries](../../../manage/backup-restore/time-travel-query/) by specifying a Unix timestamp. After setting the parameter, all subsequent read queries are executed as of that read time, in the current session. Other YSQL sessions are not affected.
+
+To reset the session to normal behavior (current time), set `yb_read_time` to 0.
+
+Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
+
 ## Networking
 
 ### RPC and binding addresses
@@ -567,7 +574,6 @@ To override this flag on a per-scrape basis, you can adjust the URL parameter `m
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/t-server>}}
 Default: `127.0.0.1:7100`
 {{% /tags/wrap %}}
 
@@ -581,7 +587,6 @@ The number of comma-separated values should match the total number of YB-Master 
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/t-server>}}
 {{% /tags/wrap %}}
 
 Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
@@ -793,7 +798,6 @@ The directory where the yb-tserver retains WAL files. May be the same as one of 
 ##### --durable_wal_write
 
 {{% tags/wrap %}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
@@ -803,7 +807,6 @@ If set to `false`, the writes to the WAL are synchronized to disk every [interva
 ##### --interval_durable_wal_write_ms
 
 {{% tags/wrap %}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `1000`
 {{% /tags/wrap %}}
@@ -813,7 +816,6 @@ When [--durable_wal_write](#durable-wal-write) is false, writes to the WAL are s
 ##### --bytes_durable_wal_write_mb
 
 {{% tags/wrap %}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `1`
 {{% /tags/wrap %}}
@@ -1173,15 +1175,6 @@ Default: `15000`
 {{% /tags/wrap %}}
 
 The rate at which CDC state's checkpoint is updated.
-
-##### --cdc_ybclient_reactor_threads
-
-{{% tags/wrap %}}
-{{<tags/feature/deprecated>}}
-Default: `50`
-{{% /tags/wrap %}}
-
-The number of reactor threads to be used for processing `ybclient` requests for CDC. Increase to improve throughput on large tablet setups.
 
 ##### --cdc_max_stream_intent_records
 
@@ -2390,7 +2383,7 @@ For example:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
+The configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [Configuration parameters](#postgresql-configuration-parameters).
 
 ##### --ysql_timezone
 
@@ -2423,7 +2416,7 @@ This is a maximum per server, so a 3-node cluster will have a default of 900 ava
 
 Any active, idle in transaction, or idle in session connection counts toward the connection limit.
 
-Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL server parameter](#postgresql-server-options). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
+Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [configuration parameter](#postgresql-configuration-parameters). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
 
 ##### --ysql_default_transaction_isolation
 

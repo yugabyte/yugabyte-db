@@ -16,6 +16,8 @@ import (
 	"strings"
 )
 
+const YsqlCgroupService = "yb-ysql-cgroup.service"
+
 type SetupCgroupHandler struct {
 	param    *pb.SetupCGroupInput
 	username string
@@ -107,14 +109,15 @@ func (h *SetupCgroupHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespon
 		_ = module.CopyFile(
 			ctx,
 			cGroupServiceContext,
-			filepath.Join(ServerTemplateSubpath, "yb-ysql-cgroup.service"),
-			filepath.Join(home, SystemdUnitPath, "yb-ysql-cgroup.service"),
+			filepath.Join(ServerTemplateSubpath, YsqlCgroupService),
+			filepath.Join(home, SystemdUnitPath, YsqlCgroupService),
 			fs.FileMode(0755),
+			h.username,
 		)
 
 		cmd, err := module.ControlServerCmd(
 			h.username,
-			"yb-ysql-cgroup.service",
+			YsqlCgroupService,
 			"start",
 		)
 		if err != nil {

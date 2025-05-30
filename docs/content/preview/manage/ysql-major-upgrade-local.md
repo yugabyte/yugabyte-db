@@ -43,7 +43,7 @@ v2.25 is a preview release that is only meant for evaluation purposes and should
 - Upgrade client drivers.
 
     Upgrade all application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
-- Your cluster must be running v2024.2.2.0 or later.
+- Your cluster must be running v2024.2.3.0 or later.
 
     If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
 
@@ -221,7 +221,7 @@ Rollback successful
 
 ### Roll back YB-Masters
 
-[Roll back all YB-Masters](../upgrade-deployment/#2-roll-back-yb-masters) to v2024.2.2.0.
+[Roll back all YB-Masters](../upgrade-deployment/#2-roll-back-yb-masters) to v2024.2.3.0.
 
 If you are using the cost based optimizer, run ANALYZE on your databases to get the most optimal query plans.
 

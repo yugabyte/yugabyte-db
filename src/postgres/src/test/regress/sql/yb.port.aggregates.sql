@@ -7,6 +7,8 @@
 
 -- avoid bit-exact output here because operations may not be bit-exact.
 SET extra_float_digits = 0;
+-- YB: explicitly set enable_partitionwise_aggregate to original pg default.
+SET enable_partitionwise_aggregate to false;
 
 -- prepare some test data
 CREATE TABLE aggtest (

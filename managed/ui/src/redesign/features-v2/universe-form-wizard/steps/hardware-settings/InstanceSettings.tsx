@@ -14,11 +14,15 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
-import { HardwareSettingProps } from './dtos';
+import { InstanceSettingProps } from './dtos';
+import { mui } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
+import { CPUArchField } from '../../fields';
 // import { useTranslation } from 'react-i18next';
 
-export const HardwareSettings = forwardRef<StepsRef>((_, forwardRef) => {
+const { Box } = mui;
+
+export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
@@ -27,7 +31,7 @@ export const HardwareSettings = forwardRef<StepsRef>((_, forwardRef) => {
   //     keyPrefix: 'createUniverseV2.resilienceAndRegions'
   //   });
 
-  const methods = useForm<HardwareSettingProps>({});
+  const methods = useForm<InstanceSettingProps>({});
 
   useImperativeHandle(
     forwardRef,
@@ -46,7 +50,21 @@ export const HardwareSettings = forwardRef<StepsRef>((_, forwardRef) => {
     <FormProvider {...methods}>
       <StyledPanel>
         <StyledHeader>Cluster Instance</StyledHeader>
-        <StyledContent>Work In progress</StyledContent>
+        <StyledContent>
+          <Box
+            sx={{
+              display: 'flex',
+              width: '734px',
+              flexDirection: 'column',
+              backgroundColor: '#FBFCFD',
+              border: '1px solid #D7DEE4',
+              borderRadius: '8px',
+              padding: '24px'
+            }}
+          >
+            <CPUArchField disabled={false} />
+          </Box>
+        </StyledContent>
       </StyledPanel>
     </FormProvider>
   );

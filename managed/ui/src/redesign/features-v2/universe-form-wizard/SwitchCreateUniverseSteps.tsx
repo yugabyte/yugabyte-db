@@ -18,7 +18,7 @@ import {
 import {
   DatabaseSettings,
   GeneralSettings,
-  HardwareSettings,
+  InstanceSettings,
   NodesAvailabilty,
   ResilienceAndRegions,
   SecuritySettings
@@ -36,7 +36,7 @@ const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
       <ResilienceAndRegions ref={currentComponentRef} />
     ),
     [CreateUniverseSteps.NODES_AND_AVAILABILITY]: <NodesAvailabilty ref={currentComponentRef} />,
-    [CreateUniverseSteps.HARDWARE]: <HardwareSettings ref={currentComponentRef} />,
+    [CreateUniverseSteps.INSTANCE]: <InstanceSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.DATABASE]: <DatabaseSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.SECURITY]: <SecuritySettings ref={currentComponentRef} />
   });

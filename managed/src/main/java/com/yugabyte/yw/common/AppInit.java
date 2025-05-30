@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.SlowQueriesAggregator;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.UpdateProviderMetadata;
@@ -137,7 +138,8 @@ public class AppInit {
       ReleasesUtils releasesUtils,
       JobScheduler jobScheduler,
       NodeAgentEnabler nodeAgentEnabler,
-      RoleBindingUtil roleBindingUtil)
+      RoleBindingUtil roleBindingUtil,
+      SlowQueriesAggregator slowQueriesAggregator)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -316,6 +318,7 @@ public class AppInit {
         // Cleanup old support bundles
         supportBundleCleanup.start();
 
+        slowQueriesAggregator.start();
         platformMetricsProcessor.start();
         alertConfigurationWriter.start();
         swamperTargetsFileUpdater.start();

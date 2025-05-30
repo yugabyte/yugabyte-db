@@ -418,9 +418,20 @@ grep -nE '^\w+(\s+\w+)+\(' "$1" \
 # alignment.  '(' is needed for cases such as
 #
 #     void\t\t(*startup_fn) (Node *clause, PredIterInfo info);
-if ! [[ "$1" == src/postgres/src/backend/utils/error/elog.c ]]; then
+#
+# Note that this excludes macros and assembly code (identified by lines ending
+# with '\') because pgindent doesn't appear to properly format those and
+# upstream postgres code has no consistent style (see
+# src/postgres/src/include/access/valid.h, for example).
+if ! [[ "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ||
+        "$1" == src/postgres/src/include/common/unicode_norm_hashfunc.h ||
+        "$1" == src/postgres/src/include/common/unicode_normprops_table.h ||
+        "$1" == src/postgres/src/include/port/atomics/* ||
+        "$1" == src/postgres/src/include/storage/s_lock.h ||
+        "$1" == src/postgres/src/pl/plperl/ppport.h ||
+        "$1" == src/postgres/src/tools/pg_bsd_indent/* ]]; then
   grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
-    | perl -ne 'print unless /^\d+:\s+'\
+    | perl -ne 'print unless /\\$/ || /^\d+:\s+'\
 '(\w{1}(\t\t| {7})'\
 '|\w{2}(\t\t| {6})'\
 '|\w{3}(\t\t| {5})'\

@@ -40,6 +40,7 @@
 
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 DECLARE_int32(ysql_sequence_cache_minval);
 
@@ -1984,6 +1985,222 @@ TEST_F(XClusterDDLReplicationAddDropColumnTest, AddDropColumns) {
     ASSERT_OK(RunTest(i));
     LOG(INFO) << "Finished running test with pause on step " << i;
   }
+}
+
+TEST_F(XClusterDDLReplicationTest, DocdbNextColumnAboveLastUsedColumn) {
+  // This test checks the hard case of whether or not backup and
+  // restore preserves the next DocDB column ID correctly: when the
+  // next DocDB column ID is higher than the last undeleted Postgres
+  // column ID.
+
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+  ASSERT_OK(SetUpClusters(/*is_colocated=*/false, /*start_yb_controller_servers=*/true));
+
+  {
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
+    ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
+    ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN z INT;"));
+    ASSERT_OK(conn.Execute("ALTER TABLE my_table DROP COLUMN z;"));
+  }
+
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
+  ASSERT_OK(BackupFromProducer());
+  ASSERT_OK(RestoreToConsumer());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN q INT;"));
+  ASSERT_OK(conn.Execute("INSERT INTO my_table (x, y, q) VALUES (1,2,3), (4,5,6);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto GetRows = [&](Cluster& cluster) -> Result<std::string> {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
+    return conn.FetchAllAsString("SELECT * FROM my_table ORDER BY x", ", ", "\n");
+  };
+
+  auto producer_rows = ASSERT_RESULT(GetRows(producer_cluster_));
+  auto consumer_rows = ASSERT_RESULT(GetRows(consumer_cluster_));
+  ASSERT_EQ(producer_rows, consumer_rows);
+}
+
+TEST_F(XClusterDDLReplicationTest, FailedSchemaChangeOnSource) {
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
+
+  // Do a few failing ADD COLUMN DDLs, which might bump the next DocDB column ID.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y TEXT;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y TEXT;"));
+
+  // In the absence of rollback of the next DocDB column ID counter,
+  // this column will have different DocDB column IDs on source and
+  // target.
+  ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN z INT;"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO my_table (x, z) VALUES (1,2), (3,4);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto GetRows = [&](Cluster& cluster) -> Result<std::string> {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
+    return conn.FetchAllAsString("SELECT * FROM my_table ORDER BY x", ", ", "\n");
+  };
+
+  auto producer_rows = ASSERT_RESULT(GetRows(producer_cluster_));
+  auto consumer_rows = ASSERT_RESULT(GetRows(consumer_cluster_));
+  ASSERT_EQ(producer_rows, consumer_rows);
+}
+
+TEST_F(XClusterDDLReplicationTest, FailedSchemaChangeOnSourceWithPartitioning) {
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT) PARTITION BY RANGE (x);"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE my_table_1 PARTITION OF my_table FOR VALUES FROM (1) TO (100000);"));
+
+  // Do a few failing ADD COLUMN DDLs, which might bump the next DocDB column ID.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
+
+  // In the absence of rollback of the next DocDB column ID counter,
+  // this column will have different DocDB column IDs on source and
+  // target.
+  ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN z INT;"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
+  ASSERT_OK(conn.Execute("INSERT INTO my_table (x, z) VALUES (1,2), (33333,44444);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto GetRows = [&](Cluster& cluster) -> Result<std::string> {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
+    return conn.FetchAllAsString("SELECT * FROM my_table ORDER BY x", ", ", "\n");
+  };
+
+  auto producer_rows = ASSERT_RESULT(GetRows(producer_cluster_));
+  auto consumer_rows = ASSERT_RESULT(GetRows(consumer_cluster_));
+  ASSERT_EQ(producer_rows, consumer_rows);
+}
+
+TEST_F(XClusterDDLReplicationTest, FailedSchemaChangeOnTarget) {
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Fail the ADD COLUMN DDL at least once on the target before letting it succeed:
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_ddl_queue_max_retries_per_ddl) = 1'000'000;
+  ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
+  ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+  ASSERT_OK(StringWaiterLogSink("Failed DDL operation as requested").WaitFor(kTimeout));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN z INT;"));
+  ASSERT_OK(conn.Execute("INSERT INTO my_table (x, y, z) VALUES (1,2,3), (4,5,6);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto GetRows = [&](Cluster& cluster) -> Result<std::string> {
+    auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
+    return conn.FetchAllAsString("SELECT * FROM my_table ORDER BY x", ", ", "\n");
+  };
+
+  auto producer_rows = ASSERT_RESULT(GetRows(producer_cluster_));
+  auto consumer_rows = ASSERT_RESULT(GetRows(consumer_cluster_));
+  ASSERT_EQ(producer_rows, consumer_rows);
+}
+
+TEST_F(XClusterDDLReplicationTest, ColumnIdsOnFailover) {
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(EnablePITROnClusters());
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto hybrid_time =
+      consumer_cluster_.mini_cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+
+  // Fail the DDL apply, but let replication to the tablet keep running.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
+
+  ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN q TEXT DEFAULT 'default_foobar';"));
+  ASSERT_OK(conn.Execute("INSERT INTO my_table (x) VALUES (777777);"));
+
+  // Wait for writes to propagate but do not wait for the DDL to be successfully replicated.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  // Perform failover:
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+  ASSERT_OK(PerformPITROnConsumerCluster(hybrid_time));
+  ASSERT_OK(DeleteUniverseReplication(
+      kReplicationGroupId, consumer_client(), consumer_cluster_.mini_cluster_.get()));
+  // Wait for role change/readability to propagate to consumer TServer.
+  auto* consumer_tablet_server = consumer_cluster_.mini_cluster_->mini_tablet_server(0)->server();
+  auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client()));
+  auto& consumer_xcluster_context = consumer_tablet_server->GetXClusterContext();
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        return !consumer_xcluster_context.IsTargetAndInAutomaticMode(namespace_id) &&
+               !consumer_xcluster_context.IsReadOnlyMode(namespace_id);
+      },
+      1s, "Wait for TServer to know that it is no longer a target"));
+
+  auto conn2 = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(conn2.Execute("ALTER TABLE my_table ADD COLUMN q INT;"));
+
+  auto result = ASSERT_RESULT(conn2.FetchAllAsString("SELECT * FROM my_table", ", ", "\n"));
+  ASSERT_EQ(result, "");
+
+  ASSERT_OK(conn2.Execute("INSERT INTO my_table (x,q) VALUES (777777, 666666);"));
+  result = ASSERT_RESULT(conn2.FetchAllAsString("SELECT * FROM my_table", ", ", "\n"));
+  ASSERT_EQ(result, "777777, 666666");
+}
+
+TEST_F(XClusterDDLReplicationTest, RollbackPreservesDeletedColumns) {
+  // Set up xCluster automatic mode replication so we will be rolling back next DocDB column IDs
+  // counter as part of failed DDLs.
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
+  ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
+  ASSERT_OK(conn.Execute("INSERT INTO my_table (x, y) VALUES (1,2), (33333,44444);"));
+  ASSERT_OK(conn.Execute("UPDATE my_table SET y = 55555 WHERE x = 1;"));
+
+  // Ensure the writes and column changes are outside the history retention interval we are going to
+  // compact with.
+  std::this_thread::sleep_for(20s);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 10;
+  ASSERT_OK(producer_cluster()->FlushTablets());
+  ASSERT_OK(producer_cluster()->CompactTablets());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 30000;
+
+  auto result =
+      ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM my_table ORDER BY x", ", ", "\n"));
+  ASSERT_EQ(result, "1, 55555\n33333, 44444");
 }
 
 // Make sure we can create Colocated db and table on both clusters that is not affected by an the

@@ -594,8 +594,7 @@ DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using std::shared_ptr;
 using std::string;
@@ -4769,7 +4768,7 @@ Status CatalogManager::CreateTransactionStatusTable(
     rpc::RpcContext *rpc, const LeaderEpoch& epoch) {
   const string& table_name = req->table_name();
   Status s = CreateTransactionStatusTableInternal(
-      rpc, table_name, nullptr /* tablespace_id */, epoch,
+      rpc, table_name, /*tablespace_id=*/nullptr, epoch,
       req->has_replication_info() ? &req->replication_info() : nullptr);
   if (s.IsAlreadyPresent()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
@@ -4914,7 +4913,7 @@ Status CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
   }
 
   return CreateTransactionStatusTableInternal(
-      rpc, table_name, &tablespace_id, epoch, nullptr /* replication_info */);
+      rpc, table_name, &tablespace_id, epoch, /*replication_info=*/nullptr);
 }
 
 Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
@@ -4941,8 +4940,8 @@ Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
 Status CatalogManager::CreateGlobalTransactionStatusTableIfNotPresent(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   Status s = CreateTransactionStatusTableInternal(
-      rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */, epoch,
-      nullptr /* replication_info */);
+      rpc, kGlobalTransactionsTableName, /*tablespace_id=*/nullptr, epoch,
+      /*replication_info=*/nullptr);
   if (s.IsAlreadyPresent()) {
     VLOG(1) << "Transaction status table already exists, not creating.";
     return Status::OK();
@@ -7402,8 +7401,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   if (table->GetTableType() == PGSQL_TABLE_TYPE) {
     LOG_WITH_PREFIX(INFO) << "PG table OID for AlterTable request: " << table->GetPgTableOid();
   }
-  NamespaceId new_namespace_id;
 
+  NamespaceId new_namespace_id;
   if (req->has_new_namespace()) {
     // Lookup the new namespace and verify if it exists.
     TRACE("Looking up new namespace");
@@ -7452,6 +7451,14 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SleepFor(kSleepFor);
   }
 
+  // IsNamespaceInAutomaticDDLMode can't be called once we have the
+  // catalog manager lock in exclusive mode, so check for automatic mode now.
+  bool is_automatic_mode = false;
+  if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+    is_automatic_mode =
+        xcluster_manager_.get()->IsNamespaceInAutomaticDDLMode(table->namespace_id());
+  }
+
   UniqueLock lock(mutex_);
   VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
 
@@ -7490,7 +7497,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   Schema previous_schema;
   RETURN_NOT_OK(SchemaFromPB(l->pb.schema(), &previous_schema));
   string previous_table_name = l->pb.name();
-  ColumnId next_col_id = ColumnId(l->pb.next_column_id());
+  auto next_col_id = ColumnId(l->pb.next_column_id());
+  ColumnId initial_next_col_id = next_col_id;
   if (req->alter_schema_steps_size() || req->has_alter_properties() || req->has_pgschema_name()) {
     TRACE("Apply alter schema");
     Status s = ApplyAlterSteps(
@@ -7636,6 +7644,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
         SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
         ddl_state->set_previous_table_name(previous_table_name);
+        if (is_automatic_mode) {
+          ddl_state->set_previous_next_column_id(initial_next_col_id);
+        }
         schedule_ysql_txn_verifier = true;
       }
       txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
@@ -10620,20 +10631,19 @@ Status CatalogManager::SendAlterTableRequestInternal(
     const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
     const AlterTableRequestPB* req) {
   for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
-     std::shared_ptr<AsyncAlterTable> call;
+    std::shared_ptr<AsyncAlterTable> call;
 
     // CDC SDK Create Stream context
     if (req && req->has_cdc_sdk_stream_id()) {
       LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
       xrepl::StreamId stream_id =
-        VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
-      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
-                                               txn_id, epoch,
-                                               stream_id,
-                                               req->cdc_sdk_require_history_cutoff());
+          VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
+      call = std::make_shared<AsyncAlterTable>(
+          master_, AsyncTaskPool(), tablet, table, txn_id, epoch, stream_id,
+          req->cdc_sdk_require_history_cutoff());
     } else {
-      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
-                                               txn_id, epoch);
+      call =
+          std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id, epoch);
     }
     table->AddTask(call);
     if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
@@ -13712,5 +13722,4 @@ void CatalogManager::RemoveNamespaceFromMaps(
   }
 }
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

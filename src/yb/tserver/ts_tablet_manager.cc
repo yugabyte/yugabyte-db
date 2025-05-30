@@ -298,6 +298,12 @@ DEFINE_RUNTIME_bool(enable_copy_retryable_requests_from_parent, true,
                     "Whether to copy retryable requests from parent tablet when opening"
                     "the child tablet");
 
+DEFINE_RUNTIME_string(allow_compaction_failures_for_tablet_ids, "",
+    "List of tablet IDs for which compaction failures are allowed and will not cause write "
+    "failures and FATALs.");
+TAG_FLAG(allow_compaction_failures_for_tablet_ids, hidden);
+TAG_FLAG(allow_compaction_failures_for_tablet_ids, advanced);
+
 DEFINE_NON_RUNTIME_uint32(deleted_tablet_cache_max_size, 10000,
                           "Maximum size for the cache of recently deleted tablet ids. Used to "
                           "reject remote bootstrap requests for recently deleted tablets.");
@@ -629,10 +635,14 @@ Status TSTabletManager::Init() {
     tablet_options_.rate_limiter = docdb::CreateRocksDBRateLimiter();
   }
 
-  rate_limiter_flag_callback_ = CHECK_RESULT(RegisterFlagUpdateCallback(
+  flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
+      &FLAGS_allow_compaction_failures_for_tablet_ids,
+      "allow_compaction_failures_for_tablet_ids",
+      [this] { UpdateAllowCompactionFailures(); })));
+  flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
       &FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec,
       "RocksDBCompactFlushRateLimiter",
-      [this] { UpdateCompactFlushRateLimitBytesPerSec(); }));
+      [this] { UpdateCompactFlushRateLimitBytesPerSec(); })));
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
@@ -771,6 +781,11 @@ Status TSTabletManager::Init() {
 
   {
     std::lock_guard lock(mutex_);
+    allow_compaction_failures_for_tablet_ids_ = FLAGS_allow_compaction_failures_for_tablet_ids;
+    if (!allow_compaction_failures_for_tablet_ids_.empty()) {
+      LOG_WITH_PREFIX(INFO) << "Flag allow_compaction_failures_for_tablet_ids is set to: "
+                            << allow_compaction_failures_for_tablet_ids_;
+    }
     state_ = MANAGER_RUNNING;
   }
 
@@ -2058,6 +2073,14 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
     TEST_PAUSE_IF_FLAG(TEST_pause_after_set_bootstrapping);
 
+    rocksdb::AllowCompactionFailures allow_compaction_failures =
+        rocksdb::AllowCompactionFailures::kFalse;
+    {
+      SharedLock lock(mutex_);
+      allow_compaction_failures = rocksdb::AllowCompactionFailures(
+          allow_compaction_failures_for_tablet_ids_.contains(tablet_id));
+    }
+
     tablet::TabletInitData tablet_init_data = {
         .metadata = meta,
         .client_future = server_->client_future(),
@@ -2067,6 +2090,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .metric_registry = metric_registry_,
         .log_anchor_registry = tablet_peer->log_anchor_registry(),
         .tablet_options = tablet_options_,
+        .mutable_tablet_options = {
+            .allow_compaction_failures = allow_compaction_failures,
+        },
         .log_prefix_suffix = " P " + tablet_peer->permanent_uuid(),
         .transaction_participant_context = tablet_peer.get(),
         .local_tablet_filter = std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
@@ -2257,7 +2283,10 @@ void TSTabletManager::StartShutdown() {
     }
   }
 
-  rate_limiter_flag_callback_.Deregister();
+  for (auto& callback : flag_callbacks_) {
+    callback.Deregister();
+  }
+  flag_callbacks_.clear();
 
   {
     std::lock_guard lock(service_registration_mutex_);
@@ -3531,6 +3560,26 @@ void TSTabletManager::UpdateCompactFlushRateLimitBytesPerSec() {
 
       (*tablet_result)->SetCompactFlushRateLimitBytesPerSec(rate_limit_bps);
     }
+  }
+}
+
+void TSTabletManager::UpdateAllowCompactionFailures() {
+  std::string allow_compaction_failures_for_tablet_ids;
+  {
+    std::lock_guard lock(mutex_);
+    allow_compaction_failures_for_tablet_ids_ = FLAGS_allow_compaction_failures_for_tablet_ids;
+    allow_compaction_failures_for_tablet_ids = allow_compaction_failures_for_tablet_ids_;
+  }
+  for (const auto& tablet_peer : GetTabletPeers()) {
+    const auto shared_tablet = tablet_peer->shared_tablet();
+    if (!shared_tablet) {
+      continue;
+    }
+
+    const auto allow_compaction_failures = rocksdb::AllowCompactionFailures(
+        allow_compaction_failures_for_tablet_ids.contains(shared_tablet->tablet_id()));
+
+    shared_tablet->SetAllowCompactionFailures(allow_compaction_failures);
   }
 }
 

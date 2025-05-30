@@ -385,8 +385,8 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       : catalog_manager_(catalog_manager) {}
 
   Status Visit(
-      const std::string& replication_group_id_str, const SysUniverseReplicationEntryPB& metadata)
-      REQUIRES(catalog_manager_->mutex_) {
+      const std::string& replication_group_id_str,
+      const SysUniverseReplicationEntryPB& metadata) override REQUIRES(catalog_manager_->mutex_) {
     const xcluster::ReplicationGroupId replication_group_id(replication_group_id_str);
     DCHECK(!ContainsKey(
         catalog_manager_->universe_replication_map_,
@@ -467,7 +467,8 @@ class UniverseReplicationBootstrapLoader
 
   Status Visit(
       const std::string& replication_group_id_str,
-      const SysUniverseReplicationBootstrapEntryPB& metadata) REQUIRES(catalog_manager_->mutex_) {
+      const SysUniverseReplicationBootstrapEntryPB& metadata) override
+      REQUIRES(catalog_manager_->mutex_) {
     const xcluster::ReplicationGroupId replication_group_id(replication_group_id_str);
     DCHECK(!ContainsKey(
         catalog_manager_->universe_replication_bootstrap_map_,

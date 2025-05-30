@@ -68,7 +68,7 @@ import play.libs.Json;
 @Builder
 @Jacksonized
 @Data
-public class UniverseSpec {
+public class AttachDetachSpec {
 
   private static final String PEM_PERMISSIONS = "r--------";
   private static final String PUB_PERMISSIONS = "r--------";
@@ -106,14 +106,14 @@ public class UniverseSpec {
   private boolean skipReleases;
 
   public InputStream exportSpec() throws IOException {
-    String specBasePath = this.oldPlatformPaths.storagePath + "/universe-specs/export";
-    String specName = UniverseSpec.generateSpecName(true);
+    String specBasePath = this.oldPlatformPaths.storagePath + "/attach-detach-specs/export";
+    String specName = AttachDetachSpec.generateSpecName(true);
     String specJsonPath = specBasePath + "/" + specName + ".json";
     String specTarGZPath = specBasePath + "/" + specName + ".tar.gz";
     Files.createDirectories(Paths.get(specBasePath));
 
     File jsonSpecFile = new File(specJsonPath);
-    exportUniverseSpecObj(jsonSpecFile);
+    exportAttachDetachSpecObj(jsonSpecFile);
 
     try (FileOutputStream fos = new FileOutputStream(specTarGZPath);
         GZIPOutputStream gos = new GZIPOutputStream(new BufferedOutputStream(fos));
@@ -121,7 +121,7 @@ public class UniverseSpec {
       tarOS.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
 
       // Save universe spec.
-      Util.copyFileToTarGZ(jsonSpecFile, "universe-spec.json", tarOS);
+      Util.copyFileToTarGZ(jsonSpecFile, "attach-detach-spec.json", tarOS);
 
       // Save access key files.
       for (AccessKey accessKey : this.provider.getAllAccessKeys()) {
@@ -152,17 +152,17 @@ public class UniverseSpec {
     return is;
   }
 
-  public ObjectNode generateUniverseSpecObj() {
-    ObjectNode universeSpecObj = (ObjectNode) Json.toJson(this);
-    universeSpecObj = setIgnoredJsonProperties(universeSpecObj);
-    return universeSpecObj;
+  public ObjectNode generateAttachDetachSpecObj() {
+    ObjectNode attachDetachSpecObj = (ObjectNode) Json.toJson(this);
+    attachDetachSpecObj = setIgnoredJsonProperties(attachDetachSpecObj);
+    return attachDetachSpecObj;
   }
 
-  private void exportUniverseSpecObj(File jsonSpecFile) throws IOException {
+  private void exportAttachDetachSpecObj(File jsonSpecFile) throws IOException {
     ObjectMapper mapper = Json.mapper();
-    ObjectNode universeSpecObj = generateUniverseSpecObj();
-    log.debug("Finished serializing universeSpec object.");
-    mapper.writeValue(jsonSpecFile, universeSpecObj);
+    ObjectNode attachDetachSpecObj = generateAttachDetachSpecObj();
+    log.debug("Finished serializing attachDetachSpec object.");
+    mapper.writeValue(jsonSpecFile, attachDetachSpecObj);
   }
 
   private void exportAccessKey(AccessKey accessKey, TarArchiveOutputStream tarArchive)
@@ -247,10 +247,10 @@ public class UniverseSpec {
   }
 
   // Retrieve unmasked details from provider, region, and availability zone.
-  public ObjectNode setIgnoredJsonProperties(ObjectNode universeSpecObj) {
+  public ObjectNode setIgnoredJsonProperties(ObjectNode attachDetachSpecObj) {
     ProviderDetails unmaskedProviderDetails = this.provider.getDetails();
     JsonNode unmaskedProviderDetailsJson = Json.toJson(unmaskedProviderDetails);
-    ObjectNode providerObj = (ObjectNode) universeSpecObj.get("provider");
+    ObjectNode providerObj = (ObjectNode) attachDetachSpecObj.get("provider");
     providerObj.set("details", unmaskedProviderDetailsJson);
 
     List<Region> regions = this.provider.getRegions();
@@ -276,10 +276,10 @@ public class UniverseSpec {
         }
       }
     }
-    return universeSpecObj;
+    return attachDetachSpecObj;
   }
 
-  public static UniverseSpec importSpec(
+  public static AttachDetachSpec importSpec(
       Path tarFile, PlatformPaths platformPaths, Customer customer) throws IOException {
 
     String storagePath = platformPaths.storagePath;
@@ -287,47 +287,47 @@ public class UniverseSpec {
     String ybcReleasePath = platformPaths.ybcReleasePath;
     String ybcReleasesPath = platformPaths.ybcReleasesPath;
 
-    String specBasePath = storagePath + "/universe-specs/import";
-    String specName = UniverseSpec.generateSpecName(false);
+    String specBasePath = storagePath + "/attach-detach-specs/import";
+    String specName = AttachDetachSpec.generateSpecName(false);
     String specFolderPath = specBasePath + "/" + specName;
     Files.createDirectories(Paths.get(specFolderPath));
 
     Util.extractFilesFromTarGZ(tarFile, specFolderPath);
 
     // Retrieve universe spec.
-    UniverseSpec universeSpec = UniverseSpec.importUniverseSpec(specFolderPath);
+    AttachDetachSpec attachDetachSpec = AttachDetachSpec.importAttachDetachSpec(specFolderPath);
 
     // Copy access keys to correct location if existing provider does not exist.
-    universeSpec.importAccessKeys(specFolderPath, storagePath);
+    attachDetachSpec.importAccessKeys(specFolderPath, storagePath);
 
     // Copy certificate files to correct location.
-    universeSpec.importCertificateInfoList(specFolderPath, storagePath, customer.getUuid());
+    attachDetachSpec.importCertificateInfoList(specFolderPath, storagePath, customer.getUuid());
 
     // Copy provision script for on-prem providers.
-    universeSpec.importProvisionInstanceScript(specFolderPath, storagePath);
+    attachDetachSpec.importProvisionInstanceScript(specFolderPath, storagePath);
 
-    if (!universeSpec.skipReleases) {
+    if (!attachDetachSpec.skipReleases) {
       // Import the ybsoftwareversions, etc if exists.
-      universeSpec.importSoftwareReleases(specFolderPath, releasesPath);
+      attachDetachSpec.importSoftwareReleases(specFolderPath, releasesPath);
 
       // Import the ybcsoftware version, etc if exists.
-      universeSpec.importYbcSoftwareReleases(specFolderPath, ybcReleasePath);
-      universeSpec.createYbcReleasesFolder(ybcReleasesPath);
+      attachDetachSpec.importYbcSoftwareReleases(specFolderPath, ybcReleasePath);
+      attachDetachSpec.createYbcReleasesFolder(ybcReleasesPath);
     }
 
     // Update universe related metadata due to platform switch.
     // Placed after copying files due to dependencies upon files existing in correct location.
-    universeSpec.updateUniverseMetadata(storagePath, customer);
+    attachDetachSpec.updateUniverseMetadata(storagePath, customer);
 
-    return universeSpec;
+    return attachDetachSpec;
   }
 
-  private static UniverseSpec importUniverseSpec(String specFolderPath) throws IOException {
-    File jsonDir = new File(specFolderPath + "/universe-spec.json");
+  private static AttachDetachSpec importAttachDetachSpec(String specFolderPath) throws IOException {
+    File jsonDir = new File(specFolderPath + "/attach-detach-spec.json");
     ObjectMapper mapper = Json.mapper();
-    UniverseSpec universeSpec = mapper.readValue(jsonDir, UniverseSpec.class);
+    AttachDetachSpec attachDetachSpec = mapper.readValue(jsonDir, AttachDetachSpec.class);
     log.debug("Finished deserializing universe spec.");
-    return universeSpec;
+    return attachDetachSpec;
   }
 
   private void importAccessKeys(String specFolderPath, String storagePath) throws IOException {
@@ -756,7 +756,7 @@ public class UniverseSpec {
   public static String generateSpecName(boolean isExport) {
     String datePrefix = new SimpleDateFormat("yyyyMMddHHmmss.SSS").format(new Date());
     String type = isExport ? "export" : "import";
-    String specName = "yb-universe-spec-" + type + "-" + datePrefix;
+    String specName = "yb-attach-detach-spec-" + type + "-" + datePrefix;
     return specName;
   }
 

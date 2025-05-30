@@ -1563,3 +1563,140 @@
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/detach':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: detachUniverse
+    summary: Detach universe
+    description: Export universe metadata to a tgz file from (source) YBA
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/DetachUniverseReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/DetachUniverseResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Detach
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/attach':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: attachUniverse
+    summary: Attach universe
+    description: Import universe metadata to (destination) YBA using a given tgz file
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/AttachUniverseReq.yaml"
+    responses:
+      '200':
+        description: Successfully attached universe.
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: Attach
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: create
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-multipart: true
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/attach-detach-metadata':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  delete:
+    operationId: deleteAttachDetachMetadata
+    summary: Delete attach/detach metadata
+    description: Delete metadata of a universe from (source) YBA
+    tags:
+      - Universe
+    responses:
+      '200':
+        description: Successfully deleted attach/detach metadata of universe
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: DeleteAttachDetachMetadata
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: read
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal

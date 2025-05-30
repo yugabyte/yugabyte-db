@@ -2168,7 +2168,6 @@ Status CatalogManager::ImportTableEntry(
         column.set_id(column_ids[col_idx++]);
       }
 
-      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2179,6 +2178,8 @@ Status CatalogManager::ImportTableEntry(
     // Set missing values for tables that were created with a default value. ysql_dump will not
     // properly set that value because it is only set on ADD COLUMN, and it creates the column
     // directly in CREATE TABLE.
+    // Also set the next_column_id at target restore side to be equal to next_column_id from backup
+    // side.
     {
       auto l = table->LockForWrite();
       for (auto i = 0; i < l.mutable_data()->pb.schema().columns_size(); ++i) {
@@ -2187,6 +2188,9 @@ Status CatalogManager::ImportTableEntry(
         if (column.has_missing_value() && !persisted_column.has_missing_value()) {
           *persisted_column.mutable_missing_value() = column.missing_value();
         }
+      }
+      if (l.data().pb.next_column_id() < meta.next_column_id()) {
+        l.mutable_data()->pb.set_next_column_id(meta.next_column_id());
       }
       if (l.is_dirty()) {
         RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2202,7 +2206,6 @@ Status CatalogManager::ImportTableEntry(
       auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
       table_props->set_partitioning_version(schema.table_properties().partitioning_version());
 
-      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));

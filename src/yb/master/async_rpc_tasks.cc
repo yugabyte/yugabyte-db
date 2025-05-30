@@ -42,8 +42,7 @@ DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using namespace std::placeholders;
 
@@ -599,6 +598,18 @@ bool AsyncAlterTable::SendRequest(int attempt) {
     req.set_new_table_name(l->pb.name());
     req.mutable_indexes()->CopyFrom(l->pb.indexes());
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+
+    // First provisional column ID is the earliest column ID we can set next_column_id to.
+    int32_t first_provisional_column_id = l->pb.next_column_id();
+    if (l->pb.ysql_ddl_txn_verifier_state().size() > 0) {
+      DCHECK_EQ(l->pb.ysql_ddl_txn_verifier_state().size(), 1);
+      const auto& state = l->pb.ysql_ddl_txn_verifier_state()[0];
+      if (state.has_previous_next_column_id()) {
+        // If we rollback, we will move next_column_id back to this.
+        first_provisional_column_id = state.previous_next_column_id();
+      }
+    }
+    req.set_first_provisional_column_id(first_provisional_column_id);
 
     if (table_type() == TableType::PGSQL_TABLE_TYPE && !transaction_id_.IsNil()) {
       VLOG_WITH_PREFIX(1) << "Transaction ID is provided for tablet " << tablet_->tablet_id()
@@ -1172,7 +1183,9 @@ bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
 void AsyncGetTabletSplitKey::Finished(const Status& status) {
   if (result_cb_) {
     if (status.ok()) {
-      result_cb_(Data{resp_.split_encoded_key(), resp_.split_partition_key()});
+      result_cb_(Data{
+          .split_encoded_key = resp_.split_encoded_key(),
+          .split_partition_key = resp_.split_partition_key()});
     } else {
       result_cb_(status);
     }
@@ -1343,5 +1356,4 @@ bool AsyncMasterTestRetry::SendRequest(int attempt) {
   return true;
 }
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master
