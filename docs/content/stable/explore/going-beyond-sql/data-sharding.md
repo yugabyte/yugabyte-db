@@ -83,7 +83,7 @@ If you select all the rows from the table, you will see an output similar to the
 
 Note that all the rows are ordered in ascending order of ID. This is because you specified `id ASC` in the primary key definition.
 
-Even though you have set up a cluster with 3 nodes, only 1 tablet has been created by default. In the absence of an explict split clause, a range-sharded table is not automatically pre-split into multiple tablets at the time of creation because the number range is not fixed (it’s essentially infinite), and it's inefficient for the system to determine which number ranges should be assigned to specific tablets. So the inserted rows will be stored only on this tablet.
+Even though you have set up a cluster with 3 nodes, only 1 tablet has been created by default. In the absence of an explicit split clause, a range-sharded table is not automatically pre-split into multiple tablets at the time of creation because the number range is not fixed (it’s essentially infinite), and it's inefficient for the system to determine which number ranges should be assigned to specific tablets. So the inserted rows will be stored only on this tablet.
 
 To verify this, execute the same command with EXPLAIN ANALYZE as follows:
 

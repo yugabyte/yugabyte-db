@@ -175,3 +175,11 @@ CREATE TYPE empty_enum AS ENUM ();
 
 
 CREATE TYPE huge_label AS ENUM ('exactly_63_character_identifier_1234567890abcdefghijklmnopqrstu');
+
+
+-- Enums with the same name but different schemas
+CREATE SCHEMA schema1;
+CREATE SCHEMA schema2;
+
+CREATE TYPE schema1.enum_in_schema AS ();
+CREATE TYPE schema2.enum_in_schema AS ();

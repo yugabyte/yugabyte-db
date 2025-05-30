@@ -124,7 +124,7 @@ using strings::Substitute;
 #define MINIT(x) x(METRIC_##x.Instantiate(entity))
 #define GINIT(x) x(METRIC_##x.Instantiate(entity, 0))
 #define INSTANTIATE(upper, lower) \
-  operations_inflight[to_underlying(OperationType::BOOST_PP_CAT(k, upper))] = \
+  operations_inflight[std::to_underlying(OperationType::BOOST_PP_CAT(k, upper))] = \
       BOOST_PP_CAT(BOOST_PP_CAT(METRIC_, lower), _operations_inflight).Instantiate(entity, 0);
 OperationTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
     : GINIT(all_operations_inflight),
@@ -207,7 +207,7 @@ void OperationTracker::IncrementCounters(const OperationDriver& driver) const {
   }
 
   metrics_->all_operations_inflight->Increment();
-  metrics_->operations_inflight[to_underlying(driver.operation_type())]->Increment();
+  metrics_->operations_inflight[std::to_underlying(driver.operation_type())]->Increment();
 }
 
 void OperationTracker::DecrementCounters(const OperationDriver& driver) const {
@@ -217,7 +217,7 @@ void OperationTracker::DecrementCounters(const OperationDriver& driver) const {
 
   DCHECK_GT(metrics_->all_operations_inflight->value(), 0);
   metrics_->all_operations_inflight->Decrement();
-  auto index = to_underlying(driver.operation_type());
+  auto index = std::to_underlying(driver.operation_type());
   DCHECK_GT(metrics_->operations_inflight[index]->value(), 0);
   metrics_->operations_inflight[index]->Decrement();
 }

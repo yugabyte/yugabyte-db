@@ -274,8 +274,8 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
       configName: values.AWS_CONFIGURATION_NAME,
       data: {
         IAM_INSTANCE_PROFILE: values.IAM_ROLE_ENABLED.toString(),
-        AWS_ACCESS_KEY_ID: values.AWS_ACCESS_KEY,
-        AWS_SECRET_ACCESS_KEY: values.AWS_SECRET_KEY
+        AWS_ACCESS_KEY_ID: values.IAM_ROLE_ENABLED ? undefined : values.AWS_ACCESS_KEY,
+        AWS_SECRET_ACCESS_KEY: values.IAM_ROLE_ENABLED ? undefined : values.AWS_SECRET_KEY
       }
     };
 
@@ -329,8 +329,14 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
 
   const validationSchema = Yup.object().shape({
     AWS_CONFIGURATION_NAME: Yup.string().required('Configuration name is required'),
-    AWS_ACCESS_KEY: Yup.string().required('Access Key is required'),
-    AWS_SECRET_KEY: Yup.string().required('Secret Key is required'),
+    AWS_ACCESS_KEY: Yup.string().when('IAM_ROLE_ENABLED', {
+      is: IAM_ROLE_ENABLED => !IAM_ROLE_ENABLED,
+      then: Yup.string().required('Access Key is required')
+    }),
+    AWS_SECRET_KEY: Yup.string().when('IAM_ROLE_ENABLED', {
+      is: IAM_ROLE_ENABLED => !IAM_ROLE_ENABLED,
+      then: Yup.string().required('Secret Key is required')
+    }),
     multi_regions: Yup.array()
       .when('MULTI_REGION_AWS_ENABLED', {
         is: (enabled) => enabled,

@@ -55,6 +55,15 @@
   NO_PENDING_FATALS(); \
 } while (0)
 
+// Invokes super setup, and returns if the test was marked as skipped.
+#define TEST_SETUP_SUPER(super) \
+  do { \
+    super::SetUp(); \
+    if (Test::IsSkipped()) { \
+      return; \
+    } \
+  } while (false)
+
 namespace yb {
 
 class CurlGlobalInitializer;
@@ -211,15 +220,6 @@ std::string GetCertsDir();
 // Read YB_TEST_YB_CONTROLLER from env.
 // If true, spawn YB Controller servers for backup operations.
 bool UseYbController();
-
-/*
-Returns true if YB_DISABLE_MINICLUSTER_TESTS is set true.
-We disable the Minicluster backup tests when we use YB Controller for backups.
-This is because the varz endpoint in MiniTabletServer is not functional currently which causes the
-backups to fail.
-TODO: Re-enable the tests once GH#21689 is done.
-*/
-bool DisableMiniClusterBackupTests();
 
 void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest);
 

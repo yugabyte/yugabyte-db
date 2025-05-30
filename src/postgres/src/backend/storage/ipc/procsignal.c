@@ -33,8 +33,11 @@
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "pg_yb_utils.h"
 #include "storage/procsignal.h"
+#include "utils/catcache.h"
+#include "yb_tcmalloc_utils.h"
 
 /*
  * The SIGUSR1 signal is multiplexed to support signaling multiple event
@@ -103,6 +106,7 @@ static ProcSignalHeader *ProcSignal = NULL;
 static ProcSignalSlot *MyProcSignalSlot = NULL;
 
 static bool CheckProcSignal(ProcSignalReason reason);
+static void CleanupProcSignalState(int status, Datum arg);
 static void ResetProcSignalBarrierBits(uint32 flags);
 
 /*
@@ -238,7 +242,7 @@ CleanupProcSignalStateInternal(PGPROC *proc, int pss_idx, ProcSignalSlot *slot)
  *
  * This function is called via on_shmem_exit() during backend shutdown.
  */
-void
+static void
 CleanupProcSignalState(int status, Datum arg)
 {
 	int			pss_idx = DatumGetInt32(arg);
@@ -685,6 +689,15 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 
 	if (CheckProcSignal(PROCSIG_LOG_MEMORY_CONTEXT))
 		HandleLogMemoryContextInterrupt();
+
+	if (CheckProcSignal(PROCSIG_LOG_HEAP_SNAPSHOT))
+		HandleLogHeapSnapshotInterrupt();
+
+	if (CheckProcSignal(PROCSIG_LOG_HEAP_SNAPSHOT_PEAK))
+		HandleLogHeapSnapshotPeakInterrupt();
+
+	if (CheckProcSignal(YB_PROCSIG_LOG_CATCACHE_STATS))
+		YbHandleLogCatcacheStatsInterrupt();
 
 	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_DATABASE))
 		RecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_DATABASE);

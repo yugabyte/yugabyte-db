@@ -83,7 +83,8 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
                              rpc::RpcRetrier* retrier,
                              Trace* trace,
                              master::IncludeHidden include_hidden,
-                             master::IncludeDeleted include_deleted)
+                             master::IncludeDeleted include_deleted,
+                             const bool fail_on_not_found)
       : client_(client),
         command_(command),
         rpc_(rpc),
@@ -95,7 +96,8 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
         include_hidden_(include_hidden),
         include_deleted_(include_deleted),
         local_tserver_only_(local_tserver_only),
-        consistent_prefix_(consistent_prefix) {}
+        consistent_prefix_(consistent_prefix),
+        fail_on_not_found_(fail_on_not_found) {}
 
 TabletInvoker::~TabletInvoker() {}
 
@@ -456,6 +458,11 @@ bool TabletInvoker::Done(Status* status) {
     // state the RPC should be retried as if tablet is not found.
     // Refer to https://github.com/yugabyte/yugabyte-db/issues/16846
     if (local_tserver_only_ && current_ts_->IsLocal() && status->IsIllegalState()) {
+      rpc_->Failed(*status);
+      return true;
+    }
+
+    if (fail_on_not_found_ && IsTabletConsideredNotFound(rsp_err, *status)) {
       rpc_->Failed(*status);
       return true;
     }

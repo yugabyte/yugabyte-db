@@ -169,7 +169,7 @@ typedef struct DictSnowball
 	/*
 	 * snowball saves alloced memory between calls, so we should run it in our
 	 * private memory context. Note, init function is executed in long lived
-	 * context, so we just remember GetCurrentMemoryContext()
+	 * context, so we just remember CurrentMemoryContext
 	 */
 	MemoryContext dictCtx;
 } DictSnowball;
@@ -261,7 +261,7 @@ dsnowball_init(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("missing Language parameter")));
 
-	d->dictCtx = GetCurrentMemoryContext();
+	d->dictCtx = CurrentMemoryContext;
 
 	PG_RETURN_POINTER(d);
 }

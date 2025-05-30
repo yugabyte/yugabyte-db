@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
+A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/yb-tserver/) service and the [YB-Master](../../architecture/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
 
 ## Basics
 
@@ -103,7 +103,7 @@ YugabyteDB can also leverage multiple disks per node and has been tested beyond 
 
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), therefore in this case the total IOPS that a disk can support matters. On the read side, if the data does not fit into the cache and data needs to be read from the disk in order to satisfy queries, the disk performance (latency and IOPS) will start to matter.
 
-YugabyteDB uses per-tablet [size tiered compaction](../../architecture/concepts/yb-tserver/). Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
+YugabyteDB uses per-tablet [size tiered compaction](../../architecture/yb-tserver/). Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
 
 YugabyteDB stores data compressed by default. The effectiveness of compression depends on the data set. For example, if the data has already been compressed, then the additional compression at the storage layer of YugabyteDB will not be very effective.
 
@@ -134,7 +134,7 @@ Note that for YugabyteDB Anywhere, the SSH port is changed for added security.
 
 ## Clock synchronization
 
-For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running clock synchronization software, such as [NTP](http://www.ntp.org/) or [chrony](https://chrony.tuxfamily.org/). The following are some recommendations on how to configure clock synchronization.
+For YugabyteDB to maintain strict data consistency, clock drift and clock skew across all nodes _must_ be tightly controlled and kept within defined bounds. Any deviation can impact node availability, as YugabyteDB prioritizes consistency over availability and will shut down servers if necessary to maintain integrity. Clock synchronization software, such as [NTP](http://www.ntp.org/) or [chrony](https://chrony.tuxfamily.org/), allows you to reduce clock skew and drift by continuously synchronizing system clocks across nodes in a distributed system like YugabyteDB. The following are some recommendations on how to configure clock synchronization.
 
 ### Clock skew
 

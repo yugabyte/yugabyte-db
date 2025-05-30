@@ -1,0 +1,203 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 200000;
+SET documentdb.next_collection_id TO 2000;
+SET documentdb.next_collection_index_id TO 2000;
+-- simple array update on equality
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 1, "grades" : [ 85, 80, 80 ] }','{ "": { "$set": { "grades.$" : 82 } } }', '{ "_id": 1, "grades": 80 }', NULL);
+                                                     bson_update_document                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "grades" : [ { "$numberInt" : "85" }, { "$numberInt" : "82" }, { "$numberInt" : "80" } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 2, "grades" : [ 88, 90, 92 ] }','{ "": { "$set": { "grades.$" : 82 } } }', '{ "_id": 1, "grades": 80 }', NULL);
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 4, "grades": [ { "grade": 80, "mean": 75, "std": 8 }, { "grade": 85, "mean": 90, "std": 5 }, { "grade": 85, "mean": 85, "std": 8 } ] }',
+    '{ "": { "$set": { "grades.$.std" : 6 } } }', '{ "_id": 4, "grades.grade": 85 }', NULL);
+                                                                                                                                                                             bson_update_document                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "grades" : [ { "grade" : { "$numberInt" : "80" }, "mean" : { "$numberInt" : "75" }, "std" : { "$numberInt" : "8" } }, { "grade" : { "$numberInt" : "85" }, "mean" : { "$numberInt" : "90" }, "std" : { "$numberInt" : "6" } }, { "grade" : { "$numberInt" : "85" }, "mean" : { "$numberInt" : "85" }, "std" : { "$numberInt" : "8" } } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id" : 4, "grades": [ { "grade": 80, "mean": 75, "std": 8 }, { "grade": 85, "mean": 90, "std": 5 }, { "grade": 85, "mean": 85, "std": 8 } ] }',
+    '{ "": { "$set": { "grades.$.std" : 6 } } }', '{ "_id": 5, "grades": { "$elemMatch": { "grade": { "$lte": 90 }, "mean": { "$gt": 80 } } } }', NULL);
+                                                                                                                                                                             bson_update_document                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "grades" : [ { "grade" : { "$numberInt" : "80" }, "mean" : { "$numberInt" : "75" }, "std" : { "$numberInt" : "8" } }, { "grade" : { "$numberInt" : "85" }, "mean" : { "$numberInt" : "90" }, "std" : { "$numberInt" : "6" } }, { "grade" : { "$numberInt" : "85" }, "mean" : { "$numberInt" : "85" }, "std" : { "$numberInt" : "8" } } ] }
+(1 row)
+
+-- positional on match that doesn't work
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "c": 8 }');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "$or": [ { "b": 5 }, { "c": 8 } ] }');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "$nor": [ { "b": 5 }, { "c": 8 } ] }');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$not": { "$eq": 8 } } }');
+ERROR:  The positional operator did not find the match needed from the query.
+-- positional on alternate array (pick first match)
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$in": [ 5, 6 ]} }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+-- test $or with simple filters
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "$or": [ { "b": 5 }, { "b": 6 } ] }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+-- test various filter operators
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": 5 }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$ne": 5 } }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "100" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$nin": [ 4, 5] } }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "100" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$gte": 5 } }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$lte": 5 } }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "100" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ "bat", "bar", "baz" ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$regularExpression": { "pattern": "^ba[rz]", "options": "" } } }');
+                                                                                bson_update_document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ "bat", "bar", "baz" ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ "bat", "bar", "baz" ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$exists": true } }');
+                                                                                bson_update_document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "100" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : [ "bat", "bar", "baz" ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ "bat", "bar", "baz" ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$type": "number" } }');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ true, "bar", "baz" ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$type": "string" } }');
+                                                                                bson_update_document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ true, "bar", "baz" ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ { "c": 1 }, { "c": 2 }, { "c": 3 } ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b.c": { "$elemMatch": { "$eq": 2 }} }');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ { "c": 1 }, { "c": 2 }, { "c": 3 } ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b.c": { "$elemMatch": { "$eq": 2 }} }');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$all": [ 5, 6 ] } }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, 5, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$bitsAnySet": [ 0, 1 ]} }');
+                                                                                                          bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+-- $elemMatch with empty document
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ 4, { "c": 5 }, 6 ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$elemMatch": {} }}');
+                                                                                                               bson_update_document                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ { "$numberInt" : "4" }, { "c" : { "$numberInt" : "5" } }, { "$numberInt" : "6" } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+-- $all with $elemmatch
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ { "c": 1 }, { "c": 2 }, { "c": 3 } ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$all": [ { "$elemMatch": { "c": 2 } } ]} }');
+                                                                                                                         bson_update_document                                                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "100" }, { "$numberInt" : "3" } ], "b" : [ { "c" : { "$numberInt" : "1" } }, { "c" : { "$numberInt" : "2" } }, { "c" : { "$numberInt" : "3" } } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 1, "a": [ 1, 2, 3 ], "b": [ { "c": 1 }, { "c": 2 }, { "c": 3 } ], "c": 8 }', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": { "$all": [ { "$elemMatch": { "c": 2 } } , { "$elemMatch": { "c": 3 } } ]} }');
+                                                                                                                         bson_update_document                                                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "100" } ], "b" : [ { "c" : { "$numberInt" : "1" } }, { "c" : { "$numberInt" : "2" } }, { "c" : { "$numberInt" : "3" } } ], "c" : { "$numberInt" : "8" } }
+(1 row)
+
+-- upsert cases
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{}', '{ "": { "$set": { "a.$": 100 } } }', '{ "b": [ 1, 2, 3 ], "a": [ 4, 5, 6 ] }');
+ERROR:  The positional operator did not find the match needed from the query.
+-- simple example for non-array
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 3, "a": { "b": [ { "c": 1, "d": 2 } ] } }', '{ "": { "$set": { "a.$.c": 11 } }}', '{ "_id": 1 }');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
+    '{ "_id": 3, "a": { "b": [ { "c": 1, "d": 2 } ] } }', '{ "": { "$set": { "a.$.c": 11 } }}', '{ "a.b.c": 1 }');
+ERROR:  Cannot apply array updates to non-array element a: { b: [ { "c" : 1, "d" : 2 } ] }
+-- miscellenous cases
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a" : [1,2,3,4], "b" : [5,6,7,8] }', '{ "": { "$set": { "a.$": "new" } }}', '{ "b": 6 }');
+                                                                                                         bson_update_document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, "new", { "$numberInt" : "3" }, { "$numberInt" : "4" } ], "b" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" }, { "$numberInt" : "8" } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a" : [1,2,3,4], "b" : [5,6,7,8] }', '{ "": { "$set": { "a.$": "new", "b.$" : "new" } }}', '{"a" : 3 ,"b": 6 }');
+                                                                                                 bson_update_document                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, "new", { "$numberInt" : "3" }, { "$numberInt" : "4" } ], "b" : [ { "$numberInt" : "5" }, "new", { "$numberInt" : "7" }, { "$numberInt" : "8" } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id" : 1, "key":[{"id":1,"a":1},{"id":2,"a":1}],"key2":[{"id":1,"a":1}]}', '{ "": { "$set": { "key.$.a": 5 } }}', '{"key.id": 2, "key2.id" : 3}');
+                                                                                                                      bson_update_document                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "key" : [ { "id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }, { "id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "5" } } ], "key2" : [ { "id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a" : [1,2,3,4], "b" : [5,6,7,8], "c" : 1 }', '{ "": { "$set": { "a.$": "new", "b.$" : "new" } }}', '{"a" : 3 ,"b": 6, "c" : 1 }');
+                                                                                                                bson_update_document                                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, "new", { "$numberInt" : "3" }, { "$numberInt" : "4" } ], "b" : [ { "$numberInt" : "5" }, "new", { "$numberInt" : "7" }, { "$numberInt" : "8" } ], "c" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a" : [1,2,3,4], "b" : [5,6,7,8], "c" : 1 }', '{ "": { "$set": { "a.$": "new", "b.$" : "new" } }}', '{"c" : 1 }');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a" : 1, "c" : 1 }', '{ "": { "$set": { "a.$": "new"} }}', '{"a" :  1}');
+ERROR:  Cannot create field 'a' in element {a : 1}

@@ -4,4 +4,4 @@
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This includes tests related to rules.
 ####################################################################################################
-test: yb_pg_rules
+test: yb.port.rules

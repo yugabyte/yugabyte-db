@@ -438,12 +438,14 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 
 		switch (type) {
 		case KIWI_BE_READY_FOR_QUERY:
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 			if (client->client_id == 0) {
 				od_frontend_fatal(
 					client, KIWI_PROTOCOL_VIOLATION,
 					"Unable to allocate the shared memory segment");
 				return -1;
 			}
+#endif
 			machine_msg_free(msg);
 			return rc_auth;
 

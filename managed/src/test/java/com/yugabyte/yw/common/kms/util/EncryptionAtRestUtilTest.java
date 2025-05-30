@@ -12,9 +12,11 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import java.util.Base64;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -22,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
+@Slf4j
 public class EncryptionAtRestUtilTest extends FakeDBApplication {
   protected static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestUtilTest.class);
 
@@ -187,6 +190,12 @@ public class EncryptionAtRestUtilTest extends FakeDBApplication {
         testUniverse.getUniverseUUID(), testKMSConfig.getConfigUUID(), "some_key_ref".getBytes());
     int numRotations = encryptionUtil.getNumUniverseKeys(testUniverse.getUniverseUUID());
     assertEquals(1, numRotations);
+
+    // Check if the encryption context is set to empty ObjectNode.
+    KmsHistory kmsHistory =
+        encryptionUtil.getLatestConfigKey(
+            testUniverse.getUniverseUUID(), testKMSConfig.getConfigUUID());
+    assertEquals(Json.newObject(), kmsHistory.getEncryptionContext());
   }
 
   @Test

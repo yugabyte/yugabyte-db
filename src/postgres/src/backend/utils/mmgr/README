@@ -34,7 +34,7 @@ to or get more memory from the same context the chunk was originally
 allocated in.
 
 At all times there is a "current" context denoted by the
-GetCurrentMemoryContext() global variable.  palloc() implicitly allocates space
+CurrentMemoryContext global variable.  palloc() implicitly allocates space
 in that context.  The MemoryContextSwitchTo() operation selects a new current
 context (and returns the previous context, so that the caller can restore the
 previous context before exiting).
@@ -74,7 +74,7 @@ The Current Memory Context
 
 Because it would be too much notational overhead to always pass an
 appropriate memory context to called routines, there always exists the
-notion of the current memory context GetCurrentMemoryContext().  Without it,
+notion of the current memory context CurrentMemoryContext.  Without it,
 for example, the copyObject routines would need to be passed a context, as
 would function execution routines that return a pass-by-reference
 datatype.  Similarly for routines that temporarily allocate space
@@ -82,7 +82,7 @@ internally, but don't return it to their caller?  We certainly don't
 want to clutter every call in the system with "here is a context to
 use for any temporary memory allocation you might want to do".
 
-The upshot of that reasoning, though, is that GetCurrentMemoryContext() should
+The upshot of that reasoning, though, is that CurrentMemoryContext should
 generally point at a short-lifespan context if at all possible.  During
 query execution it usually points to a context that gets reset after each
 tuple.  Only in *very* circumscribed code should it ever point at a
@@ -90,11 +90,11 @@ context having greater than transaction lifespan, since doing so risks
 permanent memory leaks.
 
 
-pfree/repalloc Do Not Depend On GetCurrentMemoryContext()
+pfree/repalloc Do Not Depend On CurrentMemoryContext
 ----------------------------------------------------
 
 pfree() and repalloc() can be applied to any chunk whether it belongs
-to GetCurrentMemoryContext() or not --- the chunk's owning context will be
+to CurrentMemoryContext or not --- the chunk's owning context will be
 invoked to handle the operation, regardless.
 
 
@@ -183,7 +183,7 @@ be reset or deleted.  This is for stuff that should live forever, or for
 stuff that the controlling module will take care of deleting at the
 appropriate time.  An example is fd.c's tables of open files.  Avoid
 allocating stuff here unless really necessary, and especially avoid
-running with GetCurrentMemoryContext() pointing here.
+running with CurrentMemoryContext pointing here.
 
 PostmasterContext --- this is the postmaster's normal working context.
 After a backend is spawned, it can delete PostmasterContext to free its
@@ -344,7 +344,7 @@ ping-pong between them, so that at each tuple one is the active allocation
 context and the other holds any results allocated by the prior cycle's
 transition function.
 
-Executor routines that switch the active GetCurrentMemoryContext() may need
+Executor routines that switch the active CurrentMemoryContext may need
 to copy data into their caller's current memory context before returning.
 However, we have minimized the need for that, because of the convention
 of resetting the per-tuple context at the *start* of an execution cycle

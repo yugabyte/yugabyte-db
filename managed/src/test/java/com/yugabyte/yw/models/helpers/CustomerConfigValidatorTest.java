@@ -34,6 +34,7 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.azure.core.http.rest.PagedIterable;
+import com.azure.core.util.BinaryData;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.models.BlobItem;
@@ -185,6 +186,18 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com:443, false",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, minio.rmn.local:30000, true",
+    // location - correct, aws_host_base - correct -> allowed
+    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, minio.rmn.somethingabc:30000,"
+        + " true",
+    // location - correct, aws_host_base - correct -> allowed
+    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, cp2dsuprism1.iaas.opssg:30000,"
+        + " true",
+    // location - correct, aws_host_base - correct -> allowed
+    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, minio.rmn.somethingabc,"
+        + " true",
+    // location - correct, aws_host_base - correct -> allowed
+    "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, cp2dsuprism1.iaas.opssg,"
+        + " true",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, https://s3.amazonaws.com, true",
     // location - correct, aws_host_base - incorrect(443 port not allowed) -> disallowed
@@ -1013,7 +1026,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         ((StubbedCustomerConfigValidator) customerConfigValidator).blobContainerClient;
 
     if (shouldCreateValidateFail) {
-      doThrow(new BlobStorageException("Upload failed", null, null)).when(blobClient).upload(any());
+      doThrow(new BlobStorageException("Upload failed", null, null))
+          .when(blobClient)
+          .upload(any(BinaryData.class));
     }
 
     String incorrectData = "notdummy";

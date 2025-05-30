@@ -115,7 +115,7 @@ spgAllocSearchItem(SpGistScanOpaque so, bool isnull, double *distances)
 {
 	/* allocate distance array only for non-NULL items */
 	SpGistSearchItem *item =
-	palloc(SizeOfSpGistSearchItem(isnull ? 0 : so->numberOfNonNullOrderBys));
+		palloc(SizeOfSpGistSearchItem(isnull ? 0 : so->numberOfNonNullOrderBys));
 
 	item->isNull = isnull;
 
@@ -130,7 +130,7 @@ static void
 spgAddStartItem(SpGistScanOpaque so, bool isnull)
 {
 	SpGistSearchItem *startEntry =
-	spgAllocSearchItem(so, isnull, so->zeroDistances);
+		spgAllocSearchItem(so, isnull, so->zeroDistances);
 
 	ItemPointerSet(&startEntry->heapPtr,
 				   isnull ? SPGIST_NULL_BLKNO : SPGIST_ROOT_BLKNO,
@@ -316,10 +316,10 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 		so->keyData = NULL;
 	initSpGistState(&so->state, scan->indexRelation);
 
-	so->tempCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->tempCxt = AllocSetContextCreate(CurrentMemoryContext,
 										"SP-GiST search temporary context",
 										ALLOCSET_DEFAULT_SIZES);
-	so->traversalCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+	so->traversalCxt = AllocSetContextCreate(CurrentMemoryContext,
 											 "SP-GiST traversal-value context",
 											 ALLOCSET_DEFAULT_SIZES);
 
@@ -363,11 +363,11 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 
 	fmgr_info_copy(&so->innerConsistentFn,
 				   index_getprocinfo(rel, 1, SPGIST_INNER_CONSISTENT_PROC),
-				   GetCurrentMemoryContext());
+				   CurrentMemoryContext);
 
 	fmgr_info_copy(&so->leafConsistentFn,
 				   index_getprocinfo(rel, 1, SPGIST_LEAF_CONSISTENT_PROC),
-				   GetCurrentMemoryContext());
+				   CurrentMemoryContext);
 
 	so->indexCollation = rel->rd_indcollation[0];
 
@@ -768,7 +768,7 @@ spgTestLeafTuple(SpGistScanOpaque so,
 				 storeRes_func storeRes)
 {
 	SpGistLeafTuple leafTuple = (SpGistLeafTuple)
-	PageGetItem(page, PageGetItemId(page, offset));
+		PageGetItem(page, PageGetItemId(page, offset));
 
 	if (leafTuple->tupstate != SPGIST_LIVE)
 	{
@@ -896,7 +896,7 @@ redirect:
 			else				/* page is inner */
 			{
 				SpGistInnerTuple innerTuple = (SpGistInnerTuple)
-				PageGetItem(page, PageGetItemId(page, offset));
+					PageGetItem(page, PageGetItemId(page, offset));
 
 				if (innerTuple->tupstate != SPGIST_LIVE)
 				{
@@ -974,7 +974,7 @@ storeGettuple(SpGistScanOpaque so, ItemPointer heapPtr,
 		else
 		{
 			IndexOrderByDistance *distances =
-			palloc(sizeof(distances[0]) * so->numberOfOrderBys);
+				palloc(sizeof(distances[0]) * so->numberOfOrderBys);
 			int			i;
 
 			for (i = 0; i < so->numberOfOrderBys; i++)

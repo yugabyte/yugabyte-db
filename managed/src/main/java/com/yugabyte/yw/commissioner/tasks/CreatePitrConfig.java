@@ -11,6 +11,7 @@ import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -161,6 +162,12 @@ public class CreatePitrConfig extends UniverseTaskBase {
               throw new RuntimeException(e);
             }
           });
+      // Adding 1s to the snapshot creation time to take care of loss of precision when converted
+      // from micros to millis.
+      Date currentDate = new Date(snapshotInfoAtomicRef.get().getSnapshotTime() + 1000L);
+      pitrConfig.setCreateTime(currentDate);
+      pitrConfig.setUpdateTime(currentDate);
+      pitrConfig.save();
     } catch (Exception e) {
       log.error("{} hit exception : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

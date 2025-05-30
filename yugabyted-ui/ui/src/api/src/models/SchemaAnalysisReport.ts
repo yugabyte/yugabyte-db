@@ -13,9 +13,9 @@
 
 
 // eslint-disable-next-line no-duplicate-imports
-import type { RecommendedRefactoringGraph } from './RecommendedRefactoringGraph';
+import type { RefactoringCount } from './RefactoringCount';
 // eslint-disable-next-line no-duplicate-imports
-import type { UnsupportedSqlWithDetails } from './UnsupportedSqlWithDetails';
+import type { SqlObjectsDetails } from './SqlObjectsDetails';
 
 
 /**
@@ -26,28 +26,28 @@ import type { UnsupportedSqlWithDetails } from './UnsupportedSqlWithDetails';
 export interface SchemaAnalysisReport  {
   /**
    * 
-   * @type {UnsupportedSqlWithDetails[]}
+   * @type {string}
    * @memberof SchemaAnalysisReport
    */
-  unsupported_functions?: UnsupportedSqlWithDetails[];
+  voyager_version?: string;
   /**
    * 
-   * @type {UnsupportedSqlWithDetails[]}
+   * @type {string}
    * @memberof SchemaAnalysisReport
    */
-  unsupported_features?: UnsupportedSqlWithDetails[];
+  target_db_version?: string;
   /**
    * 
-   * @type {UnsupportedSqlWithDetails[]}
+   * @type {SqlObjectsDetails[]}
    * @memberof SchemaAnalysisReport
    */
-  unsupported_datatypes?: UnsupportedSqlWithDetails[];
+  sql_objects?: SqlObjectsDetails[];
   /**
    * 
-   * @type {RecommendedRefactoringGraph}
+   * @type {RefactoringCount[]}
    * @memberof SchemaAnalysisReport
    */
-  recommended_refactoring?: RecommendedRefactoringGraph;
+  recommended_refactoring?: RefactoringCount[];
 }
 
 

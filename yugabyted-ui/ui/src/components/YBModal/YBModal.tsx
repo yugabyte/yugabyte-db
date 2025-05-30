@@ -63,6 +63,10 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     width: 800,
     height: ({ overrideHeight }) => overrideHeight ?? 800
   },
+  dialogLg: {  // Added new large size class
+    width: 1400,
+    height: ({ overrideHeight }) => overrideHeight ?? 800
+  },
   form: {
     display: 'flex',
     flexDirection: 'column',
@@ -162,6 +166,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
       break;
     case 'xl':
       dialogClasses = classes.dialogXl;
+      break;
+    case 'lg':  // Added case for large size
+      dialogClasses = classes.dialogLg;
       break;
     case 'md':
     default:

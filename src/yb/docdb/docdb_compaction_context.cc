@@ -31,6 +31,7 @@
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -178,8 +179,11 @@ class PackedRowData {
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
     std::tie(old_packing_.packed_row_version, old_schema_version_) = VERIFY_RESULT(ParseValueHeader(
         &old_value_slice_));
-    if (old_schema_version_ != new_packing_.schema_version) {
+    if (old_schema_version_ < new_packing_.schema_version) {
       return StartRepacking();
+    }
+    if (old_schema_version_ > new_packing_.schema_version) {
+      RETURN_NOT_OK(UsedSchemaVersion(old_schema_version_));
     }
     packing_started_ = false;
     return Status::OK();
@@ -774,7 +778,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   VLOG(4) << "Feed: " << internal_key.ToDebugHexString() << "/"
           << dockv::SubDocKey::DebugSliceToString(key) << " => " << value.ToDebugHexString();
 
-  // TODO(vector-index) implement better handing for vector index metadata, it's kept in SST now.
+  // TODO(vector_index) implement better handing for vector index metadata, it's kept in SST now.
   if (dockv::DecodeKeyEntryType(key) == dockv::KeyEntryType::kVectorIndexMetadata) {
     return ForwardToNextFeed(internal_key, value);
   }
@@ -1081,8 +1085,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value = dockv::Value::EncodedTombstone();
   } else if (within_merge_block_) {
     if (expiration.ttl != ValueControlFields::kMaxTtl) {
-      expiration.ttl += MonoDelta::FromMicroseconds(
-          overwrite_.back().expiration.write_ht.PhysicalDiff(VERIFY_RESULT(lazy_ht.Get())));
+      expiration.ttl += overwrite_.back().expiration.write_ht.PhysicalDiff(
+          VERIFY_RESULT(lazy_ht.Get()));
       overwrite_.back().expiration.ttl = expiration.ttl;
     }
 

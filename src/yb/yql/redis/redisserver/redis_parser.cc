@@ -1042,7 +1042,7 @@ Status RedisParser::AdvanceToNextToken() {
     case State::FINISHED:
       return STATUS(IllegalState, "Should not be in FINISHED state during NextToken");
   }
-  LOG(FATAL) << "Unexpected parser state: " << to_underlying(state_);
+  LOG(FATAL) << "Unexpected parser state: " << std::to_underlying(state_);
 }
 
 Status RedisParser::Initial() {

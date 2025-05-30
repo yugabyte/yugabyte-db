@@ -181,7 +181,14 @@ These commands use `localhost`. If you are using a non-native Docker platform (s
 
 ### Deploy the YugabyteDB connector
 
-After starting the Debezium and YugabyteDB service, you are ready to deploy the YugabyteDB connector. To deploy the connector, you register the YugabyteDB connector to monitor your database. By registering the YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table (`products` in this example). When a row in the table changes, Debezium generates a change event.
+After starting the Debezium and YugabyteDB service, you are ready to deploy the YugabyteDB connector. To deploy the connector, do the following:
+
+- [Register the YugabyteDB connector to monitor the `yugabyte` database](#register-a-connector-to-monitor-yugabyte-database).
+- [Watch the connector start](#watch-the-connector-start).
+
+#### Register a connector to monitor yugabyte database
+
+By registering the YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table `products`. When a row in the table changes, Debezium generates a change event.
 
 {{< note title="Note" >}}
 

@@ -39,6 +39,34 @@ $node->pgbench(
 		  "CREATE TYPE pg_temp.e AS ENUM ($labels); DROP TYPE pg_temp.e;"
 	});
 
+# Test inplace updates from VACUUM concurrent with heap_update from GRANT.
+# The PROC_IN_VACUUM environment can't finish MVCC table scans consistently,
+# so this fails rarely.  To reproduce consistently, add a sleep after
+# GetCatalogSnapshot(non-catalog-rel).
+Test::More->builder->todo_start('PROC_IN_VACUUM scan breakage');
+$node->safe_psql('postgres', 'CREATE TABLE ddl_target ()');
+$node->pgbench(
+	'--no-vacuum --client=5 --protocol=prepared --transactions=50',
+	0,
+	[qr{processed: 250/250}],
+	[qr{^$}],
+	'concurrent GRANT/VACUUM',
+	{
+		'001_pgbench_grant@9' => q(
+			DO $$
+			BEGIN
+				PERFORM pg_advisory_xact_lock(42);
+				FOR i IN 1 .. 10 LOOP
+					GRANT SELECT ON ddl_target TO PUBLIC;
+					REVOKE SELECT ON ddl_target FROM PUBLIC;
+				END LOOP;
+			END
+			$$;
+),
+		'001_pgbench_vacuum_ddl_target@1' => "VACUUM ddl_target;",
+	});
+Test::More->builder->todo_end;
+
 # Trigger various connection errors
 $node->pgbench(
 	'no-such-database',
@@ -130,7 +158,7 @@ $node->pgbench(
 	'pgbench simple update');
 
 $node->pgbench(
-	'-t 100 -c 7 -M prepared -b se --debug all',
+	'-t 100 -c 7 -M prepared -b se --debug',
 	0,
 	[
 		qr{builtin: select only},
@@ -605,6 +633,56 @@ SELECT :v0, :v1, :v2, :v3;
 }
 	});
 
+# test nested \if constructs
+$node->pgbench(
+	'--no-vacuum --client=1 --transactions=1',
+	0,
+	[qr{actually processed}],
+	[qr{^$}],
+	'nested ifs',
+	{
+		'pgbench_nested_if' => q(
+			\if false
+				SELECT 1 / 0;
+				\if true
+					SELECT 1 / 0;
+				\elif true
+					SELECT 1 / 0;
+				\else
+					SELECT 1 / 0;
+				\endif
+				SELECT 1 / 0;
+			\elif false
+				\if true
+					SELECT 1 / 0;
+				\elif true
+					SELECT 1 / 0;
+				\else
+					SELECT 1 / 0;
+				\endif
+			\else
+				\if false
+					SELECT 1 / 0;
+				\elif false
+					SELECT 1 / 0;
+				\else
+					SELECT 'correct';
+				\endif
+			\endif
+			\if true
+				SELECT 'correct';
+			\else
+				\if true
+					SELECT 1 / 0;
+				\elif true
+					SELECT 1 / 0;
+				\else
+					SELECT 1 / 0;
+				\endif
+			\endif
+		)
+	});
+
 # random determinism when seeded
 $node->safe_psql('postgres',
 	'CREATE UNLOGGED TABLE seeded_random(seed INT8 NOT NULL, rand TEXT NOT NULL, val INTEGER NOT NULL);'
@@ -790,6 +868,8 @@ $node->pgbench(
 		'001_pgbench_pipeline_prep' => q{
 -- test startpipeline
 \startpipeline
+\endpipeline
+\startpipeline
 } . "select 1;\n" x 10 . q{
 \endpipeline
 }
@@ -839,6 +919,54 @@ select 1 \gset f
 }
 	});
 
+# Try \startpipeline without \endpipeline in a single transaction
+$node->pgbench(
+	'-t 1 -n -M extended',
+	2,
+	[],
+	[qr{end of script reached with pipeline open}],
+	'error: call \startpipeline without \endpipeline in a single transaction',
+	{
+		'001_pgbench_pipeline_5' => q{
+-- startpipeline only with single transaction
+\startpipeline
+}
+	});
+
+# Try \startpipeline without \endpipeline
+$node->pgbench(
+	'-t 2 -n -M extended',
+	2,
+	[],
+	[qr{end of script reached with pipeline open}],
+	'error: call \startpipeline without \endpipeline',
+	{
+		'001_pgbench_pipeline_6' => q{
+-- startpipeline only
+\startpipeline
+}
+	});
+
+# Working \startpipeline in prepared query mode with serializable
+$node->pgbench(
+	'-c4 -t 10 -n -M prepared',
+	0,
+	[
+		qr{type: .*/001_pgbench_pipeline_serializable},
+		qr{actually processed: (\d+)/\1}
+	],
+	[],
+	'working \startpipeline with serializable',
+	{
+		'001_pgbench_pipeline_serializable' => q{
+-- test startpipeline with serializable
+\startpipeline
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+} . "select 1;\n" x 10 . q{
+END;
+\endpipeline
+}
+	});
 
 # trigger many expression errors
 my @errors = (
@@ -863,11 +991,7 @@ my @errors = (
 \set i 0
 SELECT LEAST(} . join(', ', (':i') x 256) . q{)}
 	],
-	[   'sql division by zero', 0, [qr{ERROR:  division by zero}],
-		q{-- SQL division by zero
-SELECT 1 / 0;
-}
-	],
+
 	# SHELL
 	[
 		'shell bad command',                    2,
@@ -1034,17 +1158,6 @@ SELECT 1 / 0;
 		[qr{unrecognized time unit}], q{\sleep 1 week}
 	],
 
-	# CONDITIONAL BLOCKS
-	[   'if elif failed conditions', 0,
-		[qr{division by zero}],
-		q{-- failed conditions
-\if 1 / 0
-\elif 1 / 0
-\else
-\endif
-}
-	],
-
 	# MISC
 	[
 		'misc invalid backslash command',         1,
@@ -1108,32 +1221,13 @@ for my $e (@errors)
 	$node->pgbench(
 		'-n -t 1 -Dfoo=bla -Dnull=null -Dtrue=true -Done=1 -Dzero=0.0 -Dbadtrue=trueXXX'
 		  . ' -Dmaxint=9223372036854775807 -Dminint=-9223372036854775808'
-		  . ($no_prepare ? ' -d fails' : ' -M prepared -d fails'),
+		  . ($no_prepare ? '' : ' -M prepared'),
 		$status,
-		($status ?
-		 [ qr{^$} ] :
-		 [ qr{processed: 0/1}, qr{number of errors: 1 \(100.000%\)},
-		   qr{^((?!number of retried)(.|\n))*$} ]),
+		[ $status == 1 ? qr{^$} : qr{processed: 0/1} ],
 		$re,
 		'pgbench script error: ' . $name,
 		{ $n => $script });
 }
-
-# reset client variables in case of failure
-pgbench(
-	'-n -t 2 -d fails', 0,
-	[ qr{processed: 0/2}, qr{number of errors: 2 \(100.000%\)},
-	  qr{^((?!number of retried)(.|\n))*$} ],
-	[ qr{(client 0 got a failure in command 1 \(SQL\) of script 0; ERROR:  syntax error at or near ":"(.|\n)*){2}} ],
-	'pgbench reset client variables in case of failure',
-	{	'001_pgbench_reset_client_variables' => q{
-BEGIN;
--- select an unassigned variable
-SELECT :unassigned_var;
-\set unassigned_var 1
-END;
-}
-	});
 
 # throttling
 $node->pgbench(

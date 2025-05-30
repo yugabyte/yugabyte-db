@@ -281,8 +281,7 @@ void YBInboundCall::UpdateWaitStateInfo() {
         .method = method_name().ToBuffer(),
     });
   } else {
-    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash))
-        << "Wait state is nullptr for " << ToString();
+    LOG_IF(DFATAL, FLAGS_ysql_yb_enable_ash) << "Wait state is nullptr for " << ToString();
   }
 }
 

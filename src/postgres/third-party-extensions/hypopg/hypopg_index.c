@@ -72,7 +72,7 @@
 #include "include/hypopg.h"
 #include "include/hypopg_index.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 #if PG_VERSION_NUM >= 90600
@@ -1943,7 +1943,11 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 
 		glob = makeNode(PlannerGlobal);
 		glob->boundParams = NULL;
+		glob->ybBaseRelCnt = 0;
 		root->glob = glob;
+		glob->ybNextUid = 0;
+		glob->ybNextNodeUid = 0;
+		glob->ybHintedUids = NIL;
 
 		/* only 1 table: the one related to this hypothetical index */
 		rte = makeNode(RangeTblEntry);

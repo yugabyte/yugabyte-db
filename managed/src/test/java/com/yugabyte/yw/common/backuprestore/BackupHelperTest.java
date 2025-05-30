@@ -32,10 +32,16 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.replication.ValidateReplicationInfo;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.forms.backuprestore.RestoreItemsValidationParams;
@@ -43,10 +49,14 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -63,6 +73,8 @@ import org.apache.commons.collections4.MapUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
@@ -105,7 +117,8 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockCommissioner,
                 mockValidateReplicationInfo,
                 mockNodeUniverseManager,
-                mockYbcBackupUtil));
+                mockYbcBackupUtil,
+                mockSoftwareUpgradeHelper));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
   }
@@ -914,5 +927,335 @@ public class BackupHelperTest extends FakeDBApplication {
             testCustomer.getUuid(), params);
     assertTrue(nonRestorableItems.getFirst());
     assertEquals(0, nonRestorableItems.getSecond().size());
+  }
+
+  @Test
+  public void testRestoreWhenYsqlMajorVersionUpgradeInMonitoringPhase() {
+    Backup backup = createYCQLMultiKeyspaceBackup();
+    RestoreBackupParams restoreBackupParams = new RestoreBackupParams();
+    restoreBackupParams.storageConfigUUID = backup.getStorageConfigUUID();
+    restoreBackupParams.setUniverseUUID(testUniverse.getUniverseUUID());
+    restoreBackupParams.actionType = ActionType.RESTORE;
+    BackupStorageInfo storageInfo = new BackupStorageInfo();
+    storageInfo.storageLocation = backup.getBackupInfo().storageLocation;
+    storageInfo.keyspace = backup.getBackupInfo().getKeyspace();
+    restoreBackupParams.backupStorageInfoList = Arrays.asList(storageInfo);
+    testUniverse =
+        Universe.saveDetails(
+            testUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  "2025.1.0.0-b1";
+              universe.getUniverseDetails().prevYBSoftwareConfig = new PrevYBSoftwareConfig();
+              universe
+                  .getUniverseDetails()
+                  .prevYBSoftwareConfig
+                  .setSoftwareVersion("2024.2.1.0-b1");
+            });
+    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> {
+              spyBackupHelper.createRestoreTask(testCustomer.getUuid(), restoreBackupParams);
+            });
+    assertEquals(
+        "Cannot restore backup with major version upgrade is in progress", ex.getMessage());
+  }
+
+  public void testCreateBackupTaskChecksFail() {
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, "false");
+    BackupRequestParams params = new BackupRequestParams();
+
+    // Test 1: TakeBackups is disabled
+    params.setUniverseUUID(testUniverse.getUniverseUUID());
+    testUniverse.updateConfig(config);
+    assertThrows(
+        PlatformServiceException.class,
+        () -> spyBackupHelper.createBackupTask(testCustomer.getUuid(), params));
+
+    // Test 2: UpdateInProgress is true
+    config.put(Universe.TAKE_BACKUPS, "true");
+    testUniverse.getUniverseDetails().updateInProgress = true;
+    testUniverse.updateConfig(config);
+    assertThrows(
+        PlatformServiceException.class,
+        () -> spyBackupHelper.createBackupTask(testCustomer.getUuid(), params));
+
+    // Test 3: ParallelDBBackups is <= 0
+    testUniverse.getUniverseDetails().updateInProgress = false;
+    params.parallelDBBackups = -1;
+    assertThrows(
+        PlatformServiceException.class,
+        () -> spyBackupHelper.createBackupTask(testCustomer.getUuid(), params));
+
+    // Test 4: Expired backup
+    params.parallelDBBackups = 1;
+    params.timeBeforeDelete = 1L;
+    params.expiryTimeUnit = null;
+    assertThrows(
+        PlatformServiceException.class,
+        () -> spyBackupHelper.createBackupTask(testCustomer.getUuid(), params));
+
+    // Test 5: StorageConfig Provided
+    params.expiryTimeUnit = TimeUnit.DAYS;
+    params.storageConfigUUID = null;
+    assertThrows(
+        PlatformServiceException.class,
+        () -> spyBackupHelper.createBackupTask(testCustomer.getUuid(), params));
+
+    // Test 6: StorageConfig active
+    CustomerConfig testStorageConfig =
+        ModelFactory.createS3StorageConfig(testCustomer, "test_S3_1");
+    when(mockConfigService.getOrBadRequest(
+            testCustomer.getUuid(), testStorageConfig.getConfigUUID()))
+        .thenReturn(testStorageConfig);
+    testStorageConfig.setState(ConfigState.QueuedForDeletion);
+    params.storageConfigUUID = testStorageConfig.getConfigUUID();
+    assertThrows(
+        PlatformServiceException.class,
+        () -> spyBackupHelper.createBackupTask(testCustomer.getUuid(), params));
+  }
+
+  // Call 'createBackupTask' and return the BackupRequestParams that are used to create the task.
+  private BackupRequestParams runCreateBackupTaskSuccessTest(
+      BackupRequestParams params, String storageConfName) {
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(false);
+    ArgumentCaptor<BackupRequestParams> paramsCaptor =
+        ArgumentCaptor.forClass(BackupRequestParams.class);
+    when(mockCommissioner.submit(eq(TaskType.CreateBackup), paramsCaptor.capture()))
+        .thenReturn(UUID.randomUUID());
+    CustomerConfig testStorageConfig =
+        ModelFactory.createS3StorageConfig(testCustomer, storageConfName);
+    when(mockConfigService.getOrBadRequest(
+            testCustomer.getUuid(), testStorageConfig.getConfigUUID()))
+        .thenReturn(testStorageConfig);
+    testStorageConfig.setState(ConfigState.Active);
+    params.storageConfigUUID = testStorageConfig.getConfigUUID();
+    try (MockedStatic<CustomerTask> customerTask = Mockito.mockStatic(CustomerTask.class)) {
+      customerTask
+          .when(() -> CustomerTask.create(any(), any(), any(), any(), any(), any()))
+          .thenReturn(null);
+      spyBackupHelper.createBackupTask(testCustomer.getUuid(), params);
+    }
+    BackupRequestParams foundParams = paramsCaptor.getValue();
+    return foundParams;
+  }
+
+  @Test
+  public void testCreateRestoreTaskErrorManagementAllFalse() {
+    RestoreBackupParams params = new RestoreBackupParams();
+    params.backupStorageInfoList = new ArrayList<>();
+    params.setUniverseUUID(testUniverse.getUniverseUUID());
+    CustomerConfig testStorageConfig =
+        ModelFactory.createS3StorageConfig(testCustomer, "restore_error_management_1");
+    params.storageConfigUUID = testStorageConfig.getConfigUUID();
+    when(mockConfigService.getOrBadRequest(
+            testCustomer.getUuid(), testStorageConfig.getConfigUUID()))
+        .thenReturn(testStorageConfig);
+    RestoreBackupParams.BackupStorageInfo storageInfo_1 =
+        new RestoreBackupParams.BackupStorageInfo();
+    storageInfo_1.setIgnoreErrors(false);
+    // storageInfo_1.setErrorIfRolesExists(false);
+    // storageInfo_1.setErrorIfTablespacesExists(false);
+    storageInfo_1.keyspace = "foo";
+    params.backupStorageInfoList.add(storageInfo_1);
+    RestoreBackupParams.BackupStorageInfo storageInfo_2 =
+        new RestoreBackupParams.BackupStorageInfo();
+    storageInfo_2.setIgnoreErrors(false);
+    // storageInfo_2.setErrorIfRolesExists(false);
+    // storageInfo_2.setErrorIfTablespacesExists(false);
+    storageInfo_2.keyspace = "bar";
+    params.backupStorageInfoList.add(storageInfo_2);
+
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.ignoreRestoreErrors)))
+        .thenReturn(false);
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.revertToPreRolesBehaviour)))
+        .thenReturn(false);
+    // when(mockRuntimeConfGetter.getConfForScope(
+    //         eq(testUniverse), eq(UniverseConfKeys.errorIfRolesExists)))
+    //     .thenReturn(false);
+    // when(mockRuntimeConfGetter.getConfForScope(
+    //         eq(testUniverse), eq(UniverseConfKeys.errorIfTablespacesExists)))
+    //     .thenReturn(false);
+
+    RestoreBackupParams foundParams = runCreateRestoreTaskSuccessTest(params);
+    for (RestoreBackupParams.BackupStorageInfo storageInfo : params.backupStorageInfoList) {
+      assertFalse(storageInfo.getIgnoreErrors());
+      //   assertFalse(storageInfo.getErrorIfRolesExists());
+      //   assertFalse(storageInfo.getErrorIfTablespacesExists());
+    }
+  }
+
+  @Test
+  public void testCreateRestoreTaskErrorManagementRuntimeOverwrite() {
+    RestoreBackupParams params = new RestoreBackupParams();
+    params.backupStorageInfoList = new ArrayList<>();
+    params.setUniverseUUID(testUniverse.getUniverseUUID());
+    CustomerConfig testStorageConfig =
+        ModelFactory.createS3StorageConfig(testCustomer, "restore_runtime_overwrite_1");
+    params.storageConfigUUID = testStorageConfig.getConfigUUID();
+    when(mockConfigService.getOrBadRequest(
+            testCustomer.getUuid(), testStorageConfig.getConfigUUID()))
+        .thenReturn(testStorageConfig);
+    RestoreBackupParams.BackupStorageInfo storageInfo_1 =
+        new RestoreBackupParams.BackupStorageInfo();
+    storageInfo_1.setIgnoreErrors(false);
+    // storageInfo_1.setErrorIfRolesExists(false);
+    // storageInfo_1.setErrorIfTablespacesExists(false);
+    storageInfo_1.keyspace = "foo";
+    params.backupStorageInfoList.add(storageInfo_1);
+    RestoreBackupParams.BackupStorageInfo storageInfo_2 =
+        new RestoreBackupParams.BackupStorageInfo();
+    storageInfo_2.setIgnoreErrors(false);
+    // storageInfo_2.setErrorIfRolesExists(false);
+    // storageInfo_2.setErrorIfTablespacesExists(false);
+    storageInfo_2.keyspace = "bar";
+    params.backupStorageInfoList.add(storageInfo_2);
+
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.ignoreRestoreErrors)))
+        .thenReturn(true);
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.revertToPreRolesBehaviour)))
+        .thenReturn(false);
+    // when(mockRuntimeConfGetter.getConfForScope(
+    //         eq(testUniverse), eq(UniverseConfKeys.errorIfRolesExists)))
+    //     .thenReturn(true);
+    // when(mockRuntimeConfGetter.getConfForScope(
+    //         eq(testUniverse), eq(UniverseConfKeys.errorIfTablespacesExists)))
+    //     .thenReturn(true);
+
+    RestoreBackupParams foundParams = runCreateRestoreTaskSuccessTest(params);
+    for (RestoreBackupParams.BackupStorageInfo storageInfo : params.backupStorageInfoList) {
+      assertTrue(storageInfo.getIgnoreErrors());
+      //   assertTrue(storageInfo.getErrorIfRolesExists());
+      //   assertTrue(storageInfo.getErrorIfTablespacesExists());
+    }
+  }
+
+  @Test
+  public void testCreateRestoreTaskErrorManagementApiOverwrite() {
+    RestoreBackupParams params = new RestoreBackupParams();
+    params.backupStorageInfoList = new ArrayList<>();
+    params.setUniverseUUID(testUniverse.getUniverseUUID());
+    CustomerConfig testStorageConfig =
+        ModelFactory.createS3StorageConfig(testCustomer, "restore_api_overwrite_1");
+    params.storageConfigUUID = testStorageConfig.getConfigUUID();
+    when(mockConfigService.getOrBadRequest(
+            testCustomer.getUuid(), testStorageConfig.getConfigUUID()))
+        .thenReturn(testStorageConfig);
+    RestoreBackupParams.BackupStorageInfo storageInfo_1 =
+        new RestoreBackupParams.BackupStorageInfo();
+    storageInfo_1.setIgnoreErrors(true);
+    // storageInfo_1.setErrorIfRolesExists(true);
+    // storageInfo_1.setErrorIfTablespacesExists(true);
+    storageInfo_1.keyspace = "foo";
+    params.backupStorageInfoList.add(storageInfo_1);
+    RestoreBackupParams.BackupStorageInfo storageInfo_2 =
+        new RestoreBackupParams.BackupStorageInfo();
+    storageInfo_2.setIgnoreErrors(true);
+    // storageInfo_2.setErrorIfRolesExists(true);
+    // storageInfo_2.setErrorIfTablespacesExists(true);
+    storageInfo_2.keyspace = "bar";
+    params.backupStorageInfoList.add(storageInfo_2);
+
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.ignoreRestoreErrors)))
+        .thenReturn(false);
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.revertToPreRolesBehaviour)))
+        .thenReturn(false);
+    // when(mockRuntimeConfGetter.getConfForScope(
+    //         eq(testUniverse), eq(UniverseConfKeys.errorIfRolesExists)))
+    //     .thenReturn(false);
+    // when(mockRuntimeConfGetter.getConfForScope(
+    //         eq(testUniverse), eq(UniverseConfKeys.errorIfTablespacesExists)))
+    //     .thenReturn(false);
+
+    RestoreBackupParams foundParams = runCreateRestoreTaskSuccessTest(params);
+    for (RestoreBackupParams.BackupStorageInfo storageInfo : params.backupStorageInfoList) {
+      assertTrue(storageInfo.getIgnoreErrors());
+      //   assertTrue(storageInfo.getErrorIfRolesExists());
+      //   assertTrue(storageInfo.getErrorIfTablespacesExists());
+    }
+  }
+
+  @Test
+  public void testCreateRestoreTaskRevertPreRolesBehaviourTrue() {
+    RestoreBackupParams params = new RestoreBackupParams();
+    params.backupStorageInfoList = new ArrayList<>();
+    params.setUniverseUUID(testUniverse.getUniverseUUID());
+    CustomerConfig testStorageConfig =
+        ModelFactory.createS3StorageConfig(testCustomer, "restore_api_overwrite_1");
+    params.storageConfigUUID = testStorageConfig.getConfigUUID();
+    when(mockConfigService.getOrBadRequest(
+            testCustomer.getUuid(), testStorageConfig.getConfigUUID()))
+        .thenReturn(testStorageConfig);
+    RestoreBackupParams.BackupStorageInfo storageInfo_1 =
+        new RestoreBackupParams.BackupStorageInfo();
+    storageInfo_1.setIgnoreErrors(true);
+    // storageInfo_1.setErrorIfRolesExists(true);
+    // storageInfo_1.setErrorIfTablespacesExists(true);
+    storageInfo_1.setRevertToPreRolesBehaviour(false);
+    storageInfo_1.keyspace = "foo";
+    params.backupStorageInfoList.add(storageInfo_1);
+    RestoreBackupParams.BackupStorageInfo storageInfo_2 =
+        new RestoreBackupParams.BackupStorageInfo();
+    storageInfo_2.setIgnoreErrors(true);
+    // storageInfo_2.setErrorIfRolesExists(true);
+    // storageInfo_2.setErrorIfTablespacesExists(true);
+    storageInfo_2.setRevertToPreRolesBehaviour(false);
+    storageInfo_2.keyspace = "bar";
+    params.backupStorageInfoList.add(storageInfo_2);
+
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.ignoreRestoreErrors)))
+        .thenReturn(false);
+    // when(mockRuntimeConfGetter.getConfForScope(
+    //         eq(testUniverse), eq(UniverseConfKeys.errorIfRolesExists)))
+    //     .thenReturn(false);
+    // when(mockRuntimeConfGetter.getConfForScope(
+    //         eq(testUniverse), eq(UniverseConfKeys.errorIfTablespacesExists)))
+    //     .thenReturn(false);
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.revertToPreRolesBehaviour)))
+        .thenReturn(false);
+
+    UniverseDefinitionTaskParams details = testUniverse.getUniverseDetails();
+    details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.25.1.0-b123";
+    testUniverse.setUniverseDetails(details);
+    testUniverse.save();
+
+    RestoreBackupParams foundParams = runCreateRestoreTaskSuccessTest(params);
+    for (RestoreBackupParams.BackupStorageInfo storageInfo : params.backupStorageInfoList) {
+      assertTrue(storageInfo.getIgnoreErrors());
+      //   assertTrue(storageInfo.getErrorIfRolesExists());
+      //   assertTrue(storageInfo.getErrorIfTablespacesExists());
+      assertFalse(storageInfo.getRevertToPreRolesBehaviour());
+    }
+  }
+
+  private RestoreBackupParams runCreateRestoreTaskSuccessTest(RestoreBackupParams params) {
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(false);
+    ArgumentCaptor<RestoreBackupParams> paramsCaptor =
+        ArgumentCaptor.forClass(RestoreBackupParams.class);
+    when(mockCommissioner.submit(eq(TaskType.RestoreBackup), paramsCaptor.capture()))
+        .thenReturn(UUID.randomUUID());
+    try (MockedStatic<CustomerTask> customerTask = Mockito.mockStatic(CustomerTask.class)) {
+      customerTask
+          .when(() -> CustomerTask.create(any(), any(), any(), any(), any(), any()))
+          .thenReturn(null);
+      spyBackupHelper.createRestoreTask(testCustomer.getUuid(), params);
+    }
+    RestoreBackupParams foundParams = paramsCaptor.getValue();
+    return foundParams;
   }
 }

@@ -24,17 +24,19 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/server/server_base.h"
+
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/thread.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -48,11 +50,10 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(replication_factor);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(cdc_enable_implicit_checkpointing);
+DECLARE_bool(xcluster_enable_ddl_replication);
 
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 DECLARE_uint64(TEST_pg_auth_key);
 
 namespace yb {
@@ -65,10 +66,7 @@ void XClusterYsqlTestBase::SetUp() {
   XClusterTestBase::SetUp();
 
   LOG(INFO) << "DB-scoped replication will use automatic mode: " << UseAutomaticMode();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) =
-      UseAutomaticMode();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_sequence_replication) =
-      UseAutomaticMode();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
 }
 
 Status XClusterYsqlTestBase::Initialize(uint32_t replication_factor, uint32_t num_masters) {
@@ -162,12 +160,14 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
+    SetPGCallbacks(&producer_cluster_, producer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&producer_cluster_));
   }
 
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
-    RETURN_NOT_OK(InitPostgres(&consumer_cluster_, pg_ts_idx, consumer_pg_port));
+    SetPGCallbacks(&consumer_cluster_, consumer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&consumer_cluster_));
   }
 
   return Status::OK();
@@ -209,7 +209,8 @@ Status XClusterYsqlTestBase::InitProducerClusterOnly(const MiniClusterOptions& o
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(InitPostgres(&producer_cluster_, pg_ts_idx, producer_pg_port));
+    SetPGCallbacks(&producer_cluster_, producer_pg_port);
+    RETURN_NOT_OK(StartPostgres(&producer_cluster_));
   }
 
   return Status::OK();
@@ -225,8 +226,7 @@ Status XClusterYsqlTestBase::InitPostgres(
   yb::pgwrapper::PgProcessConf pg_process_conf =
       VERIFY_RESULT(yb::pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
           yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
-          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-          pg_ts->server()->GetSharedMemoryFd()));
+          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
@@ -236,11 +236,31 @@ Status XClusterYsqlTestBase::InitPostgres(
             << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
   cluster->pg_supervisor_ =
-      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
-  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
+  RETURN_NOT_OK(cluster->pg_supervisor_->StartAndMaybePause());
 
   cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
   return OK();
+}
+
+Status XClusterYsqlTestBase::StartPostgres(Cluster* cluster) {
+  auto* pg_ts = cluster->mini_cluster_->mini_tablet_server(cluster->pg_ts_idx_);
+  return pg_ts->StartPgIfConfigured();
+}
+
+void XClusterYsqlTestBase::SetPGCallbacks(Cluster* cluster, uint16_t pg_port) {
+  tserver::MiniTabletServer* const pg_ts =
+      cluster->mini_cluster_->mini_tablet_server(cluster->pg_ts_idx_);
+  CHECK(pg_ts);
+  pg_ts->SetPgServerHandlers(
+      // start_pg
+      [this, cluster, pg_port] { return InitPostgres(cluster, cluster->pg_ts_idx_, pg_port); },
+      // shutdown_pg
+      [cluster] {
+        cluster->pg_supervisor_->Stop();
+        cluster->pg_supervisor_.reset();
+      },
+      [cluster] { return cluster->CreatePGConnSettings(); });
 }
 
 std::string XClusterYsqlTestBase::GetCompleteTableName(const YBTableName& table) {
@@ -321,7 +341,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
   bool verify_schema_name =
       !schema_name.empty() && !FLAGS_TEST_create_table_with_empty_pgschema_name;
   return GetYsqlTable(
-      cluster, namespace_name, schema_name, table_name, true /* verify_table_name */,
+      cluster, namespace_name, schema_name, table_name, /*verify_table_name=*/true,
       verify_schema_name);
 }
 
@@ -592,18 +612,19 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
   return VerifyWrittenRecords(producer_table->name(), consumer_table->name());
 }
 
-Status XClusterYsqlTestBase::VerifyWrittenRecords(ExpectNoRecords expect_no_records) {
-    return VerifyWrittenRecords(
-        producer_table_->name(), consumer_table_->name(), expect_no_records);
+Status XClusterYsqlTestBase::VerifyWrittenRecords(
+    ExpectNoRecords expect_no_records, CheckColumnCounts check_col_counts) {
+  return VerifyWrittenRecords(
+      producer_table_->name(), consumer_table_->name(), expect_no_records, check_col_counts);
 }
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
     const YBTableName& producer_table_name, const YBTableName& consumer_table_name,
-    ExpectNoRecords expect_no_records) {
+    ExpectNoRecords expect_no_records, CheckColumnCounts check_col_counts) {
   int prod_row_count, cons_row_count = 0, prod_col_count = 0, cons_col_count = 0;
   const Status s = LoggedWaitFor(
       [this, producer_table_name, consumer_table_name, &prod_row_count, &cons_row_count,
-          &prod_col_count, &cons_col_count, expect_no_records]()-> Result<bool> {
+       &prod_col_count, &cons_col_count, expect_no_records, check_col_counts]() -> Result<bool> {
         auto producer_results =
             VERIFY_RESULT(ScanToStrings(producer_table_name, &producer_cluster_));
         prod_row_count = PQntuples(producer_results.get());
@@ -620,6 +641,9 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
         }
         prod_col_count = PQnfields(producer_results.get());
         cons_col_count = PQnfields(consumer_results.get());
+        SCHECK(
+            !check_col_counts || prod_col_count == cons_col_count, Corruption,
+            Format("Expected $0 columns but got $1 columns", prod_col_count, cons_col_count));
         int col_count = std::min(prod_col_count, cons_col_count);
         for (int row = 0; row < prod_row_count; ++row) {
           for (int col = 0; col < col_count; ++col) {
@@ -830,15 +854,20 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
 
   // Verify single value inserts are replicated correctly and can be read
   ASSERT_OK(InsertRowsInProducer(51, 52));
-  ASSERT_OK(VerifyWrittenRecords());
+  auto verify_written_records_without_column_counts = [this]() {
+    // Don't check column counts as they are different now.
+    return VerifyWrittenRecords(ExpectNoRecords::kFalse, CheckColumnCounts::kFalse);
+  };
+
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // 5. Verify batch inserts are replicated correctly and can be read
   ASSERT_OK(InsertGenerateSeriesOnProducer(52, 100));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // Verify transactional inserts are replicated correctly and can be read
   ASSERT_OK(InsertTransactionalBatchOnProducer(101, 150));
-  ASSERT_OK(VerifyWrittenRecords());
+  ASSERT_OK(verify_written_records_without_column_counts());
 
   // Alter the table on the producer side by adding the same column and insert some rows
   // and verify
@@ -892,7 +921,7 @@ void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
   ASSERT_OK(consumer_cluster()->FlushTablets());
 
   ASSERT_OK(InsertRowsInProducer(301, 350));
-  ASSERT_OK(VerifyWrittenRecords(nullptr, nullptr));
+  ASSERT_OK(verify_written_records_without_column_counts());
 }
 
 Status XClusterYsqlTestBase::SetUpWithParams(
@@ -990,7 +1019,7 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 }
 
 Status XClusterYsqlTestBase::CheckpointReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id) {
+    const xcluster::ReplicationGroupId& replication_group_id, bool require_no_bootstrap_needed) {
   auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateOutboundReplicationGroup(
@@ -998,7 +1027,9 @@ Status XClusterYsqlTestBase::CheckpointReplicationGroup(
 
   auto bootstrap_required =
       VERIFY_RESULT(IsXClusterBootstrapRequired(replication_group_id, producer_namespace_id));
-  SCHECK(!bootstrap_required, IllegalState, "Bootstrap should not be required");
+  SCHECK(
+      !require_no_bootstrap_needed || !bootstrap_required, IllegalState,
+      "Bootstrap should not be required");
 
   return Status::OK();
 }
@@ -1039,12 +1070,13 @@ Status XClusterYsqlTestBase::AddNamespaceToXClusterReplication(
 }
 
 Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
-    const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names) {
+    const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names,
+    xcluster::ReplicationGroupId replication_group_id) {
   RETURN_NOT_OK(LoggedWaitFor(
-      [this, &target_master_addresses]() -> Result<bool> {
+      [this, &target_master_addresses, replication_group_id]() -> Result<bool> {
         auto result = VERIFY_RESULT(
             client::XClusterClient(*producer_client())
-                .IsCreateXClusterReplicationDone(kReplicationGroupId, target_master_addresses));
+                .IsCreateXClusterReplicationDone(replication_group_id, target_master_addresses));
         if (!result.status().ok()) {
           return result.status();
         }
@@ -1073,7 +1105,16 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
   RETURN_NOT_OK(client::XClusterClient(*producer_client())
                     .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
 
-  return WaitForCreateReplicationToFinish(master_addr, namespace_names);
+  return WaitForCreateReplicationToFinish(master_addr, namespace_names, replication_group_id);
+}
+
+Status XClusterYsqlTestBase::DeleteOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  auto source_xcluster_client = client::XClusterClient(*producer_client());
+  const auto target_master_address = consumer_cluster()->GetMasterAddresses();
+
+  return source_xcluster_client.DeleteOutboundReplicationGroup(
+      kReplicationGroupId, target_master_address);
 }
 
 Status XClusterYsqlTestBase::VerifyDDLExtensionTablesCreation(
@@ -1124,5 +1165,19 @@ Status XClusterYsqlTestBase::EnablePITROnClusters() {
         2s * kTimeMultiplier, 20h));
     return Status::OK();
   });
+}
+
+Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
+  auto yb_admin_client = std::make_unique<tools::ClusterAdminClient>(
+      consumer_cluster_.mini_cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  RETURN_NOT_OK(yb_admin_client->Init());
+  auto j = VERIFY_RESULT(yb_admin_client->ListSnapshotSchedules(SnapshotScheduleId::Nil()));
+  auto snapshot_schedule_id =
+      VERIFY_RESULT(SnapshotScheduleIdFromString(j["schedules"].GetArray()[0]["id"].GetString()));
+  auto sink = RegexWaiterLogSink(".*Marking restoration.*as complete in sys catalog");
+  RETURN_NOT_OK(yb_admin_client->RestoreSnapshotSchedule(snapshot_schedule_id, time));
+  RETURN_NOT_OK(sink.WaitFor(300s));
+  LOG(INFO) << "PITR has been completed";
+  return Status::OK();
 }
 }  // namespace yb

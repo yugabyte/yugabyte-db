@@ -45,7 +45,7 @@ const mapDispatchToProps = (dispatch) => {
     },
     fetchOIDCToken: (userUUID) => {
       dispatch(fetchOIDCToken(userUUID)).then((response) => {
-          dispatch(fetchOIDCTokenResponse(response.payload));
+        dispatch(fetchOIDCTokenResponse(response.payload));
       });
     },
     fetchGlobalRunTimeConfigs: () => {
@@ -67,16 +67,21 @@ const mapDispatchToProps = (dispatch) => {
         if (response.payload.status !== 200) {
           dispatch(updateUserProfileFailure(response.payload));
         } else {
+          // When user updates the timezone, we need to update the timezone in sessionStorage
+          // so that metrics page can use the updated timezone
+          sessionStorage.setItem('metricsTimezone', values.timezone);
           dispatch(updateUserProfileSuccess(response.payload));
         }
       });
     },
     updateUserPassword: (userUUID, values) => {
-      return updatePassword(userUUID, values).then(() => {
-          toast.success("password updated successfully");
-      }).catch((payload)=> {
-        toast.error(payload.response.data.error);
-      });
+      return updatePassword(userUUID, values)
+        .then(() => {
+          toast.success('Password updated successfully');
+        })
+        .catch((payload) => {
+          toast.error(payload.response.data.error);
+        });
     },
     addCustomerConfig: (config) => {
       dispatch(addCustomerConfig(config)).then((response) => {

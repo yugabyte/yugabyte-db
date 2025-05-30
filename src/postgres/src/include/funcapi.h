@@ -47,8 +47,10 @@ typedef struct AttInMetadata
 	int32	   *atttypmods;
 } AttInMetadata;
 
-/* This struct holds the info required to decode the values corresponding to various data types
- * using the pg out functions*/
+/*
+ * YB: This struct holds the info required to decode the values corresponding
+ * to various data types using the pg out functions
+ */
 typedef struct YbDatumDecodeOptions
 {
 	/* if the info is needed for decoding array types */

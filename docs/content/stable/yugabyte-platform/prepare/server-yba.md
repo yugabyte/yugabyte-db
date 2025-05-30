@@ -47,7 +47,7 @@ YugabyteDB Anywhere has the following software requirements:
 
 - x86 Linux operating system
 - License
-- Python 3.8-3.11
+- Python
 - Sudo root permissions for installation
 
 ### Linux OS
@@ -58,7 +58,7 @@ YugabyteDB Anywhere may also work on other Linux distributions; contact your Yug
 
 ### License
 
-You need your license file to install YugabyteDB Anywhere. Contact {{% support-platform %}} for assistance.
+Installation requires a license file. To obtain your license, contact your sales representative. If you are not yet a customer and want to try YugabyteDB Anywhere, [book a demo](https://www.yugabyte.com/demo/).
 
 ### Python
 

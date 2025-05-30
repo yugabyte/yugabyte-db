@@ -46,7 +46,8 @@ class GenericRateLimiter : public RateLimiter {
   virtual ~GenericRateLimiter();
 
   // This API allows user to dynamically change rate limiter's bytes per second.
-  void SetBytesPerSecond(int64_t bytes_per_second) override;
+  // Returns true if the actual bytes per second update happened.
+  yb::Result<bool> SetBytesPerSecond(int64_t bytes_per_second) override;
 
   // Request for token to write bytes. If this request can not be satisfied,
   // the call is blocked. If the request is bigger than GetSingleBurstBytes() then the call is

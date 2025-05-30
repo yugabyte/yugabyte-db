@@ -21,6 +21,8 @@ import com.bettercloud.vault.response.LogicalResponse;
 import com.bettercloud.vault.rest.RestResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.annotation.EnumValue;
@@ -43,7 +45,6 @@ public class VaultAccessor {
   public static final Logger LOG = LoggerFactory.getLogger(VaultAccessor.class);
 
   public static final long TTL_RENEWAL_BEFORE_EXPIRY_HRS = 24;
-  public static final long TTL_EXPIRY_PERCENT_FACTOR = 7; // => x*10%, i.e., if 7 then 70%.
 
   private Vault vault;
   private long tokenTTL;
@@ -271,6 +272,14 @@ public class VaultAccessor {
     return Arrays.asList(tokenTTL, tokenTtlExpiry.getTimeInMillis());
   }
 
+  public int getTokenRenewPercent() {
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    Integer hcvTokenRenewPercent =
+        runtimeConfGetter.getGlobalConf().getInt(GlobalConfKeys.hcvTokenRenewPercent.getKey());
+    return hcvTokenRenewPercent;
+  }
+
   /** This is done as best effort, and no guarantees are given at this point of time. */
   public void renewSelf() {
     try {
@@ -302,12 +311,17 @@ public class VaultAccessor {
       }
 
       long maxttl = vault.auth().lookupSelf().getCreationTTL();
-      if ((ttl * TTL_EXPIRY_PERCENT_FACTOR) < maxttl) {
+      LOG.debug("Token {} has ttl: '{}' and creation ttl: '{}'", token, ttl, maxttl);
+      float hcvTokenRenewPercent = getTokenRenewPercent();
+      if ((ttl * 100) <= maxttl * (100 - hcvTokenRenewPercent)) {
         vault.auth().renewSelf();
         LOG.info(
-            "Token {} is renewed as it has passed {}0% of its expiry window",
-            token, TTL_EXPIRY_PERCENT_FACTOR);
-      } else LOG.debug("No need to renew token {} for now", token);
+            "Token {} is renewed as it has passed {}% of its expiry window",
+            token, hcvTokenRenewPercent);
+      } else
+        LOG.debug(
+            "No need to renew token {} for now, since token renew percent is '{}'%",
+            token, hcvTokenRenewPercent);
 
     } catch (VaultException e) {
       LOG.warn("Received exception while attempting to renew");

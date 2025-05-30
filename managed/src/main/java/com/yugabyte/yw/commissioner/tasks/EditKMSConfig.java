@@ -55,6 +55,7 @@ public class EditKMSConfig extends KMSConfigTaskBase {
                       universeUUID,
                       taskParams().configUUID,
                       keyRef,
+                      activeKey.encryptionContext,
                       universe.getUniverseDetails().encryptionAtRestConfig,
                       taskParams().providerConfig)
               == null) {

@@ -1244,10 +1244,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         memcpy(getDataByInternalId(cur_c), data_point, data_size_);
 
         if (curlevel) {
-            linkLists_[cur_c] = (char *) malloc(size_links_per_element_ * curlevel + 1);
+            const auto list_mem_size = size_links_per_element_ * curlevel + sizeof(void*);
+            linkLists_[cur_c] = (char *) malloc(list_mem_size);
             if (linkLists_[cur_c] == nullptr)
                 throw std::runtime_error("Not enough memory: addPoint failed to allocate linklist");
-            memset(linkLists_[cur_c], 0, size_links_per_element_ * curlevel + 1);
+            memset(linkLists_[cur_c], 0, list_mem_size);
         }
 
         if ((signed)currObj != -1) {

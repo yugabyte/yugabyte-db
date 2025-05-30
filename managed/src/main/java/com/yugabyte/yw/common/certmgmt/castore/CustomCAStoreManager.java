@@ -11,7 +11,6 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.CustomTrustStoreListener;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.CustomCaCertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -43,22 +42,12 @@ public class CustomCAStoreManager {
 
   // Reference to the listeners who want to get notified about updates in this custom trust-store.
   private final List<CustomTrustStoreListener> trustStoreListeners = new ArrayList<>();
-
-  private final PemTrustStoreManager pemTrustStoreManager;
-  private final Pkcs12TrustStoreManager pkcs12TrustStoreManager;
-
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final YBATrustStoreManager ybaTrustStoreManager;
 
   @Inject
-  public CustomCAStoreManager(
-      Pkcs12TrustStoreManager pkcs12TrustStoreManager,
-      PemTrustStoreManager pemTrustStoreManager,
-      RuntimeConfigFactory runtimeConfigFactory) {
-    this.runtimeConfigFactory = runtimeConfigFactory;
-    trustStoreManagers.add(pkcs12TrustStoreManager);
-    trustStoreManagers.add(pemTrustStoreManager);
-    this.pemTrustStoreManager = pemTrustStoreManager;
-    this.pkcs12TrustStoreManager = pkcs12TrustStoreManager;
+  public CustomCAStoreManager(YBATrustStoreManager ybaTrustStoreManager) {
+    trustStoreManagers.add(ybaTrustStoreManager);
+    this.ybaTrustStoreManager = ybaTrustStoreManager;
   }
 
   public UUID addCACert(UUID customerId, String name, String contents, String storagePath) {
@@ -317,30 +306,6 @@ public class CustomCAStoreManager {
     return CustomCaCertificateInfo.getOrGrunt(customerId, certId);
   }
 
-  // -------------- PEM CA trust-store specific methods ------------
-
-  public List<Map<String, String>> getPemStoreConfig() {
-    String storagePath = AppConfigHelper.getStoragePath();
-    String trustStoreHome = getTruststoreHome(storagePath);
-    List ybaTrustStoreConfig = new ArrayList<>();
-
-    if (Files.exists(Paths.get(trustStoreHome))) {
-      String pemStorePathStr = pemTrustStoreManager.getYbaTrustStorePath(trustStoreHome);
-      Path pemStorePath = Paths.get(pemStorePathStr);
-      if (Files.exists(pemStorePath)) {
-        if (!pemTrustStoreManager.isTrustStoreEmpty(pemStorePathStr, getTruststorePassword())) {
-          Map<String, String> trustStoreMap = new HashMap<>();
-          trustStoreMap.put("path", pemStorePathStr);
-          trustStoreMap.put("type", pemTrustStoreManager.getYbaTrustStoreType());
-          ybaTrustStoreConfig.add(trustStoreMap);
-        }
-      }
-    }
-
-    log.debug("YBA's custom trust store config is {}", ybaTrustStoreConfig);
-    return ybaTrustStoreConfig;
-  }
-
   // -------------- PKCS12 CA trust-store specific methods ------------
 
   public List<Map<String, String>> getYBAJavaKeyStoreConfig() {
@@ -349,12 +314,14 @@ public class CustomCAStoreManager {
     List ybaJavaKeyStoreConfig = new ArrayList<>();
 
     if (Files.exists(Paths.get(trustStoreHome))) {
-      String javaTrustStorePathStr = pkcs12TrustStoreManager.getYbaTrustStorePath(trustStoreHome);
+      TrustStoreManager.TrustStoreInfo trustStoreInfo =
+          ybaTrustStoreManager.getYbaTrustStoreInfo(trustStoreHome);
+      String javaTrustStorePathStr = trustStoreInfo.getPath();
       Path javaTrustStorePath = Paths.get(javaTrustStorePathStr);
       if (Files.exists(javaTrustStorePath)) {
         Map<String, String> trustStoreMap = new HashMap<>();
         trustStoreMap.put("path", javaTrustStorePathStr);
-        trustStoreMap.put("type", pkcs12TrustStoreManager.getYbaTrustStoreType());
+        trustStoreMap.put("type", trustStoreInfo.getType());
         trustStoreMap.put("password", new String(getTruststorePassword()));
         ybaJavaKeyStoreConfig.add(trustStoreMap);
       }
@@ -367,15 +334,21 @@ public class CustomCAStoreManager {
   private KeyStore getYbaKeyStore() {
     String storagePath = AppConfigHelper.getStoragePath();
     String trustStoreHome = getTruststoreHome(storagePath);
-    String pkcs12StorePathStr = pkcs12TrustStoreManager.getYbaTrustStorePath(trustStoreHome);
+    TrustStoreManager.TrustStoreInfo trustStoreInfo =
+        ybaTrustStoreManager.getYbaTrustStoreInfo(trustStoreHome);
+    if (!Files.exists(Path.of(trustStoreInfo.getPath()))) {
+      // Truststore file is not created yet.
+      return null;
+    }
     KeyStore pkcs12Store =
-        pkcs12TrustStoreManager.maybeGetTrustStore(pkcs12StorePathStr, getTruststorePassword());
+        ybaTrustStoreManager.getTrustStore(
+            trustStoreInfo.getPath(), getTruststorePassword(), trustStoreInfo.getType());
     return pkcs12Store;
   }
 
   public KeyStore getYbaAndJavaKeyStore() {
     // Add YBA certs into this default keystore.
-    KeyStore ybaJavaKeyStore = pkcs12TrustStoreManager.getJavaDefaultKeystore();
+    KeyStore ybaJavaKeyStore = ybaTrustStoreManager.getJavaDefaultKeystore();
 
     try {
       KeyStore ybaKeyStore = getYbaKeyStore();
@@ -394,7 +367,7 @@ public class CustomCAStoreManager {
   }
 
   public Map<String, String> getJavaDefaultConfig() {
-    return pkcs12TrustStoreManager.getJavaDefaultConfig();
+    return ybaTrustStoreManager.getJavaDefaultConfig();
   }
 
   // ---------------- helper methods ------------------

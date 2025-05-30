@@ -151,6 +151,13 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
   If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
 
+{{< note title="Base directory" >}}
+
+yugabyted uses `$HOME/var` by default to store data, configurations, and logs. You can change the base directory when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster.
+
+For example, to get the status of the cluster you just created, you would enter `bin/yugabyted status --base_dir=/home/yugabyte/yb_data`.
+{{< /note >}}
+
 ## Connect to the database
 
 The cluster you have created consists of two processes:
@@ -231,7 +238,7 @@ Perform the following to create a sample Java project:
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jdbc-yugabytedb</artifactId>
-      <version>42.7.3-yb-1</version>
+      <version>{{< version-driver-java >}}</version>
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->

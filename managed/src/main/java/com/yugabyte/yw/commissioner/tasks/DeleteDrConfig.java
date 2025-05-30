@@ -2,6 +2,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
@@ -15,6 +17,8 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class DeleteDrConfig extends DeleteXClusterConfig {
 
   @Inject
@@ -47,15 +51,18 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
     log.info("Running {}", getName());
 
     DrConfig drConfig = taskParams().getDrConfig();
-    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    XClusterConfig xClusterConfig = null;
+    if (Objects.nonNull(drConfig)) {
+      xClusterConfig = drConfig.getActiveXClusterConfig();
+    }
 
     Universe sourceUniverse = null;
-    Universe targetUniverse = null;
-    if (xClusterConfig.getSourceUniverseUUID() != null) {
-      sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    if (Objects.nonNull(taskParams().getSourceUniverseUuid())) {
+      sourceUniverse = Universe.maybeGet(taskParams().getSourceUniverseUuid()).orElse(null);
     }
-    if (xClusterConfig.getTargetUniverseUUID() != null) {
-      targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    Universe targetUniverse = null;
+    if (Objects.nonNull(taskParams().getTargetUniverseUuid())) {
+      targetUniverse = Universe.maybeGet(taskParams().getTargetUniverseUuid()).orElse(null);
     }
     try {
       if (sourceUniverse != null) {
@@ -72,15 +79,24 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
               null /* Txn callback */);
         }
 
-        for (XClusterConfig xcc : drConfig.getXClusterConfigs()) {
-          createDeleteXClusterConfigSubtasks(
-              xcc,
-              Objects.nonNull(xClusterConfig.getSourceUniverseUUID())
-                  ? Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID())
-                  : null,
-              Objects.nonNull(xClusterConfig.getTargetUniverseUUID())
-                  ? Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID())
-                  : null);
+        if (Objects.nonNull(drConfig)) {
+          for (XClusterConfig xcc : drConfig.getXClusterConfigs()) {
+            if (!xcc.getUuid().equals(xClusterConfig.getUuid())) {
+              createDeleteXClusterConfigSubtasks(
+                  xcc,
+                  Objects.nonNull(xcc.getSourceUniverseUUID())
+                      ? Universe.maybeGet(xcc.getSourceUniverseUUID()).orElse(null)
+                      : null,
+                  Objects.nonNull(xcc.getTargetUniverseUUID())
+                      ? Universe.maybeGet(xcc.getTargetUniverseUUID()).orElse(null)
+                      : null);
+            }
+          }
+        }
+
+        // Delete the active xCluster config last.
+        if (Objects.nonNull(xClusterConfig)) {
+          createDeleteXClusterConfigSubtasks(xClusterConfig, sourceUniverse, targetUniverse);
         }
 
         // When the last xCluster config associated with this DR config is deleted, the dr config
@@ -97,14 +113,6 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
         }
 
         getRunnableTask().runSubTasks();
-      } catch (Exception e) {
-        log.error("{} hit error : {}", getName(), e.getMessage());
-        Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
-        if (mightDeletedXClusterConfig.isPresent()
-            && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {
-          mightDeletedXClusterConfig.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
-        }
-        throw new RuntimeException(e);
       } finally {
         if (targetUniverse != null) {
           // Unlock the target universe.
@@ -112,6 +120,14 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
         }
         unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* force delete */);
       }
+    } catch (Exception e) {
+      log.error("{} hit error : {}", getName(), e.getMessage());
+      Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
+      if (mightDeletedXClusterConfig.isPresent()
+          && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {
+        mightDeletedXClusterConfig.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
+      }
+      throw new RuntimeException(e);
     } finally {
       if (sourceUniverse != null) {
         // Unlock the source universe.

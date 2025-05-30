@@ -99,8 +99,10 @@ public class BackupUniverse extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    Customer customer = Customer.get(universe.getCustomerId());
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
-    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
+    MetricLabelsBuilder metricLabelsBuilder =
+        MetricLabelsBuilder.create().fromUniverse(customer, universe);
 
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
@@ -231,7 +233,8 @@ public class BackupUniverse extends UniverseTaskBase {
       schedule.stopSchedule();
       return;
     }
-    MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
+    MetricLabelsBuilder metricLabelsBuilder =
+        MetricLabelsBuilder.create().fromUniverse(customer, universe);
     SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     if (alreadyRunning
         || universe.getUniverseDetails().updateInProgress

@@ -13,11 +13,13 @@ import logging
 
 from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMethod,
                                        AbstractMethod, UpdateMountedDisksMethod,
+                                       UpdateDiskMethod,
                                        ChangeInstanceTypeMethod, CreateInstancesMethod,
                                        CreateRootVolumesMethod, DestroyInstancesMethod,
                                        ProvisionInstancesMethod, ReplaceRootVolumeMethod,
                                        DeleteRootVolumesMethod, HardRebootInstancesMethod)
-from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
+from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH, GCP_HYPERDISK_BALANCED,\
+    GCP_HYPERDISK_EXTREME
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 
@@ -48,10 +50,16 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
 
     def add_extra_args(self):
         super(GcpCreateInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
+        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT,
+                                                           GCP_HYPERDISK_BALANCED,
+                                                           GCP_HYPERDISK_EXTREME],
                                  default="scratch", help="Storage type for GCP instances.")
         self.parser.add_argument("--instance_template",
                                  help="Instance type template for GCP instances")
+        self.parser.add_argument("--disk_iops", type=int, default=None,
+                                 help="Desired iops for instance volumes.")
+        self.parser.add_argument("--disk_throughput", type=int, default=None,
+                                 help="Desired throughput for instance volumes.")
 
     def run_ansible_create(self, args):
         if args.ssh_user is not None:
@@ -84,7 +92,9 @@ class GcpProvisionInstancesMethod(ProvisionInstancesMethod):
 
     def add_extra_args(self):
         super(GcpProvisionInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
+        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT,
+                                                           GCP_HYPERDISK_BALANCED,
+                                                           GCP_HYPERDISK_EXTREME],
                                  default="scratch", help="Storage type for GCP instances.")
 
     def update_ansible_vars_with_args(self, args):
@@ -348,7 +358,9 @@ class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):
 
     def add_extra_args(self):
         super(GcpUpdateMountedDisksMethod, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
+        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT,
+                                                           GCP_HYPERDISK_BALANCED,
+                                                           GCP_HYPERDISK_EXTREME],
                                  default="scratch", help="Storage type for GCP instances.")
 
 
@@ -371,7 +383,9 @@ class GcpQueryDeviceNames(AbstractMethod):
 
     def add_extra_args(self):
         super(GcpQueryDeviceNames, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
+        self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT,
+                                                           GCP_HYPERDISK_BALANCED,
+                                                           GCP_HYPERDISK_EXTREME],
                                  default="scratch", help="Storage type for GCP instances.")
         self.parser.add_argument("--instance_type",
                                  required=False,
@@ -381,3 +395,15 @@ class GcpQueryDeviceNames(AbstractMethod):
 
     def callback(self, args):
         print(json.dumps(self.cloud.get_device_names(args)))
+
+
+class GcpUpdateDiskMethod(UpdateDiskMethod):
+    def __init__(self, base_command):
+        super(GcpUpdateDiskMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(GcpUpdateDiskMethod, self).add_extra_args()
+        self.parser.add_argument("--disk_iops", type=int, default=None,
+                                 help="Disk IOPS to provision.")
+        self.parser.add_argument("--disk_throughput", type=int, default=None,
+                                 help="Disk throughput to provision.")

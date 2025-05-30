@@ -74,3 +74,11 @@ Views are virtual tables that present a customized view of data from underlying 
 {{<lead link="views/">}}
 To understand how to create and operate on views, see [Views](views/)
 {{</lead>}}
+
+## Synchronizing snapshots
+
+Snapshot synchronization ensures that two or more independent, concurrently running transactions share the same consistent view of the data.
+
+{{<lead link="snapshot-synchronization/">}}
+To learn how different transactions can maintain a consistent view of the data, see [Synchronize snapshots](snapshot-synchronization/)
+{{</lead>}}

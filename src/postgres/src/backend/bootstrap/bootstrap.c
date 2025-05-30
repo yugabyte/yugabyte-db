@@ -45,7 +45,7 @@
 #include "utils/rel.h"
 #include "utils/relmapper.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "bootstrap/yb_bootstrap.h"
 #include "catalog/pg_database.h"
 #include "commands/yb_cmds.h"

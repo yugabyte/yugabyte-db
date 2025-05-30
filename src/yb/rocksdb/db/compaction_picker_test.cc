@@ -475,7 +475,7 @@ TEST_F(CompactionPickerTest, CompactionUniversalPickForFilesBeingCompacted) {
   compaction = universal_compaction_picker.PickCompaction(
       cf_name_, mutable_cf_options_, vstorage_.get(), &log_buffer_);
   ASSERT_NE(compaction, nullptr);
-  ASSERT_EQ(compaction->compaction_reason(), CompactionReason::kUniversalSortedRunNum);
+  ASSERT_EQ(compaction->compaction_reason(), CompactionReason::kUniversalSizeRatio);
   // Verify there are exactly 2 files being compacted.
   ASSERT_EQ(compaction->inputs(0)->size(), 2);
 }

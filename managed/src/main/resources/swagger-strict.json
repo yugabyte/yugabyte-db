@@ -199,6 +199,16 @@
       },
       "type" : "object"
     },
+    "AdditionalServicesStateData" : {
+      "description" : "Additional services state",
+      "properties" : {
+        "earlyoomConfig" : {
+          "$ref" : "#/definitions/EarlyoomConfig",
+          "description" : "Configuration for earlyoom service."
+        }
+      },
+      "type" : "object"
+    },
     "Admin notification" : {
       "properties" : {
         "code" : {
@@ -425,6 +435,7 @@
     "AlertApiFilter" : {
       "properties" : {
         "configurationTypes" : {
+          "description" : "Alert Configuration Target Types",
           "items" : {
             "enum" : [
               "PLATFORM",
@@ -436,10 +447,12 @@
           "uniqueItems" : true
         },
         "configurationUuid" : {
+          "description" : "The uuid of the alert configuration.",
           "format" : "uuid",
           "type" : "string"
         },
         "severities" : {
+          "description" : "The severity of the alerts.",
           "items" : {
             "enum" : [
               "SEVERE",
@@ -451,9 +464,11 @@
           "uniqueItems" : true
         },
         "sourceName" : {
+          "description" : "The source name of the alerts.",
           "type" : "string"
         },
         "sourceUUIDs" : {
+          "description" : "The source uuids of the alerts.",
           "items" : {
             "format" : "uuid",
             "type" : "string"
@@ -462,6 +477,7 @@
           "uniqueItems" : true
         },
         "states" : {
+          "description" : "The state of the alerts.",
           "items" : {
             "enum" : [
               "ACTIVE",
@@ -475,6 +491,7 @@
           "uniqueItems" : true
         },
         "uuids" : {
+          "description" : "The uuids of the alerts.",
           "items" : {
             "format" : "uuid",
             "type" : "string"
@@ -483,15 +500,6 @@
           "uniqueItems" : true
         }
       },
-      "required" : [
-        "configurationTypes",
-        "configurationUuid",
-        "severities",
-        "sourceName",
-        "sourceUUIDs",
-        "states",
-        "uuids"
-      ],
       "type" : "object"
     },
     "AlertChannel" : {
@@ -883,7 +891,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -935,9 +944,11 @@
     "AlertConfigurationApiFilter" : {
       "properties" : {
         "active" : {
+          "description" : "Whether the alert configuration is active.",
           "type" : "boolean"
         },
         "destinationType" : {
+          "description" : "The destination type of the alert configuration. ",
           "enum" : [
             "NO_DESTINATION",
             "DEFAULT_DESTINATION",
@@ -946,13 +957,16 @@
           "type" : "string"
         },
         "destinationUuid" : {
+          "description" : "The destination uuid of the alert configuration. ",
           "format" : "uuid",
           "type" : "string"
         },
         "name" : {
+          "description" : "The name of the alert configuration.",
           "type" : "string"
         },
         "severity" : {
+          "description" : "The severity of the alert configuration.",
           "enum" : [
             "SEVERE",
             "WARNING"
@@ -960,9 +974,11 @@
           "type" : "string"
         },
         "target" : {
-          "$ref" : "#/definitions/AlertConfigurationTarget"
+          "$ref" : "#/definitions/AlertConfigurationTarget",
+          "description" : "The target of the alert configuration."
         },
         "targetType" : {
+          "description" : "The target type of the alert configuration.",
           "enum" : [
             "PLATFORM",
             "UNIVERSE"
@@ -970,6 +986,7 @@
           "type" : "string"
         },
         "template" : {
+          "description" : "The template of the alert configuration.",
           "enum" : [
             "REPLICATION_LAG",
             "CLOCK_SKEW",
@@ -1050,11 +1067,13 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
         "uuids" : {
+          "description" : "The uuids of the alert configurations.",
           "items" : {
             "format" : "uuid",
             "type" : "string"
@@ -1063,17 +1082,6 @@
           "uniqueItems" : true
         }
       },
-      "required" : [
-        "active",
-        "destinationType",
-        "destinationUuid",
-        "name",
-        "severity",
-        "target",
-        "targetType",
-        "template",
-        "uuids"
-      ],
       "type" : "object"
     },
     "AlertConfigurationPagedApiQuery" : {
@@ -1331,7 +1339,8 @@
             "NODE_CLOCK_DRIFT",
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
-            "SAFETIME_LAG"
+            "SAFETIME_LAG",
+            "CONTINUOUS_BACKUPS_STATUS"
           ],
           "type" : "string"
         },
@@ -1433,75 +1442,6 @@
       "required" : [
         "condition",
         "threshold"
-      ],
-      "type" : "object"
-    },
-    "AlertDefinition" : {
-      "properties" : {
-        "configurationUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "customerUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "labels" : {
-          "items" : {
-            "$ref" : "#/definitions/AlertDefinitionLabel"
-          },
-          "type" : "array"
-        },
-        "universeUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "uuid" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "version" : {
-          "format" : "int32",
-          "type" : "integer"
-        }
-      },
-      "required" : [
-        "configurationUUID",
-        "customerUUID",
-        "labels",
-        "universeUUID",
-        "uuid",
-        "version"
-      ],
-      "type" : "object"
-    },
-    "AlertDefinitionLabel" : {
-      "properties" : {
-        "key" : {
-          "$ref" : "#/definitions/AlertDefinitionLabelKey"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "value" : {
-          "type" : "string"
-        }
-      },
-      "required" : [
-        "key",
-        "name",
-        "value"
-      ],
-      "type" : "object"
-    },
-    "AlertDefinitionLabelKey" : {
-      "properties" : {
-        "name" : {
-          "type" : "string"
-        }
-      },
-      "required" : [
-        "name"
       ],
       "type" : "object"
     },
@@ -1677,9 +1617,11 @@
     "AlertTemplateApiFilter" : {
       "properties" : {
         "name" : {
+          "description" : "The name of the alert template.",
           "type" : "string"
         },
         "targetType" : {
+          "description" : "The target type of the alert template.",
           "enum" : [
             "PLATFORM",
             "UNIVERSE"
@@ -1687,10 +1629,6 @@
           "type" : "string"
         }
       },
-      "required" : [
-        "name",
-        "targetType"
-      ],
       "type" : "object"
     },
     "AlertTemplateSettings" : {
@@ -1961,6 +1899,7 @@
             "Upload",
             "Upgrade",
             "Import",
+            "Attach",
             "Pause",
             "Resume",
             "Restart",
@@ -2085,12 +2024,13 @@
             "CreateImageBundle",
             "DeleteImageBundle",
             "EditImageBundle",
-            "Export",
-            "DeleteMetadata",
+            "Detach",
+            "DeleteAttachDetachMetadata",
             "Unlock",
             "LdapUniverseSync",
             "UpdateProxyConfig",
-            "CloneNamespace"
+            "CloneNamespace",
+            "UpdateAdditionalServicesState"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2393,6 +2333,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -2565,8 +2506,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -2583,6 +2524,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -2599,6 +2541,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -2609,12 +2552,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2624,6 +2571,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -2633,7 +2581,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -2722,6 +2669,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -2778,7 +2726,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -2822,7 +2772,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -2867,7 +2819,6 @@
         "installOtelCollector",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -3472,6 +3423,10 @@
           "description" : "Don't add -m flag during gsutil upload dir command",
           "type" : "boolean"
         },
+        "dumpRoleChecks" : {
+          "description" : "WARNING: This is a preview API that could change. Add role exists checks for roles metadata. All GRANT/REVOKE and ALTER sql commands will first check if the role exists",
+          "type" : "boolean"
+        },
         "enablePointInTimeRestore" : {
           "description" : "Enable Point-In-Time-Restore capability on backup schedules with a limited restore window. Only applicable for YB-Controller enabled universes",
           "type" : "boolean"
@@ -3600,6 +3555,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -3693,7 +3649,6 @@
         "backupUUID",
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
@@ -3882,12 +3837,21 @@
           "description" : "Frequency of the schedule",
           "format" : "int64",
           "type" : "integer"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
         }
       },
       "type" : "object"
     },
     "BackupScheduleToggleParams" : {
       "properties" : {
+        "runImmediateBackupOnResume" : {
+          "description" : "Run a full or incremental backup if required when resuming a stopped schedule. When false (default), the full backup will instead run at its normally scheduled time.",
+          "type" : "boolean"
+        },
         "status" : {
           "description" : "State of the schedule",
           "enum" : [
@@ -3919,6 +3883,10 @@
             "TRANSACTION_STATUS_TABLE_TYPE"
           ],
           "type" : "string"
+        },
+        "ignoreErrors" : {
+          "description" : "WARNING: This is a preview API that could change. Ignore all restore errors",
+          "type" : "boolean"
         },
         "keyspace" : {
           "description" : "Keyspace name",
@@ -4152,6 +4120,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -4310,7 +4279,6 @@
         "creatingUser",
         "fullBackup",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
@@ -4337,6 +4305,23 @@
           "type" : "object"
         }
       ]
+    },
+    "BasicAuthCredentials" : {
+      "properties" : {
+        "password" : {
+          "description" : "Password",
+          "type" : "string"
+        },
+        "username" : {
+          "description" : "Username",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "password",
+        "username"
+      ],
+      "type" : "object"
     },
     "BootstrapBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
@@ -4379,8 +4364,7 @@
         }
       },
       "required" : [
-        "backupRequestParams",
-        "tables"
+        "backupRequestParams"
       ],
       "type" : "object"
     },
@@ -4450,6 +4434,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -4519,7 +4504,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "s3Bucket",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
@@ -4540,8 +4524,10 @@
               "ConsensusMeta",
               "TabletMeta",
               "YbcLogs",
-              "K8sInfo",
               "NodeAgent",
+              "SystemLogs",
+              "TabletReport",
+              "K8sInfo",
               "YbaMetadata",
               "PrometheusMetrics",
               "ApplicationLogs"
@@ -4986,6 +4972,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -5164,8 +5151,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -5182,6 +5169,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -5198,6 +5186,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -5208,12 +5197,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5223,6 +5216,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -5232,7 +5226,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -5321,6 +5314,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -5377,7 +5371,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -5421,7 +5417,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -5464,7 +5462,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "selfSignedClientCertRotate",
         "selfSignedServerCertRotate",
         "sleepAfterMasterRestartMillis",
@@ -5561,6 +5558,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -5612,7 +5610,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -6271,6 +6268,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -6323,7 +6321,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -7177,6 +7174,8 @@
             "GP3",
             "Scratch",
             "Persistent",
+            "Hyperdisk_Balanced",
+            "Hyperdisk_Extreme",
             "StandardSSD_LRS",
             "Premium_LRS",
             "PremiumV2_LRS",
@@ -7256,6 +7255,13 @@
         "pitrParams" : {
           "$ref" : "#/definitions/PitrParams",
           "description" : "Parameters used to do PITR"
+        },
+        "webhookUrls" : {
+          "description" : "List of urls for webhook",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
       "type" : "object"
@@ -7458,12 +7464,21 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "webhooks" : {
+          "items" : {
+            "$ref" : "#/definitions/GetWebhookResponse"
+          },
+          "type" : "array"
+        },
         "xclusterConfigUuid" : {
           "description" : "UUID of the underlying xCluster config that is managing the replication",
           "format" : "uuid",
           "type" : "string"
         }
       },
+      "required" : [
+        "webhooks"
+      ],
       "type" : "object"
     },
     "DrConfigReplaceReplicaForm" : {
@@ -7575,6 +7590,38 @@
       },
       "type" : "object"
     },
+    "EarlyoomConfig" : {
+      "description" : "State for earlyoom service",
+      "properties" : {
+        "availMemoryKillKb" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryKillPercent" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryTermKb" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "availMemoryTermPercent" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "enabled" : {
+          "type" : "boolean"
+        },
+        "preferPattern" : {
+          "type" : "string"
+        },
+        "reportInterval" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "EditAccessKeyRotationScheduleParams" : {
       "properties" : {
         "schedulingFrequencyDays" : {
@@ -7676,6 +7723,10 @@
           ],
           "type" : "string"
         },
+        "runImmediateBackupOnResume" : {
+          "description" : "Run a full or incremental backup if the schedule is expired when resuming a stopped schedule",
+          "type" : "boolean"
+        },
         "status" : {
           "description" : "State of the schedule",
           "enum" : [
@@ -7688,6 +7739,11 @@
             "Editing"
           ],
           "type" : "string"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
         }
       },
       "type" : "object"
@@ -7912,6 +7968,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -8084,8 +8141,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -8102,6 +8159,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -8118,6 +8176,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -8128,12 +8187,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8143,6 +8206,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -8152,7 +8216,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -8241,6 +8304,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -8297,7 +8361,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -8341,7 +8407,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -8387,7 +8455,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -8668,6 +8735,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -8846,8 +8914,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -8864,6 +8932,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -8880,6 +8949,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -8890,12 +8960,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8905,6 +8979,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -8914,7 +8989,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -9003,6 +9077,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -9059,7 +9134,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -9103,7 +9180,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -9147,7 +9226,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tserverGFlags",
@@ -9197,6 +9275,21 @@
         "TSERVER" : {
           "$ref" : "#/definitions/GFlagValidationDetails",
           "description" : "WARNING: This is a preview API that could change. Validation details for tserver"
+        }
+      },
+      "type" : "object"
+    },
+    "GetWebhookResponse" : {
+      "description" : "Webhook get response",
+      "properties" : {
+        "url" : {
+          "description" : "Webhook url",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Webhook UUID",
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -10036,6 +10129,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -10211,8 +10305,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -10229,6 +10323,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -10245,6 +10340,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -10255,12 +10351,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -10270,6 +10370,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -10279,7 +10380,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -10368,6 +10468,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -10424,7 +10525,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -10468,7 +10571,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -10512,7 +10617,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "universeOverrides",
@@ -10522,10 +10626,13 @@
     },
     "KubernetesRegionInfo" : {
       "properties" : {
-        "certManagerClusterIssuer" : {
+        "certManagerIssuerGroup" : {
           "type" : "string"
         },
-        "certManagerIssuer" : {
+        "certManagerIssuerKind" : {
+          "type" : "string"
+        },
+        "certManagerIssuerName" : {
           "type" : "string"
         },
         "isKubernetesOperatorControlled" : {
@@ -10734,6 +10841,9 @@
           },
           "type" : "object"
         },
+        "hostedZoneId" : {
+          "type" : "string"
+        },
         "ybcBinDir" : {
           "type" : "string"
         },
@@ -10744,6 +10854,7 @@
       "required" : [
         "dataHomeDir",
         "envVars",
+        "hostedZoneId",
         "ybcBinDir",
         "yugabyteBinDir"
       ],
@@ -10762,6 +10873,43 @@
         "lines"
       ],
       "type" : "object"
+    },
+    "LokiConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "Loki Config",
+          "properties" : {
+            "authType" : {
+              "description" : "Auth Type",
+              "enum" : [
+                "BasicAuth",
+                "NoAuth"
+              ],
+              "type" : "string"
+            },
+            "basicAuth" : {
+              "$ref" : "#/definitions/BasicAuthCredentials",
+              "description" : "Basic Auth Credentials"
+            },
+            "endpoint" : {
+              "description" : "End Point",
+              "type" : "string"
+            },
+            "organizationID" : {
+              "description" : "Organization/Tenant ID",
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "authType",
+            "endpoint"
+          ],
+          "type" : "object"
+        }
+      ]
     },
     "MaintenanceWindow" : {
       "description" : "Maintenance Window",
@@ -11309,6 +11457,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -11467,7 +11616,6 @@
         "creatingUser",
         "fullBackup",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
@@ -12194,6 +12342,7 @@
             "Reprovisioning",
             "Provisioned",
             "SoftwareInstalled",
+            "UpgradeMasterSoftware",
             "UpgradeSoftware",
             "RollbackUpgrade",
             "FinalizeUpgrade",
@@ -12450,6 +12599,7 @@
             "Reprovisioning",
             "Provisioned",
             "SoftwareInstalled",
+            "UpgradeMasterSoftware",
             "UpgradeSoftware",
             "RollbackUpgrade",
             "FinalizeUpgrade",
@@ -12743,6 +12893,10 @@
     },
     "OnPremCloudInfo" : {
       "properties" : {
+        "useClockbound" : {
+          "description" : "WARNING: This is a preview API that could change.",
+          "type" : "boolean"
+        },
         "ybHomeDir" : {
           "type" : "string"
         }
@@ -13508,6 +13662,11 @@
           "description" : "DB Name",
           "type" : "string"
         },
+        "intermittentMinRecoverTimeInMillis" : {
+          "description" : "Intermittent min recovery time in millis if retention period is increased",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "maxRecoverTimeInMillis" : {
           "format" : "int64",
           "type" : "integer"
@@ -13753,25 +13912,6 @@
       ],
       "type" : "object"
     },
-    "PreUpgradeValidationResponse" : {
-      "description" : "Upgrade Validation Response",
-      "properties" : {
-        "errors" : {
-          "description" : "WARNING: This is a preview API that could change. List of errors that occurred during validation",
-          "items" : {
-            "type" : "string"
-          },
-          "readOnly" : true,
-          "type" : "array"
-        },
-        "success" : {
-          "description" : "WARNING: This is a preview API that could change. Indicates whether all the checks passed",
-          "readOnly" : true,
-          "type" : "boolean"
-        }
-      },
-      "type" : "object"
-    },
     "PresetThrottleValues" : {
       "properties" : {
         "defaultValue" : {
@@ -13801,6 +13941,9 @@
           "type" : "integer"
         },
         "softwareVersion" : {
+          "type" : "string"
+        },
+        "targetUpgradeSoftwareVersion" : {
           "type" : "string"
         }
       },
@@ -13873,11 +14016,31 @@
           "description" : "Provider name",
           "type" : "string"
         },
+        "prevUsabilityState" : {
+          "description" : "Previous usability state",
+          "enum" : [
+            "READY",
+            "UPDATING",
+            "ERROR",
+            "DELETING"
+          ],
+          "readOnly" : true,
+          "type" : "string"
+        },
         "regions" : {
           "items" : {
             "$ref" : "#/definitions/Region"
           },
           "type" : "array"
+        },
+        "updateSource" : {
+          "description" : "Update source if current state is UPDATING",
+          "enum" : [
+            "USER",
+            "AUTO"
+          ],
+          "readOnly" : true,
+          "type" : "string"
         },
         "usabilityState" : {
           "description" : "Current usability state",
@@ -14120,6 +14283,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -14292,8 +14456,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -14310,6 +14474,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -14326,6 +14491,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -14336,12 +14502,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -14351,6 +14521,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -14360,7 +14531,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -14449,6 +14619,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -14505,7 +14676,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -14549,7 +14722,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -14592,7 +14767,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -15083,6 +15257,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -15261,8 +15436,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -15279,6 +15454,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -15295,6 +15471,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -15305,12 +15482,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -15320,6 +15501,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -15329,7 +15511,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -15418,6 +15599,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -15474,7 +15656,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -15518,7 +15702,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -15563,7 +15749,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tserverGFlags",
@@ -15882,6 +16067,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -16054,8 +16240,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -16072,6 +16258,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -16088,6 +16275,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -16098,12 +16286,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -16113,6 +16305,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -16122,7 +16315,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -16211,6 +16403,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -16267,7 +16460,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -16311,7 +16506,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -16354,7 +16551,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -16486,13 +16682,6 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
-        "currentIdx" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "currentYbcTaskId" : {
-          "type" : "string"
-        },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
@@ -16555,6 +16744,7 @@
           "type" : "string"
         },
         "nodeIp" : {
+          "description" : "Node IP",
           "type" : "string"
         },
         "parallelism" : {
@@ -16566,9 +16756,11 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prefixUUID" : {
+          "description" : "Prefix UUID",
           "format" : "uuid",
           "type" : "string"
         },
@@ -16631,12 +16823,7 @@
       },
       "required" : [
         "creatingUser",
-        "currentIdx",
-        "currentYbcTaskId",
-        "nodeIp",
         "platformUrl",
-        "platformVersion",
-        "prefixUUID",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "universeUUID"
@@ -16963,6 +17150,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -17020,7 +17208,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -17365,6 +17552,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -17537,8 +17725,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -17555,6 +17743,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -17571,6 +17760,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -17581,12 +17771,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17596,6 +17790,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -17605,7 +17800,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -17694,6 +17888,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -17750,7 +17945,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -17794,7 +17991,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -17837,7 +18036,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -18063,8 +18261,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -18081,6 +18279,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18097,6 +18296,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -18107,12 +18307,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18122,6 +18326,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -18131,7 +18336,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -18220,6 +18424,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -18276,7 +18481,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -18320,7 +18527,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -18430,8 +18639,8 @@
               "RestartXClusterConfig",
               "RestartDrConfig",
               "SyncDrConfig",
-              "SetTablesDrConfig",
               "SetDatabasesDrConfig",
+              "SetTablesDrConfig",
               "CreateDrConfig",
               "DeleteDrConfig",
               "FailoverDrConfig",
@@ -18448,6 +18657,7 @@
               "CreateTableSpacesInUniverse",
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
+              "ModifyKubernetesAuditLoggingConfig",
               "InstallYbcSoftware",
               "UpgradeUniverseYbc",
               "UpgradeYbcGFlags",
@@ -18464,6 +18674,7 @@
               "SoftwareUpgradeYB",
               "SoftwareKubernetesUpgradeYB",
               "FinalizeUpgrade",
+              "FinalizeKubernetesUpgrade",
               "RollbackUpgrade",
               "RollbackKubernetesUpgrade",
               "LdapUniverseSync",
@@ -18474,12 +18685,16 @@
               "DecommissionNodeInstance",
               "MasterFailover",
               "SyncMasterAddresses",
+              "CreateContinuousBackup",
               "CreateYbaBackup",
               "RestoreYbaBackup",
               "RestoreContinuousBackup",
               "EnableNodeAgentInUniverse",
               "DecommissionNode",
               "CloneNamespace",
+              "TlsToggleKubernetes",
+              "UpdateOOMServiceState",
+              "SendUserNotification",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -18489,6 +18704,7 @@
               "ChangeInstanceType",
               "PersistResizeNode",
               "PersistSystemdUpgrade",
+              "PersistUseClockbound",
               "UpdateNodeDetails",
               "AddAuthorizedKey",
               "AnsibleClusterServerCtl",
@@ -18498,7 +18714,6 @@
               "ResumeServer",
               "AnsibleSetupServer",
               "AnsibleCreateServer",
-              "PrecheckNode",
               "PrecheckNodeDetached",
               "AnsibleUpdateNodeInfo",
               "BulkImport",
@@ -18587,6 +18802,7 @@
               "DeleteReplicationOnSource",
               "DeleteXClusterBackupRestoreEntries",
               "AddExistingPitrToXClusterConfig",
+              "DrConfigWebhookCall",
               "SetRestoreState",
               "CloudAccessKeyCleanup",
               "CloudAccessKeySetup",
@@ -18643,7 +18859,9 @@
               "CheckMemory",
               "CheckLocale",
               "CheckGlibc",
+              "CheckOpentelemetryOperator",
               "PGUpgradeTServerCheck",
+              "CleanUpPGUpgradeDataDir",
               "RunYsqlMajorVersionCatalogUpgrade",
               "RollbackYsqlMajorVersionCatalogUpgrade",
               "FinalizeYsqlMajorCatalogUpgrade",
@@ -18687,7 +18905,9 @@
               "RunNodeCommand",
               "MasterLeaderStepdown",
               "SetupYNP",
-              "YNPProvisioning"
+              "YNPProvisioning",
+              "ConfigureOOMServiceOnNode",
+              "CheckSshConnection"
             ],
             "type" : "string"
           },
@@ -18902,6 +19122,11 @@
           "description" : "WARNING: This is a preview API that could change. Finalize required",
           "readOnly" : true,
           "type" : "boolean"
+        },
+        "ysqlMajorVersionUpgrade" : {
+          "description" : "WARNING: This is a preview API that could change. YSQL Major version upgrade",
+          "readOnly" : true,
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -19040,6 +19265,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -19212,8 +19438,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -19230,6 +19456,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -19246,6 +19473,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -19256,12 +19484,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19271,6 +19503,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -19280,7 +19513,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -19369,6 +19601,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -19425,7 +19658,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -19469,7 +19704,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -19518,7 +19755,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -19849,8 +20085,10 @@
               "ConsensusMeta",
               "TabletMeta",
               "YbcLogs",
-              "K8sInfo",
               "NodeAgent",
+              "SystemLogs",
+              "TabletReport",
+              "K8sInfo",
               "YbaMetadata",
               "PrometheusMetrics",
               "ApplicationLogs"
@@ -19864,6 +20102,10 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "filterPgAuditLogs" : {
+          "description" : "Specifies if Postgres audit logs should be filtered out when collecting universe logs.",
+          "type" : "boolean"
         },
         "maxCoreFileSize" : {
           "description" : "Max size in bytes of the recent collected cores (if any)",
@@ -19886,6 +20128,13 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "promQueries" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Map of query names to custom PromQL queries to collect in promdump",
+          "type" : "object"
         },
         "prometheusMetricsTypes" : {
           "description" : "List of exports to be included in the prometheus dump",
@@ -20085,6 +20334,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -20257,8 +20507,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -20275,6 +20525,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -20291,6 +20542,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -20301,12 +20553,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20316,6 +20572,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -20325,7 +20582,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -20414,6 +20670,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -20470,7 +20727,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -20514,7 +20773,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -20557,7 +20818,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -20620,6 +20880,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -20688,7 +20949,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tableDetails",
@@ -20937,7 +21197,8 @@
               "UniverseKey",
               "MasterKey",
               "NodeAgent",
-              "Yba"
+              "Yba",
+              "User"
             ],
             "type" : "string"
           },
@@ -21042,7 +21303,9 @@
               "RestoreContinuousBackup",
               "EnableNodeAgent",
               "Decommission",
-              "CloneNamespace"
+              "CloneNamespace",
+              "UpdateOOMServiceState",
+              "SendUserNotification"
             ],
             "type" : "string"
           },
@@ -21197,7 +21460,8 @@
             "DATA_DOG",
             "SPLUNK",
             "AWS_CLOUDWATCH",
-            "GCP_CLOUD_MONITORING"
+            "GCP_CLOUD_MONITORING",
+            "LOKI"
           ],
           "type" : "string"
         }
@@ -21341,6 +21605,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -21513,8 +21778,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -21531,6 +21796,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -21547,6 +21813,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -21557,12 +21824,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21572,6 +21843,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -21581,7 +21853,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -21670,6 +21941,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -21726,7 +21998,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -21770,7 +22044,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -21814,7 +22090,6 @@
         "forceAll",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -21977,6 +22252,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -22149,8 +22425,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -22167,6 +22443,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -22183,6 +22460,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -22193,12 +22471,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22208,6 +22490,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -22217,7 +22500,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -22306,6 +22588,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -22362,7 +22645,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -22406,7 +22691,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -22452,7 +22739,6 @@
         "enableNodeToNodeEncrypt",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -22699,6 +22985,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -22718,7 +23005,6 @@
         }
       },
       "required" : [
-        "platformVersion",
         "storageConfigUUID"
       ],
       "type" : "object"
@@ -22865,6 +23151,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -23040,8 +23327,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -23058,6 +23345,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -23074,6 +23362,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -23084,12 +23373,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23099,6 +23392,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -23108,7 +23402,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -23197,6 +23490,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -23253,7 +23547,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -23297,7 +23593,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -23331,7 +23629,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -23468,6 +23765,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -23640,8 +23938,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -23658,6 +23956,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -23674,6 +23973,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -23684,12 +23984,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23699,6 +24003,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -23708,7 +24013,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -23797,6 +24101,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -23853,7 +24158,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -23897,7 +24204,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -23931,7 +24240,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -24068,6 +24376,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -24240,8 +24549,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -24258,6 +24567,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -24274,6 +24584,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -24284,12 +24595,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24299,6 +24614,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -24308,7 +24624,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -24397,6 +24712,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -24453,7 +24769,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -24497,7 +24815,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -24531,7 +24851,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -24846,6 +25165,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -24898,7 +25218,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -25070,6 +25389,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -25242,8 +25562,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -25260,6 +25580,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -25276,6 +25597,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -25286,12 +25608,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25301,6 +25627,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -25310,7 +25637,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -25399,6 +25725,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -25455,7 +25782,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -25499,7 +25828,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -25542,7 +25873,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -26178,6 +26508,7 @@
           "type" : "string"
         },
         "platformVersion" : {
+          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -26350,8 +26681,8 @@
             "RestartXClusterConfig",
             "RestartDrConfig",
             "SyncDrConfig",
-            "SetTablesDrConfig",
             "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
             "CreateDrConfig",
             "DeleteDrConfig",
             "FailoverDrConfig",
@@ -26368,6 +26699,7 @@
             "CreateTableSpacesInUniverse",
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -26384,6 +26716,7 @@
             "SoftwareUpgradeYB",
             "SoftwareKubernetesUpgradeYB",
             "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
             "RollbackUpgrade",
             "RollbackKubernetesUpgrade",
             "LdapUniverseSync",
@@ -26394,12 +26727,16 @@
             "DecommissionNodeInstance",
             "MasterFailover",
             "SyncMasterAddresses",
+            "CreateContinuousBackup",
             "CreateYbaBackup",
             "RestoreYbaBackup",
             "RestoreContinuousBackup",
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26409,6 +26746,7 @@
             "ChangeInstanceType",
             "PersistResizeNode",
             "PersistSystemdUpgrade",
+            "PersistUseClockbound",
             "UpdateNodeDetails",
             "AddAuthorizedKey",
             "AnsibleClusterServerCtl",
@@ -26418,7 +26756,6 @@
             "ResumeServer",
             "AnsibleSetupServer",
             "AnsibleCreateServer",
-            "PrecheckNode",
             "PrecheckNodeDetached",
             "AnsibleUpdateNodeInfo",
             "BulkImport",
@@ -26507,6 +26844,7 @@
             "DeleteReplicationOnSource",
             "DeleteXClusterBackupRestoreEntries",
             "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
             "SetRestoreState",
             "CloudAccessKeyCleanup",
             "CloudAccessKeySetup",
@@ -26563,7 +26901,9 @@
             "CheckMemory",
             "CheckLocale",
             "CheckGlibc",
+            "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
@@ -26607,7 +26947,9 @@
             "RunNodeCommand",
             "MasterLeaderStepdown",
             "SetupYNP",
-            "YNPProvisioning"
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection"
           ],
           "type" : "string"
         },
@@ -26654,7 +26996,6 @@
         "forceVMImageUpgrade",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "platformVersion",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -26833,6 +27174,7 @@
         },
         "replicationGroupName" : {
           "description" : "Replication group name in the target universe cluster config",
+          "readOnly" : true,
           "type" : "string"
         },
         "secondary" : {
@@ -27126,6 +27468,7 @@
         },
         "replicationGroupName" : {
           "description" : "Replication group name in the target universe cluster config",
+          "readOnly" : true,
           "type" : "string"
         },
         "secondary" : {
@@ -27296,6 +27639,20 @@
     },
     "XClusterNamespaceConfig" : {
       "properties" : {
+        "backupUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "replicationSetupTime" : {
+          "description" : "Time of replication setup, ie, table added to the replication group on the target universe",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "restoreUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "sourceNamespaceId" : {
           "type" : "string"
         },
@@ -27322,6 +27679,8 @@
         }
       },
       "required" : [
+        "backupUuid",
+        "restoreUuid",
         "sourceNamespaceId"
       ],
       "type" : "object"
@@ -27342,10 +27701,14 @@
           "description" : "Short human readable replication status error messages",
           "items" : {
             "enum" : [
+              "Unknown error",
               "Missing op ID",
               "Schema mismatch",
               "Missing table",
-              "Auto flag config mismatch"
+              "Uninitialized",
+              "Auto flag config mismatch",
+              "Source unreachable",
+              "System error"
             ],
             "type" : "string"
           },
@@ -29004,7 +29367,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/AlertDefinition"
+                "$ref" : "#/definitions/AlertDestination"
               },
               "type" : "array"
             }
@@ -29015,7 +29378,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/AlertDefinition"
+                "$ref" : "#/definitions/AlertDestination"
               },
               "type" : "array"
             }
@@ -30775,6 +31138,59 @@
           }
         ],
         "summary" : "Update a customer configuration",
+        "tags" : [
+          "Customer Configuration"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/configs/{configUUID}/backup_dirs" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getListOfYbaBackupDirsCustomerConfig",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "configUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "List all backup dirs within a customer configurations",
         "tags" : [
           "Customer Configuration"
         ]
@@ -32673,6 +33089,14 @@
             "in" : "query",
             "name" : "request",
             "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "ListMaintenanceWindowsRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindowApiFilter"
+            }
           }
         ],
         "responses" : {
@@ -36298,7 +36722,7 @@
     },
     "/api/v1/customers/{cUUID}/restore" : {
       "post" : {
-        "description" : "",
+        "description" : "Restore from a backup V2. Running restore preflight before calling actual restore is recommended.",
         "operationId" : "restoreBackupV2",
         "parameters" : [
           {
@@ -36352,7 +36776,7 @@
     },
     "/api/v1/customers/{cUUID}/restore/advanced_restore_preflight" : {
       "post" : {
-        "description" : "WARNING: This is a preview API that could change. Advanced Restore Preflight checks.",
+        "description" : "WARNING: This is a preview API that could change. Advanced restore preflight checks. Recommended to run before actual restore to retrieve the metadata associated with the backup, as well as check for conflicts with existing keyspaces. Additionally, this checks for unsupported tablespaces. In case of restore to PIT this checks whether backup can restore to the timestamp provided, fails otherwise.",
         "operationId" : "advancedRestorePreflight",
         "parameters" : [
           {
@@ -36459,7 +36883,7 @@
     },
     "/api/v1/customers/{cUUID}/restore/preflight" : {
       "post" : {
-        "description" : "Restore preflight checks.",
+        "description" : "Restore preflight checks. Recommended to run before actual restore to retrieve the metadata associated with the backup, as well as check for conflicts with existing keyspaces. Additionally, this checks for unsupported tablespaces. In case of restore to PIT this returns the backup from the backup chain which can be restored to the timestamp provided, fails otherwise.",
         "operationId" : "restorePreflight",
         "parameters" : [
           {
@@ -36982,8 +37406,10 @@
                   "ConsensusMeta",
                   "TabletMeta",
                   "YbcLogs",
-                  "K8sInfo",
                   "NodeAgent",
+                  "SystemLogs",
+                  "TabletReport",
+                  "K8sInfo",
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "ApplicationLogs"
@@ -37009,8 +37435,10 @@
                   "ConsensusMeta",
                   "TabletMeta",
                   "YbcLogs",
-                  "K8sInfo",
                   "NodeAgent",
+                  "SystemLogs",
+                  "TabletReport",
+                  "K8sInfo",
                   "YbaMetadata",
                   "PrometheusMetrics",
                   "ApplicationLogs"
@@ -38891,7 +39319,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -38899,7 +39327,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -38914,7 +39342,7 @@
         ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updatePitrConfig",
         "parameters" : [
           {
@@ -39735,67 +40163,6 @@
           }
         ],
         "summary" : "Create support bundle for specific universe",
-        "tags" : [
-          "Support Bundle management"
-        ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/estimate_size" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "estimateSupportBundleSize",
-        "parameters" : [
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "cUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "uniUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "in" : "query",
-            "name" : "request",
-            "required" : false
-          },
-          {
-            "description" : "support bundle info",
-            "in" : "body",
-            "name" : "supportBundle",
-            "required" : true,
-            "schema" : {
-              "$ref" : "#/definitions/SupportBundleFormData"
-            }
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/SupportBundleSizeEstimateResponse"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/SupportBundleSizeEstimateResponse"
-            }
-          }
-        },
-        "security" : [
-          {
-            "apiKeyAuth" : [ ]
-          }
-        ],
-        "summary" : "Estimate support bundle size for specific universe",
         "tags" : [
           "Support Bundle management"
         ]
@@ -40708,73 +41075,6 @@
           }
         ],
         "summary" : "Upgrade KubernetesOverrides",
-        "tags" : [
-          "Universe Upgrades Management"
-        ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/pre_upgrade_validation" : {
-      "post" : {
-        "description" : "WARNING: This is a preview API that could change. Runs all the prechecks and validations for specific upgrade",
-        "operationId" : "preUpgradeValidation",
-        "parameters" : [
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "cUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "uniUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "in" : "query",
-            "name" : "upgradeType",
-            "required" : false,
-            "type" : "string"
-          },
-          {
-            "in" : "query",
-            "name" : "request",
-            "required" : false
-          },
-          {
-            "description" : "Upgrade Params",
-            "in" : "body",
-            "name" : "upgrade params",
-            "required" : true,
-            "schema" : {
-              "$ref" : "#/definitions/UpgradeTaskParams"
-            }
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/PreUpgradeValidationResponse"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/PreUpgradeValidationResponse"
-            }
-          }
-        },
-        "security" : [
-          {
-            "apiKeyAuth" : [ ]
-          }
-        ],
-        "summary" : "Run validation for upgrade",
         "tags" : [
           "Universe Upgrades Management"
         ]
@@ -43677,6 +43977,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43700,6 +44002,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43739,6 +44043,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43762,6 +44068,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43801,6 +44109,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",
@@ -43824,6 +44134,8 @@
                   "GP3",
                   "Scratch",
                   "Persistent",
+                  "Hyperdisk_Balanced",
+                  "Hyperdisk_Extreme",
                   "StandardSSD_LRS",
                   "Premium_LRS",
                   "PremiumV2_LRS",

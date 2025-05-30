@@ -40,6 +40,8 @@ public class TestMisc extends BaseYsqlConnMgr {
   private final static String GET_BACKEND_TYPE_QUERY =
       "SELECT backend_type FROM pg_stat_activity WHERE pid = %d";
 
+  private static final int OD_HASHMAP_SIZE = 420;
+
   public void testBackendTypeForConn(Connection conn, String exp_backend_type) {
     try (Statement stmt = conn.createStatement()) {
       int processId = getProcessId(stmt);
@@ -86,6 +88,31 @@ public class TestMisc extends BaseYsqlConnMgr {
       assertEquals(1, rs.getLong(1));
 
       assertConnectionStickyState(stmt, expectedSticky);
+    }
+  }
+
+  @Test
+  public void testHllSticky() throws Exception {
+    try (Connection connection = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+         Statement statement = connection.createStatement()) {
+      statement.execute("CREATE EXTENSION hll");
+      statement.execute("CREATE TABLE test_hll (id int, h hll)");
+      statement.execute("INSERT INTO test_hll VALUES (1, hll_empty())");
+      statement.execute("UPDATE test_hll SET h = hll_add(h, hll_hash_integer(1)) WHERE id = 1");
+      ResultSet rs = statement.executeQuery("SELECT hll_cardinality(h) FROM test_hll WHERE id = 1");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong(1));
+      // Creating an hll index or doing operations, won't make the connection sticky.
+      assertConnectionStickyState(statement, false);
+
+
+      // Now the connection should be sticky. As setting max sparse is backend
+      // specific.
+      statement.execute("SELECT hll_set_max_sparse(128)");
+      assertConnectionStickyState(statement, true);
+
     }
   }
 
@@ -377,11 +404,142 @@ public class TestMisc extends BaseYsqlConnMgr {
 
   @Test
   public void testCurrvalErrorOut() throws Exception {
+    disableWarmupModeAndRestartCluster();
     testSequenceFunctions("SELECT currval('my_seq')");
   }
 
   @Test
   public void testLastvalErrorOut() throws Exception {
+    disableWarmupModeAndRestartCluster();
     testSequenceFunctions("SELECT lastval()");
+  }
+
+  private void testPgPreparedStatementsStateHelper(boolean optimized_mode) throws Exception {
+    Properties props = new Properties();
+    props.setProperty("prepareThreshold", "1");
+    try (Connection conn1 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props);
+         Statement stmt1 = conn1.createStatement();
+         Connection conn2 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props);
+         Statement stmt2 = conn2.createStatement()) {
+          // Allow small sleeps between switching logical connections to ensure
+          // the use of just one physical connection. This test flakily spawns
+          // different physical connections to service each logical connection
+          // otherwise, leading to incorrect assertions.
+          stmt1.execute("SELECT 1");  // S_0 on conn1
+          stmt1.execute("SELECT 1");  // S_1 on conn1
+          Thread.sleep(200);
+          stmt2.execute("SELECT 1");  // S_0 on conn2
+          stmt2.execute("SELECT 1");  // S_1 on conn2
+          Thread.sleep(200);
+          ResultSet rs = stmt1.executeQuery("SELECT * FROM pg_prepared_statements");
+          int rowCount = 0;
+          while (rs.next()) {
+            LOG.info("Row " + rowCount + ": " + rs.getString("statement"));
+            rowCount++;
+          }
+          // Expectation of cached plans on the physical connection being used:
+          // Optimized mode:
+          // 1. SELECT 1 (S_0 on conn1/conn2)
+          // 2. SELECT 1 (S_1 on conn1/conn2)
+          // 2. SELECT * FROM pg_prepared_statements
+          // Unoptimized mode:
+          // 1. SELECT 1 (S_0 on conn1)
+          // 2. SELECT 1 (S_1 on conn1)
+          // 3. SELECT 1 (S_0 on conn2)
+          // 4. SELECT 1 (S_1 on conn2)
+          // 5. SELECT * FROM pg_prepared_statements
+          if (optimized_mode) {
+            assertEquals(3, rowCount);
+          } else {
+            assertEquals(5, rowCount);
+          }
+        }
+  }
+
+  @Test
+  public void testPgPreparedStatementsState() throws Exception {
+    // Assert the state of pg_prepared_statements table across optimization
+    // modes to assert the behavior of cached plans created by connection
+    // manager to handle the extended query protocol.
+    disableWarmupModeAndRestartCluster();
+    modifyExtendedQueryProtocolAndRestartCluster(true);
+    testPgPreparedStatementsStateHelper(true);
+    modifyExtendedQueryProtocolAndRestartCluster(false);
+    testPgPreparedStatementsStateHelper(false);
+  }
+
+  private void testPreparedStatementsOnNewPhysicalConnsHelper() throws Exception {
+    Properties props = new Properties();
+    props.setProperty("prepareThreshold", "1");
+    try (Connection conn1 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props);
+         Connection conn2 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+         Statement stmt2 = conn2.createStatement()) {
+          PreparedStatement pstmt = conn1.prepareStatement("SELECT 1");
+          pstmt.execute(); // Parse, Bind, Execute
+          Thread.sleep(200);
+          // Force logical connection conn1 to switch to a new physical connection.
+          stmt2.execute("BEGIN");
+          pstmt.execute(); // Bind, Execute on new physical connection
+        } catch (SQLException e) {
+          LOG.error("Got SQL Exception while executing prepared statement", e);
+          fail();
+        }
+  }
+
+  @Test
+  public void testPreparedStatementsOnNewPhysicalConns() throws Exception {
+    // Assert that connection manager can correctly handle prepared statements
+    // across different physical connections. From the driver perspective, the
+    // first invocation of the prepared statemment goes through Parse, Bind,
+    // and Execute phases. The second invocation of the same prepared statement
+    // only goes through the Bind and Execute phases. This test ensures that
+    // connection manager smartly allows any physical connection to be ready
+    // to handle the Bind and Execute phases of the prepared statement.
+    disableWarmupModeAndRestartCluster();
+    modifyExtendedQueryProtocolAndRestartCluster(true);
+    testPreparedStatementsOnNewPhysicalConnsHelper();
+    modifyExtendedQueryProtocolAndRestartCluster(false);
+    testPreparedStatementsOnNewPhysicalConnsHelper();
+  }
+
+  private void testPreparedStatementHashCollisionsHelper() throws Exception {
+    // Every executed statement should be cached as a named prepared statement.
+    // Populate the hashmap of only one server to ascertain collision sooner.
+    Properties props = new Properties();
+    props.setProperty("prepareThreshold", "1");
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props);
+            Statement stmt = conn.createStatement()) {
+      // Cache hashmap size + 1 statements to ascertain collision.
+      for (int i = 0; i < OD_HASHMAP_SIZE + 1; i++) {
+        stmt.execute("SELECT " + i);
+      }
+    } catch (SQLException e) {
+      LOG.error("Got SQL Exception while executing prepared statement", e);
+      fail();
+    }
+  }
+
+  @Test
+  public void testPreparedStatementHashCollisions() throws Exception {
+    // Connection Manager stores information regarding the presence of prepared
+    // statements on a server in a hashmap. By creating a very large number of
+    // prepared statements, we can ascertain hash collision and verify that
+    // Connection Manager can handle this corner case.
+    disableWarmupModeAndRestartCluster();
+    modifyExtendedQueryProtocolAndRestartCluster(true);
+    testPreparedStatementHashCollisionsHelper();
+    modifyExtendedQueryProtocolAndRestartCluster(false);
+    testPreparedStatementHashCollisionsHelper();
   }
 }

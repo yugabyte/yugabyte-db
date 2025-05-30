@@ -1,2 +1,2 @@
 # src/test/regress/yb_pg_dml_serial_schedule
-test: yb_pg_insert_conflict
+test: yb.port.insert_conflict

@@ -76,6 +76,7 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
 
   @Test
   public void testListMappingRbacOff() throws Exception {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     GroupMappingInfo info0 = GroupMappingInfo.create(cUUID, "test-group-1", GroupType.OIDC);
     GroupMappingInfo info1 = GroupMappingInfo.create(cUUID, "test-group-2", GroupType.LDAP);
     info1.setRoleUUID(Role.get(cUUID, "Admin").getRoleUUID());

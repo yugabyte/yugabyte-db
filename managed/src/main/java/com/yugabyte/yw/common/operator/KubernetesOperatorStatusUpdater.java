@@ -9,6 +9,8 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.Event;
@@ -136,7 +138,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
   public void updateBackupStatus(
       com.yugabyte.yw.models.Backup backup, String taskName, UUID taskUUID) {
     try {
-      if (backup != null) {
+      if (backup != null && backup.getBackupInfo().getKubernetesResourceDetails() != null) {
         UUID universeUUID = backup.getUniverseUUID();
         Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
         if (universeOpt.isPresent()
@@ -144,29 +146,24 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           log.info("Update Backup Status called for task {} ", taskUUID);
           try (final KubernetesClient kubernetesClient =
               new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+            Backup backupCr =
+                operatorUtils.getResource(
+                    backup.getBackupInfo().getKubernetesResourceDetails(),
+                    kubernetesClient.resources(Backup.class),
+                    Backup.class);
+            BackupStatus status = backupCr.getStatus();
 
-            for (Backup backupCr :
-                kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()) {
-              if (backupCr.getStatus() != null
-                  && backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
-                // Found our backup.
-                log.info("Found Backup {} task {} ", backupCr, taskUUID);
-                BackupStatus status = backupCr.getStatus();
+            status.setMessage("Backup State: " + backup.getState().name());
+            status.setResourceUUID(backup.getBackupUUID().toString());
+            status.setTaskUUID(taskUUID.toString());
 
-                status.setMessage("Backup State: " + backup.getState().name());
-                status.setResourceUUID(backup.getBackupUUID().toString());
-                status.setTaskUUID(taskUUID.toString());
-
-                backupCr.setStatus(status);
-                kubernetesClient
-                    .resources(Backup.class)
-                    .inNamespace(namespace)
-                    .resource(backupCr)
-                    .replaceStatus();
-                log.info("Updated Status for Backup CR {}", backupCr);
-                break;
-              }
-            }
+            backupCr.setStatus(status);
+            kubernetesClient
+                .resources(Backup.class)
+                .inNamespace(namespace)
+                .resource(backupCr)
+                .replaceStatus();
+            log.info("Updated Status for Backup CR {}", backupCr);
           }
         }
       }
@@ -355,7 +352,8 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           .updateStatus(); // Note: Vscode is saying this is invalid, but it is the right way.
 
       // Update Swamper Targets configMap
-      String configMapName = OperatorUtils.getYbaUniverseName(ybUniverse) + "-prometheus-targets";
+      String configMapName =
+          OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()) + "-prometheus-targets";
       // TODO (@anijhawan) should call the swamperHelper target function but we are in static
       // context here.
       if (u != null) {
@@ -436,6 +434,44 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           .replaceStatus();
     } catch (Exception e) {
       log.error("Failed to update status: ", e);
+    }
+  }
+
+  @Override
+  public void updateBackupScheduleStatus(
+      KubernetesResourceDetails resourceDetails, Schedule schedule) {
+    if (schedule != null) {
+      try (final KubernetesClient kubernetesClient =
+          new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        BackupSchedule backupSchedule =
+            operatorUtils.getResource(
+                resourceDetails,
+                kubernetesClient.resources(BackupSchedule.class),
+                BackupSchedule.class);
+        BackupScheduleStatus status = backupSchedule.getStatus();
+        if (status == null) {
+          status = new BackupScheduleStatus();
+        }
+        if (schedule.getStatus() != null) {
+          status.setState(schedule.getStatus().toString());
+        }
+        ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
+        if (lastTask != null) {
+          status.setPreviousBackupTime(lastTask.getScheduledTime().toString());
+        }
+        if (schedule.getNextScheduleTaskTime() != null) {
+          status.setNextBackupTime(schedule.getNextScheduleTaskTime().toString());
+        }
+        status.setScheduleUUID(schedule.getScheduleUUID().toString());
+        backupSchedule.setStatus(status);
+        kubernetesClient
+            .resources(BackupSchedule.class)
+            .inNamespace(resourceDetails.namespace)
+            .resource(backupSchedule)
+            .replaceStatus();
+      } catch (Exception e) {
+        log.error("Failed to update BackupSchedule {} status", resourceDetails.name, e);
+      }
     }
   }
 

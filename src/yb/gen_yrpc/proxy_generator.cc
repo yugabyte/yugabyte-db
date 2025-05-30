@@ -143,7 +143,8 @@ void ProxyGenerator::Source(YBPrinter printer, const google::protobuf::FileDescr
     );
 
     GenerateMethodAssignments(
-        printer, service, "result->value[to_underlying($service_method_enum$::$metric_enum_key$)]",
+        printer, service,
+        "result->value[std::to_underlying($service_method_enum$::$metric_enum_key$)]",
         false, outbound_metrics);
 
     printer(

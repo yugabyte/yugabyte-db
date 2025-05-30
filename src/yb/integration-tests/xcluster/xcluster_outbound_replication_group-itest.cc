@@ -30,8 +30,7 @@ DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_uint32(max_xcluster_streams_to_checkpoint_in_parallel);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 const auto kDeadline = MonoDelta::FromSeconds(30);
 const NamespaceName kNamespaceName = "db1";
@@ -41,7 +40,7 @@ const TableName kTableName1 = "table1", kTableName2 = "table2";
 
 class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
  public:
-  XClusterOutboundReplicationGroupTest() {}
+  XClusterOutboundReplicationGroupTest() = default;
   void SetUp() override {
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;
@@ -122,7 +121,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
       const TableId& table_id1, const TableId& table_id2, size_t all_xcluster_streams_count,
       const master::GetXClusterStreamsResponsePB& resp, bool all_tables_included = true,
       const PgSchemaName& table2_schema_name = kPgSchemaName) {
-    ASSERT_FALSE(resp.initial_bootstrap_required());
+    ASSERT_EQ(resp.initial_bootstrap_required(), UseAutomaticMode());
     ASSERT_EQ(resp.table_infos_size(), 2 + (all_tables_included ? OverheadStreamsCount() : 0));
 
     auto all_xcluster_streams = CleanupAndGetAllXClusterStreams();
@@ -762,5 +761,4 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestGetStreamByTableId) {
       "Table bad_table_id not found");
 }
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

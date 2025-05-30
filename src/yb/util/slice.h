@@ -74,6 +74,9 @@ class Slice {
   Slice(const char* begin, const char* end)
       : Slice(to_uchar_ptr(begin), to_uchar_ptr(end)) {}
 
+  Slice(const std::byte* begin, const std::byte* end)
+      : Slice(pointer_cast<const uint8_t*>(begin), pointer_cast<const uint8_t*>(end)) {}
+
   // Create a slice that refers to the contents of "s"
   template <class CharTraits, class Allocator>
   Slice(const std::basic_string<char, CharTraits, Allocator>& s) // NOLINT(runtime/explicit)
@@ -413,6 +416,10 @@ inline bool operator>=(const Slice& lhs, const Slice& rhs) {
 
 inline std::strong_ordering operator<=>(const Slice& lhs, const Slice& rhs) {
   return lhs.compare(rhs) <=> 0;
+}
+
+inline std::string AsDebugHexString(Slice value) {
+  return value.ToDebugHexString();
 }
 
 }  // namespace yb

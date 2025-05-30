@@ -25,14 +25,15 @@
 #include <unistd.h>
 
 #include "access/htup_details.h"
-#include "executor/instrument.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "common/ip.h"
 #include "datatype/timestamp.h"
+#include "executor/instrument.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parsetree.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
@@ -48,9 +49,9 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 
-#include "pg_yb_utils.h"
+#define YSQL_METRIC_PREFIX "yb_ysqlserver_"
+#define YSQL_LATENCY_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
 
-#define YSQL_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
 #define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)
 
 PG_MODULE_MAGIC;
@@ -69,6 +70,8 @@ typedef enum YbStatementType
 	SingleShardTransaction,
 	Transaction,
 	AggregatePushdown,
+	CatCacheRefresh,
+	CatCacheDeltaRefresh,
 	CatCacheMisses,
 	CatCacheIdMisses_Start,
 	CatCacheIdMisses_0 = CatCacheIdMisses_Start,
@@ -208,7 +211,11 @@ typedef enum YbStatementType
 	CatCacheTableMisses_47,
 	CatCacheTableMisses_48,
 	CatCacheTableMisses_49,
-	CatCacheTableMisses_End = CatCacheTableMisses_49,
+	CatCacheTableMisses_50,
+	CatCacheTableMisses_End = CatCacheTableMisses_50,
+	HintCacheRefresh,
+	HintCacheHits,
+	HintCacheMisses,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -243,16 +250,22 @@ struct WebserverWrapper *webserver = NULL;
 int			port = 0;
 static bool log_accesses = false;
 static bool log_tcmalloc_stats = false;
-static int	webserver_profiler_sample_freq_bytes = 0;
+static int	webserver_profiler_sample_period_bytes = 0;
 static int	num_backends = 0;
 static YbcRpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
 PgBackendStatus *backendStatusArray = NULL;
 extern int	MaxConnections;
 
+static long last_catcache_refresh_val = 0;
+static long last_catcache_delta_refresh_val = 0;
 static long last_cache_misses_val = 0;
 static long last_cache_id_misses_val[SysCacheSize] = {0};
 static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
+
+static long last_hint_cache_refreshes_val = 0;
+static long last_hint_cache_hits_val = 0;
+static long last_hint_cache_misses_val = 0;
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -341,22 +354,26 @@ set_metric_names(void)
 		ybpgm_table[i].sum_help[0] = '\0';
 	}
 
-	strcpy(ybpgm_table[Select].name, YSQL_METRIC_PREFIX "SelectStmt");
-	strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
-	strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
-	strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
-	strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
-	strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
-	strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
-	strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
+	strcpy(ybpgm_table[Select].name, YSQL_LATENCY_METRIC_PREFIX "SelectStmt");
+	strcpy(ybpgm_table[Insert].name, YSQL_LATENCY_METRIC_PREFIX "InsertStmt");
+	strcpy(ybpgm_table[Delete].name, YSQL_LATENCY_METRIC_PREFIX "DeleteStmt");
+	strcpy(ybpgm_table[Update].name, YSQL_LATENCY_METRIC_PREFIX "UpdateStmt");
+	strcpy(ybpgm_table[Begin].name, YSQL_LATENCY_METRIC_PREFIX "BeginStmt");
+	strcpy(ybpgm_table[Commit].name, YSQL_LATENCY_METRIC_PREFIX "CommitStmt");
+	strcpy(ybpgm_table[Rollback].name, YSQL_LATENCY_METRIC_PREFIX "RollbackStmt");
+	strcpy(ybpgm_table[Other].name, YSQL_LATENCY_METRIC_PREFIX "OtherStmts");
 	/* Deprecated. Names with "_"s may cause confusion to metric consumers. */
 	strcpy(ybpgm_table[Single_Shard_Transaction].name,
-		   YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+		   YSQL_LATENCY_METRIC_PREFIX "Single_Shard_Transactions");
 	strcpy(ybpgm_table[SingleShardTransaction].name,
-		   YSQL_METRIC_PREFIX "SingleShardTransactions");
-	strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
+		   YSQL_LATENCY_METRIC_PREFIX "SingleShardTransactions");
+	strcpy(ybpgm_table[Transaction].name, YSQL_LATENCY_METRIC_PREFIX "Transactions");
 	strcpy(ybpgm_table[AggregatePushdown].name,
-		   YSQL_METRIC_PREFIX "AggregatePushdowns");
+		   YSQL_LATENCY_METRIC_PREFIX "AggregatePushdowns");
+	strcpy(ybpgm_table[CatCacheRefresh].name,
+		   YSQL_METRIC_PREFIX "CatCacheRefresh");
+	strcpy(ybpgm_table[CatCacheDeltaRefresh].name,
+		   YSQL_METRIC_PREFIX "CatCacheDeltaRefresh");
 	strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
 	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
 	{
@@ -381,6 +398,13 @@ set_metric_names(void)
 		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
 				 table_name);
 	}
+
+	strcpy(ybpgm_table[HintCacheRefresh].name,
+		   YSQL_METRIC_PREFIX "HintCacheRefresh");
+	strcpy(ybpgm_table[HintCacheHits].name,
+		   YSQL_METRIC_PREFIX "HintCacheHits");
+	strcpy(ybpgm_table[HintCacheMisses].name,
+		   YSQL_METRIC_PREFIX "HintCacheMisses");
 
 	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
@@ -441,6 +465,15 @@ set_metric_names(void)
 		   "Number of aggregate pushdowns");
 	strcpy(ybpgm_table[AggregatePushdown].sum_help,
 		   "Total time spent executing aggregate pushdowns");
+	strcpy(ybpgm_table[CatCacheRefresh].count_help,
+		   "Number of full catalog cache refreshes");
+	strcpy(ybpgm_table[CatCacheRefresh].sum_help,
+		   "Not applicable");
+	strcpy(ybpgm_table[CatCacheDeltaRefresh].count_help,
+		   "Number of incremental catalog cache refreshes");
+	strcpy(ybpgm_table[CatCacheDeltaRefresh].sum_help,
+		   "Not applicable");
+
 
 	strcpy(ybpgm_table[CatCacheMisses].count_help,
 		   "Total number of catalog cache misses");
@@ -461,6 +494,18 @@ set_metric_names(void)
 				 ybpgm_table[i].table_name);
 		strcpy(ybpgm_table[i].sum_help, "Not applicable");
 	}
+
+	strcpy(ybpgm_table[HintCacheRefresh].count_help,
+		   "Number of hint cache refreshes");
+	strcpy(ybpgm_table[HintCacheRefresh].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[HintCacheHits].count_help,
+		   "Number of hint cache hits");
+	strcpy(ybpgm_table[HintCacheHits].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[HintCacheMisses].count_help,
+		   "Number of hint cache misses");
+	strcpy(ybpgm_table[HintCacheMisses].sum_help, "Not applicable");
 }
 
 /*
@@ -709,7 +754,7 @@ webserver_worker_main(Datum unused)
 	pqsignal(SIGTERM, ws_sigterm_handler);
 
 	SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
-					   webserver_profiler_sample_freq_bytes);
+					   webserver_profiler_sample_period_bytes);
 
 	int			rc;
 
@@ -726,7 +771,7 @@ webserver_worker_main(Datum unused)
 			got_SIGHUP = false;
 			ProcessConfigFile(PGC_SIGHUP);
 			SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
-							   webserver_profiler_sample_freq_bytes);
+							   webserver_profiler_sample_period_bytes);
 		}
 	}
 
@@ -802,12 +847,12 @@ _PG_init(void)
 							 0,
 							 NULL, NULL, NULL);
 
-	DefineCustomIntVariable("yb_pg_metrics.webserver_profiler_sample_freq_bytes",
-							"The frequency at which Google TCMalloc should "
+	DefineCustomIntVariable("yb_pg_metrics.webserver_profiler_sample_period_bytes",
+							"The interval at which Google TCMalloc should "
 							"sample allocations in the YSQL webserver. If this"
 							" is 0, sampling is disabled. ",
 							NULL,
-							&webserver_profiler_sample_freq_bytes,
+							&webserver_profiler_sample_period_bytes,
 							1024 * 1024, 0, INT_MAX,
 							PGC_SUSET,
 							0,
@@ -998,7 +1043,8 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 			break;
 	}
 
-	is_statement_executed = true;
+	if (!yb_is_calling_internal_sql_for_ddl)
+		is_statement_executed = true;
 
 	/*
 	 * Collecting metric.
@@ -1031,11 +1077,24 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 			castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
 			ybpgm_Store(AggregatePushdown, time, rows_count);
 
+		long		current_count = YbGetCatCacheRefreshes();
+		long		total_delta = current_count - last_catcache_refresh_val;
+
+		last_catcache_refresh_val = current_count;
+		/* Set the time parameter to 0 as we don't have metrics for that. */
+		ybpgm_StoreCount(CatCacheRefresh, 0, total_delta);
+
+		current_count = YbGetCatCacheDeltaRefreshes();
+		total_delta = current_count - last_catcache_delta_refresh_val;
+		last_catcache_delta_refresh_val = current_count;
+		/* Set the time parameter to 0 as we don't have metrics for that. */
+		ybpgm_StoreCount(CatCacheDeltaRefresh, 0, total_delta);
+
 		long		current_cache_misses = YbGetCatCacheMisses();
 		long	   *current_cache_id_misses = YbGetCatCacheIdMisses();
 		long	   *current_cache_table_misses = YbGetCatCacheTableMisses();
 
-		long		total_delta = current_cache_misses - last_cache_misses_val;
+		total_delta = current_cache_misses - last_cache_misses_val;
 
 		last_cache_misses_val = current_cache_misses;
 
@@ -1066,6 +1125,25 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 							  last_cache_table_misses_val[j]));
 			last_cache_table_misses_val[j] = current_cache_table_misses[j];
 		}
+
+		/* Hint cache metrics */
+		long		current_hint_cache_refreshes = YbGetHintCacheRefreshes();
+
+		total_delta = current_hint_cache_refreshes - last_hint_cache_refreshes_val;
+		last_hint_cache_refreshes_val = current_hint_cache_refreshes;
+		ybpgm_StoreCount(HintCacheRefresh, 0, total_delta);
+
+		long		current_hint_cache_hits = YbGetHintCacheHits();
+
+		total_delta = current_hint_cache_hits - last_hint_cache_hits_val;
+		last_hint_cache_hits_val = current_hint_cache_hits;
+		ybpgm_StoreCount(HintCacheHits, 0, total_delta);
+
+		long		current_hint_cache_misses = YbGetHintCacheMisses();
+
+		total_delta = current_hint_cache_misses - last_hint_cache_misses_val;
+		last_hint_cache_misses_val = current_hint_cache_misses;
+		ybpgm_StoreCount(HintCacheMisses, 0, total_delta);
 	}
 
 	IncStatementNestingLevel();
@@ -1233,6 +1311,9 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static void
 ybpgm_Store(YbStatementType type, uint64_t time, uint64_t rows)
 {
+	if (yb_is_calling_internal_sql_for_ddl)
+		return;
+
 	struct YbcPgmEntry *entry = &ybpgm_table[type];
 
 	entry->total_time += time;
@@ -1243,6 +1324,9 @@ ybpgm_Store(YbStatementType type, uint64_t time, uint64_t rows)
 static void
 ybpgm_StoreCount(YbStatementType type, uint64_t time, uint64_t count)
 {
+	if (yb_is_calling_internal_sql_for_ddl)
+		return;
+
 	struct YbcPgmEntry *entry = &ybpgm_table[type];
 
 	entry->total_time += time;

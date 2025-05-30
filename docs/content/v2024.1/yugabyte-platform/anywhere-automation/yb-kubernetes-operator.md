@@ -1,9 +1,9 @@
 ---
-title: Yugabyte Kubernetes Operator
-headerTitle: Yugabyte Kubernetes Operator
+title: YugabyteDB Kubernetes Operator
+headerTitle: YugabyteDB Kubernetes Operator
 linkTitle: Kubernetes Operator
-description: Yugabyte Kubernetes Operator for YugabyteDB Anywhere.
-headcontent: Install YugabyteDB Anywhere and create universes using Yugabyte Kubernetes Operator
+description: YugabyteDB Kubernetes Operator for YugabyteDB Anywhere.
+headcontent: Install YugabyteDB Anywhere and create universes using YugabyteDB Kubernetes Operator
 tags:
   feature: tech-preview
 menu:
@@ -14,13 +14,13 @@ menu:
 type: docs
 ---
 
-The Yugabyte Kubernetes Operator streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
+The YugabyteDB Kubernetes Operator {{<tags/feature/tp idea="831">}}streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
 
 The Operator establishes `ybuniverse` as a Custom Resource (CR) in Kubernetes, and enables a declarative management of your YugabyteDB Anywhere (YBA) universe. You can update the custom resources to customize the `ybuniverse` resources, including CPU, memory, and disk configurations, and deploy multi-availability zone balanced YBA universes on the underlying cluster for optimal performance. The CR supports seamless upgrades of YBA universes with no downtime, as well as transparent scaling operations.
 
-![Yugabyte Kubernetes operator](/images/yb-platform/yb-kubernetes-operator.png)
+![YugabyteDB Kubernetes operator](/images/yb-platform/yb-kubernetes-operator.png)
 
-## Yugabyte Kubernetes Operator CRDs
+## YugabyteDB Kubernetes Operator CRDs
 
 The Yugabyte Operator provides additional Custom Resource Definitions (CRDs) to manage the day 2 operations of a YBA universe, including the following:
 
@@ -148,7 +148,7 @@ Before installing the Kubernetes Operator and YBA universes, verify that the fol
 
 ### Service account
 
-The Yugabyte Kubernetes Operator requires a service account with sufficient permissions to manage resources in the Kubernetes cluster. When installing the operator, ensure that the service account has the necessary roles and cluster roles bound to it.
+The YugabyteDB Kubernetes Operator requires a service account with sufficient permissions to manage resources in the Kubernetes cluster. When installing the operator, ensure that the service account has the necessary roles and cluster roles bound to it.
 
 ### Cluster roles and namespace roles
 
@@ -159,7 +159,7 @@ The yugaware chart, when installed with `rbac.create=true`, automatically create
 
 ## Installation
 
-For information on installing YBA and creating universes using the Yugabyte Kubernetes Operator, refer to [Use Yugabyte Kubernetes Operator to automate YBA deployments](../../install-yugabyte-platform/install-software/kubernetes/#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
+For information on installing YBA and creating universes using the YugabyteDB Kubernetes Operator, refer to [Use YugabyteDB Kubernetes Operator to automate YBA deployments](../../install-yugabyte-platform/install-software/kubernetes/#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
 
 ## Example workflows
 
@@ -310,10 +310,10 @@ spec:
 
 ## Limitations
 
-- Yugabyte Kubernetes Operator is in [Tech Preview](/preview/releases/versioning/#feature-maturity), and it is recommended to use the YugabyteDB Helm charts for production deployments.
-- Yugabyte Kubernetes Operator can only deploy universes on the _same_ Kubernetes cluster it is deployed on.
-- Yugabyte Kubernetes Operator is single cluster only, and does not support multi-cluster universes.
-- Currently, Yugabyte Kubernetes Operator does not support the following features:
+- YugabyteDB Kubernetes Operator is {{<tags/feature/tp idea="831">}}, and it is recommended to use the YugabyteDB Helm charts for production deployments.
+- YugabyteDB Kubernetes Operator can only deploy universes on the _same_ Kubernetes cluster it is deployed on.
+- YugabyteDB Kubernetes Operator is single cluster only, and does not support multi-cluster universes.
+- Currently, YugabyteDB Kubernetes Operator does not support the following features:
   - Software upgrade rollback
   - [xCluster](../../../architecture/docdb-replication/async-replication/)
   - [Read Replica](../../../architecture/key-concepts/#read-replica-cluster)

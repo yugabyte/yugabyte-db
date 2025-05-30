@@ -30,6 +30,7 @@ func init() {
 	AWSEARCmd.AddCommand(listAWSEARCmd)
 	AWSEARCmd.AddCommand(describeAWSEARCmd)
 	AWSEARCmd.AddCommand(deleteAWSEARCmd)
+	AWSEARCmd.AddCommand(refreshAWSEARCmd)
 
 	AWSEARCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the configuration for the action. %s",

@@ -247,8 +247,8 @@ class BFExecApi {
   static Result<BFRetValue> ExecQLOpcode(BFOpcode opcode, const BFParams& params) {
     // TODO(neil) There has to be some sanity error check here.
     RETURN_NOT_OK(CheckError(opcode, params));
-    auto result = kBFExecFuncsRefAndRaw[to_underlying(opcode)](params);
-    VLOG(3) << "Executed builtin call(" << to_underlying(opcode) << "). Status: "
+    auto result = kBFExecFuncsRefAndRaw[std::to_underlying(opcode)](params);
+    VLOG(3) << "Executed builtin call(" << std::to_underlying(opcode) << "). Status: "
             << ResultToStatus(result);
     return result;
   }
@@ -257,7 +257,7 @@ class BFExecApi {
     // TODO(neil) Currently, the execution phase is not yet implemented, so it'd be immature to
     // code for error-check here. Once it is implemented, we'll know what to check.
     if (VLOG_IS_ON(3)) {
-      LOG(INFO) << "Executing opcode " << to_underlying(opcode);
+      LOG(INFO) << "Executing opcode " << std::to_underlying(opcode);
     }
     return Status::OK();
   }

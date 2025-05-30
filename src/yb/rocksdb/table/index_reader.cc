@@ -143,7 +143,7 @@ Result<std::unique_ptr<IndexReader>> HashIndexReader::Create(
   s = FindMetaBlock(meta_index_iter, kHashIndexPrefixesBlock,
                     &prefixes_handle);
   if (!s.ok()) {
-    LOG(ERROR) << "Failed to find hash index prefixes block: " << s;
+    LOG(DFATAL) << "Failed to find hash index prefixes block: " << s;
     return index_reader;
   }
 
@@ -152,7 +152,7 @@ Result<std::unique_ptr<IndexReader>> HashIndexReader::Create(
   s = FindMetaBlock(meta_index_iter, kHashIndexPrefixesMetadataBlock,
                     &prefixes_meta_handle);
   if (!s.ok()) {
-    LOG(ERROR) << "Failed to find hash index prefixes metadata block: " << s;
+    LOG(DFATAL) << "Failed to find hash index prefixes metadata block: " << s;
     return index_reader;
   }
 
@@ -168,7 +168,7 @@ Result<std::unique_ptr<IndexReader>> HashIndexReader::Create(
                         &prefixes_meta_contents, env, mem_tracker,
                         true /* do decompression */);
   if (!s.ok()) {
-    LOG(ERROR) << "Failed to read hash index prefixes metadata block: " << s;
+    LOG(DFATAL) << "Failed to read hash index prefixes metadata block: " << s;
     return index_reader;
   }
 
@@ -183,7 +183,7 @@ Result<std::unique_ptr<IndexReader>> HashIndexReader::Create(
       index_reader->index_block_->SetBlockHashIndex(hash_index);
       index_reader->OwnPrefixesContents(std::move(prefixes_contents));
     } else {
-      LOG(ERROR) << "Failed to create block hash index: " << s;
+      LOG(DFATAL) << "Failed to create block hash index: " << s;
     }
   } else {
     BlockPrefixIndex* prefix_index = nullptr;
@@ -194,7 +194,7 @@ Result<std::unique_ptr<IndexReader>> HashIndexReader::Create(
     if (s.ok()) {
       index_reader->index_block_->SetBlockPrefixIndex(prefix_index);
     } else {
-      LOG(ERROR) << "Failed to create block prefix index: " << s;
+      LOG(DFATAL) << "Failed to create block prefix index: " << s;
     }
   }
 

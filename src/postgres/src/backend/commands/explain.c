@@ -19,7 +19,6 @@
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "executor/nodeHash.h"
-#include "executor/ybModifyTable.h"
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "nodes/extensible.h"
@@ -41,9 +40,12 @@
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "executor/ybModifyTable.h"
+#include "optimizer/planner.h"
 #include "pg_yb_utils.h"
 #include "utils/guc.h"
+
 
 /* Hook for plugins to get control in ExplainOneQuery() */
 ExplainOneQuery_hook_type ExplainOneQuery_hook = NULL;
@@ -127,9 +129,7 @@ static void show_eval_params(Bitmapset *bms_params, ExplainState *es);
 static const char *explain_get_index_name(Oid indexId);
 static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 							  bool planning);
-static void show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
-static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 									YbPlanInfo *yb_plan_info, ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
@@ -161,6 +161,10 @@ static void ExplainIndentText(ExplainState *es);
 static void ExplainJSONLineEnding(ExplainState *es);
 static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
+
+/* YB declarations */
+static void show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es);
+static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void YbAggregateExplainableRPCRequestStat(ExplainState *es,
 												 const YbInstrumentation *instr);
@@ -683,6 +687,10 @@ const char *yb_metric_event_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_write"),
 	[YB_STORAGE_EVENT_INTENTSDB_BYTES_PER_MULTIGET] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_multiget"),
+	[YB_STORAGE_EVENT_INTENTSDB_WRITE_JOIN_GROUP_MICROS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_thread_join_group_micros"),
+	[YB_STORAGE_EVENT_INTENTSDB_REMOVE_JOIN_GROUP_MICROS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_remove_thread_join_group_micros"),
 	[YB_STORAGE_EVENT_SNAPSHOT_READ_INFLIGHT_WAIT_DURATION] =
 	BUILD_METRIC_LABEL("snapshot_read_inflight_wait_duration"),
 	[YB_STORAGE_EVENT_QL_READ_LATENCY] =
@@ -910,8 +918,10 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 			es->wal = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "settings") == 0)
 			es->settings = defGetBoolean(opt);
+		/* YB */
 		else if (strcmp(opt->defname, "dist") == 0)
 			es->rpc = defGetBoolean(opt);
+		/* YB */
 		else if (strcmp(opt->defname, "debug") == 0)
 			es->yb_debug = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "timing") == 0)
@@ -943,6 +953,12 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 								opt->defname, p),
 						 parser_errposition(pstate, opt->location)));
 		}
+		/* YB */
+		else if (strcmp(opt->defname, "hints") == 0)
+			es->ybShowHints = defGetBoolean(opt);
+		/* YB */
+		else if (strcmp(opt->defname, "uids") == 0)
+			es->ybShowUniqueIds = defGetBoolean(opt);
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -960,8 +976,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
 	/*
-	 * if hiding of non-deterministic fields is requested, turn off debug and
-	 * verbose modes
+	 * YB: if hiding of non-deterministic fields is requested, turn off debug
+	 * and verbose modes
 	 */
 	if (yb_explain_hide_non_deterministic_fields)
 	{
@@ -984,7 +1000,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		}
 	}
 
-	/* check if timing is required */
+	/* YB: check if timing is required */
 	es->timing = YbIsTimingNeeded(es, timing_set);
 
 	/* check that timing is used with EXPLAIN ANALYZE */
@@ -1066,8 +1082,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 	end_tup_output(tstate);
 
 	/*
-	 * Turn off timing RPC requests and metrics capture so that future queries
-	 * are not timed and metrics are not sent by default
+	 * YB: Turn off timing RPC requests and metrics capture so that future
+	 * queries are not timed and metrics are not sent by default
 	 */
 	YbToggleSessionStatsTimer(false);
 	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
@@ -1362,12 +1378,12 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		else
 			dir = ForwardScanDirection;
 
-		/* Figure out if the query can be run as a single row txn */
+		/* YB: Figure out if the query can be run as a single row txn */
 		queryDesc->estate->yb_es_is_single_row_modify_txn =
 			YbIsSingleRowModifyTxnPlanned(plannedstmt, queryDesc->estate);
 
-		/* Refresh the session stats before the start of the query */
-		if (es->rpc)
+		/* YB: Refresh the session stats before the start of the query */
+		if (es->analyze)
 		{
 			YbRefreshSessionStatsBeforeExecution();
 		}
@@ -1375,15 +1391,15 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		/* run the plan */
 		ExecutorRun(queryDesc, dir, 0L, true);
 
-		/* take a snapshot on the max PG memory consumption */
+		/* YB: take a snapshot on the max PG memory consumption */
 		peakMem = PgMemTracker.stmt_max_mem_bytes;
 
 		/* run cleanup too */
 		ExecutorFinish(queryDesc);
 
 		/*
-		 * Fetch stats collected at the query level (ie. not corresponding to
-		 * any execution node)
+		 * YB: Fetch stats collected at the query level (ie. not corresponding
+		 * to any execution node)
 		 */
 		if (es->rpc)
 		{
@@ -1424,6 +1440,16 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		ExplainOpenGroup("Planning", "Planning", true, es);
 		show_buffer_usage(es, bufusage, true);
 		ExplainCloseGroup("Planning", "Planning", true, es);
+	}
+
+	if (es->ybShowHints)
+	{
+		char	   *generatedHints = ybGenerateHintString(plannedstmt);
+
+		if (generatedHints != NULL)
+			ExplainPropertyText("Generated hints", generatedHints, es);
+		else
+			ExplainPropertyText("Generated hints", "none", es);
 	}
 
 	if (es->summary && planduration && show_variable_fields)
@@ -2023,6 +2049,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	int			save_indent = es->indent;
 	bool		haschildren;
 
+	/* YB */
 	if (planstate->instrument)
 	{
 		YbAggregateExplainableRPCRequestStat(es,
@@ -2043,6 +2070,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	{
 		case T_Result:
 			pname = sname = "Result";
+
+			if (plan->ybHintAlias != NULL)
+			{
+				StringInfoData buf;
+
+				initStringInfo(&buf);
+				appendStringInfo(&buf, "%s %s", pname, plan->ybHintAlias);
+				pname = sname = buf.data;
+			}
+
 			break;
 		case T_ProjectSet:
 			pname = sname = "ProjectSet";
@@ -2166,7 +2203,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			switch (((ForeignScan *) plan)->operation)
 			{
 				case CMD_SELECT:
-					/* Don't need to expose implementation details */
 					if (IsYBRelation(((ScanState *) planstate)->ss_currentRelation))
 						sname = pname = "YB Foreign Scan";
 					else
@@ -2399,7 +2435,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			{
 				BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
 				const char *indexname =
-				explain_get_index_name(bitmapindexscan->indexid);
+					explain_get_index_name(bitmapindexscan->indexid);
 
 				if (es->format == EXPLAIN_FORMAT_TEXT)
 					appendStringInfo(es->str, " on %s",
@@ -2510,6 +2546,39 @@ ExplainNode(PlanState *planstate, List *ancestors,
 								 0, es);
 			ExplainPropertyInteger("Plan Width", NULL, plan->plan_width,
 								   es);
+		}
+	}
+
+	/*
+	 * YB: If this node was an input to a trivial subquery scan that was
+	 * removed then show the hint alias that was 'inherited' from the subquery
+	 * scan.
+	 */
+	if (plan->ybInheritedHintAlias != NULL && es->ybShowHints)
+	{
+		if (es->format == EXPLAIN_FORMAT_TEXT)
+		{
+			appendStringInfo(es->str, " (Hint Alias : %s)", plan->ybInheritedHintAlias);
+		}
+		else
+		{
+			ExplainPropertyText("Hint Alias", plan->ybInheritedHintAlias, es);
+		}
+	}
+
+	/*
+	 * YB: Display unique ids for Plan nodes (passed from corresponding Path
+	 * nodes).
+	 */
+	if (es->ybShowUniqueIds)
+	{
+		if (es->format == EXPLAIN_FORMAT_TEXT)
+		{
+			appendStringInfo(es->str, " (UID %u)", plan->ybUniqueId);
+		}
+		else
+		{
+			ExplainPropertyUInteger("UID", NULL, plan->ybUniqueId, es);
 		}
 	}
 
@@ -2665,8 +2734,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
 			/*
-			 * Quals are shown in the order they are applied: index pushdown,
-			 * relation pushdown, local clauses.
+			 * YB note: Quals are shown in the order they are applied: index
+			 * pushdown, relation pushdown, local clauses.
 			 */
 			show_scan_qual(((IndexScan *) plan)->indexorderbyorig,
 						   "Order By", planstate, ancestors, es);
@@ -2710,7 +2779,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 									   ((IndexOnlyScan *) plan)->yb_distinct_prefixlen,
 									   es, ancestors);
 			/*
-			 * Storage filter is applied first, so it is output first.
+			 * YB: Storage filter is applied first, so it is output first.
 			 */
 			show_scan_qual(((IndexOnlyScan *) plan)->yb_pushdown.quals,
 						   "Storage Filter", planstate, ancestors, es);
@@ -2756,7 +2825,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_YbBitmapTableScan:
 			{
 				YbBitmapTableScanState *bitmapscanstate =
-				(YbBitmapTableScanState *) planstate;
+					(YbBitmapTableScanState *) planstate;
 				YbBitmapTableScan *bitmapplan = (YbBitmapTableScan *) plan;
 				List	   *storage_filter = (bitmapscanstate->work_mem_exceeded ?
 											  bitmapplan->fallback_pushdown.quals :
@@ -2769,14 +2838,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				 * Storage filters are applied first, so they are output
 				 * first.
 				 */
-				if (bitmapscanstate->recheck_required)
+				if (bitmapscanstate->btss_might_recheck)
 					show_scan_qual(bitmapplan->recheck_pushdown.quals,
 								   "Storage Recheck Cond", planstate, ancestors,
 								   es);
 				show_scan_qual(storage_filter, "Storage Filter", planstate,
 							   ancestors, es);
 
-				if (bitmapscanstate->recheck_required)
+				if (bitmapscanstate->btss_might_recheck)
 				{
 					show_scan_qual(bitmapplan->recheck_local_quals, "Recheck Cond",
 								   planstate, ancestors, es);
@@ -2801,7 +2870,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			show_tablesample(((SampleScan *) plan)->tablesample,
 							 planstate, ancestors, es);
 			/* fall through to print additional fields the same as SeqScan */
-			switch_fallthrough();
+			/* FALLTHROUGH */
+			yb_switch_fallthrough();
 		case T_SeqScan:
 		case T_ValuesScan:
 		case T_CteScan:
@@ -4048,7 +4118,7 @@ show_incremental_sort_info(IncrementalSortState *incrsortstate,
 		for (n = 0; n < incrsortstate->shared_info->num_workers; n++)
 		{
 			IncrementalSortInfo *incsort_info =
-			&incrsortstate->shared_info->sinfo[n];
+				&incrsortstate->shared_info->sinfo[n];
 
 			/*
 			 * If a worker hasn't processed any sort groups at all, then
@@ -4144,8 +4214,8 @@ show_hash_info(HashState *hashstate, ExplainState *es)
 		long		spacePeakKb = (hinstrument.space_peak + 1023) / 1024;
 
 		/*
-		 * Hash joins have some non-deterministic fields and some deterministic
-		 * fields.
+		 * YB: Hash joins have some non-deterministic fields and some
+		 * deterministic fields.
 		 * - Original Hash Buckets and Original Hash Batches are computed at the
 		 *   beginning by ExecChooseHashTableSize.
 		 * - Hash Buckets may be updated based on the number of tuples. This
@@ -4533,6 +4603,14 @@ show_instrumentation_count(const char *qlabel, int which,
 		nfiltered = planstate->instrument->nfiltered1;
 	nloops = planstate->instrument->nloops;
 
+
+	if (IsYugaByteEnabled() && which == 2)
+	{
+		YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
+
+		nfiltered += yb_instr->rows_removed_by_recheck;
+	}
+
 	/* In text mode, suppress zero counts; they're not interesting enough */
 	if (nfiltered > 0 || es->format != EXPLAIN_FORMAT_TEXT)
 	{
@@ -4712,7 +4790,7 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage, bool planning)
 
 			if (has_timing)
 			{
-				appendStringInfoString(es->str, " shared/local");
+				appendStringInfoString(es->str, " shared");
 				if (!INSTR_TIME_IS_ZERO(usage->blk_read_time))
 					appendStringInfo(es->str, " read=%0.3f",
 									 INSTR_TIME_GET_MILLISEC(usage->blk_read_time));
@@ -4783,8 +4861,21 @@ show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
 	ExplainPropertyFloat("Estimated Seeks", NULL,
 						 planinfo->estimated_num_seeks, 0, es);
-	ExplainPropertyFloat("Estimated Nexts", NULL,
-						 planinfo->estimated_num_nexts, 0, es);
+	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL,
+						 planinfo->estimated_num_nexts_prevs, 0, es);
+
+	/*
+	 * YB_TODO(#27210): Do not print values of estimated_num_table_result_pages
+	 * or estimated_num_index_result_pages if == 0.
+	 */
+	if (planinfo->estimated_num_table_result_pages >= 0)
+		ExplainPropertyFloat("Estimated Table Roundtrips", NULL,
+							 planinfo->estimated_num_table_result_pages, 0, es);
+
+	if (planinfo->estimated_num_index_result_pages >= 0)
+		ExplainPropertyFloat("Estimated Index Roundtrips", NULL,
+							 planinfo->estimated_num_index_result_pages, 0, es);
+
 	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
 						   planinfo->estimated_docdb_result_width, es);
 }
@@ -5371,7 +5462,7 @@ ExplainCustomChildren(CustomScanState *css, List *ancestors, ExplainState *es)
 {
 	ListCell   *cell;
 	const char *label =
-	(list_length(css->custom_ps) != 1 ? "children" : "child");
+		(list_length(css->custom_ps) != 1 ? "children" : "child");
 
 	foreach(cell, css->custom_ps)
 		ExplainNode((PlanState *) lfirst(cell), ancestors, label, NULL, es);

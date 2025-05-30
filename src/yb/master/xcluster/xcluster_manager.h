@@ -18,13 +18,13 @@
 
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_source_manager.h"
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
-namespace yb {
+namespace yb::master {
 
-namespace master {
 class CDCStreamInfo;
 class GetMasterXClusterConfigResponsePB;
 class PauseResumeXClusterProducerStreamsRequestPB;
@@ -74,6 +74,10 @@ class XClusterManager : public XClusterManagerIf,
   Status PrepareDefaultXClusterConfig(int64_t term, bool recreate);
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
+
+  Status SetXClusterRole(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      XClusterNamespaceInfoPB_XClusterRole role);
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
   Status RemoveStreamsFromSysCatalog(
@@ -150,6 +154,15 @@ class XClusterManager : public XClusterManagerIf,
   Status InsertPackedSchemaForXClusterTarget(
       const InsertPackedSchemaForXClusterTargetRequestPB* req,
       InsertPackedSchemaForXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
+  // If the colocated table has not yet been created, store the new schema in the replication group.
+  // When the table is created, these schemas will be injected into the old_schema_packings of the
+  // TableInfo and the table will start at a greater schema version. This ensures that xCluster DDL
+  // Replication can map packing versions before the colocated table is actually created.
+  Status InsertHistoricalColocatedSchemaPacking(
+      const InsertHistoricalColocatedSchemaPackingRequestPB* req,
+      InsertHistoricalColocatedSchemaPackingResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
   // OutboundReplicationGroup RPCs.
@@ -233,7 +246,8 @@ class XClusterManager : public XClusterManagerIf,
   std::unordered_set<xcluster::ReplicationGroupId> GetInboundTransactionalReplicationGroups()
       const override;
 
-  Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) override;
+  Status ClearXClusterFieldsAfterYsqlDDL(
+      TableInfoPtr table_info, SysTablesEntryPB& table_pb, const LeaderEpoch& epoch) override;
 
   void NotifyAutoFlagsConfigChanged() override;
 
@@ -265,7 +279,9 @@ class XClusterManager : public XClusterManagerIf,
 
   bool IsTableReplicated(const TableId& table_id) const;
 
-  bool IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const;
+  bool IsNamespaceInAutomaticDDLMode(const NamespaceId& namespace_id) const override;
+  bool IsNamespaceInAutomaticModeSource(const NamespaceId& namespace_id) const override;
+  bool IsNamespaceInAutomaticModeTarget(const NamespaceId& namespace_id) const override;
 
   bool IsTableReplicationConsumer(const TableId& table_id) const override;
 
@@ -282,6 +298,12 @@ class XClusterManager : public XClusterManagerIf,
   Status RegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
   void UnRegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
 
+  Status ProcessCreateTableReq(
+      const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
+      const NamespaceId& namespace_id) const;
+
+  Status ValidateCreateTableRequest(const CreateTableRequestPB& req);
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
@@ -294,6 +316,4 @@ class XClusterManager : public XClusterManagerIf,
   std::unordered_set<server::MonitoredTaskPtr> monitored_tasks_ GUARDED_BY(monitored_tasks_mutex_);
 };
 
-}  // namespace master
-
-}  // namespace yb
+} // namespace yb::master

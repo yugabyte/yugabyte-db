@@ -180,6 +180,11 @@ class ApiService {
     const requestUrl = `${ROOT_URL}/metadata/version/${dbVersion}/gflag_groups?group=${groupName}`;
     return axios.get<GFlagGroupObject[]>(requestUrl).then((resp) => resp.data);
   };
+
+  fetchUniverseTasks = (universeUuid: string): Promise<any> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
+    return axios.get<any>(requestUrl, { params: { uUUID: universeUuid } });
+  };
 }
 
 export const api = new ApiService();

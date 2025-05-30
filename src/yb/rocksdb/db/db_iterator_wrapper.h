@@ -57,14 +57,12 @@ class DBIteratorWrapper : public Iterator {
     return wrapped_->GetProperty(prop_name, prop);
   }
 
-  bool ScanForward(
-      Slice upperbound, KeyFilterCallback* key_filter_callback,
-      ScanCallback* scan_callback) override {
-    return wrapped_->ScanForward(upperbound, key_filter_callback, scan_callback);
-  }
-
   void UseFastNext(bool value) override {
     wrapped_->UseFastNext(value);
+  }
+
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    wrapped_->UpdateFilterKey(user_key_for_filter);
   }
 
  protected:

@@ -15,19 +15,32 @@
 # the License.
 #
 # Wrapper around pgindent to supply all *typedefs.list and
-# *exclude_file_patterns.
+# *exclude_file_patterns.  Also automatically switches to the right directory
+# and references the built pg_bsd_indent.
 
 set -euo pipefail
 
 PGINDENT=src/tools/pgindent/pgindent
+PG_BSD_INDENT=../../build/latest/postgres_build/src/tools/pg_bsd_indent/pg_bsd_indent
 
-# This script should be run from the base of the postgres code.
 if ! [ -f "$PGINDENT" ]; then
-  echo "Could not find pgindent: are you in the pg base directory?" >/dev/stderr
+  if [ $# -gt 0 ]; then
+    echo "WARNING: Automatically switching to postgres root directory, so any paths referenced in commandline arguments may be offset. Run this script from within the postgres root directory to avoid this discrepancy." >&2
+  fi
+  repo_dir=$(git rev-parse --show-toplevel)
+  cd "$repo_dir"/src/postgres
+fi
+if ! [ -f "$PGINDENT" ]; then
+  echo "Could not find pgindent: are you in the YugabyteDB repo?" >&2
+  exit 1
+fi
+if ! [ -f "$PG_BSD_INDENT" ]; then
+  echo "Could not find pg_bsd_indent: did you build postgres?" >&2
   exit 1
 fi
 
 "$PGINDENT" \
+  --indent="$PG_BSD_INDENT" \
   --typedefs=<(find src -name '*typedefs.list' -print0 | xargs -0 cat) \
   --excludes=<(find src -name '*exclude_file_patterns' -print0 | xargs -0 cat) \
   "$@"

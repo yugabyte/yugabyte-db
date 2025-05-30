@@ -109,20 +109,13 @@ public class XClusterScheduler {
   }
 
   private boolean isXClusterEligibleForScheduledSync(XClusterConfig xClusterConfig) {
-    if (xClusterConfig.getStatus() != XClusterConfigStatusType.Running) {
+    // For DB scoped xCluster configs, we don't need to sync tables. Only the pause state might need
+    // syncing which can happen when the user calls the GET API.
+    if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
       return false;
     }
-
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    if (sourceUniverse.getUniverseDetails().updateInProgress
-        || targetUniverse.getUniverseDetails().updateInProgress) {
-      return false;
-    }
-    if (sourceUniverse.getUniverseDetails().universePaused
-        || targetUniverse.getUniverseDetails().universePaused) {
-      return false;
-    }
     return confGetter.getConfForScope(targetUniverse, UniverseConfKeys.xClusterSyncOnUniverse)
         && confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xClusterSyncOnUniverse);
   }
@@ -272,19 +265,28 @@ public class XClusterScheduler {
     }
   }
 
-  public void syncXClusterConfig(XClusterConfig config) {
+  public void syncXClusterConfig(XClusterConfig xClusterConfig) {
     try {
-      XCLUSTER_CONFIG_LOCK.acquireLock(config.getUuid());
-      if (!isXClusterEligibleForScheduledSync(config)) {
-        log.debug("Skipping xCluster config {} for scheduled sync", config.getName());
+      if (xClusterConfig.getStatus() != XClusterConfigStatusType.Running) {
         return;
       }
-      compareTablesAndSyncXClusterConfig(config);
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+      Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+      if (sourceUniverse.getUniverseDetails().updateInProgress
+          || targetUniverse.getUniverseDetails().updateInProgress) {
+        return;
+      }
+      if (sourceUniverse.getUniverseDetails().universePaused
+          || targetUniverse.getUniverseDetails().universePaused) {
+        return;
+      }
+      XCLUSTER_CONFIG_LOCK.acquireLock(xClusterConfig.getUuid());
+      compareTablesAndSyncXClusterConfig(xClusterConfig);
     } catch (Exception e) {
       log.error("Error syncing xCluster config:", e);
     } finally {
       try {
-        XCLUSTER_CONFIG_LOCK.releaseLock(config.getUuid());
+        XCLUSTER_CONFIG_LOCK.releaseLock(xClusterConfig.getUuid());
       } catch (Exception e) {
         log.error("Error releasing lock for xCluster config:", e);
       }
@@ -299,7 +301,9 @@ public class XClusterScheduler {
     log.info("Running xCluster Sync Scheduler...");
     try {
       List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
-      xClusterConfigs.forEach(this::syncXClusterConfig);
+      xClusterConfigs.stream()
+          .filter(this::isXClusterEligibleForScheduledSync)
+          .forEach(this::syncXClusterConfig);
     } catch (Exception e) {
       log.error("Error running xCluster Sync Scheduler:", e);
     }

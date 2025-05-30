@@ -138,6 +138,9 @@ static const struct
 	},
 	{
 		"YbQueryDiagnosticsMain", YbQueryDiagnosticsMain
+	},
+	{
+		"YbQueryDiagnosticsDatabaseConnectionWorkerMain", YbQueryDiagnosticsDatabaseConnectionWorkerMain
 	}
 };
 

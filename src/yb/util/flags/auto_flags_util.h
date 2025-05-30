@@ -27,19 +27,14 @@ namespace server {
 class ServerBaseOptions;
 }
 
-YB_STRONGLY_TYPED_BOOL(RuntimeAutoFlag);
 using ProcessName = std::string;
 
 struct AutoFlagInfo {
   const std::string name;
   const AutoFlagClass flag_class;
-  const RuntimeAutoFlag is_runtime;
-  AutoFlagInfo(
-      const std::string& name, const AutoFlagClass flag_class, const RuntimeAutoFlag is_runtime)
-      : name(name), flag_class(flag_class), is_runtime(is_runtime) {}
+  AutoFlagInfo(const std::string& name, const AutoFlagClass flag_class)
+      : name(name), flag_class(flag_class) {}
 };
-
-YB_STRONGLY_TYPED_BOOL(PromoteNonRuntimeAutoFlags)
 
 // Map from ProcessName to AutoFlag infos.
 using AutoFlagsInfoMap = std::unordered_map<ProcessName, std::vector<AutoFlagInfo>>;
@@ -51,12 +46,10 @@ std::string DumpAutoFlagsToJSON(const ProcessName& program_name);
 
 Result<AutoFlagsInfoMap> GetAvailableAutoFlags();
 
-Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(
-    const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime);
+Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(const AutoFlagClass max_flag_class);
 
 AutoFlagsInfoMap GetFlagsEligibleForPromotion(
-    const AutoFlagsInfoMap& available_flags, const AutoFlagClass max_flag_class,
-    const PromoteNonRuntimeAutoFlags promote_non_runtime);
+    const AutoFlagsInfoMap& available_flags, const AutoFlagClass max_flag_class);
 
 // Returns true if all flags in base_config with class greater to or equal to min_class are found in
 // the base_config.

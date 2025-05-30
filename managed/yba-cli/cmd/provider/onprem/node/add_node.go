@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -49,7 +50,8 @@ var addNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		providerListRequest := authAPI.GetListOfProviders()
-		providerListRequest = providerListRequest.Name(providerName).ProviderCode(util.OnpremProviderType)
+		providerListRequest = providerListRequest.Name(providerName).
+			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -76,6 +78,27 @@ var addNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		rInstanceType, response, err := authAPI.InstanceTypeDetail(
+			providerUUID,
+			instanceType).Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(
+				response, err,
+				"Node Instance",
+				"Add - Fetch Instance Type")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		if !rInstanceType.GetActive() {
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf(
+						"Instance type: %s is unavailable or not active in provider %s\n",
+						instanceType, providerName),
+					formatter.RedColor,
+				))
+		}
+
 		nodeIP, err := cmd.Flags().GetString("ip")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -85,7 +108,12 @@ var addNodesCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		regionUUID, err := fetchRegionUUIDFromRegionName(authAPI, providerUUID, region)
+		regionUUID, err := fetchRegionUUIDFromRegionName(
+			authAPI,
+			providerName,
+			providerUUID,
+			region,
+		)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -94,7 +122,8 @@ var addNodesCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		azUUID, err := fetchZoneUUIDFromZoneName(authAPI, providerUUID, regionUUID, zone)
+		azUUID, err := fetchZoneUUIDFromZoneName(
+			authAPI, providerName, providerUUID, region, regionUUID, zone)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -153,14 +182,34 @@ var addNodesCmd = &cobra.Command{
 		universeList, response, err := authAPI.ListUniverses().Execute()
 		for _, u := range universeList {
 			details := u.GetUniverseDetails()
-			primaryCluster := details.GetClusters()[0]
+			primaryCluster := universeutil.FindClusterByType(
+				details.GetClusters(),
+				util.PrimaryClusterType,
+			)
+			if primaryCluster == (ybaclient.Cluster{}) {
+				logrus.Debug(
+					formatter.Colorize(
+						fmt.Sprintf(
+							"No primary cluster found in universe %s (%s)\n",
+							u.GetName(),
+							u.GetUniverseUUID(),
+						),
+						formatter.YellowColor,
+					))
+				continue
+			}
 			userIntent := primaryCluster.GetUserIntent()
 			if userIntent.GetProvider() == providerUUID {
 				onprem.UniverseList = append(onprem.UniverseList, u)
 			}
 		}
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Add - Fetch Universes")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Node Instance",
+				"Add - Fetch Universes",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		onprem.Write(nodesCtx, nodeInstanceList)
@@ -172,7 +221,10 @@ func init() {
 	addNodesCmd.Flags().SortFlags = false
 
 	addNodesCmd.Flags().String("instance-type", "",
-		"[Required] Instance type of the node as describe in the provider.")
+		"[Required] Instance type of the node as described in the provider. "+
+			"Run \"yba provider onprem instance-type list "+
+			"--name <provider-name>\" for a list of "+
+			"instance types associated with the provider.")
 	addNodesCmd.Flags().String("ip", "",
 		"[Required] IP address of the node instance.")
 	addNodesCmd.Flags().String("region", "",
@@ -200,6 +252,7 @@ func init() {
 }
 
 func fetchRegionUUIDFromRegionName(authAPI *ybaAuthClient.AuthAPIClient,
+	providerName,
 	providerUUID, regionName string) (string, error) {
 	var err error
 	r, response, err := authAPI.GetRegion(providerUUID).Execute()
@@ -214,11 +267,15 @@ func fetchRegionUUIDFromRegionName(authAPI *ybaAuthClient.AuthAPIClient,
 			return region.GetUuid(), nil
 		}
 	}
-	return "", fmt.Errorf("No region %s found in provider %s", regionName, providerUUID)
+	return "",
+		fmt.Errorf("No region %s found in provider %s (%s)", regionName, providerName, providerUUID)
 }
 
 func fetchZoneUUIDFromZoneName(authAPI *ybaAuthClient.AuthAPIClient,
-	providerUUID, regionUUID, azName string) (string, error) {
+	providerName,
+	providerUUID,
+	regionName,
+	regionUUID, azName string) (string, error) {
 	r, response, err := authAPI.ListOfAZ(providerUUID, regionUUID).Execute()
 	if err != nil {
 		errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance",
@@ -231,8 +288,9 @@ func fetchZoneUUIDFromZoneName(authAPI *ybaAuthClient.AuthAPIClient,
 			return az.GetUuid(), nil
 		}
 	}
-	return "", fmt.Errorf("No availability zone %s found in region "+
-		" %s of provider %s", azName, regionUUID, providerUUID)
+	return "", fmt.Errorf(
+		"No availability zone %s found in region %s (%s) of provider %s (%s)",
+		azName, regionName, regionUUID, providerName, providerUUID)
 }
 
 func buildNodeConfig(nodeConfigsStrings []string) *[]ybaclient.NodeConfig {

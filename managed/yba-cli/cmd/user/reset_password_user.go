@@ -49,7 +49,10 @@ var resetPasswordUserCmd = &cobra.Command{
 					"No new password found\n",
 					formatter.RedColor))
 		}
-		if strings.Compare(strings.TrimSpace(currentPassword), strings.TrimSpace(newPassword)) == 0 {
+		if strings.Compare(
+			strings.TrimSpace(currentPassword),
+			strings.TrimSpace(newPassword),
+		) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -81,11 +84,10 @@ var resetPasswordUserCmd = &cobra.Command{
 		}
 
 		if !rUpdate.GetSuccess() {
-			logrus.Errorf(
+			logrus.Fatalf(
 				formatter.Colorize(
 					"An error occurred while updating password for current user\n",
 					formatter.RedColor))
-
 		}
 
 		rGet, response, err := authAPI.GetUserDetails(viper.GetString("user-uuid")).Execute()

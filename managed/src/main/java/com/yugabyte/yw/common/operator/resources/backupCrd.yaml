@@ -72,6 +72,11 @@ spec:
                   description: Time before backup is deleted from storage in milliseconds.
                   type: integer
                   minimum: 0
+                incrementalBackupBase:
+                  description: >
+                    Base backup Custom Resource name. Operator will add an incremental backup
+                    to the existing chain of backups at the last.
+                  type: string
               required:
               - keyspace
               - backupType

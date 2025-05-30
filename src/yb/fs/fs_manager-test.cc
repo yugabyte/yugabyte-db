@@ -40,6 +40,7 @@
 
 #include "yb/gutil/strings/util.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
 #include "yb/util/result.h"

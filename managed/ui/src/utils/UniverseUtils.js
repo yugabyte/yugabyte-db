@@ -179,12 +179,14 @@ export const getUniverseDedicatedNodeCount = (nodeDetailsSet, cluster = null) =>
 
 export const isDedicatedNodePlacement = (currentUniverse) => {
   let isDedicatedNodes = false;
+
   if (!currentUniverse?.universeDetails) return isDedicatedNodes;
 
   const clusters = currentUniverse.universeDetails.clusters;
   const primaryCluster = clusters && getPrimaryCluster(clusters);
+  const isK8sUniverse = primaryCluster.userIntent.providerType === 'kubernetes';
   isDedicatedNodes = primaryCluster.userIntent.dedicatedNodes;
-  return isDedicatedNodes;
+  return isDedicatedNodes || isK8sUniverse;
 };
 
 export function getProviderMetadata(provider) {
@@ -338,10 +340,10 @@ export const getProxyNodeAddress = (universeUUID, nodeIp, nodePort) => {
  *
  * @param GFlagInput The entire Gflag configuration enetered that needs to be unformatted
  */
-export const unformatConf = (formValues, GFlagInput) => {
+export const unformatConf = (formValues, flagValue) => {
   const flagName = formValues?.flagname;
   // Regex expression to extract non-quoted comma
-  const filteredGFlagInput = GFlagInput.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+  const filteredGFlagInput = flagValue.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
   const unformattedConf = filteredGFlagInput?.map((GFlagRowConf, index) => {
     let JWKSToken = '';
     const hasInputStartQuotes =
@@ -353,9 +355,10 @@ export const unformatConf = (formValues, GFlagInput) => {
     let GFlagRowConfSubset = '';
 
     if (hasInputStartQuotes || hasInputEndQuotes) {
+      // For PG_CONF we shouldn't remove surround quotes as based on the Postgres documentation
       GFlagRowConfSubset = GFlagRowConf.substring(
-        hasInputStartQuotes ? 1 : 0,
-        hasInputEndQuotes
+        hasInputStartQuotes && flagName !== MultilineGFlags.YSQL_PG_CONF_CSV ? 1 : 0,
+        hasInputEndQuotes && flagName !== MultilineGFlags.YSQL_PG_CONF_CSV
           ? GFlagRowConf[0].startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
             GFlagRowConf[GFlagRowConf.length - 2].startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR)
             ? GFlagRowConf.length - 2

@@ -53,7 +53,7 @@ void SamplingProfilerTest::SetUp() {
 // and 2 MiB for Google tcmalloc.
 // So,allocate enough data after changing the sample rate to cause the new sampling rate to take
 // effect (with high probability).
-void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_freq_bytes) {
+void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_period_bytes) {
   int64_t old_rate;
 #if YB_GPERFTOOLS_TCMALLOC
   old_rate = MallocExtension::instance()->GetProfileSamplingRate();
@@ -63,7 +63,7 @@ void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_freq_bytes) {
 #else
   old_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
 #endif
-  SetTCMallocSamplingFrequency(sample_freq_bytes);
+  SetTCMallocSamplingPeriod(sample_period_bytes);
 
   // The probability of sampling an allocation of size X with sampling rate Y is 1 - e^(-X/Y).
   // An allocation of size Y * 14 is thus sampled with probability > 99.9999%.
@@ -217,13 +217,15 @@ TEST_F(SamplingProfilerTest, OnlyOneHeapProfile) {
   ASSERT_NOK(status2);
   ASSERT_STR_CONTAINS(status2.message().ToBuffer(), "A heap profile is already running");
 
-  ASSERT_EQ(GetTCMallocSamplingFrequency(), 1);
+  ASSERT_EQ(GetTCMallocSamplingPeriod(), 1);
 }
 
 // Verify that the estimated bytes and count are close to their actual values.
 TEST_F(SamplingProfilerTest, EstimatedBytesAndCount) {
   const auto kSampleFreqBytes = 10_KB;
   const auto kAllocSize = 10_KB;
+  // TCMalloc rounds up allocations to a size class, so use that instead of the requested size.
+  const auto kActualAllocSize = tcmalloc::MallocExtension::GetEstimatedAllocatedSize(kAllocSize);
   const auto kNumAllocations = 1000;
 
   SetProfileSamplingRate(kSampleFreqBytes);
@@ -244,7 +246,7 @@ TEST_F(SamplingProfilerTest, EstimatedBytesAndCount) {
   ASSERT_NEAR(kNumAllocations, estimated_count, margin);
 
   auto estimated_bytes = *samples[0].second.estimated_bytes;
-  auto actual_bytes = kAllocSize * kNumAllocations;
+  auto actual_bytes = kActualAllocSize * kNumAllocations;
   margin = actual_bytes * 0.2;
   ASSERT_NEAR(actual_bytes, estimated_bytes, margin);
 }

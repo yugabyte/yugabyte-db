@@ -86,6 +86,7 @@
 #include "access/xlog.h"
 #include "access/xloginsert.h"
 #include "access/xlogreader.h"
+#include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
 #include "catalog/pg_type.h"
 #include "catalog/storage.h"
@@ -484,8 +485,8 @@ MarkAsPreparingGuts(GlobalTransaction gxact, TransactionId xid, const char *gid,
 	proc->databaseId = databaseid;
 	proc->roleId = owner;
 	proc->tempNamespaceId = InvalidOid;
-	proc->isBackgroundWorker = false;
-	proc->lwWaiting = false;
+	proc->isBackgroundWorker = true;
+	proc->lwWaiting = LW_WS_NOT_WAITING;
 	proc->lwWaitMode = 0;
 	proc->waitLock = NULL;
 	proc->waitProcLock = NULL;
@@ -1484,6 +1485,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit)
 	GlobalTransaction gxact;
 	PGPROC	   *proc;
 	TransactionId xid;
+	bool		ondisk;
 	char	   *buf;
 	char	   *bufptr;
 	TwoPhaseFileHeader *hdr;
@@ -1636,6 +1638,12 @@ FinishPreparedTransaction(const char *gid, bool isCommit)
 
 	PredicateLockTwoPhaseFinish(xid, isCommit);
 
+	/*
+	 * Read this value while holding the two-phase lock, as the on-disk 2PC
+	 * file is physically removed after the lock is released.
+	 */
+	ondisk = gxact->ondisk;
+
 	/* Clear shared memory state */
 	RemoveGXact(gxact);
 
@@ -1651,7 +1659,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit)
 	/*
 	 * And now we can clean up any files we may have left.
 	 */
-	if (gxact->ondisk)
+	if (ondisk)
 		RemoveTwoPhaseFile(xid, true);
 
 	MyLockedGxact = NULL;
@@ -2012,9 +2020,8 @@ PrescanPreparedTransactions(TransactionId **xids_p, int *nxids_p)
  * This is never called at the end of recovery - we use
  * RecoverPreparedTransactions() at that point.
  *
- * The lack of calls to SubTransSetParent() calls here is by design;
- * those calls are made by RecoverPreparedTransactions() at the end of recovery
- * for those xacts that need this.
+ * This updates pg_subtrans, so that any subtransactions will be correctly
+ * seen as in-progress in snapshots taken during recovery.
  */
 void
 StandbyRecoverPreparedTransactions(void)
@@ -2034,7 +2041,7 @@ StandbyRecoverPreparedTransactions(void)
 
 		buf = ProcessTwoPhaseBuffer(xid,
 									gxact->prepare_start_lsn,
-									gxact->ondisk, false, false);
+									gxact->ondisk, true, false);
 		if (buf != NULL)
 			pfree(buf);
 	}
@@ -2478,6 +2485,38 @@ PrepareRedoAdd(char *buf, XLogRecPtr start_lsn,
 	 * The gxact also gets marked with gxact->inredo set to true to indicate
 	 * that it got added in the redo phase
 	 */
+
+	/*
+	 * In the event of a crash while a checkpoint was running, it may be
+	 * possible that some two-phase data found its way to disk while its
+	 * corresponding record needs to be replayed in the follow-up recovery. As
+	 * the 2PC data was on disk, it has already been restored at the beginning
+	 * of recovery with restoreTwoPhaseData(), so skip this record to avoid
+	 * duplicates in TwoPhaseState.  If a consistent state has been reached,
+	 * the record is added to TwoPhaseState and it should have no
+	 * corresponding file in pg_twophase.
+	 */
+	if (!XLogRecPtrIsInvalid(start_lsn))
+	{
+		char		path[MAXPGPATH];
+
+		TwoPhaseFilePath(path, hdr->xid);
+
+		if (access(path, F_OK) == 0)
+		{
+			ereport(reachedConsistency ? ERROR : WARNING,
+					(errmsg("could not recover two-phase state file for transaction %u",
+							hdr->xid),
+					 errdetail("Two-phase state file has been found in WAL record %X/%X, but this transaction has already been restored from disk.",
+							   LSN_FORMAT_ARGS(start_lsn))));
+			return;
+		}
+
+		if (errno != ENOENT)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not access file \"%s\": %m", path)));
+	}
 
 	/* Get a free gxact from the freelist */
 	if (TwoPhaseState->freeGXacts == NULL)

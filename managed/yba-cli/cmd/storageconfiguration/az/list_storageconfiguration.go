@@ -17,7 +17,11 @@ var listAZStorageConfigurationCmd = &cobra.Command{
 	Long:    "List YugabyteDB Anywhere storage-configurations",
 	Example: `yba storage-config azure list`,
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.ListStorageConfigurationUtil(cmd, "Azure", util.AzureStorageConfigType)
+		storageconfigurationutil.ListStorageConfigurationUtil(
+			cmd,
+			"Azure",
+			util.AzureStorageConfigType,
+		)
 
 	},
 }

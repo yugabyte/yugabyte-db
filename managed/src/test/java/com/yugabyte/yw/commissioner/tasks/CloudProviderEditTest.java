@@ -165,7 +165,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   @Override
   public void setUp() {
     super.setUp();
-    user = ModelFactory.testUser(defaultCustomer);
+    user = ModelFactory.testSuperAdminUserNewRbac(defaultCustomer);
     factory.globalRuntimeConf().setValue(GlobalConfKeys.enableVMOSPatching.getKey(), "true");
     provider =
         Provider.create(

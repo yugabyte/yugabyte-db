@@ -20,10 +20,11 @@
  *-------------------------------------------------------------------------
  */
 
-#include "utils/yb_tuplecache.h"
+#include "postgres.h"
 
-#include "access/table.h"
 #include "access/genam.h"
+#include "access/table.h"
+#include "utils/yb_tuplecache.h"
 
 void
 YbLoadTupleCache(YbTupleCache *cache, Oid relid,

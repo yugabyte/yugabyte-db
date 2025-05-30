@@ -25,8 +25,6 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/toasting.h"
 #include "commands/defrem.h"
@@ -34,9 +32,13 @@
 #include "nodes/makefuncs.h"
 #include "utils/memutils.h"
 
-#include "pg_yb_utils.h"
-#include "executor/ybModifyTable.h"
+/* YB includes */
 #include "bootstrap/yb_bootstrap.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
+
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
@@ -54,7 +56,7 @@ static MemoryContext per_line_ctx = NULL;
 static void
 do_start(void)
 {
-	Assert(GetCurrentMemoryContext() == CurTransactionContext);
+	Assert(CurrentMemoryContext == CurTransactionContext);
 	/* First time through, create the per-line working context */
 	if (per_line_ctx == NULL)
 		per_line_ctx = AllocSetContextCreate(CurTransactionContext,
@@ -110,10 +112,10 @@ static int num_columns_read = 0;
 %token NULLVAL
 /* All the rest are unreserved, and should be handled in boot_ident! */
 %token <kw> OPEN XCLOSE XCREATE INSERT_TUPLE
-%token <kw> XDECLARE YBDECLARE INDEX ON USING XBUILD INDICES PRIMARY UNIQUE XTOAST
+%token <kw> XDECLARE INDEX ON USING XBUILD INDICES UNIQUE XTOAST
 %token <kw> OBJ_ID XBOOTSTRAP XSHARED_RELATION XROWTYPE_OID
 %token <kw> XFORCE XNOT XNULL
-%token <kw> YBCHECKINITDBDONE
+%token <kw> PRIMARY YBCHECKINITDBDONE YBDECLARE
 
 %start TopLevel
 
@@ -296,7 +298,7 @@ Boot_CreateStmt:
 						YBCCreateSysCatalogTable($2, $3, tupdesc, shared_relation, $12);
 					}
 
-                    do_end();
+					do_end();
 				}
 		;
 

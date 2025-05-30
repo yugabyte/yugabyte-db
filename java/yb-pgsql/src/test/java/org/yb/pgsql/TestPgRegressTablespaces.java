@@ -32,6 +32,9 @@ import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 import static org.yb.AssertionWrappers.*;
 import com.google.common.collect.ImmutableMap;
 
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
+
 /**
  * Runs the pg_regress test suite on YB code.
  */
@@ -44,17 +47,17 @@ public class TestPgRegressTablespaces extends BasePgRegressTest {
           "placement_region", "region1",
           "placement_zone", "zone1"),
       ImmutableMap.of(
-          "placement_cloud", "cloud2",
-          "placement_region", "region2",
-          "placement_zone", "zone2"),
-      ImmutableMap.of(
           "placement_cloud", "cloud1",
           "placement_region", "region1",
           "placement_zone", "zone2"),
       ImmutableMap.of(
-        "placement_cloud", "cloud1",
-        "placement_region", "region2",
-        "placement_zone", "zone1"));
+          "placement_cloud", "cloud1",
+          "placement_region", "region2",
+          "placement_zone", "zone1"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud2",
+          "placement_region", "region1",
+          "placement_zone", "zone1"));
 
   private Map<String, String> masterFlags =
     ImmutableMap.of(
@@ -90,6 +93,539 @@ public class TestPgRegressTablespaces extends BasePgRegressTest {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false /* nullify */);
   }
 
+  private void testYBTablespaceLocalIndexHelper
+    (Boolean enable_base_scans_cost_model) throws Exception {
+  try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+      Statement statement1 = connection1.createStatement()) {
+
+    assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+    assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+    assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+    if (enable_base_scans_cost_model)
+    {
+      statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+      statement1.execute("ANALYZE foo;");
+    }
+    else
+      statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+    ExplainAnalyzeUtils.testExplain(
+      statement1,
+      "SELECT * FROM foo WHERE x = 5",
+      makeTopLevelBuilder()
+        .storageReadRequests(Checkers.greater(0))
+        .storageWriteRequests(Checkers.equal(0))
+        .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+        .plan(makePlanBuilder()
+          .nodeType(NODE_INDEX_ONLY_SCAN)
+          .indexName("c1r1z1_index_x")
+          .build())
+        .build());
+  }
+
+  try (Connection connection1 = getConnectionBuilder().withTServer(1).connect();
+      Statement statement1 = connection1.createStatement()) {
+
+    assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+    assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+    assertOneRow(statement1, "SELECT yb_server_zone()", "zone2");
+
+    if (enable_base_scans_cost_model)
+      statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+    else
+      statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+    ExplainAnalyzeUtils.testExplain(
+      statement1,
+      "SELECT * FROM foo WHERE x = 5",
+      makeTopLevelBuilder()
+        .storageReadRequests(Checkers.greater(0))
+        .storageWriteRequests(Checkers.equal(0))
+        .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+        .plan(makePlanBuilder()
+          .nodeType(NODE_INDEX_ONLY_SCAN)
+          .indexName("c1r1z2_index_x")
+          .build())
+        .build());
+  }
+
+  try (Connection connection1 = getConnectionBuilder().withTServer(2).connect();
+      Statement statement1 = connection1.createStatement()) {
+
+    assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+    assertOneRow(statement1, "SELECT yb_server_region()", "region2");
+    assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+    if (enable_base_scans_cost_model)
+      statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+    else
+      statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+    ExplainAnalyzeUtils.testExplain(
+      statement1,
+      "SELECT * FROM foo WHERE x = 5",
+      makeTopLevelBuilder()
+        .storageReadRequests(Checkers.greater(0))
+        .storageWriteRequests(Checkers.equal(0))
+        .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+        .plan(makePlanBuilder()
+          .nodeType(NODE_INDEX_ONLY_SCAN)
+          .indexName("c1r2z1_index_x")
+          .build())
+        .build());
+  }
+
+  // Try connecting to a different node, which should change the chosen index.
+  try (Connection connection1 = getConnectionBuilder().withTServer(3).connect();
+    Statement statement1 = connection1.createStatement()) {
+
+    assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud2");
+    assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+    assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+    if (enable_base_scans_cost_model)
+      statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+    else
+      statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+    ExplainAnalyzeUtils.testExplain(
+      statement1,
+      "SELECT * FROM foo WHERE x = 5",
+      makeTopLevelBuilder()
+        .storageReadRequests(Checkers.greater(0))
+        .storageWriteRequests(Checkers.equal(0))
+        .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+        .plan(makePlanBuilder()
+          .nodeType(NODE_INDEX_ONLY_SCAN)
+          .indexName("c2r1z1_index_x")
+          .build())
+        .build());
+  }
+  }
+
+  @Test
+  public void testYBTablespaceLocalIndex() throws Exception {
+    // Test that leader preference is a cost component when calculating
+    // the cost of identical indexes on different tablespaces. In particular,
+    // this test checks that connecting to different nodes will result in
+    // different indexes being chosen; it's otherwise very basic. More
+    // tests for leader preference can be found in the postgres regression
+    // tests for tablespaces.
+
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+        Statement statement1 = connection1.createStatement()) {
+      // Create tablespaces, with the same placements but different leader preferences.
+      statement1.execute("CREATE TABLESPACE c1r1z1 WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE c1r1z2 WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE c1r2z1 WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region2\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE c2r1z1 WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud2\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.executeUpdate("CREATE TABLE foo(x int, y int)");
+      statement1.executeUpdate("INSERT INTO foo (SELECT s, s FROM generate_series(1, 1000) s)");
+      // Create identical indexes, one in each tablespace.
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r1z1_index_x ON foo(x) INCLUDE (y) "
+          + "TABLESPACE c1r1z1");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r1z2_index_x ON foo(x) INCLUDE (y) "
+          + "TABLESPACE c1r1z2");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r2z1_index_x ON foo(x) INCLUDE (y) "
+          + "TABLESPACE c1r2z1");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c2r1z1_index_x ON foo(x) INCLUDE (y) "
+          + "TABLESPACE c2r1z1");
+    }
+
+    // Run without the cost model first. Table will be analyzed before running with cost model.
+    testYBTablespaceLocalIndexHelper(false /* enable_base_scans_cost_model */);
+    testYBTablespaceLocalIndexHelper(true /* enable_base_scans_cost_model */);
+  }
+
+  private void testYBTablespaceLocalExpressionIndexHelper
+    (Boolean enable_base_scans_cost_model) throws Exception {
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+        Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+      if (enable_base_scans_cost_model)
+      {
+        statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+        statement1.execute("ANALYZE foo;");
+      }
+      else
+        statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT x, y FROM foo WHERE x+y = 10",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c1r1z1_index_x_plus_y")
+            .build())
+          .build());
+
+      // Old cost model supports geolocation costing for index only scans only, but new cost model
+      // should pick closest index for index scan too.
+      if (enable_base_scans_cost_model) {
+        ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE x+y = 10",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_SCAN)
+            .indexName("c1r1z1_index_x_plus_y")
+            .build())
+          .build());
+      }
+    }
+
+    try (Connection connection1 = getConnectionBuilder().withTServer(1).connect();
+        Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone2");
+
+      if (enable_base_scans_cost_model)
+        statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+      else
+        statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT x, y FROM foo WHERE x+y = 10",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c1r1z2_index_x_plus_y")
+            .build())
+          .build());
+
+      // Old cost model supports geolocation costing for index only scans only, but new cost model
+      // should pick closest index for index scan too.
+      if (enable_base_scans_cost_model) {
+        ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE x+y = 10",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_SCAN)
+            .indexName("c1r1z2_index_x_plus_y")
+            .build())
+          .build());
+      }
+    }
+
+    try (Connection connection1 = getConnectionBuilder().withTServer(2).connect();
+        Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region2");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+      if (enable_base_scans_cost_model)
+        statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+      else
+        statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT x, y FROM foo WHERE x+y = 10",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c1r2z1_index_x_plus_y")
+            .build())
+          .build());
+
+      // Old cost model supports geolocation costing for index only scans only, but new cost model
+      // should pick closest index for index scan too.
+      if (enable_base_scans_cost_model) {
+        ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE x+y = 10",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_SCAN)
+            .indexName("c1r2z1_index_x_plus_y")
+            .build())
+          .build());
+      }
+    }
+
+    // Try connecting to a different node, which should change the chosen index.
+    try (Connection connection1 = getConnectionBuilder().withTServer(3).connect();
+      Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud2");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+      if (enable_base_scans_cost_model)
+        statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+      else
+        statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT x, y FROM foo WHERE x+y = 10",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c2r1z1_index_x_plus_y")
+            .build())
+          .build());
+
+      // Old cost model supports geolocation costing for index only scans only, but new cost model
+      // should pick closest index for index scan too.
+      if (enable_base_scans_cost_model) {
+        ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE x+y = 10",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_SCAN)
+            .indexName("c2r1z1_index_x_plus_y")
+            .build())
+          .build());
+      }
+    }
+  }
+
+  @Test
+  public void testYBTablespaceLocalExpressionIndex() throws Exception {
+    // Test that leader preference is a cost component when calculating
+    // the cost of identical indexes on different tablespaces. In particular,
+    // this test checks that connecting to different nodes will result in
+    // different indexes being chosen; it's otherwise very basic. More
+    // tests for leader preference can be found in the postgres regression
+    // tests for tablespaces.
+
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+        Statement statement1 = connection1.createStatement()) {
+      // Create tablespaces, with the same placements but different leader preferences.
+      statement1.execute("CREATE TABLESPACE c1r1z1 WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE c1r1z2 WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE c1r2z1 WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region2\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE c2r1z1 WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud2\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.executeUpdate("CREATE TABLE foo(x int, y int, z int)");
+      statement1.executeUpdate("INSERT INTO foo (SELECT s, s, s FROM generate_series(1, 1000) s)");
+      // Create identical indexes, one in each tablespace.
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r1z1_index_x_plus_y ON foo((x+y)) "
+          + "INCLUDE (x, y) TABLESPACE c1r1z1");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r1z2_index_x_plus_y ON foo((x+y)) "
+          + "INCLUDE (x, y) TABLESPACE c1r1z2");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r2z1_index_x_plus_y ON foo((x+y)) "
+          + "INCLUDE (x, y) TABLESPACE c1r2z1");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c2r1z1_index_x_plus_y ON foo((x+y)) "
+          + "INCLUDE (x, y) TABLESPACE c2r1z1");
+    }
+
+    // Run without the cost model first. Table will be analyzed before running with cost model.
+    testYBTablespaceLocalExpressionIndexHelper(false /* enable_base_scans_cost_model */);
+    testYBTablespaceLocalExpressionIndexHelper(true /* enable_base_scans_cost_model */);
+  }
+
+  private void testYBTablespaceLeaderPreferenceHelper
+      (Boolean enable_base_scans_cost_model) throws Exception {
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+        Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+      if (enable_base_scans_cost_model)
+      {
+        statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+        statement1.execute("ANALYZE foo;");
+      }
+      else
+        statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+      // Pick index on x with leader preference on c1r1z1 over c1r1z2
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE x = 5",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c1r1z1_index_x")
+            .build())
+          .build());
+
+      // Pick index on y with leader preference on c1r1z1 over c1r2z1
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE y = 5",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c1r1z1_index_y")
+            .build())
+          .build());
+
+      // Pick index on z with leader preference on c1r1z1 over c2r1z1
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE z = 5",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c1r1z1_index_z")
+            .build())
+          .build());
+   }
+
+   try (Connection connection1 = getConnectionBuilder().withTServer(1).connect();
+        Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone2");
+
+      if (enable_base_scans_cost_model)
+        statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+      else
+        statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+      // Pick index on x with leader preference on c1r1z2, over c1r1z1.
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE x = 5",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c1r1z2_index_x")
+            .build())
+          .build());
+    }
+
+    try (Connection connection1 = getConnectionBuilder().withTServer(2).connect();
+        Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region2");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+      if (enable_base_scans_cost_model)
+        statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+      else
+        statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+      // Pick index on y with leader preference on c1r2z1 over c1r1z1
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE y = 5",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c1r2z1_index_y")
+            .build())
+          .build());
+    }
+
+    // Try connecting to a different node, which should change the chosen index.
+    try (Connection connection1 = getConnectionBuilder().withTServer(3).connect();
+      Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud2");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+      if (enable_base_scans_cost_model)
+        statement1.execute("SET yb_enable_base_scans_cost_model = true;");
+      else
+        statement1.execute("SET yb_enable_base_scans_cost_model = false;");
+
+      // Pick index on z with leader preference on c2r1z1 over c1r1z1
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE z = 5",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .nodeType(NODE_INDEX_ONLY_SCAN)
+            .indexName("c2r1z1_index_z")
+            .build())
+          .build());
+    }
+  }
+
   @Test
   public void testYBTablespaceLeaderPreference() throws Exception {
     // Test that leader preference is a cost component when calculating
@@ -100,70 +636,76 @@ public class TestPgRegressTablespaces extends BasePgRegressTest {
     // tests for tablespaces.
 
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
-         Statement statement1 = connection1.createStatement()) {
-
-      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
-      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
-      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
-
+        Statement statement1 = connection1.createStatement()) {
       // Create tablespaces, with the same placements but different leader preferences.
-      statement1.execute("CREATE TABLESPACE localtablespace " +
+      statement1.execute("CREATE TABLESPACE leader_c1r1z1_rep_c1r1z2 " +
           "  WITH (replica_placement=" +
           "'{\"num_replicas\":2, \"placement_blocks\":" +
           "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
           "\"min_num_replicas\":1, \"leader_preference\":1}," +
-          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone2\"," +
           "\"min_num_replicas\":1}]}')");
 
-      statement1.execute("CREATE TABLESPACE remotetablespace " +
+      statement1.execute("CREATE TABLESPACE leader_c1r1z2_rep_c1r1z1 " +
           "  WITH (replica_placement=" +
           "'{\"num_replicas\":2, \"placement_blocks\":" +
-          "[{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone2\"," +
           "\"min_num_replicas\":1, \"leader_preference\":1}," +
           "{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
           "\"min_num_replicas\":1}]}')");
 
-      statement1.executeUpdate("CREATE TABLE foo(x int, y int)");
+      statement1.execute("CREATE TABLESPACE leader_c1r1z1_rep_c1r2z1 " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1, \"leader_preference\":1}," +
+          "{\"cloud\":\"cloud1\",\"region\":\"region2\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE leader_c1r2z1_rep_c1r1z1 " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region2\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1, \"leader_preference\":1}," +
+          "{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE leader_c1r1z1_rep_c2r1z1 " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1, \"leader_preference\":1}," +
+          "{\"cloud\":\"cloud2\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE leader_c2r1z1_rep_c1r1z1 " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud2\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1, \"leader_preference\":1}," +
+          "{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.executeUpdate("CREATE TABLE foo(x int, y int, z int)");
+      statement1.executeUpdate("INSERT INTO foo (SELECT s, s, s FROM generate_series(1, 1000) s)");
       // Create identical indexes, one in each tablespace.
-      statement1.executeUpdate(
-        "CREATE UNIQUE INDEX localind ON foo(x) INCLUDE (y) TABLESPACE localtablespace");
-      statement1.executeUpdate(
-        "CREATE UNIQUE INDEX remoteind ON foo(x) INCLUDE (y) TABLESPACE remotetablespace");
-
-      // Expect to use the index in the tablespace with leader preference closer to us.
-      ExplainAnalyzeUtils.testExplain(
-        statement1,
-        "SELECT * FROM foo WHERE x = 5",
-        makeTopLevelBuilder()
-          .storageReadRequests(Checkers.greater(0))
-          .storageWriteRequests(Checkers.equal(0))
-          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
-          .plan(makePlanBuilder()
-            .indexName("localind")
-            .build())
-          .build());
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r1z1_index_x ON foo(x) INCLUDE (y, z) "
+          + "TABLESPACE leader_c1r1z1_rep_c1r1z2");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r1z2_index_x ON foo(x) INCLUDE (y, z) "
+          + "TABLESPACE leader_c1r1z2_rep_c1r1z1");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r1z1_index_y ON foo(y) INCLUDE (x, z) "
+          + "TABLESPACE leader_c1r1z1_rep_c1r2z1");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r2z1_index_y ON foo(y) INCLUDE (x, z) "
+          + "TABLESPACE leader_c1r2z1_rep_c1r1z1");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c1r1z1_index_z ON foo(z) INCLUDE (x, y) "
+          + "TABLESPACE leader_c1r1z1_rep_c2r1z1");
+      statement1.executeUpdate("CREATE UNIQUE INDEX c2r1z1_index_z ON foo(z) INCLUDE (x, y) "
+          + "TABLESPACE leader_c2r1z1_rep_c1r1z1");
     }
 
-    // Try connecting to a different node, which should change the chosen index.
-    try (Connection connection2 = getConnectionBuilder().withTServer(1).connect();
-         Statement statement2 = connection2.createStatement()) {
-
-      assertOneRow(statement2, "SELECT yb_server_region()", "region2");
-      assertOneRow(statement2, "SELECT yb_server_cloud()", "cloud2");
-      assertOneRow(statement2, "SELECT yb_server_zone()", "zone2");
-
-      ExplainAnalyzeUtils.testExplain(
-        statement2,
-        "SELECT * FROM foo WHERE x = 5",
-        makeTopLevelBuilder()
-          .storageReadRequests(Checkers.greater(0))
-          .storageWriteRequests(Checkers.equal(0))
-          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
-          .plan(makePlanBuilder()
-            .indexName("remoteind")
-            .build())
-          .build());
-    }
+    // Run without the cost model first. Table will be analyzed before running with cost model.
+    testYBTablespaceLeaderPreferenceHelper(false /* enable_base_scans_cost_model */);
+    testYBTablespaceLeaderPreferenceHelper(true /* enable_base_scans_cost_model */);
   }
 
   @Test
@@ -185,7 +727,7 @@ public class TestPgRegressTablespaces extends BasePgRegressTest {
       statement1.execute("CREATE TABLESPACE remotetablespace " +
           "  WITH (replica_placement=" +
           "'{\"num_replicas\":1, \"placement_blocks\":" +
-          "[{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "[{\"cloud\":\"cloud2\",\"region\":\"region1\",\"zone\":\"zone1\"," +
           "\"min_num_replicas\":1}]}')");
 
       // Create a partitioned table with one local and one remote partition.
@@ -209,7 +751,7 @@ public class TestPgRegressTablespaces extends BasePgRegressTest {
     }
 
     // Query the VIEW from the remote node. Verify that only one row is returned.
-    try (Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+    try (Connection connection2 = getConnectionBuilder().withTServer(3).connect();
          Statement statement2 = connection2.createStatement()) {
       assertEquals(getRowList(statement2, "SELECT * FROM localpartition").size(), 1);
     }
@@ -220,15 +762,19 @@ public class TestPgRegressTablespaces extends BasePgRegressTest {
     // Verify that the functions return correct information.
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Statement statement1 = connection1.createStatement()) {
-      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
       assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
       assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
     }
 
     // Test column creation and row insertion with default values set to
     // yb_server_region(), yb_server_cloud(), yb_server_zone().
-    try (Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+    try (Connection connection2 = getConnectionBuilder().withTServer(2).connect();
          Statement statement2 = connection2.createStatement()) {
+      assertOneRow(statement2, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement2, "SELECT yb_server_region()", "region2");
+      assertOneRow(statement2, "SELECT yb_server_zone()", "zone1");
+
       statement2.execute("CREATE TABLE tb (id INTEGER NOT NULL, " +
           "location VARCHAR DEFAULT yb_server_region(), " +
           "cloud VARCHAR DEFAULT yb_server_cloud(), " +
@@ -258,8 +804,12 @@ public class TestPgRegressTablespaces extends BasePgRegressTest {
 
     // Connect to a different node and verify that the functions' return values get
     // updated correctly
-    try (Connection connection3 = getConnectionBuilder().withTServer(2).connect();
+    try (Connection connection3 = getConnectionBuilder().withTServer(3).connect();
          Statement statement3 = connection3.createStatement()) {
+      assertOneRow(statement3, "SELECT yb_server_cloud()", "cloud2");
+      assertOneRow(statement3, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement3, "SELECT yb_server_zone()", "zone1");
+
       // Insert values into partitioned table. This node's region is region1.
       statement3.executeUpdate("INSERT INTO tb (id, amount) VALUES (4, 30);");
 

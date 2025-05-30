@@ -36,6 +36,7 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
  public:
   struct ColocatedTableData {
     TableId new_table_id;
+    TableId old_table_id;
     SysTablesEntryPB table_entry_pb;
     int new_schema_version;
   };
@@ -59,13 +60,13 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
   LeaderEpoch Epoch();
   void SetEpoch(const LeaderEpoch& epoch);
 
-  const TxnSnapshotId& SourceSnapshotId();
+  TxnSnapshotId SourceSnapshotId();
   void SetSourceSnapshotId(const TxnSnapshotId& source_snapshot_id);
 
-  const TxnSnapshotId& TargetSnapshotId();
+  TxnSnapshotId TargetSnapshotId();
   void SetTargetSnapshotId(const TxnSnapshotId& target_snapshot_id);
 
-  const TxnSnapshotRestorationId& RestorationId();
+  TxnSnapshotRestorationId RestorationId();
   void SetRestorationId(const TxnSnapshotRestorationId& restoration_id);
 
   std::shared_ptr<CountDownLatch> NumTserversWithStaleMetacache();

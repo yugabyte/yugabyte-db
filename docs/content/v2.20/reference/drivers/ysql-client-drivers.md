@@ -128,7 +128,7 @@ pip3 install aiopg
 
 [pg](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. pg is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Ruby application with pg, see [Connect an application](../../../drivers-orms/ruby/ysql-pg/).
+For a tutorial on building a sample Ruby application with pg, see [Connect an application](../../../drivers-orms/ruby/ruby-pg/).
 
 #### Install the pg driver
 

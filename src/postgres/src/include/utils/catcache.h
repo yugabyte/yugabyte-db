@@ -187,6 +187,7 @@ typedef struct
 	int			index;
 } YbCatCListIterator;
 
+
 typedef struct catcacheheader
 {
 	slist_head	ch_caches;		/* head of list of CatCache structs */
@@ -226,6 +227,7 @@ extern CatCList *SearchCatCacheList(CatCache *cache, int nkeys,
 extern void ReleaseCatCacheList(CatCList *list);
 
 extern void ResetCatalogCaches(void);
+extern void ResetCatalogCachesExt(bool debug_discard);
 extern void CatalogCacheFlushCatalog(Oid catId);
 extern void CatCacheInvalidate(CatCache *cache, uint32 hashValue);
 extern void PrepareToInvalidateCacheTuple(Relation relation,
@@ -245,8 +247,22 @@ extern bool RelationHasCachedLists(Relation relation);
 extern long YbGetCatCacheMisses();
 extern long *YbGetCatCacheIdMisses();
 extern long *YbGetCatCacheTableMisses();
+extern long YbGetCatCacheRefreshes();
+extern long YbGetCatCacheDeltaRefreshes();
+extern long YbGetHintCacheRefreshes();
+extern long YbGetHintCacheHits();
+extern long YbGetHintCacheMisses();
+extern void YbIncrementHintCacheRefreshes();
+extern void YbIncrementHintCacheHits();
+extern void YbIncrementHintCacheMisses();
 
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);
 extern void YbCatCListIteratorFree(YbCatCListIterator *iterator);
+
+extern uint32 YbCatalogCacheComputeHashValue(CatCache *cache, Datum v1, Datum v2, Datum v3, Datum v4);
+
+extern void YbHandleLogCatcacheStatsInterrupt(void);
+extern void YbProcessLogCatcacheStatsInterrupt(void);
+
 #endif							/* CATCACHE_H */

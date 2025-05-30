@@ -20,10 +20,8 @@ import type { AxiosInstance } from 'axios';
 // @ts-ignore
 import type {
   ApiError,
-  InlineResponse2001,
 } from '../models';
-
-
+import type { InlineResponse2001 } from '../models/InlineResponse2001';
 /**
  * Retrieve the list of databases on which backup is enabled in the YugabyteDB cluster.
  * Get Backup Details
@@ -96,7 +94,6 @@ export const useGetBackupDetailsQuery = <T = InlineResponse2001, Error = ApiErro
     ...query
   };
 };
-
 
 
 

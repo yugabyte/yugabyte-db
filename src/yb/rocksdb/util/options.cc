@@ -159,6 +159,7 @@ ColumnFamilyOptions::ColumnFamilyOptions(const Options& options)
       compaction_filter_factory(options.compaction_filter_factory),
       write_buffer_size(options.write_buffer_size),
       max_write_buffer_number(options.max_write_buffer_number),
+      max_flushing_bytes(options.max_flushing_bytes),
       min_write_buffer_number_to_merge(
           options.min_write_buffer_number_to_merge),
       max_write_buffer_number_to_maintain(

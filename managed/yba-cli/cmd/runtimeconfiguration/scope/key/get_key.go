@@ -21,7 +21,8 @@ var getKeyCmd = &cobra.Command{
 	Use:     "get",
 	Aliases: []string{"fetch"},
 	Short:   "Get a YugabyteDB Anywhere runtime configuration scope key value",
-	Long:    "Get a runtime configuration scope key value in YugabyteDB Anywhere ",
+	Long: "Get a runtime configuration scope key value in YugabyteDB Anywhere. " +
+		"Run \"yba runtime-config key-info list\" to get the list of keys in a scope type.",
 	Example: `yba runtime-config scope key get --uuid <scope> --name <key-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		scopeNameFlag, err := cmd.Flags().GetString("uuid")

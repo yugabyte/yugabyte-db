@@ -130,4 +130,8 @@ void PgDocMetrics::RecordStorageRowsRead(TableType relation, uint64_t rows) {
   IncRowsScanned(&GetStat(&state_, relation), rows);
 }
 
+void PgDocMetrics::RecordRowRemovedByIndexRecheck() {
+  state_.stats.rows_removed_by_recheck += 1;
+}
+
 }  // namespace yb::pggate

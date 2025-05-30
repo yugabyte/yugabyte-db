@@ -90,6 +90,14 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
             rowData.put("clientHost", params.host);
             rowData.put("clientPort", params.port);
 
+            // query_id and leader pid are only present on pg15 and above.
+            if (params.leader_pid != -1) {
+              rowData.put("leader_pid", params.leader_pid);
+            }
+            if (params.query_id != -1) {
+              rowData.put("query_id", params.query_id);
+            }
+
             ArrayNode ysqlArray;
             if (!responseJson.has("ysql")) {
               ysqlArray = responseJson.putArray("ysql");

@@ -249,6 +249,7 @@ For the list of errors in the class 42 category, see [Syntax Error or Access Rul
 ## Learn more
 
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
+- [Transaction error codes in YSQL](../transactions-errorcodes-ysql/) - Various error codes returned during transaction processing.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
 - [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.

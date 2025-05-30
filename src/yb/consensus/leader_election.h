@@ -136,9 +136,8 @@ struct ElectionResult {
   // Human-readable explanation of the vote result, if any.
   std::string message;
 
-  CoarseTimeLease old_leader_lease;
-
-  PhysicalComponentLease old_leader_ht_lease;
+  std::vector<CoarseTimeLeaseUpdate> old_leader_leases;
+  std::vector<PhysicalComponentLeaseUpdate> old_leader_ht_leases;
 };
 
 // Driver class to run a leader election.

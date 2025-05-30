@@ -35,6 +35,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/operation_counter.h"
 
+#include "yb/vector_index/vector_index_fwd.h"
+
 namespace yb {
 namespace docdb {
 
@@ -325,6 +327,10 @@ class DocWriteBatch {
     doc_read_context_ = doc_read_context;
   }
 
+  void DeleteVectorId(const vector_index::VectorId& id) {
+    delete_vector_ids_.Append(id.AsSlice());
+  }
+
  private:
   struct LazyIterator;
 
@@ -386,6 +392,7 @@ class DocWriteBatch {
   EncodedDocHybridTime packed_row_write_time_;
 
   MonoDelta ttl_;
+  ValueBuffer delete_vector_ids_;
 };
 
 // A helper handler for converting a RocksDB write batch to a string.

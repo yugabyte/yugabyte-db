@@ -26,8 +26,9 @@
 #include "access/htup_details.h"
 #include "utils/builtins.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 static bool check_attrmap_match(TupleDesc indesc,
 								TupleDesc outdesc,

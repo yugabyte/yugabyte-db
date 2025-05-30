@@ -127,6 +127,11 @@ bool RWMutex::TryReadLock() {
 }
 
 void RWMutex::WriteLock() {
+#if defined(THREAD_SANITIZER)
+  if (TryWriteLock()) {
+    return;
+  }
+#endif
   CheckLockState(LockState::NEITHER);
   int rv = pthread_rwlock_wrlock(&native_handle_);
   DCHECK_EQ(0, rv) << strerror(rv);
@@ -172,20 +177,8 @@ void RWMutex::CheckLockState(LockState state) const {
     is_writer = writer_tid_ == my_tid;
   }
 
-  switch (state) {
-    case LockState::NEITHER:
-      CHECK(!is_reader) << "Invalid state, already holding lock for reading";
-      CHECK(!is_writer) << "Invalid state, already holding lock for writing";
-      break;
-    case LockState::READER:
-      CHECK(!is_writer) << "Invalid state, already holding lock for writing";
-      CHECK(is_reader) << "Invalid state, wasn't holding lock for reading";
-      break;
-    case LockState::WRITER:
-      CHECK(!is_reader) << "Invalid state, already holding lock for reading";
-      CHECK(is_writer) << "Invalid state, wasn't holding lock for writing";
-      break;
-  }
+  CHECK_EQ(is_reader, (state == LockState::READER)) << "Invalid reading state";
+  CHECK_EQ(is_writer, (state == LockState::WRITER)) << "Invalid writing state";
 }
 
 void RWMutex::MarkForReading() {

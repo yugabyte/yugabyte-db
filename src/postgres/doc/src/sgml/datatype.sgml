@@ -1480,7 +1480,12 @@ SELECT b, char_length(b) FROM test2;
    <para>
     Example:
 <programlisting>
-SELECT '\xDEADBEEF';
+SET bytea_output = 'hex';
+
+SELECT '\xDEADBEEF'::bytea;
+   bytea
+------------
+ \xdeadbeef
 </programlisting>
    </para>
   </sect2>
@@ -2023,7 +2028,8 @@ MINUTE TO SECOND
       <literal>America/New_York</literal>. In this case specifying the date
       is required in order to determine whether standard or daylight-savings
       time applies.  The appropriate time zone offset is recorded in the
-      <type>time with time zone</type> value.
+      <type>time with time zone</type> value and is output as stored;
+      it is not adjusted to the active time zone.
      </para>
 
       <table id="datatype-datetime-time-table">
@@ -2220,24 +2226,27 @@ TIMESTAMP '2004-10-19 10:23:54+02'
 <programlisting>
 TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02'
 </programlisting>
-
-      In a literal that has been determined to be <type>timestamp without time
-      zone</type>, <productname>PostgreSQL</productname> will silently ignore
-      any time zone indication.
-      That is, the resulting value is derived from the date/time
-      fields in the input value, and is not adjusted for time zone.
      </para>
 
      <para>
-      For <type>timestamp with time zone</type>, the internally stored
-      value is always in UTC (Universal
-      Coordinated Time, traditionally known as Greenwich Mean Time,
-      <acronym>GMT</acronym>).  An input value that has an explicit
-      time zone specified is converted to UTC using the appropriate offset
+      In a value that has been determined to be <type>timestamp without time
+      zone</type>, <productname>PostgreSQL</productname> will silently ignore
+      any time zone indication.
+      That is, the resulting value is derived from the date/time
+      fields in the input string, and is not adjusted for time zone.
+     </para>
+
+     <para>
+      For <type>timestamp with time zone</type> values, an input string
+      that includes an explicit time zone will be converted to UTC
+      (<glossterm linkend="glossary-utc">Universal Coordinated
+      Time</glossterm>) using the appropriate offset
       for that time zone.  If no time zone is stated in the input string,
       then it is assumed to be in the time zone indicated by the system's
       <xref linkend="guc-timezone"/> parameter, and is converted to UTC using the
       offset for the <varname>timezone</varname> zone.
+      In either case, the value is stored internally as UTC, and the
+      originally stated or assumed time zone is not retained.
      </para>
 
      <para>
@@ -2446,7 +2455,7 @@ TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02'
       the date and time.  <productname>PostgreSQL</productname> accepts that format on
       input, but on output it uses a space rather than <literal>T</literal>, as shown
       above.  This is for readability and for consistency with
-      <ulink url="https://tools.ietf.org/html/rfc3339">RFC 3339</ulink> as
+      <ulink url="https://datatracker.ietf.org/doc/html/rfc3339">RFC 3339</ulink> as
       well as some other database systems.
      </para>
     </note>
@@ -2844,10 +2853,31 @@ P <optional> <replaceable>years</replaceable>-<replaceable>months</replaceable>-
     </para>
 
     <para>
-     Field values can have fractional parts:  for example, <literal>'1.5
+     Internally, <type>interval</type> values are stored as three integral
+     fields: months, days, and microseconds.  These fields are kept
+     separate because the number of days in a month varies, while a day
+     can have 23 or 25 hours if a daylight savings time transition is
+     involved.  An interval input string that uses other units is
+     normalized into this format, and then reconstructed in a standardized
+     way for output, for example:
+
+<programlisting>
+SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval;
+               interval
+---------------------------------------
+ 3 years 3 mons 700 days 133:17:36.789
+</programlisting>
+
+     Here weeks, which are understood as <quote>7 days</quote>, have been
+     kept separate, while the smaller and larger time units were
+     combined and normalized.
+    </para>
+
+    <para>
+     Input field values can have fractional parts, for example <literal>'1.5
      weeks'</literal> or <literal>'01:02:03.45'</literal>.  However,
-     because interval internally stores only three integer units (months,
-     days, microseconds), fractional units must be spilled to smaller
+     because <type>interval</type> internally stores only integral fields,
+     fractional values must be converted into smaller
      units.  Fractional parts of units greater than months are rounded to
      be an integer number of months, e.g. <literal>'1.5 years'</literal>
      becomes <literal>'1 year 6 mons'</literal>.  Fractional parts of
@@ -2897,33 +2927,6 @@ P <optional> <replaceable>years</replaceable>-<replaceable>months</replaceable>-
       </tgroup>
      </table>
 
-    <para>
-     Internally <type>interval</type> values are stored as months, days,
-     and microseconds. This is done because the number of days in a month
-     varies, and a day can have 23 or 25 hours if a daylight savings
-     time adjustment is involved.  The months and days fields are integers
-     while the microseconds field can store fractional seconds.  Because intervals are
-     usually created from constant strings or <type>timestamp</type> subtraction,
-     this storage method works well in most cases, but can cause unexpected
-     results:
-
-<programlisting>
-SELECT EXTRACT(hours from '80 minutes'::interval);
- date_part
------------
-         1
-
-SELECT EXTRACT(days from '80 hours'::interval);
- date_part
------------
-         0
-</programlisting>
-
-     Functions <function>justify_days</function> and
-     <function>justify_hours</function> are available for adjusting days
-     and hours that overflow their normal ranges.
-    </para>
-
    </sect2>
 
    <sect2 id="datatype-interval-output">
@@ -2934,6 +2937,23 @@ SELECT EXTRACT(days from '80 hours'::interval);
      <secondary>output format</secondary>
      <seealso>formatting</seealso>
     </indexterm>
+
+    <para>
+     As previously explained, <productname>PostgreSQL</productname>
+     stores <type>interval</type> values as months, days, and
+     microseconds.  For output, the months field is converted to years and
+     months by dividing by 12.  The days field is shown as-is.  The
+     microseconds field is converted to hours, minutes, seconds, and
+     fractional seconds.  Thus months, minutes, and seconds will never be
+     shown as exceeding the ranges 0&ndash;11, 0&ndash;59, and 0&ndash;59
+     respectively, while the displayed years, days, and hours fields can
+     be quite large.  (The <link
+     linkend="function-justify-days"><function>justify_days</function></link>
+     and <link
+     linkend="function-justify-hours"><function>justify_hours</function></link>
+     functions can be used if it is desirable to transpose large days or
+     hours values into the next higher field.)
+    </para>
 
     <para>
      The output format of the interval type can be set to one of the
@@ -3333,7 +3353,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
        </row>
        <row>
         <entry><type>line</type></entry>
-        <entry>32 bytes</entry>
+        <entry>24 bytes</entry>
         <entry>Infinite line</entry>
         <entry>{A,B,C}</entry>
        </row>
@@ -3376,6 +3396,11 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
       </tbody>
      </tgroup>
     </table>
+
+   <para>
+    In all these types, the individual coordinates are stored as
+    <type>double precision</type> (<type>float8</type>) numbers.
+   </para>
 
    <para>
     A rich set of functions and operators is available to perform various geometric
@@ -3567,8 +3592,16 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     <para>
      Polygons are represented by lists of points (the vertexes of the
      polygon). Polygons are very similar to closed paths; the essential
-     difference is that a polygon is considered to include the area
-     within it, while a path is not.
+     semantic difference is that a polygon is considered to include the
+     area within it, while a path is not.
+    </para>
+
+    <para>
+     An important implementation difference between polygons and
+     paths is that the stored representation of a polygon includes its
+     smallest bounding box.  This speeds up certain search operations,
+     although computing the bounding box adds overhead while constructing
+     new polygons.
     </para>
 
     <para>
@@ -4331,7 +4364,7 @@ SELECT to_tsvector( 'postgraduate' ), to_tsquery( 'postgres:*' );
 
    <para>
     The data type <type>uuid</type> stores Universally Unique Identifiers
-    (UUID) as defined by <ulink url="https://tools.ietf.org/html/rfc4122">RFC 4122</ulink>,
+    (UUID) as defined by <ulink url="https://datatracker.ietf.org/doc/html/rfc4122">RFC 4122</ulink>,
     ISO/IEC 9834-8:2005, and related standards.
     (Some systems refer to this data type as a globally unique identifier, or
     GUID,<indexterm><primary>GUID</primary></indexterm> instead.)  This

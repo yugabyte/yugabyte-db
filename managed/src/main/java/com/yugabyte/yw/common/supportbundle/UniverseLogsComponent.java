@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -16,6 +17,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -25,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 
 @Slf4j
 @Singleton
@@ -36,6 +40,10 @@ class UniverseLogsComponent implements SupportBundleComponent {
   private final SupportBundleUtil supportBundleUtil;
   private final RuntimeConfGetter confGetter;
   private final String LOG_DIR_GFLAG = "log_dir";
+  private final String YNP_LOG_DIR = "%s/node-agent/logs";
+  private final String YNP_LOG_FILE = "app.log";
+  private final String PG_LOG_FILE_PREFIX = "postgresql-";
+  private final String ZIPPED_LOG_FILE_SUFFIX = ".log.gz";
 
   @Inject
   UniverseLogsComponent(
@@ -98,9 +106,38 @@ class UniverseLogsComponent implements SupportBundleComponent {
         startDate,
         endDate);
 
+    String ynpLogDir = getYnpLogDir(node.cloudInfo.private_ip);
+    Map<String, Long> allFilesMap =
+        getFilesListWithSizes(customer, null, universe, startDate, endDate, node);
+    // Collect YNP log file if present.
+    if (ynpLogDir != null) {
+      String ynpLogPath = ynpLogDir + "/" + YNP_LOG_FILE;
+      if (allFilesMap.containsKey(ynpLogPath)) {
+        allFilesMap.remove(ynpLogPath);
+        supportBundleUtil.downloadNodeLevelComponent(
+            universeInfoHandler,
+            customer,
+            universe,
+            bundlePath,
+            node,
+            "/",
+            Arrays.asList(ynpLogPath),
+            this.getClass().getSimpleName(),
+            false);
+        Path filePath = Paths.get(bundlePath.toString(), ynpLogPath);
+        // Move log to YNP dir.
+        if (Files.exists(filePath)) {
+          FileUtils.moveFileToDirectory(
+              filePath.toFile(), Paths.get(bundlePath.toString(), "ynp").toFile(), true);
+          Path pathToDelete =
+              Paths.get(bundlePath.toString(), Paths.get(ynpLogDir).getName(0).toString());
+          FileUtils.deleteDirectory(pathToDelete.toFile());
+        }
+      }
+    }
     // Combine both master and tserver files to download all the files together
     List<String> allLogFilePaths =
-        getFilesListWithSizes(customer, null, universe, startDate, endDate, node).keySet().stream()
+        allFilesMap.keySet().stream()
             .map(filePath -> Paths.get(nodeHomeDir).relativize(Paths.get(filePath)))
             .map(Path::toString)
             .collect(Collectors.toList());
@@ -118,6 +155,27 @@ class UniverseLogsComponent implements SupportBundleComponent {
           allLogFilePaths,
           this.getClass().getSimpleName(),
           false);
+
+      if (supportBundleTaskParams.bundleData.filterPgAuditLogs) {
+        var tserverLogDir = Paths.get(bundlePath.toString(), "tserver/logs").toFile();
+        if (tserverLogDir.exists()) {
+          for (var file : tserverLogDir.listFiles()) {
+            String fileName = file.toPath().getFileName().toString();
+            if (file.isFile() && fileName.startsWith(PG_LOG_FILE_PREFIX)) {
+              var unzippedFile = file;
+              if (fileName.endsWith(ZIPPED_LOG_FILE_SUFFIX)) {
+                unzippedFile = com.yugabyte.yw.common.utils.FileUtils.unGzip(file, tserverLogDir);
+              }
+              filterPgAuditLog(unzippedFile);
+              // Delete unfiltered zipped and unzipped file.
+              file.delete();
+              if (!unzippedFile.equals(file)) {
+                unzippedFile.delete();
+              }
+            }
+          }
+        }
+      }
     } else {
       log.debug(
           "Found no matching universe logs for node: {}, source path: {}, target path: {}, "
@@ -127,6 +185,20 @@ class UniverseLogsComponent implements SupportBundleComponent {
           nodeTargetFile.toString(),
           startDate,
           endDate);
+    }
+  }
+
+  // Creates a new log file called filtered_<logFile> which doesn't have PgAudit logs.
+  private void filterPgAuditLog(File logFile) {
+    String baseFileName = logFile.toPath().getFileName().toString();
+    try {
+      String outputFileName = "filtered_" + baseFileName;
+      ProcessBuilder grepProcess =
+          new ProcessBuilder("grep", "-v", "AUDIT:", logFile.getAbsolutePath());
+      grepProcess.redirectOutput(new File(logFile.getParent(), outputFileName)).start().waitFor();
+    } catch (Exception e) {
+      log.error("Error while filtering pg log: {}", baseFileName);
+      e.printStackTrace();
     }
   }
 
@@ -221,6 +293,28 @@ class UniverseLogsComponent implements SupportBundleComponent {
         finalMap.put(path, tserverLogsPathSizeMap.get(path));
       }
     }
+
+    // Collect YNP logs as part of this component.
+    String ynpLogDir = getYnpLogDir(node.cloudInfo.private_ip);
+    if (ynpLogDir == null) {
+      log.warn(
+          "Skipping YNP logs collection on node {} as location cannot be determined.",
+          node.nodeName);
+      return finalMap;
+    }
+
+    Map<String, Long> ynpLogDirFiles =
+        nodeUniverseManager.getNodeFilePathAndSizes(
+            node, universe, ynpLogDir, /* maxDepth */ 1, /* fileType */ "f");
+    String ynpLogPath = ynpLogDir + "/" + YNP_LOG_FILE;
+    if (ynpLogDirFiles.containsKey(ynpLogPath)) {
+      finalMap.put(ynpLogPath, ynpLogDirFiles.get(ynpLogPath));
+    }
     return finalMap;
+  }
+
+  private String getYnpLogDir(String nodeIp) {
+    return String.format(
+        YNP_LOG_DIR, confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath));
   }
 }

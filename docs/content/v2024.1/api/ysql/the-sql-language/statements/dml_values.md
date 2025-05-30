@@ -2,7 +2,7 @@
 title: VALUES statement [YSQL]
 headerTitle: VALUES
 linkTitle: VALUES
-description: Use the VALUES statement to generate a row set specified as an explicitly written set of explictly written tuples.
+description: Use the VALUES statement to generate a row set specified as an explicitly written set of explicitly written tuples.
 menu:
   v2024.1_api:
     identifier: dml_values

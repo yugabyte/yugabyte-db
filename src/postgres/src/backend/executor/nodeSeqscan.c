@@ -33,9 +33,9 @@
 #include "executor/nodeSeqscan.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
+#include "pg_yb_utils.h"
 
 static TupleTableSlot *SeqNext(SeqScanState *node);
 

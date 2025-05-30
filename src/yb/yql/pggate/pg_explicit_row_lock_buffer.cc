@@ -19,18 +19,14 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 
-
 #include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb::pggate {
 
-ExplicitRowLockBuffer::ExplicitRowLockBuffer(
-    TableYbctidVectorProvider& ybctid_container_provider,
-    std::reference_wrapper<const YbctidReader> ybctid_reader)
-    : ybctid_container_provider_(ybctid_container_provider), ybctid_reader_(ybctid_reader) {
-}
+ExplicitRowLockBuffer::ExplicitRowLockBuffer(YbctidReaderProvider& reader_provider)
+    : reader_provider_(reader_provider) {}
 
 Status ExplicitRowLockBuffer::Add(
     const Info& info, const LightweightTableYbctid& key, bool is_region_local,
@@ -71,23 +67,23 @@ Status ExplicitRowLockBuffer::DoFlush(std::optional<ErrorStatusAdditionalInfo>& 
 }
 
 Status ExplicitRowLockBuffer::DoFlushImpl() {
-  auto ybctids = ybctid_container_provider_.Get();
-  const auto initial_intents_size = intents_.size();
-  ybctids->reserve(initial_intents_size);
+  const auto intents_count = intents_.size();
+  auto reader = reader_provider_();
+  reader.Reserve(intents_count);
   for (auto it = intents_.begin(); it != intents_.end();) {
     auto node = intents_.extract(it++);
-    ybctids->push_back(std::move(node.value()));
+    reader.Add(std::move(node.value()));
   }
-  RETURN_NOT_OK(ybctid_reader_(
-      info_->database_id, ybctids, region_local_tables_,
+  const auto existing_ybctids_count = VERIFY_RESULT(reader.Read(
+      info_->database_id, region_local_tables_,
       make_lw_function(
           [&info = *info_](YbcPgExecParameters& params) {
             params.rowmark = info.rowmark;
             params.pg_wait_policy = info.pg_wait_policy;
             params.docdb_wait_policy = info.docdb_wait_policy;
-          })));
-  SCHECK_EQ(ybctids->size(), initial_intents_size, NotFound,
-        "Some of the requested ybctids are missing");
+          }))).size();
+  SCHECK_EQ(
+      existing_ybctids_count, intents_count, NotFound, "Some of the requested ybctids are missing");
   return Status::OK();
 }
 

@@ -24,6 +24,8 @@ type: docs
 
 YugabyteDB's YSQL API is fully compatible with Diesel ORM for data persistence in Rust applications.
 
+Note that Diesel is not compatible with the YugabyteDB Rust smart driver. This is because Diesel uses the pq-sys crate instead of the rust-postgres driver upon which the YugabyteDB Rust smart driver is based.
+
 ## CRUD operations
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Rust ORM example application](../../orms/rust/ysql-diesel/) page.

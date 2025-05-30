@@ -28,61 +28,41 @@ using std::string;
 namespace yb {
 
 ExternalYbController::ExternalYbController(
-    const size_t idx, const string& log_dir, const string& tmp_dir,
-    const string& yb_tserver_address, const string& yb_admin, const string& yb_ctl,
-    const string& ycqlsh, const string& ysql_dump, const string& ysql_dumpall, const string& ysqlsh,
-    uint16_t server_port, uint16_t yb_master_webserver_port, uint16_t yb_tserver_webserver_port,
-    const string& server_address, const string& exe, const std::vector<string>& extra_flags)
-    : idx_(idx),
-      exe_(exe),
-      log_dir_(log_dir),
-      tmp_dir_(tmp_dir),
-      server_address_(server_address),
-      yb_tserver_address_(yb_tserver_address),
-      yb_admin_(yb_admin),
-      yb_ctl_(yb_ctl),
-      ycqlsh_(ycqlsh),
-      ysql_dump_(ysql_dump),
-      ysql_dumpall_(ysql_dumpall),
-      ysqlsh_(ysqlsh),
-      server_port_(server_port),
-      yb_master_webserver_port_(yb_master_webserver_port),
-      yb_tserver_webserver_port_(yb_tserver_webserver_port),
-      extra_flags_(extra_flags),
-      stdout_tailer_thread_(nullptr),
-      stderr_tailer_thread_(nullptr) {}
+    const ExternalYbControllerOptions& options)
+    : options_(options) {}
 
 Status ExternalYbController::Start() {
   CHECK(!process_);
 
-  std::vector<string> argv;
+  std::vector<std::string> argv;
   // First the exe for argv[0].
-  argv.push_back(BaseName(exe_));
+  auto exe_path = GetYbcToolPath("yb-controller-server");
+  argv.push_back(BaseName(exe_path));
 
-  argv.push_back("--log_dir=" + log_dir_);
-  argv.push_back("--tmp_dir=" + tmp_dir_);
-  argv.push_back("--server_address=" + server_address_);
-  argv.push_back("--yb_tserver_address=" + yb_tserver_address_);
-  argv.push_back("--yb_admin=" + yb_admin_);
-  argv.push_back("--yb_ctl=" + yb_ctl_);
-  argv.push_back("--ycqlsh=" + ycqlsh_);
-  argv.push_back("--ysql_dump=" + ysql_dump_);
-  argv.push_back("--ysql_dumpall=" + ysql_dumpall_);
-  argv.push_back("--ysqlsh=" + ysqlsh_);
+  argv.push_back("--log_dir=" + options_.log_dir);
+  argv.push_back("--tmp_dir=" + options_.tmp_dir);
+  argv.push_back("--server_address=" + options_.server_address);
+  argv.push_back("--yb_tserver_address=" + options_.yb_tserver_address);
+  argv.push_back("--yb_admin=" + GetToolPath("yb-admin"));
+  argv.push_back("--yb_ctl=" + GetToolPath("../../../bin", "yb-ctl"));
+  argv.push_back("--ycqlsh=" + GetToolPath("../../../bin", "ycqlsh"));
+  argv.push_back("--ysql_dump=" + GetPgToolPath("ysql_dump"));
+  argv.push_back("--ysql_dumpall=" + GetPgToolPath("ysql_dumpall"));
+  argv.push_back("--ysqlsh=" + GetPgToolPath("ysqlsh"));
   argv.push_back("--logtostderr");
   argv.push_back("--v=1");
-  argv.push_back(Format("--server_port=$0", server_port_));
-  argv.push_back(Format("--yb_master_webserver_port=$0", yb_master_webserver_port_));
-  argv.push_back(Format("--yb_tserver_webserver_port=$0", yb_tserver_webserver_port_));
-  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
+  argv.push_back(Format("--server_port=$0", options_.server_port));
+  argv.push_back(Format("--yb_master_webserver_port=$0", options_.yb_master_webserver_port));
+  argv.push_back(Format("--yb_tserver_webserver_port=$0", options_.yb_tserver_webserver_port));
+  argv.insert(argv.end(), options_.extra_flags.begin(), options_.extra_flags.end());
 
-  std::unique_ptr<Subprocess> p(new Subprocess(exe_, argv));
+  auto p = std::make_unique<Subprocess>(exe_path, argv);
   p->PipeParentStdout();
   p->PipeParentStderr();
 
   LOG(INFO) << "Starting YB Controller with args: " << JoinStrings(argv, "\n");
 
-  RETURN_NOT_OK_PREPEND(p->Start(), Format("Failed to start subprocess $0", exe_));
+  RETURN_NOT_OK_PREPEND(p->Start(), Format("Failed to start subprocess $0", exe_path));
 
   bool pingSuccess = false;
   int retries = 0;
@@ -104,8 +84,8 @@ Status ExternalYbController::Start() {
   if (!existing_prefix.empty()) {
     existing_prefix += "-";
   }
-  auto stdout_prefix = Format("[$0yb-controller-$1 stdout]", existing_prefix, idx_);
-  auto stderr_prefix = Format("[$0yb-controller-$1]", existing_prefix, idx_);
+  auto stdout_prefix = Format("[$0yb-controller-$1 stdout]", existing_prefix, options_.idx);
+  auto stderr_prefix = Format("[$0yb-controller-$1]", existing_prefix, options_.idx);
   auto* listener = stdout_tailer_thread_ ? stdout_tailer_thread_->listener() : nullptr;
   stdout_tailer_thread_ = std::make_unique<ExternalDaemon::LogTailerThread>(
       stdout_prefix, p->ReleaseChildStdoutFd(), &std::cout);
@@ -134,9 +114,9 @@ Status ExternalYbController::ping() {
   argv.push_back(GetYbcToolPath("yb-controller-cli"));
   // Command to ping YB Controller server.
   argv.push_back("ping");
-  argv.push_back("--tserver_ip=" + server_address_);
-  argv.push_back(Format("--server_port=$0", server_port_));
-  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
+  argv.push_back("--tserver_ip=" + options_.server_address);
+  argv.push_back(Format("--server_port=$0", options_.server_port));
+  argv.insert(argv.end(), options_.extra_flags.begin(), options_.extra_flags.end());
 
   LOG(INFO) << "Run YB Controller CLI: " << AsString(argv);
   string output;
@@ -169,10 +149,10 @@ void ExternalYbController::Shutdown() {
   argv.push_back(GetYbcToolPath("yb-controller-cli"));
   // Command to shutdown YB Controller server.
   argv.push_back("shutdown");
-  argv.push_back("--tserver_ip=" + server_address_);
-  argv.push_back(Format("--server_port=$0", server_port_));
+  argv.push_back("--tserver_ip=" + options_.server_address);
+  argv.push_back(Format("--server_port=$0", options_.server_port));
   argv.push_back("--wait");
-  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
+  argv.insert(argv.end(), options_.extra_flags.begin(), options_.extra_flags.end());
 
   LOG(INFO) << "Run YB Controller CLI: " << AsString(argv);
   string output;
@@ -186,7 +166,8 @@ void ExternalYbController::Shutdown() {
   }
 
   // Manually cleanup left behind subprocesses if any.
-  string cmd = "ps -ef | grep -v grep | grep " + tmp_dir_ + " | awk '{print $2}' | xargs kill -9";
+  std::string cmd =
+      "ps -ef | grep -v grep | grep " + options_.tmp_dir + " | awk '{print $2}' | xargs kill -9";
   std::vector<string> argvc = { "bash", "-c", cmd };
   string results;
   LOG(INFO) << "Killing YB Controller subprocesses";
@@ -197,7 +178,7 @@ void ExternalYbController::Shutdown() {
   LOG(INFO) << results;
 
   // Delete the tmp directory if present.
-  status = (DeleteIfExists(tmp_dir_, Env::Default()));
+  status = (DeleteIfExists(options_.tmp_dir, Env::Default()));
   if (!status.ok()) {
     LOG(WARNING) << "Error while deleting YB Controller temp dir: " << status;
   }
@@ -224,9 +205,9 @@ Status ExternalYbController::RunBackupCommand(
   argv.push_back("--ns_type=" + ns_type);
   argv.push_back("--ns=" + ns);
   argv.push_back("--wait");
-  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
-  argv.push_back("--tserver_ip=" + server_address_);
-  argv.push_back(Format("--server_port=$0", server_port_));
+  argv.insert(argv.end(), options_.extra_flags.begin(), options_.extra_flags.end());
+  argv.push_back("--tserver_ip=" + options_.server_address);
+  argv.push_back(Format("--server_port=$0", options_.server_port));
   argv.push_back("--max_timeout_secs=180");
 
   if (use_tablespaces) {

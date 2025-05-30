@@ -33,8 +33,10 @@
 #include "utils/resowner_private.h"
 #include "utils/snapmgr.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
+
 
 /*
  * All resource IDs managed by this code are required to fit into a Datum,
@@ -572,7 +574,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		while (ResourceArrayGetAny(&(owner->cryptohasharr), &foundres))
 		{
 			pg_cryptohash_ctx *context =
-			(pg_cryptohash_ctx *) PointerGetDatum(foundres);
+				(pg_cryptohash_ctx *) DatumGetPointer(foundres);
 
 			if (isCommit)
 				PrintCryptoHashLeakWarning(foundres);
@@ -582,7 +584,7 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		/* Ditto for HMAC contexts */
 		while (ResourceArrayGetAny(&(owner->hmacarr), &foundres))
 		{
-			pg_hmac_ctx *context = (pg_hmac_ctx *) PointerGetDatum(foundres);
+			pg_hmac_ctx *context = (pg_hmac_ctx *) DatumGetPointer(foundres);
 
 			if (isCommit)
 				PrintHMACLeakWarning(foundres);
@@ -1171,6 +1173,7 @@ ResourceOwnerRememberYbPgInheritsRef(ResourceOwner owner,
 	ResourceArrayAdd(&owner->ybinheritsrefarr, PointerGetDatum(entry));
 }
 
+
 /*
  * Forget that a YbPgInherits cache reference is owned by a ResourceOwner
  */
@@ -1180,8 +1183,9 @@ ResourceOwnerForgetYbPgInheritsRef(ResourceOwner owner,
 {
 	if (!ResourceArrayRemove(&owner->ybinheritsrefarr, PointerGetDatum(entry)))
 		elog(ERROR, "YbPgInheritsCache entry %d is not owned by resource owner %s",
-			 entry->parentOid, owner->name);
+			 entry->oid, owner->name);
 }
+
 
 /*
  * Debugging subroutine
@@ -1198,7 +1202,7 @@ PrintYbPgInheritsCacheLeakWarning(YbPgInheritsCacheEntry entry)
 {
 	elog(WARNING,
 		 "YbPgInheritsCache reference leak: Entry for oid \"%d\" not released",
-		 entry->parentOid);
+		 entry->oid);
 }
 
 /*

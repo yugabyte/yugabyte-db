@@ -275,7 +275,7 @@ func (fear *FullEARContext) startSubsection(format string) (*template.Template, 
 }
 
 func (fear *FullEARContext) subSection(name string) {
-	fear.Output.Write([]byte("\n\n"))
+	fear.Output.Write([]byte("\n"))
 	fear.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fear.Output.Write([]byte("\n"))
 }

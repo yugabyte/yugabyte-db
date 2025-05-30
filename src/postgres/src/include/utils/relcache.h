@@ -52,7 +52,6 @@ extern List *RelationGetDummyIndexExpressions(Relation relation);
 extern List *RelationGetIndexPredicate(Relation relation);
 extern Datum *RelationGetIndexRawAttOptions(Relation relation);
 extern bytea **RelationGetIndexAttOptions(Relation relation, bool copy);
-extern List *YbRelationGetFKeyReferencedByList(Relation relation);
 
 typedef enum IndexAttrBitmapKind
 {
@@ -64,10 +63,6 @@ typedef enum IndexAttrBitmapKind
 
 extern Bitmapset *RelationGetIndexAttrBitmap(Relation relation,
 											 IndexAttrBitmapKind attrKind);
-extern void YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
-											   Relation indexDesc,
-											   const int Anum_pg_index,
-											   AttrNumber attr_offset);
 
 extern Bitmapset *RelationGetIdentityKeyBitmap(Relation relation);
 
@@ -77,13 +72,6 @@ extern void RelationGetExclusionInfo(Relation indexRelation,
 									 uint16 **strategies);
 
 extern void RelationInitIndexAccessInfo(Relation relation);
-
-extern bool CheckIndexForUpdate(Oid indexoid,
-								const Bitmapset *updated_attrs, AttrNumber attr_offset);
-extern bool CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
-								  Relation indexDesc,
-								  const int Anum_pg_index,
-								  AttrNumber attr_offset);
 
 /* caller must include pg_publication.h */
 struct PublicationDesc;
@@ -106,11 +94,6 @@ extern int	errtableconstraint(Relation rel, const char *conname);
 extern void RelationCacheInitialize(void);
 extern void RelationCacheInitializePhase2(void);
 extern void RelationCacheInitializePhase3(void);
-
-/*
- * Preload relations cache
- */
-extern void YBPreloadRelCache();
 
 /*
  * Routine to create a relcache entry for an about-to-be-created relation
@@ -143,8 +126,6 @@ extern void RelationCacheInvalidateEntry(Oid relationId);
 
 extern void RelationCacheInvalidate(bool debug_discard);
 
-extern void YbRelationCacheInvalidate(void);
-
 extern void RelationCloseSmgrByOid(Oid relationId);
 
 #ifdef USE_ASSERT_CHECKING
@@ -163,12 +144,27 @@ extern bool RelationIdIsInInitFile(Oid relationId);
 extern void RelationCacheInitFilePreInvalidate(void);
 extern void RelationCacheInitFilePostInvalidate(void);
 extern void RelationCacheInitFileRemove(void);
-extern bool YbRelationIdIsInInitFileAndNotCached(Oid relationId);
 
 /* should be used only by relcache.c and catcache.c */
 extern PGDLLIMPORT bool criticalRelcachesBuilt;
 
 /* should be used only by relcache.c and postinit.c */
 extern PGDLLIMPORT bool criticalSharedRelcachesBuilt;
+
+/* YB */
+extern List *YbRelationGetFKeyReferencedByList(Relation relation);
+extern void YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
+											   Relation indexDesc,
+											   const int Anum_pg_index,
+											   AttrNumber attr_offset);
+extern bool CheckIndexForUpdate(Oid indexoid,
+								const Bitmapset *updated_attrs, AttrNumber attr_offset);
+extern bool CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
+								  Relation indexDesc,
+								  const int Anum_pg_index,
+								  AttrNumber attr_offset);
+extern void YBPreloadRelCache();
+extern void YbRelationCacheInvalidate(void);
+extern bool YbRelationIdIsInInitFileAndNotCached(Oid relationId);
 
 #endif							/* RELCACHE_H */

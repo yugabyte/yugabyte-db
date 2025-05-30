@@ -28,6 +28,8 @@
 
 #include "yb/rocksdb/statistics.h"
 
+#include "yb/util/aggregate_stats.h"
+
 namespace yb {
 class MetricEntity;
 class EventStats;

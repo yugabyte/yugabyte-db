@@ -41,5 +41,8 @@ export const useModalStyles = makeStyles((theme) => ({
     '&:hover': {
       cursor: 'pointer'
     }
+  },
+  bannerContainer: {
+    marginTop: theme.spacing(2)
   }
 }));

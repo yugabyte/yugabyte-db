@@ -15,18 +15,18 @@
 #include "postgres.h"
 
 #include "access/parallel.h"
-#include "catalog/pg_type.h"
 #include "common/hashfn.h"
-#include "nodes/nodeFuncs.h"
-#include "optimizer/clauses.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_collation.h"
+#include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "optimizer/clauses.h"
 #include "pg_yb_utils.h"
 
 static int	TupleHashTableMatch(struct tuplehash_hash *tb, const MinimalTuple tuple1, const MinimalTuple tuple2);
@@ -98,6 +98,9 @@ execTuplesMatchPrepare(TupleDesc desc,
  * hash functions associated with the equality operators.  *eqFunctions and
  * *hashFunctions receive the palloc'd result arrays.
  *
+ * Note: we expect that the given operators are not cross-type comparisons.
+ *
+ * YB: allow cross-type comparisons for BNL.
  */
 void
 execTuplesHashPrepare(int numCols,
@@ -355,9 +358,8 @@ BuildTupleHashTableExt(PlanState *parent,
 	allow_jit = metacxt != tablecxt;
 
 	/* build comparator for all columns */
-	/* XXX: should we support non-minimal tuples for the inputslot? */
 	hashtable->tab_eq_func = ExecBuildGroupingEqual(inputDesc, inputDesc,
-													&TTSOpsMinimalTuple, &TTSOpsMinimalTuple,
+													NULL, &TTSOpsMinimalTuple,
 													numCols,
 													keyColIdx, eqfuncoids, collations,
 													allow_jit ? parent : NULL);
@@ -518,9 +520,11 @@ LookupTupleHashEntryHash(TupleHashTable hashtable, TupleTableSlot *slot,
  * case of LookupTupleHashEntry, except that it supports cross-type
  * comparisons, in which the given tuple is not of the same type as the
  * table entries.  The caller must provide the hash functions to use for
- * the input tuple, as well as the equality functions, and key attributes
- * to use for looking up with the given tuple since these may be
+ * the input tuple, as well as the equality functions, since these may be
  * different from the table's internal functions.
+ *
+ * YB: caller must also provide key attributes to use for looking up with the
+ * given tuple.
  */
 TupleHashEntry
 FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
@@ -556,7 +560,7 @@ FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
  * copied into the table.
  *
  * Also, the caller must select an appropriate memory context for running
- * the hash functions. (dynahash.c doesn't change GetCurrentMemoryContext().)
+ * the hash functions. (dynahash.c doesn't change CurrentMemoryContext.)
  */
 static uint32
 TupleHashTableHash_internal(struct tuplehash_hash *tb,
@@ -594,13 +598,19 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 
 	for (i = 0; i < numCols; i++)
 	{
-		AttrNumber	att;
+		/*
+		 * YB: TODO(tanuj): disentangle BNL logic from keyColIdx.  The below
+		 * workaround is needed for initdb to not crash on keyColIdx being
+		 * NULL.
+		 */
+		AttrNumber	att = (eval_exprs != NULL && eval_exprs[i] != NULL) ? 0 : keyColIdx[i];
 		Datum		attr;
 		bool		isNull;
 
 		/* combine successive hashkeys by rotating */
 		hashkey = pg_rotate_left32(hashkey, 1);
 
+		/* YB: for BNL, handle expressions on the outer tuple. */
 		if (eval_exprs != NULL && eval_exprs[i] != NULL)
 		{
 			hashtable->exprcontext->ecxt_outertuple = slot;
@@ -610,7 +620,6 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 		}
 		else
 		{
-			att = keyColIdx[i];
 			attr = slot_getattr(slot, att, &isNull);
 		}
 

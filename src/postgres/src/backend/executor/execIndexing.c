@@ -116,7 +116,7 @@
 #include "storage/lmgr.h"
 #include "utils/snapmgr.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "catalog/pg_am_d.h"
 #include "executor/ybModifyTable.h"
 #include "funcapi.h"
@@ -1113,9 +1113,9 @@ ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 		}
 
 		/*
-			* FormIndexDatum fills in its values and isnull parameters with the
-			* appropriate values for the column(s) of the index.
-			*/
+		 * FormIndexDatum fills in its values and isnull parameters with the
+		 * appropriate values for the column(s) of the index.
+		 */
 		FormIndexDatum(indexInfo,
 					   slot,
 					   estate,

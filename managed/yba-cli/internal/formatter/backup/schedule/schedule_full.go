@@ -101,7 +101,7 @@ func (fs *FullScheduleContext) startSubsection(format string) (*template.Templat
 }
 
 func (fs *FullScheduleContext) subSection(name string) {
-	fs.Output.Write([]byte("\n\n"))
+	fs.Output.Write([]byte("\n"))
 	fs.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fs.Output.Write([]byte("\n"))
 }

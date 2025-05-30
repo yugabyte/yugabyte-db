@@ -20,11 +20,14 @@ import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -33,6 +36,7 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -49,12 +53,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.json.JSONObject;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 
 @RunWith(value = YBTestRunner.class)
 public class TestYbQueryDiagnostics extends BasePgSQLTest {
@@ -95,7 +99,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(TestYbQueryDiagnostics.class);
     private static final AtomicInteger queryIdGenerator = new AtomicInteger();
-    private static final int ASH_SAMPLING_INTERVAL_MS = 500;
+    // Smaller value gives higher chances of data capture
+    private static final int ASH_SAMPLING_INTERVAL_MS = 50;
     private static final int YB_QD_MAX_EXPLAIN_PLAN_LEN = 16384;
     private static final int YB_QD_MAX_BIND_VARS_LEN = 2048;
     private static final int BG_WORKER_INTERVAL_MS = 1000;
@@ -105,41 +110,43 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         "pg_stat_statements was reset, query string not available;";
     private static final String permissionDeniedWarning =
         "Failed to create query diagnostics directory, Permission denied;";
+    private static final String bgWorkerName = "yb_query_diagnostics bgworker";
+    private static final String databaseConnectionBgworkerName =
+        "yb_query_diagnostics database connection bgworker";
     private static final String preparedStmt =
         "PREPARE stmt(text, int, float) AS " +
         "SELECT * FROM test_table1 WHERE a = $1 AND b = $2 AND c = $3";
     // Use regex to split on commas not inside quotes
     private static final String pgssRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)";
 
-    @Before
-    public void setUp() throws Exception {
-        /* Set Gflags and restart cluster */
+    private Map<String, String> queryDiagnosticsFlags() {
         Map<String, String> flagMap = super.getTServerFlags();
         flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_query_diagnostics");
         flagMap.put("ysql_yb_enable_query_diagnostics", "true");
-
-        /* Required for some of the fields within schema details */
         flagMap.put("ysql_beta_features", "true");
-
-        restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
-        setUpPreparedStatement();
+        flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(ASH_SAMPLING_INTERVAL_MS));
+        return flagMap;
     }
 
-    public void setUp(int queryDiagnosticsCircularBufferSize) throws Exception {
-        /* Set Gflags and restart cluster */
-        Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_query_diagnostics");
-        flagMap.put("ysql_yb_enable_query_diagnostics", "true");
-        appendToYsqlPgConf(flagMap,
-                            "yb_query_diagnostics_circular_buffer_size=" +
-                            queryDiagnosticsCircularBufferSize);
+    // Base setup method with default configuration
+    public void setUpQueryDiagnostics() throws Exception {
+        setUpQueryDiagnostics(Collections.emptyMap());
+    }
 
-        /* Required for some of the fields within schema details */
-        flagMap.put("ysql_beta_features", "true");
+    // Setup method with customizable flags
+    public void setUpQueryDiagnostics(Map<String, String> additionalFlags) throws Exception {
+        Map<String, String> flagMap = queryDiagnosticsFlags();
+
+        if (!additionalFlags.isEmpty()) {
+            if (additionalFlags.containsKey("ysql_pg_conf_csv")) {
+                appendToYsqlPgConf(flagMap, additionalFlags.get("ysql_pg_conf_csv"));
+                additionalFlags.remove("ysql_pg_conf_csv");
+            }
+
+            flagMap.putAll(additionalFlags);
+        }
 
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
-
         setUpPreparedStatement();
     }
 
@@ -327,29 +334,43 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return Paths.get(resultSet.getString("yb_query_diagnostics"));
     }
 
+    private void waitForBundleCompletion(String queryId, Statement statement) throws Exception {
+        waitForBundleCompletion(queryId, statement, 0);
+    }
+
     /*
      * Waits for the bundle to complete by checking the yb_query_diagnostics_status view.
      */
     private void waitForBundleCompletion(String queryId, Statement statement,
-                                         int diagnosticsInterval) throws Exception {
-        Thread.sleep(diagnosticsInterval * 1000 + BG_WORKER_INTERVAL_MS);
+            int diagnosticsInterval) throws Exception {
+        statement.execute("SELECT pg_sleep(" +
+                (diagnosticsInterval + (BG_WORKER_INTERVAL_MS / 1000)) + ")");
 
-        long start_time = System.currentTimeMillis();
-        while (true)
-        {
-            System.out.println("Waiting in forever loop");
+        try {
+            TestUtils.waitFor(() -> {
+                ResultSet resultSet = statement.executeQuery(
+                        "SELECT * FROM yb_query_diagnostics_status where query_id = " +
+                                queryId);
 
-            ResultSet resultSet = statement.executeQuery(
-                                  "SELECT * FROM yb_query_diagnostics_status where query_id = " +
-                                  queryId);
+               if (resultSet.next() && !resultSet.getString("status").equals("In Progress"))
+                    return true ;
 
-            if (resultSet.next() && !resultSet.getString("status").equals("In Progress"))
-                break;
+                return false;
+            },
+                    60000L, BG_WORKER_INTERVAL_MS);
+        } catch (Exception e) {
+            throw new AssertionError(
+                    "Bundle did not complete within the expected time");
+        }
+    }
 
-            if (System.currentTimeMillis() - start_time > 60000) // 1 minute
-                fail("Bundle did not complete within the expected time");
-
-            Thread.sleep(BG_WORKER_INTERVAL_MS);
+    private void waitForDatabaseConnectionBgWorker() {
+        try {
+            TestUtils.waitFor(() -> {
+                return !isBackgroundWorkerRunning(databaseConnectionBgworkerName);
+            }, 20000L, 1000);
+        } catch (Exception e) {
+            fail("DatabaseConnectionBgWorker did not complete as expected");
         }
     }
 
@@ -651,18 +672,34 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         String[] tokens = generateTokensForPgssData(pgssPath);
         validatePgssData(pgssPath, queryId, noOfCalls, tokens);
 
+        Float actualTotalPlanTime = Float.parseFloat(tokens[3]);
+        Float actualTotalExecTime = Float.parseFloat(tokens[4]);
+        Float actualTotalTime = actualTotalPlanTime + actualTotalExecTime;
+
+        Float actualMinPlanTime = Float.parseFloat(tokens[5]);
+        Float actualMinExecTime = Float.parseFloat(tokens[6]);
+        Float actualMinTime = actualMinPlanTime + actualMinExecTime;
+
+        Float actualMaxPlanTime = Float.parseFloat(tokens[7]);
+        Float actualMaxExecTime = Float.parseFloat(tokens[8]);
+        Float actualMaxTime = actualMaxPlanTime + actualMaxExecTime;
+
+        Float actualMeanPlanTime = Float.parseFloat(tokens[9]);
+        Float actualMeanExecTime = Float.parseFloat(tokens[10]);
+        Float actualMeanTime = actualMeanPlanTime + actualMeanExecTime;
+
         if (unnecessaryString != null)
             assertTrue("pg_stat_statements contains unnecessary data",
                     !tokens[1].contains(unnecessaryString));
         /* pg_stat_statements outputs data in ms */
         assertLessThan("total_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[3]) - expectedTotalTimeMs), epsilonMs);
+                       Math.abs(actualTotalTime - expectedTotalTimeMs), epsilonMs);
         assertLessThan("min_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[4]) - expectedMinTimeMs), epsilonMs);
+                       Math.abs(actualMinTime - expectedMinTimeMs), epsilonMs);
         assertLessThan("max_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[5]) - expectedMaxTimeMs), epsilonMs);
+                       Math.abs(actualMaxTime - expectedMaxTimeMs), epsilonMs);
         assertLessThan("mean_time is incorrect",
-                       Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTimeMs), epsilonMs);
+                       Math.abs(actualMeanTime - expectedMeanTimeMs), epsilonMs);
     }
 
     private void validateConstantsOrBindVarData(Path bindVarPath, int noOfConstantsPerLine,
@@ -730,15 +767,51 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return queryText;
     }
 
-    private void validateAgainstFile(String expectedFilePath, String actualData) throws Exception{
+    private void setUpTablesForCboStats() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA test_schema");
+            statement.execute("CREATE TABLE test_schema.table1 (id INTEGER)");
+            statement.execute("CREATE TABLE test_schema.table2 (name TEXT)");
 
-        Files.write(Paths.get(expectedFilePath), actualData.getBytes());
+            // Instead of inserting data we directly
+            // import statistics that are generated from cbo_stat_dump tool
+            ImportStatistics();
+        }
+    }
+
+    private void ImportStatistics() throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            String importStatsPath = "src/test/resources/import_statistics.sql";
+
+            try {
+                Path path = Paths.get(importStatsPath);
+                List<String> sqlStatements = Files.readAllLines(path);
+                for (String sql : sqlStatements) {
+                    LOG.info("Executing SQL: " + sql);
+                    if (!sql.trim().isEmpty() && !sql.trim().startsWith("--")) {
+                        statement.execute(sql);
+                    }
+                }
+            } catch (Exception e) {
+                throw new Exception(
+                        "Failed to execute import_statistics.sql: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    private String getQueryWithAllTablesJoined() throws Exception {
+        return "SELECT * " + //
+               "FROM test_schema.table1 t1 " + //
+               "CROSS JOIN test_schema.table2 t2";
+    }
+
+    private void validateAgainstFile(String expectedFilePath, String actualData) throws Exception{
 
         Path expectedOutputPath = Paths.get(expectedFilePath);
         String expectedOutput = new String(Files.readAllBytes(expectedOutputPath),
                                            StandardCharsets.UTF_8);
 
-        assertEquals("Output does not match expected output while validating aganist file",
+        assertEquals("Output does not match expected output while validating against file",
                      expectedOutput.trim(), actualData.trim());
 
     }
@@ -870,10 +943,34 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
     }
 
     /*
+     * Checks if bgworker is active.
+     */
+    private boolean isBackgroundWorkerRunning(String processName) throws Exception {
+        // Command to search for the process using pgrep -f
+        String[] command = { "pgrep", "-f", processName };
+
+        // Execute the command
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        Process process = processBuilder.start();
+
+        // Read the output
+        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        String line = reader.readLine(); // Read the first line of output
+
+        // Clean up
+        reader.close();
+        process.waitFor();
+
+        // If there's any output (i.e., a PID), the process is running
+        return line != null && !line.trim().isEmpty();
+    }
+
+    /*
      * Tests the dumping of bind varaibles data in the case of a prepared statement.
      */
     @Test
     public void checkBindVariablesData() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -919,6 +1016,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void checkConstantsData() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -975,6 +1073,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testMixedConstantsAndBindVariables() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1056,6 +1155,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testYbQueryDiagnosticsStatus() throws Exception {
+        setUpQueryDiagnostics();
         try (Statement statement = connection.createStatement()) {
             /*
              * We use random number for the queryid, as we are not doing any accumulation of data,
@@ -1163,6 +1263,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testBufferSizeUpdateAfterShmemInit() throws Exception {
+        setUpQueryDiagnostics();
         try (Statement statement = connection.createStatement()) {
             try {
                statement.executeQuery("set yb_query_diagnostics_circular_buffer_size to 50");
@@ -1178,7 +1279,10 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testCircularBufferWrapAround() throws Exception {
-        setUp(15);
+        Map<String, String> extraFlags = new HashMap<>();
+        extraFlags.put("ysql_pg_conf_csv",
+                       "yb_query_diagnostics_circular_buffer_size=15");
+        setUpQueryDiagnostics(extraFlags);
 
         try (Statement statement = connection.createStatement()) {
             /* running several bundles ensure buffer wraps around */
@@ -1188,7 +1292,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkAshData() throws Exception {
-        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        setUpQueryDiagnostics();
+        int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
                 diagnosticsInterval /* diagnosticsInterval */,
                 100 /* explainSampleRate */,
@@ -1198,15 +1303,19 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 0 /* bindVarQueryMinDuration */);
 
         try (Statement statement = connection.createStatement()) {
-            statement.execute("SELECT pg_sleep(0.5)");
-
-            String queryId = getQueryIdFromPgStatStatements(statement, "%pg_sleep%");
+            String queryId = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
 
-            /* Protects from "No query executed;" warning */
-            statement.execute("SELECT pg_sleep(0.1)");
+            /*
+             * Protects from "No query executed;" warning and ensures that we do have some data
+             * to dump in active_session_history.csv otherwise the file wouldn't be created
+             * and we would get a "File does not exist" error.
+             */
+            for (int i = 0; i < 100; i++) {
+                statement.execute("EXECUTE stmt('var1', 1, 1.1)");
+            }
 
-            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForBundleCompletion(queryId, statement, 2 * diagnosticsInterval);
 
             Path ashPath = getFilePathFromBaseDir(bundleDataPath,
                     "active_session_history.csv");
@@ -1217,7 +1326,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkPgssData() throws Exception {
-        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        setUpQueryDiagnostics();
+        int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
             100 /* explainSampleRate */,
@@ -1247,7 +1357,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testPgssResetBetweenDiagnostics() throws Exception {
-        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        setUpQueryDiagnostics();
+        int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
             100 /* explainSampleRate */,
@@ -1302,7 +1413,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void emptyBundle() throws Exception {
-        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        setUpQueryDiagnostics();
+        int diagnosticsInterval = 2;
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             diagnosticsInterval,
             100 /* explainSampleRate */,
@@ -1347,6 +1459,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testIntermediateFlushing() throws Exception {
+        setUpQueryDiagnostics();
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
             String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
@@ -1365,12 +1478,12 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
              * we consider only half the length.
              */
             int varLen = minLen / 2;
-            String largeVariable = new String(new char[ varLen ]).replace('\0', 'a');
+            String largeVariable = new String(new char[varLen]).replace('\0', 'a');
 
             /* To ensure that the buffer overflows we do twice as many iterations */
             int noOfIterations = (maxLen / varLen) + 1;
 
-            int diagnosticsInterval = noOfIterations * (BG_WORKER_INTERVAL_MS / 1000);
+            int diagnosticsInterval = 2 * noOfIterations * (BG_WORKER_INTERVAL_MS / 1000);
             QueryDiagnosticsParams params = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 100 /* explainSampleRate */,
@@ -1388,19 +1501,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 Thread.sleep(BG_WORKER_INTERVAL_MS);
             }
 
-            long start_time = System.currentTimeMillis();
-            while (true)
-            {
-                ResultSet resultSet = statement.executeQuery(
-                                      "SELECT * FROM yb_query_diagnostics_status");
-                if (resultSet.next() && resultSet.getString("status").equals("Success"))
-                    break;
-
-                if (System.currentTimeMillis() - start_time > 60000) // 1 minute
-                    fail("Bundle did not complete within the expected time");
-
-                Thread.sleep(BG_WORKER_INTERVAL_MS);
-            }
+            waitForBundleCompletion(queryId, statement);
 
             /* Bundle has expired */
             Path bindVariablesPath = bundleDataPath.resolve("constants_and_bind_variables.csv");
@@ -1411,6 +1512,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             String bindVariablesContent = new String(Files.readAllBytes(bindVariablesPath));
             String explainPlanContent = new String(Files.readAllBytes(explainPlanPath));
+
+            LOG.info("Explain plan content: \n" + explainPlanContent);
+            LOG.info("Bind variables content: \n" + bindVariablesContent);
 
             int bindVariablesLength = bindVariablesContent.length();
             int explainPlanLength = explainPlanContent.length();
@@ -1435,6 +1539,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void checkSchemaDetailsData() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1461,6 +1566,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute(queryToBundle);
 
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
 
             Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
 
@@ -1468,21 +1574,14 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertGreaterThan("schema_details.txt file is empty",
                               Files.size(schemaDetailsPath) , 0L);
 
-            /* Read the contents of the schema_details.txt file */
-            String schemaDetails = new String(Files.readAllBytes(schemaDetailsPath),
-                                              StandardCharsets.UTF_8);
-
-            Path expectedOutputPath = Paths.get("src/test/resources/expected/schema_details.out");
-            String expectedOutput = new String(Files.readAllBytes(expectedOutputPath),
-                                               StandardCharsets.UTF_8);
-
-            assertEquals("schema_details.txt file does not match expected output",
-                            expectedOutput.trim(), schemaDetails.trim());
+            validateAgainstFile("src/test/resources/expected/schema_details.out",
+                                new String(Files.readAllBytes(schemaDetailsPath)));
         }
     }
 
     @Test
     public void testSchemaDetailsDataLimit() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
             diagnosticsInterval,
@@ -1521,6 +1620,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute(queryToBundle);
 
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
 
             Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
 
@@ -1531,11 +1631,13 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             String schemaDetails = new String(Files.readAllBytes(schemaDetailsPath),
                                               StandardCharsets.UTF_8);
+            LOG.info("Schema details:\n" + schemaDetails);
+
             /* Count the number of table sections in the schema details */
             int tableCount = countTableSections(schemaDetails);
 
             /* Assert that only MAX_SCHEMA_OIDS tables are outputted */
-            assertEquals("Expected " + MAX_SCHEMA_OIDS + "tables in schema details, but found " +
+            assertEquals("Expected " + MAX_SCHEMA_OIDS + " tables in schema details, but found " +
                          tableCount, MAX_SCHEMA_OIDS, tableCount);
 
             /*
@@ -1544,20 +1646,20 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
              */
             for (int i = 1; i <= MAX_SCHEMA_OIDS; i++) {
                 assertTrue("Table" + i + " is missing from schema details",
-                            schemaDetails.contains("Table name: table" + i));
+                            schemaDetails.contains("- Table name: table" + i));
             }
             assertFalse("Table" + (MAX_SCHEMA_OIDS + 1) +
                         " should not be present in schema details",
-                        schemaDetails.contains("Table name: table" + (MAX_SCHEMA_OIDS + 1)));
+                        schemaDetails.contains("- Table name: table" + (MAX_SCHEMA_OIDS + 1)));
 
             /*
              * 'table1' was included multiple times in the SELECT query and
              * we want to ensure that the output is unique, so we assert that it appears only once.
              */
             long table1Count = Arrays.stream(schemaDetails.split("\n"))
-                .filter(line -> line.equals("Table name: table1"))
+                .filter(line -> line.equals("- Table name: table1"))
                 .count();
-            assertEquals("Table1 should appear only once in schema details", 1, table1Count);
+            assertEquals("Table1 should appear exactly once in schema details", 1, table1Count);
         }
     }
 
@@ -1575,6 +1677,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testYbCancelQueryDiagnostics() throws Exception {
+        setUpQueryDiagnostics();
         int bundle1Interval = 1;
         int bundle2Interval = 5;
         int bundle3Interval = 10;
@@ -1615,7 +1718,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             Path bundleDataPath3 = runQueryDiagnostics(statement, queryId3, params3);
 
             /* Wait for the 1st bundle to expire */
-            Thread.sleep((bundle1Interval * 1000) + BG_WORKER_INTERVAL_MS);
+            waitForBundleCompletion(queryId1, statement, bundle1Interval);
 
             /* Cancel further processing of the 2nd bundle */
             statement.execute("SELECT yb_cancel_query_diagnostics('" + queryId2 + "')");
@@ -1648,7 +1751,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertQueryDiagnosticsStatus(expectedBundleViewEntry3, bundleViewEntry3);
 
             /* Wait for the 3rd bundle to expire */
-            Thread.sleep((bundle3Interval * 1000) + BG_WORKER_INTERVAL_MS);
+            waitForBundleCompletion(queryId3, statement, bundle3Interval);
 
             /* 3rd bundle must have successfully completed */
             bundleViewEntry3 = getViewData(statement, queryId3, "");
@@ -1666,7 +1769,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testComplexQuery() throws Exception {
-        int diagnosticsInterval = 2;
+        setUpQueryDiagnostics();
+        int diagnosticsInterval = 5;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 100 /* explainSampleRate */,
@@ -1688,6 +1792,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute(complexQuery);
 
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
 
             Path bindVariablesPath = getFilePathFromBaseDir(bundleDataPath,
                     "constants_and_bind_variables.csv");
@@ -1722,6 +1827,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testLongQueryWith5000Constants() throws Exception {
+        setUpQueryDiagnostics();
         int diagnosticsInterval = 2;
         QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
@@ -1749,6 +1855,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute(longQuery.toString());
 
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
 
             // Validate the results
             Path bindVariablesPath = getFilePathFromBaseDir(bundleDataPath,
@@ -1783,6 +1890,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testExplainDistWithoutExplainAnalyze() throws Exception {
+        setUpQueryDiagnostics();
         QueryDiagnosticsParams params = new QueryDiagnosticsParams(
             2, /* diagnosticsInterval */
             100, /* explainSampleRate */
@@ -1815,6 +1923,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      */
     @Test
     public void testConstantsForMultiThreadedQueryDiagnostics() throws Exception {
+        setUpQueryDiagnostics();
         final int diagnosticsInterval = 10;
         final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
@@ -1906,10 +2015,387 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     @Test
     public void testInterruptsHandling() throws Exception {
+        setUpQueryDiagnostics();
         try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE DATABASE db1");
             statement.execute("ALTER DATABASE db1 RENAME TO db2");
             statement.execute("DROP DATABASE db2");
+        }
+    }
+
+    /*
+     * Tests if bgworker is switching on and off dynamically.
+     */
+    @Test
+    public void testDynamicBackgroundWorker() throws Exception {
+        setUpQueryDiagnostics();
+        int diagnosticsInterval = 10;
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            // Bgworker should be switched off initially
+            assertFalse("Background worker should not be running but it is",
+                    isBackgroundWorkerRunning(bgWorkerName));
+
+            // Run query diagnostics
+            String queryId = generateUniqueQueryId();
+            runQueryDiagnostics(statement, queryId, params);
+
+            // Ensure bundle has started
+            ResultSet resultSet = statement.executeQuery(
+                "SELECT * FROM yb_query_diagnostics_status WHERE query_id = '" + queryId + "'");
+            assertTrue("No rows found in yb_query_diagnostics_status", resultSet.next());
+
+            // Ensure that bgworker has started
+            try {
+                TestUtils.waitFor(() -> isBackgroundWorkerRunning(bgWorkerName),
+                                  10000L, 1000);
+            }
+            catch (Exception e) {
+                throw new AssertionError(
+                    "Background worker did not start after bundle creation");
+            }
+
+            // Wait for the bundle to expire
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+
+            // Background worker should stop if no bundle is processing
+            try {
+                TestUtils.waitFor(() -> !isBackgroundWorkerRunning(bgWorkerName),
+                                  10000L, 1000);
+            }
+            catch (Exception e) {
+                throw new AssertionError(
+                    "Background worker did not stop after bundle completion");
+            }
+        }
+    }
+
+    /*
+     * Tests if its possible to dump schema details for tables within other dbs.
+     */
+    @Test
+    public void testDatabaseConnectionBackgroundWorker() throws Exception {
+        setUpQueryDiagnostics();
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+        final String db = "db_apart_from_yugabyte";
+
+        try (Statement statement = connection.createStatement()) {
+            // Drop and create a separate database.
+            statement.execute("drop database if exists " + db);
+            statement.execute("create database " + db);
+        }
+
+        // Connect to the other database
+        try (Connection conn = getConnectionBuilder().withDatabase(db).connect();
+             Statement statement = conn.createStatement()) {
+            statement.execute(
+                "CREATE TABLE other_db_test_table(id INT PRIMARY KEY, value TEXT)");
+            statement.execute("SELECT * FROM other_db_test_table");
+
+            String queryid = getQueryIdFromPgStatStatements(statement,
+                                "SELECT * FROM other_db_test_table%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryid,
+                                        queryDiagnosticsParams);
+
+            statement.execute("SELECT * FROM other_db_test_table");
+
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+
+            /*
+             * Ensure that explain plan, pgss, and schema details are present
+             * Note that we dont validate ash, bind variables as they may not be present
+             */
+            Path explainPlanPath = getFilePathFromBaseDir(bundleDataPath,
+                    "explain_plan.txt");
+            validateExplainPlan(explainPlanPath,
+                "src/test/resources/expected/other_db_explain_plan.out");
+
+            Path pgssPath = getFilePathFromBaseDir(bundleDataPath,
+                    "pg_stat_statements.csv");
+            validatePgssData(pgssPath, queryid, 1);
+
+            waitForDatabaseConnectionBgWorker();
+
+            Path schemaDetailsPath = getFilePathFromBaseDir(bundleDataPath,
+                    "schema_details.txt");
+            validateAgainstFile(
+                "src/test/resources/expected/other_db_schema_details.out",
+                                new String(Files.readAllBytes(schemaDetailsPath)));
+        }
+    }
+
+    /*
+     * Tests the case when bgworker doesn't gets killed for 10sec after marking bgworker inactive.
+     * This leads to insert query hitting 5s sleep and timing out.
+     */
+    @Test
+    public void testBgworkerRaceConditionTimeout() throws Exception {
+        setUpQueryDiagnostics(Collections.singletonMap(
+                "TEST_ysql_yb_query_diagnostics_race_condition", "true"));
+
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            String queryid = generateUniqueQueryId();
+            runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+
+            /* bgworker should be waiting now */
+            runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+        } catch (Exception e) {
+            assertTrue("Expected exception not thrown: " + e.getMessage(),
+                    e.getMessage().contains("timed out after waiting 5 seconds"));
+        }
+    }
+
+    /*
+     * Tests the case when we hit 5s sleep while inserting the query but does not timeout.
+     */
+    @Test
+    public void testBgworkerRaceConditionResolved() throws Exception {
+        setUpQueryDiagnostics(Collections.singletonMap(
+                "TEST_ysql_yb_query_diagnostics_race_condition", "true"));
+
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            String queryid = generateUniqueQueryId();
+            runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+
+            /*
+             * bgworker should be waiting now.
+             * We know that bgworker is waiting for 10sec, and timeout is 5sec so sleeping for 7s
+             * should avoid a timeout at the same time ensure that we did hit the race condition.
+            */
+            Thread.sleep(7000);
+            runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+        }
+    }
+
+    /*
+     * This test verifies the proper functioning of
+     * yb_query_diagnostics_disable_database_connection_bgworker flag
+     */
+    @Test
+    public void testDisablingDatabaseConnectionBgworker() throws Exception {
+        setUpQueryDiagnostics();
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            printQueryOutput(statement,
+                "SHOW yb_query_diagnostics_disable_database_connection_bgworker");
+
+            String queryid = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+
+            // This prevents us from "no query executed" warning
+            statement.execute("EXECUTE stmt('var1', 1, 1.1)");
+
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
+
+            assertTrue("schema_details file does not exist", Files.exists(schemaDetailsPath));
+            assertGreaterThan("schema_details.txt file is empty",
+                    Files.size(schemaDetailsPath), 0L);
+        }
+
+        setUpQueryDiagnostics(Collections.singletonMap(
+            "ysql_yb_query_diagnostics_disable_database_connection_bgworker", "true"));
+
+        try(Statement statement = connection.createStatement()) {
+            printQueryOutput(statement,
+                "SHOW yb_query_diagnostics_disable_database_connection_bgworker");
+
+            String queryid = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryid, queryDiagnosticsParams);
+
+            // This prevents us from "no query executed" warning
+            statement.execute("EXECUTE stmt('var1', 1, 1.1)");
+
+            waitForBundleCompletion(queryid, statement, diagnosticsInterval);
+
+            /*
+             * Sleep to ensure that non-existence of schema details file is not because
+             * database connection bgworker did exist but didn't finish, we want to test for
+             * database connection bgworker didn't exist.
+             */
+            Thread.sleep(10000);
+
+            Path schemaDetailsPath = bundleDataPath.resolve("schema_details.txt");
+
+            assertFalse("schema_details file should not exist", Files.exists(schemaDetailsPath));
+        }
+    }
+
+    /*
+     * Tests if yb_query_diagnostics_status view is persistent across crashes.
+     */
+    @Test
+    public void testViewPersistence() throws Exception {
+        setUpQueryDiagnostics();
+
+        int successfulDiagnosticsInterval = 10;
+        Path successfulBundlePath;
+        String successfulQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams successfulParams = new QueryDiagnosticsParams(
+                successfulDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        Path inProgressBundlePath;
+        int inProgressDiagnosticsInterval = 100;
+        String inProgressQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams inProgressParams = new QueryDiagnosticsParams(
+                inProgressDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        Path cancelledBundlePath;
+        int cancelledDiagnosticsInterval = 100;
+        String cancelQueryId = generateUniqueQueryId();
+        QueryDiagnosticsParams cancelledParams = new QueryDiagnosticsParams(
+                cancelledDiagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            // successful bundle
+            successfulBundlePath = runQueryDiagnostics(statement,
+                                                       successfulQueryId, successfulParams);
+            waitForBundleCompletion(successfulQueryId, statement, successfulDiagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            // bundle in progress
+            inProgressBundlePath = runQueryDiagnostics(statement, inProgressQueryId,
+                                                       inProgressParams);
+
+            // cancel bundle
+            cancelledBundlePath = runQueryDiagnostics(statement, cancelQueryId, cancelledParams);
+            statement.execute("SELECT yb_cancel_query_diagnostics('" + cancelQueryId + "')");
+
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
+        }
+
+        miniCluster.restart();
+        connection = getConnectionBuilder().connect();
+
+        try (Statement statement = connection.createStatement()) {
+            printQueryOutput(statement, "SELECT * FROM yb_query_diagnostics_status");
+
+            // successful bundle
+            QueryDiagnosticsStatus successfulBundleViewEntry =
+                    getViewData(statement, successfulQueryId, "");
+            QueryDiagnosticsStatus expectedSuccessfulBundleViewEntry =
+                    new QueryDiagnosticsStatus(successfulBundlePath, "Success",
+                                               noQueriesExecutedWarning, successfulParams);
+            assertQueryDiagnosticsStatus(expectedSuccessfulBundleViewEntry,
+                    successfulBundleViewEntry);
+
+            // bundle in progress
+            QueryDiagnosticsStatus inProgressBundleViewEntry =
+                    getViewData(statement, inProgressQueryId, "");
+            QueryDiagnosticsStatus expectedInProgressBundleViewEntry = new QueryDiagnosticsStatus(
+                    inProgressBundlePath, "Postmaster Shutdown", "", inProgressParams);
+            assertQueryDiagnosticsStatus(expectedInProgressBundleViewEntry,
+                    inProgressBundleViewEntry);
+
+            // cancelled bundle
+            QueryDiagnosticsStatus cancelledBundleViewEntry =
+                    getViewData(statement, cancelQueryId, "");
+            QueryDiagnosticsStatus expectedCancelledBundleViewEntry =
+                    new QueryDiagnosticsStatus(cancelledBundlePath, "Cancelled",
+                                               "Bundle was cancelled", cancelledParams);
+            assertQueryDiagnosticsStatus(expectedCancelledBundleViewEntry,
+                                         cancelledBundleViewEntry);
+        }
+    }
+
+    @Test
+    public void testCboStats() throws Exception {
+        setUpQueryDiagnostics();
+
+        final int diagnosticsInterval = 10;
+        final QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+                diagnosticsInterval,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            setUpTablesForCboStats();
+            String query = getQueryWithAllTablesJoined();
+
+            printQueryOutput(statement, query);
+
+            String queryId = getQueryIdFromPgStatStatements(statement, query);
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId,
+                    queryDiagnosticsParams);
+            statement.execute(query);
+
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+
+            Path statisticsJsonPath = getFilePathFromBaseDir(bundleDataPath,
+                    "statistics.json");
+            assertTrue("statistics.json file does not exist",
+                    Files.exists(statisticsJsonPath));
+            assertGreaterThan("statistics.json file is empty",
+                    Files.size(statisticsJsonPath), 0L);
+            String statisticsJsonContent = new String(Files.readAllBytes(statisticsJsonPath));
+            LOG.info("Statistics JSON content:\n" + statisticsJsonContent);
+
+            validateAgainstFile(
+                    "src/test/resources/expected/statistics_json.out",
+                    statisticsJsonContent);
         }
     }
 }

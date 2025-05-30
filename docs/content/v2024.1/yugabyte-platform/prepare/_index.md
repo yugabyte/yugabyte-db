@@ -18,6 +18,13 @@ YugabyteDB Anywhere is a control plane used to deploy and manage YugabyteDB data
 Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
 {{< /warning >}}
 
+{{< tip title="Track your progress" >}}
+To track your progress while you prepare your infrastructure, you can use the following checklists:
+
+- [On-Premises Provider Configuration](/files/YBA-Prerequisites-Checklist-On-Premises.pdf)
+- [Public Cloud Provider Configuration](/files/YBA-Prerequisites-Checklist-Cloud-Provider.pdf)
+{{< /tip >}}
+
 To prepare your infrastructure for YugabyteDB Anywhere, you need to do the following:
 
 - [Configure cloud permissions](./cloud-permissions/)

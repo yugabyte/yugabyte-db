@@ -59,4 +59,9 @@ public class TestPgRegressMisc extends BasePgRegressTest {
   public void testPgRegressMiscSerial4() throws Exception {
     runPgRegressTest("yb_misc_serial4_schedule");
   }
+
+  @Test
+  public void testPgRegressMiscSerial5() throws Exception {
+    runPgRegressTest("yb_misc_serial5_schedule");
+  }
 }

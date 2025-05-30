@@ -896,7 +896,7 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 		if (!NextCopyFromRawFields(cstate, &field_strings, &fldct))
 			return false;
 
-		/* if the row is skipped, ignore all the format checking */
+		/* YB: if the row is skipped, ignore all the format checking */
 		if (skip_row)
 			return true;
 
@@ -1034,7 +1034,7 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 		 * per-tuple memory context in it.
 		 */
 		Assert(econtext != NULL);
-		Assert(GetCurrentMemoryContext() == econtext->ecxt_per_tuple_memory);
+		Assert(CurrentMemoryContext == econtext->ecxt_per_tuple_memory);
 
 		values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
 										 &nulls[defmap[i]]);

@@ -1,4 +1,4 @@
 ####################################################################################################
 # This testsuite contains testcases pertinent to YB Colocated Tables with Tablespaces.
 ####################################################################################################
-test: yb_colocated_tables_with_tablespaces
+test: yb.orig.colocated_tables_with_tablespaces

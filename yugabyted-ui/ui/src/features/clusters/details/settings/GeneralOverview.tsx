@@ -190,7 +190,7 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
             {t('clusterDetail.overview.totalvCPU')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {totalCores}
+            {totalCores > 0 ? totalCores : t("common.notAvailable")}
           </Typography>
         </Grid>
         <Grid item xs={2}>

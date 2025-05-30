@@ -1527,10 +1527,10 @@ SELCT 1/0;<!-- this typo is intentional -->
 
    <para>
     The frontend should also be prepared to handle an ErrorMessage
-    response to SSLRequest from the server.  This would only occur if
-    the server predates the addition of <acronym>SSL</acronym> support
-    to <productname>PostgreSQL</productname>.  (Such servers are now very ancient,
-    and likely do not exist in the wild anymore.)
+    response to SSLRequest from the server. The frontend should not display
+    this error message to the user/application, since the server has not been
+    authenticated
+    (<ulink url="https://www.postgresql.org/support/security/CVE-2024-10977/">CVE-2024-10977</ulink>).
     In this case the connection must
     be closed, but the frontend might choose to open a fresh connection
     and proceed without requesting <acronym>SSL</acronym>.
@@ -1585,7 +1585,7 @@ SELCT 1/0;<!-- this typo is intentional -->
     respectively.  The frontend might close the connection at this point
     if it is dissatisfied with the response.  To continue after
     <literal>G</literal>, using the GSSAPI C bindings as discussed in
-    <ulink url="https://tools.ietf.org/html/rfc2744">RFC 2744</ulink>
+    <ulink url="https://datatracker.ietf.org/doc/html/rfc2744">RFC 2744</ulink>
     or equivalent, perform a <acronym>GSSAPI</acronym> initialization by
     calling <function>gss_init_sec_context()</function> in a loop and sending
     the result to the server, starting with an empty input and then with each
@@ -1604,12 +1604,13 @@ SELCT 1/0;<!-- this typo is intentional -->
 
    <para>
     The frontend should also be prepared to handle an ErrorMessage
-    response to GSSENCRequest from the server.  This would only occur if
-    the server predates the addition of <acronym>GSSAPI</acronym> encryption
-    support to <productname>PostgreSQL</productname>.  In this case the
-    connection must be closed, but the frontend might choose to open a fresh
-    connection and proceed without requesting <acronym>GSSAPI</acronym>
-    encryption.
+    response to GSSENCRequest from the server.  The frontend should not display
+    this error message to the user/application, since the server has not been
+    authenticated
+    (<ulink url="https://www.postgresql.org/support/security/CVE-2024-10977/">CVE-2024-10977</ulink>).
+    In this case the connection must be closed, but the frontend might choose
+    to open a fresh connection and proceed without requesting
+    <acronym>GSSAPI</acronym> encryption.
    </para>
 
    <para>
@@ -1722,8 +1723,8 @@ SELCT 1/0;<!-- this typo is intentional -->
     The implemented SASL mechanisms at the moment
     are <literal>SCRAM-SHA-256</literal> and its variant with channel
     binding <literal>SCRAM-SHA-256-PLUS</literal>. They are described in
-    detail in <ulink url="https://tools.ietf.org/html/rfc7677">RFC 7677</ulink>
-    and <ulink url="https://tools.ietf.org/html/rfc5802">RFC 5802</ulink>.
+    detail in <ulink url="https://datatracker.ietf.org/doc/html/rfc7677">RFC 7677</ulink>
+    and <ulink url="https://datatracker.ietf.org/doc/html/rfc5802">RFC 5802</ulink>.
    </para>
 
    <para>
@@ -2559,7 +2560,10 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
         <term><replaceable class="parameter">option_name</replaceable></term>
         <listitem>
          <para>
-          The name of an option passed to the slot's logical decoding plugin.
+          The name of an option passed to the slot's logical decoding output
+          plugin.  See <xref linkend="protocol-logical-replication"/> for
+          options that are accepted by the standard (<literal>pgoutput</literal>)
+          plugin.
          </para>
         </listitem>
        </varlistentry>
@@ -3059,7 +3063,7 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
          <para>
           Files other than regular files and directories, such as symbolic
           links (other than for the directories listed above) and special
-          device files, are skipped.  (Symbolic links
+          device and operating system files, are skipped.  (Symbolic links
           in <filename>pg_tblspc</filename> are maintained.)
          </para>
         </listitem>
@@ -3088,12 +3092,18 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
   the physical streaming replication protocol.
  </para>
 
+ <para>
+  <productname>PostgreSQL</productname> logical decoding supports output
+  plugins.  <literal>pgoutput</literal> is the standard one used for
+  the built-in logical replication.
+ </para>
+
  <sect2 id="protocol-logical-replication-params">
   <title>Logical Streaming Replication Parameters</title>
 
   <para>
-   The logical replication <literal>START_REPLICATION</literal> command
-   accepts following parameters:
+   Using the <literal>START_REPLICATION</literal> command,
+   <literal>pgoutput</literal> accepts the following options:
 
    <variablelist>
     <varlistentry>
@@ -3103,7 +3113,7 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
      <listitem>
       <para>
        Protocol version. Currently versions <literal>1</literal>, <literal>2</literal>,
-       and <literal>3</literal> are supported.
+       and <literal>3</literal> are supported.  A valid version is required.
       </para>
       <para>
        Version <literal>2</literal> is supported only for server version 14
@@ -3125,6 +3135,55 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
        Comma separated list of publication names for which to subscribe
        (receive changes). The individual publication names are treated
        as standard objects names and can be quoted the same as needed.
+       At least one publication name is required.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      binary
+     </term>
+     <listitem>
+      <para>
+       Boolean option to use binary transfer mode.  Binary mode is faster
+       than the text mode but slightly less robust.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      messages
+     </term>
+     <listitem>
+      <para>
+       Boolean option to enable sending the messages that are written
+       by <function>pg_logical_emit_message</function>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      streaming
+     </term>
+     <listitem>
+      <para>
+       Boolean option to enable streaming of in-progress transactions.
+       Minimum protocol version 2 is required to turn it on.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term>
+      two_phase
+     </term>
+     <listitem>
+      <para>
+       Boolean option to enable two-phase transactions.   Minimum protocol
+       version 3 is required to turn it on.
       </para>
      </listitem>
     </varlistentry>
@@ -4108,6 +4167,13 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
         For an <command>UPDATE</command> command, the tag is
         <literal>UPDATE <replaceable>rows</replaceable></literal> where
         <replaceable>rows</replaceable> is the number of rows updated.
+       </para>
+
+       <para>
+        For a <command>MERGE</command> command, the tag is
+        <literal>MERGE <replaceable>rows</replaceable></literal> where
+        <replaceable>rows</replaceable> is the number of rows inserted,
+        updated, or deleted.
        </para>
 
        <para>

@@ -106,7 +106,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   public void before() {
     MockitoAnnotations.initMocks(this);
     defaultCustomer = ModelFactory.testCustomer();
-    defaultUser = ModelFactory.testUser(defaultCustomer);
+    defaultUser = ModelFactory.testUser(defaultCustomer, Users.Role.Admin);
     defaultProvider = ModelFactory.onpremProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "us-west-2", "yb-image");
     role =
@@ -128,6 +128,17 @@ public class AccessKeyControllerTest extends FakeDBApplication {
               String fileExtension = i.getArgument(1);
               return Files.createTempFile(Paths.get("/tmp"), fileName, fileExtension);
             });
+  }
+
+  private Result getAccessKey(UUID providerUUID, String keyCode, Users user) {
+    String uri =
+        "/api/customers/"
+            + defaultCustomer.getUuid()
+            + "/providers/"
+            + providerUUID
+            + "/access_keys/"
+            + keyCode;
+    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   private Result getAccessKey(UUID providerUUID, String keyCode) {
@@ -310,7 +321,12 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     AccessKey accessKey =
         AccessKey.create(defaultProvider.getUuid(), "foo", new AccessKey.KeyInfo());
-    Result result = getAccessKey(defaultProvider.getUuid(), accessKey.getKeyCode());
+    Result result =
+        getAccessKey(
+            defaultProvider.getUuid(),
+            accessKey.getKeyCode(),
+            ModelFactory.testUser(
+                defaultCustomer, "test2@gmail.com", com.yugabyte.yw.models.Users.Role.ConnectOnly));
     assertUnauthorizedNoException(result, "Unable to authorize user");
   }
 
@@ -341,10 +357,13 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1, permission3, permission4)));
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
-    RoleBinding.create(defaultUser, RoleBindingType.Custom, role1, rG);
+    Users newUser =
+        ModelFactory.testUser(
+            defaultCustomer, "test2@gmail.com", com.yugabyte.yw.models.Users.Role.ConnectOnly);
+    RoleBinding.create(newUser, RoleBindingType.Custom, role1, rG);
     AccessKey accessKey =
         AccessKey.create(defaultProvider.getUuid(), "foo", new AccessKey.KeyInfo());
-    Result result = getAccessKey(defaultProvider.getUuid(), accessKey.getKeyCode());
+    Result result = getAccessKey(defaultProvider.getUuid(), accessKey.getKeyCode(), newUser);
     assertUnauthorizedNoException(result, "Unable to authorize user");
   }
 

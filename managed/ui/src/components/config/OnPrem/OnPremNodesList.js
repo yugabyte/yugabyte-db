@@ -413,16 +413,12 @@ class OnPremNodesList extends Component {
     };
 
     const nodeAgentStatus = (cell, row) => {
-      let status = '';
-      let isReachable = false;
       if (nodeAgentStatusByIPs.isSuccess) {
-        const nodeAgents = nodeAgentStatusByIPs.data.entities;
+        const nodeAgents = nodeAgentStatusByIPs.data?.entities ?? [];
         const nodeAgent = nodeAgents.find((nodeAgent) => row.ip === nodeAgent.ip);
-        status = nodeAgent?.state;
-        isReachable = nodeAgent?.reachable;
+        return nodeAgent ? <NodeAgentStatus nodeAgent={nodeAgent} /> : null;
       }
-
-      return <NodeAgentStatus status={status} isReachable={isReachable} />;
+      return null;
     };
 
     const rowClassNameFormat = (row) => {
@@ -462,7 +458,7 @@ class OnPremNodesList extends Component {
               disabled={row.inUse || isNodeInUse}
             >
               <i className={`fa fa-trash`} />
-              Delete node
+              Delete Instance
             </MenuItem>
             {isNodeDecommissioned && (
               <MenuItem onClick={self.showConfirmRecommissionNodeModal.bind(self, row)}>
@@ -584,9 +580,9 @@ class OnPremNodesList extends Component {
             );
           })
       : null;
-    const deleteConfirmationText = `Are you sure you want to delete node${
-      isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName
-        ? ' ' + this.state.nodeToBeDeleted.nodeName
+    const deleteConfirmationText = `Are you sure you want to delete instance${
+      isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.ip
+        ? ' ' + this.state.nodeToBeDeleted.ip
         : ''
     }?`;
     const recommissionNodeConfirmationText = `Are you sure you want to recommission node${
@@ -634,7 +630,7 @@ class OnPremNodesList extends Component {
             >
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} dataSort />
               <TableHeaderColumn dataField="instanceName" dataSort>
-                Node Name
+                Instance Name
               </TableHeaderColumn>
               <TableHeaderColumn dataField="ip" dataSort>
                 Address
@@ -690,7 +686,7 @@ class OnPremNodesList extends Component {
         </YBModal>
         <YBConfirmModal
           name={'confirmDeleteNodeInstance'}
-          title={'Delete Node'}
+          title={'Delete Instance'}
           hideConfirmModal={this.hideDeleteNodeModal}
           currentModal={'confirmDeleteNodeInstance'}
           visibleModal={visibleModal}

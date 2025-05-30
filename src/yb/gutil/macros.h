@@ -24,6 +24,9 @@
 #pragma once
 
 #include <stddef.h>         // For size_t
+
+#include <boost/preprocessor/stringize.hpp>
+
 #include "yb/gutil/port.h"
 
 // The swigged version of an abstract class must be concrete if any methods
@@ -48,12 +51,7 @@
 // the expression is false, most compilers will issue a warning/error
 // containing the name of the variable.
 
-template <bool>
-struct CompileAssert {
-};
-
-#define COMPILE_ASSERT(expr, msg) \
-  typedef CompileAssert<(bool(expr))> msg[bool(expr) ? 1 : -1] ATTRIBUTE_UNUSED
+#define COMPILE_ASSERT(expr, msg) static_assert((expr), BOOST_PP_STRINGIZE(msg))
 
 // Implementation details of COMPILE_ASSERT:
 //
@@ -107,22 +105,10 @@ struct CompileAssert {
 // semantically, one should either use disallow both or neither. Try to
 // avoid these in new code.
 //
-// The LANG_CXX11 branch is a workaround for
-// http://gcc.gnu.org/PR51213 in gcc-4.7 / Crosstool v16.
-// TODO(user): Remove "&& !defined(__clang_)" when =delete is
-// gcc-4.7 before =delete is allowed, go back to the C++98 definition.
-#if LANG_CXX11 && !defined(__clang__)
 #ifndef DISALLOW_COPY_AND_ASSIGN
 #define DISALLOW_COPY_AND_ASSIGN(TypeName) \
   TypeName(const TypeName&) = delete;      \
   void operator=(const TypeName&) = delete
-#endif
-#else
-#ifndef DISALLOW_COPY_AND_ASSIGN
-#define DISALLOW_COPY_AND_ASSIGN(TypeName) \
-  TypeName(const TypeName&);               \
-  void operator=(const TypeName&)
-#endif
 #endif
 
 // An older, politically incorrect name for the above.
@@ -210,8 +196,7 @@ char (&ArraySizeHelper(const T (&array)[N]))[N];
 // Starting with Visual C++ 2005, WinNT.h includes ARRAYSIZE.
 #if !defined(_MSC_VER) || (defined(_MSC_VER) && _MSC_VER < 1400)
 #define ARRAYSIZE(a) \
-  ((sizeof(a) / sizeof(*(a))) / \
-   static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
+  ((sizeof(a) / sizeof(*(a))) / static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
 #endif
 
 // A macro to turn a symbol into a string
@@ -275,19 +260,7 @@ enum LinkerInitialized { LINKER_INITIALIZED };
 //
 //  In either case this macro has no effect on runtime behavior and performance
 //  of code.
-#if __cplusplus >= 201703L
-#define FALLTHROUGH_INTENDED [[fallthrough]]
-#elif defined(__clang__) && defined(LANG_CXX11) && defined(__has_warning)
-#if __has_feature(cxx_attributes) && __has_warning("-Wimplicit-fallthrough")
-#define FALLTHROUGH_INTENDED [[clang::fallthrough]]  // NOLINT
-#endif
-#elif defined(__GNUC__) && __GNUC__ >= 7
-#define FALLTHROUGH_INTENDED [[gnu::fallthrough]]
-#endif
-
-#ifndef FALLTHROUGH_INTENDED
-#define FALLTHROUGH_INTENDED do { } while (0)
-#endif
+#define FALLTHROUGH_INTENDED [[fallthrough]] // NOLINT
 
 // Generally it is better to not initialize variables with default values to let the compiler find
 // branches where we don't set it and then use instead of masking issues and silently use dummy
@@ -298,4 +271,10 @@ enum LinkerInitialized { LINKER_INITIALIZED };
 #define FASTDEBUG_FAKE_INIT(x) {x}
 #else
 #define FASTDEBUG_FAKE_INIT(x)
+#endif
+
+#if defined(__GNUC__) && !defined(__clang__)
+#define MAYBE_UNUSED_MEMBER
+#else
+#define MAYBE_UNUSED_MEMBER [[maybe_unused]] // NOLINT
 #endif

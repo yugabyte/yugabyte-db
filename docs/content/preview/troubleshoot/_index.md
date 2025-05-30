@@ -22,7 +22,7 @@ Typically, troubleshooting involves a number of steps that are rather consistent
 
 2. Check [cluster-level issues](cluster/) and their solutions.
 
-3. Check logs: you should inspect the YugabyteDB logs for additional details on your issue. For more information, see [Inspect logs](nodes/check-logs/).
+3. Check logs: you should inspect the YugabyteDB logs for additional details on your issue. For more information, see [Inspect logs](../explore/observability/logging/).
 
 4. Explore knowledge base articles: you can find additional troubleshooting resources and information on Yugabyte [Support page](https://support.yugabyte.com/).
 

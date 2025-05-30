@@ -288,6 +288,11 @@ decltype(auto) AsString(const T&... t) {
   return ToString(t...);
 }
 
+template <typename T1, typename T2>
+std::string AsDebugHexString(const std::pair<T1, T2>& value) {
+  return AsDebugHexString(value.first) + " - " + AsDebugHexString(value.second);
+}
+
 } // namespace yb
 
 #if BOOST_PP_VARIADICS

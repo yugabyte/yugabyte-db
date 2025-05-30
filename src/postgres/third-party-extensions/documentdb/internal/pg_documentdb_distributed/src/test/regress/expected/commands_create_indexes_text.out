@@ -1,0 +1,1198 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 6770000;
+SET documentdb.next_collection_id TO 6770;
+SET documentdb.next_collection_index_id TO 6770;
+-- cannot create indexes for cosmos_search without the flag enabled.
+SELECT documentdb_api.create_collection('db', 'create_indexes_text');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- invalid scenarios
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text", "b": 1, "c": "text" } } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : "text", "b" : 1, "c" : "text" } } :: caused by :: 'text' fields in index must all be adjacent
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "hashed", "b": 1, "c": "text" } } ] }', true);
+ERROR:  Error in specification { "key" : { "a" : "hashed", "b" : 1, "c" : "text" } } :: caused by :: Can't use more than one index plugin for a single index.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "c": "text" }, "name": "foo",  "expireAfterSeconds": 10 } ] }', true);
+ERROR:  Creating a text index as ttl index is not supported.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "c": "text" }, "name": "foo",  "unique": true } ] }', true);
+ERROR:  Index type 'text' does not support the unique option
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "c.$**": "text" }, "name": "foo" } ] }', true);
+ERROR:  Error in specification { "key" : { "c.$**" : "text" }, "name" : "foo" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "foo", "wildcardProjection": { "a": 1 } } ] }', true);
+ERROR:  Error in specification { "key" : { "$**" : "text" }, "name" : "foo", "wildcardProjection" : { "a" : 1 } } :: caused by :: The field 'wildcardProjection' is only allowed when 'key' is {"$**": ±1}
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "idx1", "default_language": "ok" } ] }', true);
+ERROR:  unsupported language: "ok" for text index version 3
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6771 ON documentdb_data.documents_6770 USING documentdb_rum ( document documentdb_api_catalog.bson_rum_text_path_ops(weights='', iswildcard=true,defaultlanguage='ok')) "
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "idx1", "weights": { "a": 2, "b": 3, "c": 4, "d": 5 } } ] }', true);
+ERROR:  Cannot have more than 3 custom weights in the index
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6772 ON documentdb_data.documents_6770 USING documentdb_rum ( document documentdb_api_catalog.bson_rum_text_path_ops(weights='{ "a" : 2.0, "b" : 3.0, "c" : 4.0, "d" : 5.0 }', iswildcard=true)) "
+-- create a valid indexes
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text" }, "name": "a_text" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""a_text"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+ collection_id | index_id |                         index_spec                         | index_is_valid 
+---------------------------------------------------------------------
+          6770 |     6770 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,) | t
+          6770 |     6773 | (a_text,"{ ""a"" : ""text"" }",,,,,2,,,)                   | t
+(2 rows)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6773" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "a_text" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text", "b": "text", "c": 1 }, "name": "idx1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                  list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6774" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 1.0 }'), document bson_rum_single_path_ops (path=c))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "b": "text", "c": 1 }, "name": "idx1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                               list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""b"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6775" documentdb_rum (document bson_rum_single_path_ops (path=a), document bson_rum_text_path_ops (weights='{ "b" : 1.0 }'), document bson_rum_single_path_ops (path=c))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "b": "text", "c": "text" }, "name": "idx1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                  list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""b"" : { ""$numberDouble"" : ""1.0"" }, ""c"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6776" documentdb_rum (document bson_rum_single_path_ops (path=a), document bson_rum_text_path_ops (weights='{ "b" : 1.0, "c" : 1.0 }'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "idx1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6777" documentdb_rum (document bson_rum_text_path_ops (weights='', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text" }, "name": "idx1", "default_language": "es" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                           list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6778" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }', defaultlanguage=es))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text", "b": "text", "c": 1 }, "name": "idx1", "weights": { "b": 100, "c": 200 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                                        list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""100.0"" }, ""c"" : { ""$numberDouble"" : ""200.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6779" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 100.0, "c" : 200.0 }'), document bson_rum_single_path_ops (path=c))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text", "b": "text", "c": 1 }, "name": "idx1", "weights": { "c": 200, "d": 10 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""1.0"" }, ""c"" : { ""$numberDouble"" : ""200.0"" }, ""d"" : { ""$numberDouble"" : ""10.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6780" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 1.0, "c" : 200.0, "d" : 10.0 }'), document bson_rum_single_path_ops (path=c))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "$**": "text" }, "name": "idx1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                              list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6781" documentdb_rum (document bson_rum_single_path_ops (path=a), document bson_rum_text_path_ops (weights='', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text", "a": 1 }, "name": "idx1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                              list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""a"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6782" documentdb_rum (document bson_rum_text_path_ops (weights='', iswildcard='true'), document bson_rum_single_path_ops (path=a))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text" }, "language_override": "idioma", "name": "idx1" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                          list_indexes_cursor_first_page                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""idioma"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6783" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }', languageoverride=idioma))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+-- more tests with wildcard text indexes
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "$**": "text", "a": "text" }, "name": "idx1" }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                 list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" }, ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+ collection_id | index_id |                         index_spec                         | index_is_valid 
+---------------------------------------------------------------------
+          6770 |     6770 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,) | t
+          6770 |     6784 | (idx1,"{ ""$**"" : ""text"", ""a"" : ""text"" }",,,,,2,,,) | t
+(2 rows)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6784" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text", "$**": "text" }, "name": "idx1" }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                 list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+ collection_id | index_id |                         index_spec                         | index_is_valid 
+---------------------------------------------------------------------
+          6770 |     6770 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,) | t
+          6770 |     6785 | (idx1,"{ ""a"" : ""text"", ""$**"" : ""text"" }",,,,,2,,,) | t
+(2 rows)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6785" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text" }, "name": "idx1", "weights": { "$**": 1 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                 list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+ collection_id | index_id |                                             index_spec                                             | index_is_valid 
+---------------------------------------------------------------------
+          6770 |     6770 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)                                         | t
+          6770 |     6786 | (idx1,"{ ""a"" : ""text"" }",,,,,2,,,"{ ""weights"" : { ""$**"" : { ""$numberInt"" : ""1"" } } }") | t
+(2 rows)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6786" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text" }, "name": "idx1", "weights": { "$**": 1, "b": 2 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                     list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""$**"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""2.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+ collection_id | index_id |                                                               index_spec                                                               | index_is_valid 
+---------------------------------------------------------------------
+          6770 |     6770 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)                                                                             | t
+          6770 |     6787 | (idx1,"{ ""a"" : ""text"" }",,,,,2,,,"{ ""weights"" : { ""$**"" : { ""$numberInt"" : ""1"" }, ""b"" : { ""$numberInt"" : ""2"" } } }") | t
+(2 rows)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6787" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 2.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text" }, "name": "idx1", "weights": { "b": 2, "$**": 1 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                     list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""2.0"" }, ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+ collection_id | index_id |                                                               index_spec                                                               | index_is_valid 
+---------------------------------------------------------------------
+          6770 |     6770 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)                                                                             | t
+          6770 |     6788 | (idx1,"{ ""a"" : ""text"" }",,,,,2,,,"{ ""weights"" : { ""b"" : { ""$numberInt"" : ""2"" }, ""$**"" : { ""$numberInt"" : ""1"" } } }") | t
+(2 rows)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6788" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 2.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "a": "text", "$**": "text" }, "name": "idx1", "weights": { "b": 2 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                     list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""$**"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""2.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+ collection_id | index_id |                                                      index_spec                                                      | index_is_valid 
+---------------------------------------------------------------------
+          6770 |     6770 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)                                                           | t
+          6770 |     6789 | (idx1,"{ ""a"" : ""text"", ""$**"" : ""text"" }",,,,,2,,,"{ ""weights"" : { ""b"" : { ""$numberInt"" : ""2"" } } }") | t
+(2 rows)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6789" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 2.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "idx1", "default_language": "es" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                            
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6790" documentdb_rum (document bson_rum_text_path_ops (weights='', iswildcard='true', defaultlanguage=es))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+-- more tests with wildcard text indexes
+-- this index spec corresponds to the index spec in the JS test: fts_blogwild.js
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "dummy": "text" }, "name": "idx1", "weights": { "$**": 1, "title": 2 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                         list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""dummy"" : { ""$numberDouble"" : ""1.0"" }, ""$**"" : { ""$numberDouble"" : ""1.0"" }, ""title"" : { ""$numberDouble"" : ""2.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6791" documentdb_rum (document bson_rum_text_path_ops (weights='{ "dummy" : 1.0, "title" : 2.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+-- test variations of the index spec - with the order of the weights, and with the wildcard
+-- being specified in the key document
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "dummy": "text" }, "name": "idx1", "weights": { "title": 2, "$**": 1 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                         list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""dummy"" : { ""$numberDouble"" : ""1.0"" }, ""title"" : { ""$numberDouble"" : ""2.0"" }, ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6792" documentdb_rum (document bson_rum_text_path_ops (weights='{ "dummy" : 1.0, "title" : 2.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [{ "key": { "dummy": "text", "$**": "text" }, "name": "idx1", "weights": { "title": 2 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                         list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""dummy"" : { ""$numberDouble"" : ""1.0"" }, ""$**"" : { ""$numberDouble"" : ""1.0"" }, ""title"" : { ""$numberDouble"" : ""2.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6793" documentdb_rum (document bson_rum_text_path_ops (weights='{ "dummy" : 1.0, "title" : 2.0 }', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+-- we now create the same indexes as above, but with the metadata term `{ _fts: 'text', _ftsx: 1 }`
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1 }, "name": "a_text", "weights": { "a": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""a_text"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+SELECT * FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6770 ORDER BY 1,2,3;
+ collection_id | index_id |                                                                  index_spec                                                                   | index_is_valid 
+---------------------------------------------------------------------
+          6770 |     6770 | (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)                                                                                    | t
+          6770 |     6794 | (a_text,"{ ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,"{ ""weights"" : { ""a"" : { ""$numberInt"" : ""1"" } } }") | t
+(2 rows)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6794" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "a_text" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1, "c": 1 }, "name": "idx1", "weights": { "a": 1, "b": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                  list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6795" documentdb_rum (document bson_rum_single_path_ops (path=c), document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 1.0 }'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "_fts": "text", "_ftsx": 1, "c": 1 }, "name": "idx1", "weights": { "b": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                               list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""b"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6796" documentdb_rum (document bson_rum_single_path_ops (path=a), document bson_rum_single_path_ops (path=c), document bson_rum_text_path_ops (weights='{ "b" : 1.0 }'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "_fts": "text", "_ftsx": 1 }, "name": "idx1", "weights": { "b": 1, "c": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                  list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""b"" : { ""$numberDouble"" : ""1.0"" }, ""c"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6797" documentdb_rum (document bson_rum_single_path_ops (path=a), document bson_rum_text_path_ops (weights='{ "b" : 1.0, "c" : 1.0 }'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1 }, "name": "idx1", "weights": { "$**": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6798" documentdb_rum (document bson_rum_text_path_ops (weights='', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1 }, "name": "idx1", "default_language": "es", "weights": { "a": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                           list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6799" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }', defaultlanguage=es))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1, "c": 1 }, "name": "idx1", "weights": { "a": 1, "b": 100, "c": 200 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                                        list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""100.0"" }, ""c"" : { ""$numberDouble"" : ""200.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6800" documentdb_rum (document bson_rum_single_path_ops (path=c), document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 100.0, "c" : 200.0 }'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1, "c": 1 }, "name": "idx1", "weights": { "a": 1, "b": 1, "c": 200, "d": 10 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""c"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" }, ""b"" : { ""$numberDouble"" : ""1.0"" }, ""c"" : { ""$numberDouble"" : ""200.0"" }, ""d"" : { ""$numberDouble"" : ""10.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6801" documentdb_rum (document bson_rum_single_path_ops (path=c), document bson_rum_text_path_ops (weights='{ "a" : 1.0, "b" : 1.0, "c" : 200.0, "d" : 10.0 }'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": 1, "_fts": "text", "_ftsx": 1 }, "name": "idx1", "weights": { "$**": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                              list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a"" : { ""$numberInt"" : ""1"" }, ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6802" documentdb_rum (document bson_rum_single_path_ops (path=a), document bson_rum_text_path_ops (weights='', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1, "a": 1 }, "name": "idx1", "weights": { "$**": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                              list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" }, ""a"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6803" documentdb_rum (document bson_rum_single_path_ops (path=a), document bson_rum_text_path_ops (weights='', iswildcard='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1 }, "language_override": "idioma", "name": "idx1", "weights": { "a": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                          list_indexes_cursor_first_page                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""weights"" : { ""a"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""idioma"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6804" documentdb_rum (document bson_rum_text_path_ops (weights='{ "a" : 1.0 }', languageoverride=idioma))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "_fts": "text", "_ftsx": 1 }, "name": "idx1", "default_language": "es", "weights": { "$**": 1 } } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                            
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6805" documentdb_rum (document bson_rum_text_path_ops (weights='', iswildcard='true', defaultlanguage=es))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '6770'::bigint)
+
+-- shard and re-observe
+SELECT documentdb_api.shard_collection('db', 'create_indexes_text', '{ "_id" : "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db', '{ "listIndexes": "create_indexes_text" }');
+                                                                                                                                                                                                                                                                                            list_indexes_cursor_first_page                                                                                                                                                                                                                                                                                            
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.create_indexes_text"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }, { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_fts"" : ""text"", ""_ftsx"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx1"", ""default_language"" : ""es"", ""weights"" : { ""$**"" : { ""$numberDouble"" : ""1.0"" } }, ""textIndexVersion"" : { ""$numberInt"" : ""2"" }, ""language_override"" : ""language"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+\d documentdb_data.documents_6770
+                   Table "documentdb_data.documents_6770"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_6770" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_6806" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
+    "documents_rum_index_6807" documentdb_rum (document bson_rum_text_path_ops (weights='', iswildcard='true', defaultlanguage=es))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = get_shard_key_value('{ "_id" : "hashed" }'::bson, 6770::bigint, document))
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "create_indexes_text", "index": "idx1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+-- now create an index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "a": "text" }, "name": "a_text" } ] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- creating more text indexes should just fail.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "b": "text" }, "name": "b_text" } ] }', true);
+ERROR:  Expected exactly one text index. Requested index: { "v" : 2, "key" : { "b" : "text" }, "name" : "b_text" }, existing index: { "v" : 2, "key" : { "a" : "text" }, "name" : "a_text" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "c": 1, "b": "text" }, "name": "c_b_text" } ] }', true);
+ERROR:  Expected exactly one text index. Requested index: { "v" : 2, "key" : { "c" : 1, "b" : "text" }, "name" : "c_b_text" }, existing index: { "v" : 2, "key" : { "a" : "text" }, "name" : "a_text" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "c": 1, "d": 1, "b": "text" }, "name": "c_b_text" } ] }', true);
+ERROR:  Expected exactly one text index. Requested index: { "v" : 2, "key" : { "c" : 1, "d" : 1, "b" : "text" }, "name" : "c_b_text" }, existing index: { "v" : 2, "key" : { "a" : "text" }, "name" : "a_text" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "c": 1, "d": "text", "b": "text" }, "name": "c_b_text" } ] }', true);
+ERROR:  Expected exactly one text index. Requested index: { "v" : 2, "key" : { "c" : 1, "d" : "text", "b" : "text" }, "name" : "c_b_text" }, existing index: { "v" : 2, "key" : { "a" : "text" }, "name" : "a_text" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "$**": "text" }, "name": "idx1", "weights": { "a": 2, "b": 3, "c": 4, "d": 5 } } ] }', true);
+ERROR:  Expected exactly one text index. Requested index: { "v" : 2, "key" : { "$**" : "text" }, "name" : "idx1", "weights" : { "a" : 2, "b" : 3, "c" : 4, "d" : 5 } }, existing index: { "v" : 2, "key" : { "a" : "text" }, "name" : "a_text" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "create_indexes_text", "indexes": [ { "key": { "f": "text" }, "name": "idx2", "default_language": "de" } ] }', true);
+ERROR:  Expected exactly one text index. Requested index: { "v" : 2, "key" : { "f" : "text" }, "name" : "idx2", "default_language" : "de" }, existing index: { "v" : 2, "key" : { "a" : "text" }, "name" : "a_text" }

@@ -28,6 +28,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static TupleTableSlot *ForeignNext(ForeignScanState *node);
@@ -76,9 +77,7 @@ ForeignNext(ForeignScanState *node)
 	 * column.
 	 */
 	if (plan->fsSystemCol && !TupIsNull(slot))
-	{
 		slot->tts_tableOid = RelationGetRelid(node->ss.ss_currentRelation);
-	}
 
 	return slot;
 }

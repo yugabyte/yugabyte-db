@@ -43,7 +43,7 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_uuid.h"

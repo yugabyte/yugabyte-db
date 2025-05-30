@@ -17,7 +17,7 @@
 # Simple linter for src/yb/yql/***/ybc_*.h files.
 set -euo pipefail
 
-. "${BASH_SOURCE%/*}/util.sh"
+. "${BASH_SOURCE%/*}/common.sh"
 
 check_ctags
 echo "$1" \

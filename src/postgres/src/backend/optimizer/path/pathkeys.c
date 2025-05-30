@@ -18,7 +18,6 @@
 #include "postgres.h"
 
 #include "access/stratnum.h"
-#include "access/sysattr.h"
 #include "catalog/pg_opfamily.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -28,6 +27,9 @@
 #include "optimizer/paths.h"
 #include "partitioning/partbounds.h"
 #include "utils/lsyscache.h"
+
+/* YB includes */
+#include "access/sysattr.h"
 
 
 static bool pathkey_is_redundant(PathKey *new_pathkey, List *pathkeys);
@@ -234,8 +236,8 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 		return NULL;
 
 	/*
-	 * This "eclass" is either a "=" or "sort" operator, and for hash_columns,
-	 * we allow equality condition but not ASC or DESC sorting.
+	 * YB: This "eclass" is either a "=" or "sort" operator, and for
+	 * hash_columns, we allow equality condition but not ASC or DESC sorting.
 	 */
 	if (is_hash_index && eclass->ec_sortref != 0)
 	{

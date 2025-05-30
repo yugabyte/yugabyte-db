@@ -159,7 +159,7 @@ Result<size_t> RefinedStream::ProcessReceived(ReadBufferFull read_buffer_full) {
     }
   }
 
-  return STATUS_FORMAT(IllegalState, "Unexpected state: $0", to_underlying(state_));
+  return STATUS_FORMAT(IllegalState, "Unexpected state: $0", std::to_underlying(state_));
 }
 
 Status RefinedStream::Connected() {

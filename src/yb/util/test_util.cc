@@ -328,19 +328,6 @@ bool UseYbController() {
   return value;
 }
 
-bool DisableMiniClusterBackupTests() {
-  const char* env = getenv("YB_DISABLE_MINICLUSTER_BACKUP_TESTS");
-  bool value = false;
-  if (env) {
-    auto s = string(env);
-    if (s == "1" || s == "true") {
-      value = true;
-    }
-  }
-  LOG(INFO) << "YB_DISABLE_MINICLUSTER_BACKUP_TESTS = " << value;
-  return value;
-}
-
 void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest) {
   const char* extra_daemon_flags_env_var_value = getenv(env_var_name);
   if (extra_daemon_flags_env_var_value) {

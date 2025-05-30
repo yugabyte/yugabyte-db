@@ -12,6 +12,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -22,7 +23,7 @@ const (
 
 	keyspaceHeader          = "Keyspace"
 	defaultLocationHeader   = "Default Location"
-	backupSizeInBytesHeader = "Backup size (Bytes)"
+	backupSizeInBytesHeader = "Backup size"
 	tableUUIDListHeader     = "Table UUID list"
 	tableNameListHeader     = "Table name list"
 )
@@ -46,7 +47,9 @@ func NewKeyspaceLocationFormat(source string) formatter.Format {
 }
 
 // SetKeyspaceLocation initializes the context with the keyspace location data
-func (k *KeyspaceLocationContext) SetKeyspaceLocation(keyspaceLocation ybaclient.KeyspaceTablesList) {
+func (k *KeyspaceLocationContext) SetKeyspaceLocation(
+	keyspaceLocation ybaclient.KeyspaceTablesList,
+) {
 	k.k = keyspaceLocation
 }
 
@@ -68,7 +71,11 @@ func (k *KeyspaceLocationContext) Write(index int) error {
 		logrus.Errorf("%s", err.Error())
 		return err
 	}
-	k.Output.Write([]byte(formatter.Colorize(fmt.Sprintf("Keyspace %d Details", index+1), formatter.BlueColor)))
+	k.Output.Write(
+		[]byte(
+			formatter.Colorize(fmt.Sprintf("Keyspace %d Details", index+1), formatter.BlueColor),
+		),
+	)
 	k.Output.Write([]byte("\n"))
 	if err := k.ContextFormat(tmpl, kc.KeyspaceLocation); err != nil {
 		logrus.Errorf("%s", err.Error())
@@ -137,8 +144,9 @@ func (k *KeyspaceLocationContext) DefaultLocation() string {
 }
 
 // BackupSizeInBytes fetches Backup Size in Bytes
-func (k *KeyspaceLocationContext) BackupSizeInBytes() int64 {
-	return k.k.GetBackupSizeInBytes()
+func (k *KeyspaceLocationContext) BackupSizeInBytes() string {
+	size, unit := util.HumanReadableSize(float64(k.k.GetBackupSizeInBytes()))
+	return fmt.Sprintf("%0.2f %s", size, unit)
 }
 
 // TableUUIDList fetches Table UUID List

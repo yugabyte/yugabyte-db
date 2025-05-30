@@ -2,15 +2,15 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -24,8 +24,8 @@ import com.yugabyte.yw.forms.backuprestore.BackupScheduleToggleParams;
 import com.yugabyte.yw.forms.filters.ScheduleApiFilter;
 import com.yugabyte.yw.forms.paging.SchedulePagedApiQuery;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.ScheduleTask;
@@ -48,11 +48,11 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
+import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -67,11 +67,19 @@ public class ScheduleController extends AuthenticatedController {
 
   private final BackupHelper backupHelper;
   private final Commissioner commissioner;
+  private final ScheduleTaskHelper scheduleTaskHelper;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public ScheduleController(BackupHelper backupHelper, Commissioner commissioner) {
+  public ScheduleController(
+      BackupHelper backupHelper,
+      Commissioner commissioner,
+      ScheduleTaskHelper scheduleTaskHelper,
+      RuntimeConfGetter confGetter) {
     this.backupHelper = backupHelper;
     this.commissioner = commissioner;
+    this.scheduleTaskHelper = scheduleTaskHelper;
+    this.confGetter = confGetter;
   }
 
   @Deprecated
@@ -225,23 +233,48 @@ public class ScheduleController extends AuthenticatedController {
         schedule.updateFrequency(params.frequency);
         schedule.updateFrequencyTimeUnit(params.frequencyTimeUnit);
 
-        ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
-        Date nextScheduleTaskTime;
-
-        if (lastTask == null
-            || Util.isTimeExpired(schedule.nextExpectedTaskTime(lastTask.getScheduledTime()))) {
-          nextScheduleTaskTime = schedule.nextExpectedTaskTime(null);
-        } else {
-          nextScheduleTaskTime = schedule.nextExpectedTaskTime(lastTask.getScheduledTime());
+        if (schedule.getNextScheduleTaskTime() != null
+            && Util.isTimeExpired(schedule.getNextScheduleTaskTime())
+            && params.runImmediateBackupOnResume
+            && schedule.getTaskType() == TaskType.CreateBackup) {
+          LOG.info("Schedule {} will run immediately because of backlog", scheduleUUID);
+          schedule.updateBacklogStatus(true);
         }
 
-        schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
-
+        if (schedule.getNextScheduleTaskTime() == null) {
+          LOG.info("No next time found for schedule {}, run next task immediately", scheduleUUID);
+          schedule.updateNextScheduleTaskTime(schedule.nextExpectedTaskTime(null));
+        } else if (Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
+          LOG.debug("Schedule {} is expired, calculate next run", schedule.getScheduleUUID());
+          schedule.updateNextScheduleTaskTime(
+              schedule.nextExpectedTaskTime(schedule.getNextScheduleTaskTime()));
+        } else {
+          LOG.debug(
+              "Schedule {} is not expired, next run is {}",
+              schedule.getScheduleUUID(),
+              schedule.getNextScheduleTaskTime());
+        }
       } else if (params.cronExpression != null) {
         BackupUtil.validateBackupCronExpression(params.cronExpression);
         schedule.updateCronExpression(params.cronExpression);
         Date nextScheduleTaskTime = schedule.nextExpectedTaskTime(null);
         schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
+      }
+
+      // Update retention period if provided.
+      if (params.timeBeforeDelete > 0L) {
+        schedule.updateBackupRetentionPeriod(params.timeBeforeDelete);
+        // Update expiry time of backups related to this schedule.
+        Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID)
+            .forEach(
+                backup -> {
+                  Date newExpiry =
+                      new DateTime(backup.getCreateTime())
+                          .plusMillis((int) params.timeBeforeDelete)
+                          .toDate();
+                  backup.setExpiry(newExpiry);
+                  backup.save();
+                });
       }
 
       // Update incremental backup schedule frequency, if provided after validation.
@@ -259,6 +292,13 @@ public class ScheduleController extends AuthenticatedController {
               params.incrementalBackupFrequency,
               schedulingFrequency,
               Universe.getOrBadRequest(schedule.getOwnerUUID(), customer));
+          if (schedule.getNextIncrementScheduleTaskTime() != null
+              && Util.isTimeExpired(schedule.getNextIncrementScheduleTaskTime())
+              && params.runImmediateBackupOnResume) {
+            LOG.info(
+                "Incremental chedule {} will run immediately because of backlog", scheduleUUID);
+            schedule.updateIncrementBacklogStatus(true);
+          }
           schedule.updateIncrementalBackupFrequencyAndTimeUnit(
               params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit);
           schedule.updateNextIncrementScheduleTaskTime(
@@ -359,25 +399,8 @@ public class ScheduleController extends AuthenticatedController {
     taskParams.setScheduleUUID(schedule.getScheduleUUID());
     taskParams.setScheduleParams(scheduleParams);
 
-    TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
-            ? TaskType.EditBackupScheduleKubernetes
-            : TaskType.EditBackupSchedule;
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Schedule,
-        CustomerTask.TaskType.Update,
-        schedule.getScheduleName());
-    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    UUID taskUUID =
+        scheduleTaskHelper.createEditScheduledBackupTask(taskParams, customer, universe, schedule);
     auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
@@ -402,52 +425,9 @@ public class ScheduleController extends AuthenticatedController {
       UUID customerUUID, UUID universeUUID, UUID scheduleUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
-    if (!schedule.getOwnerUUID().equals(universeUUID)) {
-      throw new PlatformServiceException(BAD_REQUEST, "Schedule not owned by Universe.");
-    }
-    BackupRequestParams scheduleParams =
-        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-    if (schedule.isRunningState()
-        || (scheduleParams.enablePointInTimeRestore && universe.universeIsLocked())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot delete schedule as Universe is locked.");
-    }
-    ObjectMapper mapper = new ObjectMapper();
-    BackupScheduleTaskParams taskParams = null;
-    try {
-      taskParams =
-          mapper.readValue(
-              mapper.writeValueAsString(universe.getUniverseDetails()),
-              BackupScheduleTaskParams.class);
-    } catch (IOException e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Failed while processing delete schedule task params: " + e.getMessage());
-    }
-    taskParams.setCustomerUUID(customerUUID);
-    taskParams.setScheduleUUID(schedule.getScheduleUUID());
-    taskParams.setScheduleParams(scheduleParams);
-
-    TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(CloudType.kubernetes)
-            ? TaskType.DeleteBackupScheduleKubernetes
-            : TaskType.DeleteBackupSchedule;
-    UUID taskUUID = commissioner.submit(taskType, taskParams);
-    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Schedule,
-        CustomerTask.TaskType.Delete,
-        schedule.getScheduleName());
-    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
-    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
+    UUID taskUUID =
+        scheduleTaskHelper.createDeleteScheduledBackupTask(schedule, universeUUID, customer);
+    auditService().createAuditEntry(request, taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -484,7 +464,11 @@ public class ScheduleController extends AuthenticatedController {
     // Check if attempting to modify schedule when universe is locked( not allowed ).
     // Only allow to toggle schedule between Active and Stopped.
     scheduleToggleParams.verifyScheduleToggle(schedule.getStatus());
-    Schedule.toggleBackupSchedule(customerUUID, scheduleUUID, scheduleToggleParams.status);
+    Schedule.toggleBackupSchedule(
+        customerUUID,
+        scheduleUUID,
+        scheduleToggleParams.status,
+        scheduleToggleParams.runImmediateBackupOnResume);
 
     Audit.ActionType actionType =
         scheduleToggleParams.status == Schedule.State.Stopped

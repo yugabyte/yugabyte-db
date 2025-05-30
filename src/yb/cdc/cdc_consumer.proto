@@ -35,7 +35,6 @@ package yb.cdc;
 
 option java_package = "org.yb.cdc";
 
-import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 
 message ProducerTabletListPB {
@@ -74,7 +73,7 @@ message ProducerEntryPB {
   // Map from stream id to metadata for that stream.
   map<string, StreamEntryPB> stream_map = 1;
   repeated HostPortPB master_addrs = 2;
-  // Reserved for depreacted tserver_addrs. See issue #11989.
+  // Reserved for deprecated tserver_addrs. See issue #11989.
   reserved 3;
   bool disable_stream = 4; // [default = false] implicit in proto3
   uint32 compatible_auto_flag_config_version = 5; // [default = 0] implicit in proto3

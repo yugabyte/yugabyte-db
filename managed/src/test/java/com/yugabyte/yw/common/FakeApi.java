@@ -14,7 +14,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
 import io.ebean.Database;
 import io.ebean.MockHelper;
 import java.util.List;
@@ -37,7 +36,7 @@ public class FakeApi {
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      Users.create("foo@bar.com", "password", Role.Admin, customer.getUuid(), false);
+      user = ModelFactory.testUser(customer, "foo@bar.com", Users.Role.SuperAdmin);
     }
     user = Users.find.query().where().eq("customer_uuid", customer.getUuid()).findOne();
     return user.createAuthToken();

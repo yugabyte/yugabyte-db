@@ -146,6 +146,8 @@ public class HAController extends AuthenticatedController {
       replicationManager.stop();
       HighAvailabilityConfig.update(
           config.get(), formData.cluster_key, formData.accept_any_certificate);
+      // Save the local HA config before DB record is replaced in backup-restore during promotion.
+      replicationManager.saveLocalHighAvailabilityConfig(config.get());
       replicationManager.start();
       auditService()
           .createAuditEntryWithReqBody(
@@ -185,6 +187,7 @@ public class HAController extends AuthenticatedController {
       // Stop the backup schedule.
       replicationManager.stopAndDisable();
       HighAvailabilityConfig.delete(configUUID);
+      replicationManager.deleteLocalHighAvailabilityConfig();
       auditService()
           .createAuditEntry(
               request, Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Delete);

@@ -16,6 +16,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
+import java.util.Map;
+
 /**
  * Runs the pg_regress test suite on YB code.
  */
@@ -24,6 +26,17 @@ public class TestPgRegressTypesString extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // Turn on yb_test_collation so that we get same test output for different
+    // OS types (Linux vs MacOS) and different OS libc or libicu library versions.
+    // This is equivalent to ALTER SYSTEM SET yb_test_collation TRUE; but YB does
+    // not support ALTER SYSTEM yet so we use this trick here.
+    flagMap.put("ysql_pg_conf_csv", "yb_test_collation=true");
+    return flagMap;
   }
 
   @Test

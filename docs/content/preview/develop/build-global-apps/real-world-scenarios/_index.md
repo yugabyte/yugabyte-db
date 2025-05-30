@@ -22,5 +22,5 @@ You can choose multiple design patterns to achieve advanced patterns for your ap
     title="Global data along with geo-local data"
     body="Set up a product catalog that is global and orders table that is local to geos"
     href="globally-local"
-    icon="fa-solid fa-globe">}}
+    icon="fa-thin fa-globe">}}
 {{</index/block>}}

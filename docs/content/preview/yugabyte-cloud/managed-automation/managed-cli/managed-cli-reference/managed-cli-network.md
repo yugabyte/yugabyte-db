@@ -58,12 +58,12 @@ Unassign an allow list from a specified cluster.
 
 Create a [private service endpoint](../../../../cloud-basics/cloud-vpcs/cloud-add-endpoint/) for a specified cluster.
 
-| Flag | Description |
+| <div style="width:150px">Flag</div> | Description |
 | :--- | :--- |
 | --accessibility-type | Required. The type of endpoint to create.<br>`PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
 | --cluster-name | Required. The name of the cluster for which you want to create the endpoint. |
 | --region | Required. Region in which you want to create the endpoint. |
-| &#8209;&#8209;security&#8209;principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
+| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
 
 ### endpoint delete
 
@@ -99,8 +99,8 @@ List the network endpoints of the specified cluster. This includes public and pr
 
 Update the configuration of a specified private service endpoint.
 
-| Flag | Description |
+| <div style="width:150px">Flag</div> | Description |
 | :--- | :--- |
 | --cluster-name | Required. The name of the cluster with the endpoint to update. |
 | --endpoint-id | Required. The ID of the endpoint to update. |
-| &#8209;&#8209;security&#8209;principals | A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
+| --security-principals | A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |

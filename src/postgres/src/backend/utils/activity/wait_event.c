@@ -29,16 +29,13 @@
 /* YB includes */
 #include "funcapi.h"
 #include "nodes/execnodes.h"
-#include "utils/builtins.h"
 #include "pg_yb_utils.h"
+#include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
-#define YB_WAIT_EVENT_DESC_COLS 4
-
-static const char *yb_not_applicable =
-"Inherited from PostgreSQL. Check "
-"https://www.postgresql.org/docs/current/monitoring-stats.html "
-"for description.";
+#define YB_WAIT_EVENT_DESC_COLS_V1 4
+#define YB_WAIT_EVENT_DESC_COLS_V2 5
 
 static const char *pgstat_get_wait_activity(WaitEventActivity w);
 static const char *pgstat_get_wait_client(WaitEventClient w);
@@ -63,6 +60,10 @@ YbcWaitEventInfoPtr yb_my_wait_event_info = {
 	&yb_local_my_wait_event_info.wait_event,
 	&yb_local_my_wait_event_info.rpc_code,
 };
+static const char *yb_not_applicable =
+"Inherited from PostgreSQL. Check "
+"https://www.postgresql.org/docs/current/monitoring-stats.html "
+"for description.";
 
 
 /*
@@ -805,6 +806,9 @@ pgstat_get_wait_io(WaitEventIO w)
 		case WAIT_EVENT_TWOPHASE_FILE_WRITE:
 			event_name = "TwophaseFileWrite";
 			break;
+		case WAIT_EVENT_VERSION_FILE_SYNC:
+			event_name = "VersionFileSync";
+			break;
 		case WAIT_EVENT_VERSION_FILE_WRITE:
 			event_name = "VersionFileWrite";
 			break;
@@ -844,6 +848,7 @@ pgstat_get_wait_io(WaitEventIO w)
 		case WAIT_EVENT_WAL_WRITE:
 			event_name = "WALWrite";
 			break;
+
 		case WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ:
 			event_name = "CopyCommandStreamRead";
 			break;
@@ -1144,6 +1149,7 @@ yb_get_wait_io_desc(WaitEventIO w)
 		case WAIT_EVENT_WAL_COPY_WRITE:
 		case WAIT_EVENT_WAL_SYNC_METHOD_ASSIGN:
 		case WAIT_EVENT_SLRU_FLUSH_SYNC:
+		case WAIT_EVENT_VERSION_FILE_SYNC:
 		case WAIT_EVENT_YB_IO_END:
 			break;
 			/* no default case, so that compiler will warn */
@@ -1196,6 +1202,9 @@ yb_get_wait_lwlock_desc(BuiltinTrancheIds tranche_id)
 		case LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER:
 			desc = "A YSQL backend is waiting for YB query diagnostics circular buffer memory access.";
 			break;
+		case LWTRANCHE_YB_TERMINATED_QUERIES:
+			desc = "A YSQL backend is waiting for YB terminated queries buffer memory access.";
+			break;
 		case LWTRANCHE_LOCK_FASTPATH:
 		case LWTRANCHE_MULTIXACTMEMBER_BUFFER:
 		case LWTRANCHE_MULTIXACTOFFSET_BUFFER:
@@ -1235,8 +1244,9 @@ static void
 yb_insert_events_helper(uint32 code, const char *desc, TupleDesc tupdesc,
 						Tuplestorestate *tupstore)
 {
-	Datum		values[YB_WAIT_EVENT_DESC_COLS];
-	bool		nulls[YB_WAIT_EVENT_DESC_COLS];
+	int			ncols = YbGetNumberOfFunctionOutputColumns(F_YB_WAIT_EVENT_DESC);
+	Datum		values[ncols];
+	bool		nulls[ncols];
 
 	MemSet(values, 0, sizeof(values));
 	MemSet(nulls, 0, sizeof(nulls));
@@ -1245,6 +1255,8 @@ yb_insert_events_helper(uint32 code, const char *desc, TupleDesc tupdesc,
 	values[1] = CStringGetTextDatum(pgstat_get_wait_event_type(code));
 	values[2] = CStringGetTextDatum(pgstat_get_wait_event(code));
 	values[3] = CStringGetTextDatum(desc);
+	if (ncols >= YB_WAIT_EVENT_DESC_COLS_V2)
+		values[4] = YBCAshRemoveComponentFromWaitStateCode(UInt32GetDatum(code));
 
 	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 }
@@ -1357,4 +1369,15 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
+}
+
+bool
+YbIsIdleWaitEvent(uint32 wait_event_info)
+{
+	uint32		classId = wait_event_info & 0xFF000000;
+
+	if (classId == PG_WAIT_ACTIVITY || classId == PG_WAIT_EXTENSION)
+		return true;
+
+	return false;
 }

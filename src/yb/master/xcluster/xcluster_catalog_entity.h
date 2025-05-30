@@ -14,6 +14,9 @@
 #pragma once
 
 #include <string>
+
+#include "yb/cdc/xcluster_types.h"
+
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/sys_catalog.h"

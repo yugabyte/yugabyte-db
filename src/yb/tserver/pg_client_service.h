@@ -16,7 +16,6 @@
 #include <functional>
 #include <future>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -28,9 +27,9 @@
 
 #include "yb/server/server_base_options.h"
 
-#include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/ysql_lease.h"
 
 namespace yb {
 
@@ -69,10 +68,12 @@ class TserverXClusterContextIf;
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
     (GetReplicationSlot) \
-    (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
+    (GetTserverCatalogMessageLists) \
+    (SetTserverCatalogMessageList) \
     (GetTserverCatalogVersionInfo) \
+    (GetXClusterRole) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
@@ -80,13 +81,11 @@ class TserverXClusterContextIf;
     (ListClones) \
     (ListLiveTabletServers) \
     (ListReplicationSlots) \
-    (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (ServersMetrics) \
-    (SetActiveSubTransaction) \
     (TabletsMetadata) \
     (TabletServerCount) \
     (TruncateTable) \
@@ -110,8 +109,11 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (AcquireObjectLock) \
+    (OpenTable) \
     (GetTableKeyRanges) \
     /**/
+
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
@@ -121,7 +123,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
-      const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+      const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
       const TserverXClusterContextIf* xcluster_context = nullptr,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
@@ -131,9 +133,12 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
   void InvalidateTableCache();
-  void InvalidateTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
+  void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
+
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
+  YSQLLeaseInfo GetYSQLLeaseInfo() const;
 
   size_t TEST_SessionsCount();
 

@@ -76,7 +76,6 @@
 #include <sys/param.h>
 #include <netdb.h>
 #include <limits.h>
-#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
@@ -96,7 +95,6 @@
 
 #include "access/transam.h"
 #include "access/xlog.h"
-#include "access/xact.h"
 #include "access/xlogrecovery.h"
 #include "catalog/pg_control.h"
 #include "common/file_perm.h"
@@ -120,17 +118,12 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "replication/logicallauncher.h"
-#include "replication/slot.h"
-#include "replication/syncrep.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
-#include "storage/procarray.h"
-#include "storage/procsignal.h"
-#include "storage/sinvaladt.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
@@ -142,15 +135,25 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
-#include "arpa/inet.h"
-#include "common/pg_yb_common.h"
-#include "pg_yb_utils.h"
-#include "yb_ash.h"
-
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
 #endif
+
+/* YB includes */
+#include "access/xact.h"
+#include "arpa/inet.h"
+#include "common/pg_yb_common.h"
+#include "pg_yb_utils.h"
+#include "replication/slot.h"
+#include "replication/syncrep.h"
+#include "storage/procarray.h"
+#include "storage/procsignal.h"
+#include "storage/sinvaladt.h"
+#include "yb/yql/pggate/ybc_pg_shared_mem.h"
+#include "yb_ash.h"
+#include "yb_query_diagnostics.h"
+#include "yb_terminated_queries.h"
+
 
 /*
  * Possible types of a backend. Beyond being the possible bkend_type values in
@@ -417,7 +420,6 @@ static void process_startup_packet_die(SIGNAL_ARGS);
 static void dummy_handler(SIGNAL_ARGS);
 static void StartupPacketTimeoutHandler(void);
 static void CleanupBackend(int pid, int exitstatus);
-static bool CleanupKilledProcess(PGPROC *proc);
 static bool CleanupBackgroundWorker(int pid, int exitstatus);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
@@ -449,6 +451,9 @@ static pid_t StartChildProcess(AuxProcType type);
 static void StartAutovacuumWorker(void);
 static void MaybeStartWalReceiver(void);
 static void InitPostmasterDeathWatchHandle(void);
+
+/* YB declarations */
+static bool CleanupKilledProcess(PGPROC *proc);
 
 /*
  * Archiver is allowed to start up at the current postmaster state?
@@ -1073,13 +1078,18 @@ PostmasterMain(int argc, char *argv[])
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
 
-	/* Register the query diagnostics background worker */
-	if (YBIsEnabledInPostgresEnvVar() && yb_enable_query_diagnostics)
-		YbQueryDiagnosticsBgWorkerRegister();
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		/*
+		 * Set up reserved address segment for shared memory allocators. This needs to done before
+		 * any process that needs it is forked.
+		 */
+		YBCSetupSharedMemoryAddressSegment();
 
-	/* Register ASH collector */
-	if (YBIsEnabledInPostgresEnvVar() && yb_enable_ash)
-		YbAshRegister();
+		/* Register ASH collector */
+		if (yb_enable_ash)
+			YbAshRegister();
+	}
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
@@ -1219,6 +1229,17 @@ PostmasterMain(int argc, char *argv[])
 						LOG_METAINFO_DATAFILE)));
 
 	/*
+	 * Initialize input sockets.
+	 *
+	 * Mark them all closed, and set up an on_proc_exit function that's
+	 * charged with closing the sockets again at postmaster shutdown.
+	 */
+	for (i = 0; i < MAXLISTEN; i++)
+		ListenSocket[i] = PGINVALID_SOCKET;
+
+	on_proc_exit(CloseServerPorts, 0);
+
+	/*
 	 * If enabled, start up syslogger collection subprocess
 	 */
 	SysLoggerPID = SysLogger_Start();
@@ -1252,15 +1273,7 @@ PostmasterMain(int argc, char *argv[])
 
 	/*
 	 * Establish input sockets.
-	 *
-	 * First, mark them all closed, and set up an on_proc_exit function that's
-	 * charged with closing the sockets again at postmaster shutdown.
 	 */
-	for (i = 0; i < MAXLISTEN; i++)
-		ListenSocket[i] = PGINVALID_SOCKET;
-
-	on_proc_exit(CloseServerPorts, 0);
-
 	if (ListenAddresses)
 	{
 		char	   *rawstring;
@@ -1500,6 +1513,8 @@ PostmasterMain(int argc, char *argv[])
 	 * calls fork() without an immediate exec(), both of which have undefined
 	 * behavior in a multithreaded program.  A multithreaded postmaster is the
 	 * normal case on Windows, which offers neither fork() nor sigprocmask().
+	 * Currently, macOS is the only platform having pthread_is_threaded_np(),
+	 * so we need not worry whether this HINT is appropriate elsewhere.
 	 */
 	if (pthread_is_threaded_np() != 0)
 		ereport(FATAL,
@@ -1864,7 +1879,7 @@ ServerLoop(void)
 			int			i;
 
 #ifdef __APPLE__
-			/* If STDIN is closed, it means that parent did exit */
+			/* YB: If STDIN is closed, it means that parent did exit */
 			if (yb_enabled && FD_ISSET(STDIN_FILENO, &rmask))
 			{
 				return STATUS_OK;
@@ -2093,7 +2108,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	MemoryContext oldcontext;
 
 	/*
-	 * The remote host of the client that has connected to the connection
+	 * YB: The remote host of the client that has connected to the connection
 	 * manager. The connection manager connects to the auth-backend for
 	 * authentication but to match hba rules correctly, we need the remote host
 	 * of the actual client. This information is passed by the connection
@@ -2314,18 +2329,6 @@ retry1:
 		List	   *unrecognized_protocol_options = NIL;
 
 		/*
-		 * At this point we should have no data already buffered.  If we do,
-		 * it was received before we performed the SSL handshake, so it wasn't
-		 * encrypted and indeed may have been injected by a man-in-the-middle.
-		 * We report this case to the client.
-		 */
-		if (pq_buffer_has_data())
-			ereport(FATAL,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("received unencrypted data after SSL request"),
-					 errdetail("This could be either a client-software bug or evidence of an attempted man-in-the-middle attack.")));
-
-		/*
 		 * Scan packet body for name/option pairs.  We can assume any string
 		 * beginning within the packet body is null-terminated, thanks to
 		 * zeroing extra byte above.
@@ -2446,18 +2449,6 @@ retry1:
 			}
 			offset = valoffset + strlen(valptr) + 1;
 		}
-
-		/*
-		 * At this point we should have no data already buffered.  If we do,
-		 * it was received before we performed the GSS handshake, so it wasn't
-		 * encrypted and indeed may have been injected by a man-in-the-middle.
-		 * We report this case to the client.
-		 */
-		if (pq_buffer_has_data())
-			ereport(FATAL,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("received unencrypted data after GSSAPI encryption request"),
-					 errdetail("This could be either a client-software bug or evidence of an attempted man-in-the-middle attack.")));
 
 		/*
 		 * If we didn't find a packet terminator exactly at the end of the
@@ -2610,7 +2601,7 @@ retry1:
 					 errmsg("the database system is in recovery mode")));
 			break;
 		case CAC_TOOMANY:
-			/* increment rejection counter */
+			/* YB: increment rejection counter */
 			(*yb_too_many_conn)++;
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
@@ -2887,14 +2878,13 @@ ClosePostmasterPorts(bool am_syslogger)
 
 
 /*
- * InitProcessGlobals -- set MyProcPid, MyStartTime[stamp], random seeds
+ * InitProcessGlobals -- set MyStartTime[stamp], random seeds
  *
  * Called early in the postmaster and every backend.
  */
 void
 InitProcessGlobals(void)
 {
-	MyProcPid = getpid();
 	MyStartTimestamp = GetCurrentTimestamp();
 	MyStartTime = timestamptz_to_time_t(MyStartTimestamp);
 
@@ -2924,6 +2914,7 @@ InitProcessGlobals(void)
 			((uint64) MyStartTimestamp << 12) ^
 			((uint64) MyStartTimestamp >> 20);
 #endif
+
 		pg_prng_seed(&pg_global_prng_state, rseed);
 	}
 
@@ -3204,8 +3195,11 @@ reaper(SIGNAL_ARGS)
 
 	while ((pid = waitpid(-1, &exitstatus, WNOHANG)) > 0)
 	{
+		int			i;
+		bool		foundProcStruct = false;
+
 		/*
-		 * We perform the following tasks when a process crashes
+		 * YB: We perform the following tasks when a process crashes
 		 * 1. If the killed process held no locks during a crash, we avoid
 		 *    postmaster restarts.
 		 * 2. If the killed process has acquired or is in the process acquiring
@@ -3215,10 +3209,6 @@ reaper(SIGNAL_ARGS)
 		 *    Examples of spinlocks accessed during process creation are:
 		 *    XLogCtl->info_lck, ProcStructLock.
 		 */
-
-		int			i;
-		bool		foundProcStruct = false;
-
 		for (i = 0; i < ProcGlobal->allProcCount; i++)
 		{
 			PGPROC	   *proc = &ProcGlobal->allProcs[i];
@@ -3591,12 +3581,14 @@ reaper(SIGNAL_ARGS)
 		/*
 		 * Else do standard backend child cleanup.
 		 *
-		 * If there is no proc struct (and the crash is unexpected), restart.
-		 * We need to check for an unexpected exit because if a connection attempt is made while the
-		 * database system is starting up, that backend will fail. We do not want to restart the
-		 * postmaster in those cases because the postmaster may end up in a restart loop.
-		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the process responding to a
-		 * termination request or terminating with a FATAL.
+		 * YB: If there is no proc struct (and the crash is unexpected),
+		 * restart. We need to check for an unexpected exit because if a
+		 * connection attempt is made while the database system is starting up,
+		 * that backend will fail. We do not want to restart the postmaster in
+		 * those cases because the postmaster may end up in a restart loop.
+		 * EXIT_STATUS_0 is normal termination, and EXIT_STATUS_1 is the
+		 * process responding to a termination request or terminating with a
+		 * FATAL.
 		 */
 		if (!foundProcStruct && !EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 		{
@@ -3798,13 +3790,10 @@ CleanupBackend(int pid,
 	{
 		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
 
-#ifdef YB_TODO
-		/* Postgres changed the implemenation for stats. Need new code. */
 		if (WTERMSIG(exitstatus) == SIGKILL)
-			pgstat_report_query_termination("Terminated by SIGKILL", pid);
+			yb_report_query_termination("Terminated by SIGKILL", pid);
 		else if (WTERMSIG(exitstatus) == SIGSEGV)
-			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
-#endif
+			yb_report_query_termination("Terminated by SIGSEGV", pid);
 	}
 	else
 		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
@@ -3961,7 +3950,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			 */
 			if (take_action)
 			{
-				ereport(INFO,
+				ereport(INFO,	/* YB: change level */
 						(errmsg_internal("sending %s to process %d",
 										 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 										 (int) rw->rw_pid)));
@@ -4849,12 +4838,8 @@ BackendInitialize(Port *port)
 	 * Save remote_host and remote_port in port structure (after this, they
 	 * will appear in log_line_prefix data for log messages).
 	 */
-	/*
-	 * YB: Allocate memory in the context using pstrdup so that with auth-backend
-	 * where the backend is closed after authentication, the memory is automatically freed.
-	 */
-	port->remote_host = pstrdup(remote_host);
-	port->remote_port = pstrdup(remote_port);
+	port->remote_host = strdup(remote_host);
+	port->remote_port = strdup(remote_port);
 
 	/* And now we can issue the Log_connections message, if wanted */
 	if (Log_connections)
@@ -5319,18 +5304,10 @@ retry:
 
 	/*
 	 * Queue a waiter to signal when this child dies. The wait will be handled
-	 * automatically by an operating system thread pool.
-	 *
-	 * Note: use malloc instead of palloc, since it needs to be thread-safe.
-	 * Struct will be free():d from the callback function that runs on a
-	 * different thread.
+	 * automatically by an operating system thread pool.  The memory will be
+	 * freed by a later call to waitpid().
 	 */
-	childinfo = malloc(sizeof(win32_deadchild_waitinfo));
-	if (!childinfo)
-		ereport(FATAL,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-
+	childinfo = palloc(sizeof(win32_deadchild_waitinfo));
 	childinfo->procHandle = pi.hProcess;
 	childinfo->procId = pi.dwProcessId;
 
@@ -5344,7 +5321,7 @@ retry:
 				(errmsg_internal("could not register process for wait: error code %lu",
 								 GetLastError())));
 
-	/* Don't close pi.hProcess here - the wait thread needs access to it */
+	/* Don't close pi.hProcess here - waitpid() needs access to it */
 
 	CloseHandle(pi.hThread);
 
@@ -5587,15 +5564,16 @@ ExitPostmaster(int status)
 
 	/*
 	 * There is no known cause for a postmaster to become multithreaded after
-	 * startup.  Recheck to account for the possibility of unknown causes.
+	 * startup.  However, we might reach here via an error exit before
+	 * reaching the test in PostmasterMain, so provide the same hint as there.
 	 * This message uses LOG level, because an unclean shutdown at this point
 	 * would usually not look much different from a clean shutdown.
 	 */
 	if (pthread_is_threaded_np() != 0)
 		ereport(LOG,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg_internal("postmaster became multithreaded"),
-				 errdetail("Please report this to <%s>.", PACKAGE_BUGREPORT)));
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("postmaster became multithreaded"),
+				 errhint("Set the LC_ALL environment variable to a valid locale.")));
 #endif
 
 	/* should cleanup shared memory and kill all backends */
@@ -6380,12 +6358,14 @@ bgworker_should_start_now(BgWorkerStartTime start_time)
 		case PM_RUN:
 			if (start_time == BgWorkerStart_RecoveryFinished)
 				return true;
-			switch_fallthrough();
+			/* fall through */
+			yb_switch_fallthrough();
 
 		case PM_HOT_STANDBY:
 			if (start_time == BgWorkerStart_ConsistentState)
 				return true;
-			switch_fallthrough();
+			/* fall through */
+			yb_switch_fallthrough();
 
 		case PM_RECOVERY:
 		case PM_STARTUP:
@@ -6993,36 +6973,21 @@ ShmemBackendArrayRemove(Backend *bn)
 static pid_t
 waitpid(pid_t pid, int *exitstatus, int options)
 {
+	win32_deadchild_waitinfo *childinfo;
+	DWORD		exitcode;
 	DWORD		dwd;
 	ULONG_PTR	key;
 	OVERLAPPED *ovl;
 
-	/*
-	 * Check if there are any dead children. If there are, return the pid of
-	 * the first one that died.
-	 */
-	if (GetQueuedCompletionStatus(win32ChildQueue, &dwd, &key, &ovl, 0))
+	/* Try to consume one win32_deadchild_waitinfo from the queue. */
+	if (!GetQueuedCompletionStatus(win32ChildQueue, &dwd, &key, &ovl, 0))
 	{
-		*exitstatus = (int) key;
-		return dwd;
+		errno = EAGAIN;
+		return -1;
 	}
 
-	return -1;
-}
-
-/*
- * Note! Code below executes on a thread pool! All operations must
- * be thread safe! Note that elog() and friends must *not* be used.
- */
-static void WINAPI
-pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
-{
-	win32_deadchild_waitinfo *childinfo = (win32_deadchild_waitinfo *) lpParameter;
-	DWORD		exitcode;
-
-	if (TimerOrWaitFired)
-		return;					/* timeout. Should never happen, since we use
-								 * INFINITE as timeout value. */
+	childinfo = (win32_deadchild_waitinfo *) key;
+	pid = childinfo->procId;
 
 	/*
 	 * Remove handle from wait - required even though it's set to wait only
@@ -7038,13 +7003,11 @@ pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
 		write_stderr("could not read exit code for process\n");
 		exitcode = 255;
 	}
-
-	if (!PostQueuedCompletionStatus(win32ChildQueue, childinfo->procId, (ULONG_PTR) exitcode, NULL))
-		write_stderr("could not post child completion status\n");
+	*exitstatus = exitcode;
 
 	/*
-	 * Handle is per-process, so we close it here instead of in the
-	 * originating thread
+	 * Close the process handle.  Only after this point can the PID can be
+	 * recycled by the kernel.
 	 */
 	CloseHandle(childinfo->procHandle);
 
@@ -7052,9 +7015,36 @@ pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
 	 * Free struct that was allocated before the call to
 	 * RegisterWaitForSingleObject()
 	 */
-	free(childinfo);
+	pfree(childinfo);
 
-	/* Queue SIGCHLD signal */
+	return pid;
+}
+
+/*
+ * Note! Code below executes on a thread pool! All operations must
+ * be thread safe! Note that elog() and friends must *not* be used.
+ */
+static void WINAPI
+pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
+{
+	/* Should never happen, since we use INFINITE as timeout value. */
+	if (TimerOrWaitFired)
+		return;
+
+	/*
+	 * Post the win32_deadchild_waitinfo object for waitpid() to deal with. If
+	 * that fails, we leak the object, but we also leak a whole process and
+	 * get into an unrecoverable state, so there's not much point in worrying
+	 * about that.  We'd like to panic, but we can't use that infrastructure
+	 * from this thread.
+	 */
+	if (!PostQueuedCompletionStatus(win32ChildQueue,
+									0,
+									(ULONG_PTR) lpParameter,
+									NULL))
+		write_stderr("could not post child completion status\n");
+
+	/* Queue SIGCHLD signal. */
 	pg_queue_signal(SIGCHLD);
 }
 #endif							/* WIN32 */

@@ -1,0 +1,237 @@
+SET citus.next_shard_id TO 130000;
+SET documentdb.next_collection_id TO 13000;
+SET documentdb.next_collection_index_id TO 13000;
+set search_path to documentdb_core,documentdb_api,documentdb_api_catalog;
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "drop_all_test",
+     "indexes": [
+       {"key": {"a.$**": 1}, "name": "my_idx_1"},
+       {"key": {"b.$**": 1}, "name": "my_idx_2"}
+     ]
+   }',
+   true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": ["*"]}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.count_collection_indexes('db', 'drop_all_test') ORDER BY 1,2;
+ index_type_is_primary | index_type_count 
+---------------------------------------------------------------------
+ t                     |                1
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "drop_all_test",
+     "indexes": [
+       {"key": {"a.$**": 1}, "name": "my_idx_1"},
+       {"key": {"b.$**": 1}, "name": "my_idx_2"}
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Whatever rest of the arguments are, having "*" as the first one would drop
+-- all indexes.
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": ["*", "_id_", "index_dne"]}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.count_collection_indexes('db', 'drop_all_test') ORDER BY 1,2;
+ index_type_is_primary | index_type_count 
+---------------------------------------------------------------------
+ t                     |                1
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "drop_all_test",
+     "indexes": [
+       {"key": {"a.$**": 1}, "name": "my_idx_1"},
+       {"key": {"b.$**": 1}, "name": "my_idx_2"}
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Given that "*" is not the first item of the array, we should interpret it
+-- as a plain index name and throw an error complaining that index doesn't exist.
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": ["my_idx_1", "*"]}');
+ERROR:  index not found with name [*]
+SELECT * FROM documentdb_distributed_test_helpers.count_collection_indexes('db', 'drop_all_test') ORDER BY 1,2;
+ index_type_is_primary | index_type_count 
+---------------------------------------------------------------------
+ f                     |                2
+ t                     |                1
+(2 rows)
+
+-- cannot drop _id index
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": "_id_"}');
+ERROR:  cannot drop _id index
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": ["_id_", "*"]}');
+ERROR:  cannot drop _id index
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_all_test", "index": "*"}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.count_collection_indexes('db', 'drop_all_test') ORDER BY 1,2;
+ index_type_is_primary | index_type_count 
+---------------------------------------------------------------------
+ t                     |                1
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "drop_by_key",
+     "indexes": [
+       {"key": {"a": 1, "c.e": 1}, "name": "idx_1"},
+       {"key": {"b.$**": 1}, "name": "idx_2"}
+     ]
+   }',
+   true
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- no such index
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"c.d": 1}}');
+ERROR:  can't find index with key: { "c.d" : 1 }
+-- cannot drop _id index
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"_id": 1}}');
+ERROR:  cannot drop _id index
+-- show that we didn't leave any invalid collection indexes behind
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'drop_by_key') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                      index_spec_as_bson                                                      | index_is_valid 
+---------------------------------------------------------------------
+         13001 |    13007 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                | t
+         13001 |    13008 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "c.e" : { "$numberInt" : "1" } }, "name" : "idx_1" } | t
+         13001 |    13009 | { "v" : { "$numberInt" : "2" }, "key" : { "b.$**" : { "$numberInt" : "1" } }, "name" : "idx_2" }                             | t
+(3 rows)
+
+-- also show that we didn't leave any invalid pg indexes behind
+SELECT indexrelid::regclass, indisvalid, indisready
+FROM documentdb_distributed_test_helpers.get_data_table_indexes('db', 'drop_by_key')
+ORDER BY indexrelid;
+                indexrelid                 | indisvalid | indisready 
+---------------------------------------------------------------------
+ documentdb_data.collection_pk_13001       | t          | t
+ documentdb_data.documents_rum_index_13008 | t          | t
+ documentdb_data.documents_rum_index_13009 | t          | t
+(3 rows)
+
+-- invalid key spec document but would just complain "no such index"
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"$**.c.d": 1}}');
+ERROR:  can't find index with key: { "$**.c.d" : 1 }
+-- only drops "idx_2"
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": "*",
+                                                                     "index": {"a": 1, "c.e": 1},
+                                                                     "index": {"b.$**": 1}}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'drop_by_key') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                      index_spec_as_bson                                                      | index_is_valid 
+---------------------------------------------------------------------
+         13001 |    13007 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                | t
+         13001 |    13008 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "c.e" : { "$numberInt" : "1" } }, "name" : "idx_1" } | t
+(2 rows)
+
+-- incorrect ordering of the (compound) keys, so cannot match "idx_1"
+CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"c.e": 1, "a": 1}}');
+ERROR:  can't find index with key: { "c.e" : 1, "a" : 1 }
+-- now drop "idx_1" too, but specify collection name using "deleteIndexes"
+CALL documentdb_api.drop_indexes('db', '{"deleteIndexes": "drop_by_key", "index": {"a": 1, "c.e": 1}}');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'drop_by_key') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                      index_spec_as_bson                                       | index_is_valid 
+---------------------------------------------------------------------
+         13001 |    13007 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } | t
+(1 row)
+
+-- Show that having a record indicating an invalid collection index with the
+-- same index name wouldn't cause any problems when creating the index.
+SELECT documentdb_api.create_collection('db', 'collection_1000');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+INSERT INTO documentdb_api_catalog.collection_indexes (collection_id, index_id, index_spec, index_is_valid)
+SELECT collection_id, 1000, ('idx_1', '{}', null, null, null, null, 2, null, null, null)::documentdb_api_catalog.index_spec_type, false FROM documentdb_api_catalog.collections
+WHERE database_name = 'db' AND collection_name = 'collection_1000';
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1000", "indexes": [{"key": {"a": 1}, "name": "idx_1"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- delete the fake invalid entry that we inserted above
+DELETE FROM documentdb_api_catalog.collection_indexes
+WHERE (index_spec).index_name = 'idx_1' AND
+      index_id = 1000 AND
+      (index_spec).index_key operator(documentdb_core.=) '{}' AND
+      index_is_valid = false AND
+      collection_id = (SELECT collection_id FROM documentdb_api_catalog.collections
+                       WHERE database_name = 'db' AND collection_name = 'collection_1000');
+-- Show that having a record indicating an invalid collection index with the
+-- same index key wouldn't cause any problems when creating the index.
+SELECT documentdb_api.create_collection('db', 'collection_1001');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+INSERT INTO documentdb_api_catalog.collection_indexes (collection_id, index_id, index_spec, index_is_valid)
+SELECT collection_id, 1000, ('idx_1', '{"a": 1}', null, null, null, null, 2, null, null, null)::documentdb_api_catalog.index_spec_type, false FROM documentdb_api_catalog.collections
+WHERE database_name = 'db' AND collection_name = 'collection_1001';
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1001", "indexes": [{"key": {"a": 1}, "name": "idx_2"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- delete the fake invalid entry that we inserted above
+DELETE FROM documentdb_api_catalog.collection_indexes
+WHERE (index_spec).index_name = 'idx_1' AND
+      index_id = 1000 AND
+      (index_spec).index_key operator(documentdb_core.=) '{"a": 1}' AND
+      index_is_valid = false AND
+      collection_id = (SELECT collection_id FROM documentdb_api_catalog.collections
+                       WHERE database_name = 'db' AND collection_name = 'collection_1001');

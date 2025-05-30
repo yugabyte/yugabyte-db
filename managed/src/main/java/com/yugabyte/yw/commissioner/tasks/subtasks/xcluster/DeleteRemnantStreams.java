@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -18,9 +19,12 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.CDCStreamInfo;
 import org.yb.client.DeleteCDCStreamResponse;
 import org.yb.client.GetNamespaceInfoResponse;
+import org.yb.client.GetXClusterOutboundReplicationGroupsResponse;
 import org.yb.client.ListCDCStreamsResponse;
+import org.yb.client.XClusterDeleteOutboundReplicationGroupResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
 
 @Slf4j
 public class DeleteRemnantStreams extends XClusterConfigTaskBase {
@@ -67,8 +71,64 @@ public class DeleteRemnantStreams extends XClusterConfigTaskBase {
           taskParams().namespaceName,
           universe.getName());
 
-      // TODO: For db scoped replication, delete any inbound replication group with different
-      // replication group name.
+      // For db scoped replication, delete any dangling outbound replication group with different
+      // replication group name. This occurs after a failover -> repair scenario.
+      XClusterConfig xClusterConfig =
+          XClusterConfig.getOrBadRequest(taskParams().getXClusterConfig().getUuid());
+      Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+      if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+        Set<MasterTypes.NamespaceIdentifierPB> targetNamespaces =
+            XClusterConfigTaskBase.getNamespaces(ybService, targetUniverse, null);
+
+        String tgtDbId =
+            targetNamespaces.stream()
+                .filter(db -> taskParams().namespaceName.equals(db.getName()))
+                .findFirst()
+                .get()
+                .getId()
+                .toStringUtf8();
+        try (YBClient tgtClient =
+            ybService.getClient(
+                targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode())) {
+          GetXClusterOutboundReplicationGroupsResponse outboundReplicationGroupsResp =
+              tgtClient.getXClusterOutboundReplicationGroups(tgtDbId);
+          if (!outboundReplicationGroupsResp.hasError()) {
+            List<String> replicationGroupNames =
+                outboundReplicationGroupsResp.getReplicationGroupIds();
+            for (String replicationGroupName : replicationGroupNames) {
+              XClusterDeleteOutboundReplicationGroupResponse
+                  deleteOutboundReplicationGroupResponse =
+                      client.xClusterDeleteOutboundReplicationGroup(replicationGroupName);
+              if (deleteOutboundReplicationGroupResponse.hasError()) {
+                log.warn(
+                    "Failed to delete dangling outbound replication group: {} containing db: {}"
+                        + " with db id: {}, on target universe: {}. Error: {}",
+                    replicationGroupName,
+                    taskParams().namespaceName,
+                    tgtDbId,
+                    targetUniverse.getName(),
+                    deleteOutboundReplicationGroupResponse.errorMessage());
+              } else {
+                log.debug(
+                    "Successfully deleted dangling outbound replication group: {}, containing db:"
+                        + " {} with db id: {}, on target universe: {}",
+                    replicationGroupName,
+                    taskParams().namespaceName,
+                    tgtDbId,
+                    targetUniverse.getName());
+              }
+            }
+          } else {
+            // It is ok to have dangling replication groups with no streams.
+            log.warn(
+                "Error getting outbound replication groups for namespace: %s for universe %s."
+                    + " Error: %s",
+                taskParams().namespaceName,
+                targetUniverse.getName(),
+                outboundReplicationGroupsResp.errorMessage());
+          }
+        }
+      }
 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
           XClusterConfigTaskBase.getTableInfoList(ybService, universe).stream()

@@ -158,7 +158,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
     isFetching: isFetchingAPI,
     isError: isErrorMigrationSchemaTasks,
   } = useGetVoyagerMigrateSchemaTasksQuery({
-    uuid: migration.migration_uuid || "migration_uuid_not_found",
+    uuid: migration.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
 
   const schemaAPI = (data as MigrateSchemaTaskInfo) || {};
@@ -296,12 +296,14 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
               titleContent={t("clusterDetail.voyager.migrateSchema.sqlObjects")}
               defaultExpanded
             >
-              {schemaAPI.analyze_schema !== "complete" || schemaAPI.sql_objects == null ? (
+              {
+                schemaAPI.analyze_schema !== "complete" ||
+                schemaAPI?.current_analysis_report?.sql_objects == null ? (
                 <MigrationStepNA />
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart
-                    data={schemaAPI.sql_objects}
+                    data={schemaAPI.current_analysis_report.sql_objects}
                     margin={{
                       top: 5,
                       right: 30,
@@ -325,10 +327,10 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                     <YAxis />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="totalCount" fill="url(#total-gradient)">
-                      <LabelList dataKey="totalCount" position="top" style={{ fill: "black" }} />
+                    <LabelList dataKey="totalCount" position="top" style={{ fill: "black" }} />
                     </Bar>
                     <Bar dataKey="invalidCount" fill="url(#invalid-gradient)">
-                      <LabelList dataKey="invalidCount" position="top" style={{ fill: "black" }} />
+                    <LabelList dataKey="invalidCount" position="top" style={{ fill: "black" }} />
                     </Bar>
                     <Legend
                       formatter={(value) =>
@@ -347,22 +349,34 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
               titleContent={
                 <MigrationAccordionTitle
                   title={t("clusterDetail.voyager.migrateSchema.suggestionsErrors")}
-                  count={schemaAPI.suggestions_errors?.length || 0}
+                  count={
+                    (schemaAPI.current_analysis_report?.sql_objects ?? []).reduce(
+                      (sum, obj) => sum + (obj.issues?.length ?? 0),
+                      0
+                    )
+                  }
                   color={theme.palette.warning[100]}
                 />
               }
               defaultExpanded
             >
-              {!schemaAPI.suggestions_errors?.length ? (
+              {!(schemaAPI.current_analysis_report?.sql_objects ?? []).reduce(
+                      (sum, obj) => sum + (obj.issues?.length ?? 0),
+                      0
+                    ) ? (
                 <MigrationStepNA />
               ) : (
                 <Box flex={1} px={2} minWidth={0}>
                   <YBTable
-                    data={schemaAPI.suggestions_errors}
+                    data={
+                      (schemaAPI.current_analysis_report?.sql_objects ?? [])
+                        .flatMap(obj => obj.issues ?? [])
+                    }
                     columns={suggestionErrorColumns}
                     options={{
                       customRowRender: getRowCellComponent(
-                        schemaAPI.suggestions_errors,
+                        (schemaAPI.current_analysis_report?.sql_objects ?? [])
+                        .flatMap(obj => obj.issues ?? []),
                         classes,
                         expandedSuggestions,
                         (index) => {

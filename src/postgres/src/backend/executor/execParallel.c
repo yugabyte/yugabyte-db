@@ -39,12 +39,10 @@
 #include "executor/nodeSeqscan.h"
 #include "executor/nodeSort.h"
 #include "executor/nodeSubplan.h"
-#include "executor/nodeYbSeqscan.h"
 #include "executor/tqueue.h"
 #include "jit/jit.h"
 #include "nodes/nodeFuncs.h"
 #include "pgstat.h"
-#include "pg_yb_utils.h"
 #include "storage/spin.h"
 #include "tcop/tcopprot.h"
 #include "utils/datum.h"
@@ -52,6 +50,10 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
+
+/* YB includes */
+#include "executor/nodeYbSeqscan.h"
+#include "pg_yb_utils.h"
 
 /*
  * Magic numbers for parallel executor communication.  We use constants

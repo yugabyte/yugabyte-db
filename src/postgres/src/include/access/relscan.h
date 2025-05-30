@@ -21,11 +21,12 @@
 #include "storage/spin.h"
 #include "utils/relcache.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/yb_sys_scan_base.h"
 #include "executor/ybExpr.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+
 
 typedef struct YbScanDescData *YbScanDesc;
 
@@ -173,7 +174,7 @@ typedef struct IndexScanDescData
 	struct ParallelIndexScanDescData *parallel_scan;
 
 	/*
-	 * During execution, Postgres will push down hints to YugaByte for
+	 * YB: During execution, Postgres will push down hints to YugaByte for
 	 * performance purpose. (currently, only LIMIT values are being pushed
 	 * down). All these execution information will kept in "yb_exec_params".
 	 *
@@ -228,7 +229,7 @@ struct TupleTableSlot;
 typedef struct SysScanDescData
 {
 	Relation	heap_rel;		/* catalog being scanned */
-	Relation	irel;			/* NULL if doing heap or yb scan */
+	Relation	irel;			/* NULL if doing heap scan */
 	struct TableScanDescData *scan; /* only valid in storage-scan case */
 	struct IndexScanDescData *iscan;	/* only valid in index-scan case */
 	struct SnapshotData *snapshot;	/* snapshot to unregister at end of scan */

@@ -23,6 +23,7 @@
 #include "catalog/pg_type_d.h"
 #include "nodes/nodes.h"
 
+#define BSONOID				8095
 #define VECTOROID			8078
 
 /* ----------------

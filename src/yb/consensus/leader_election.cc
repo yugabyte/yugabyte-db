@@ -349,20 +349,28 @@ void LeaderElection::HandleVoteGrantedUnlocked(const string& voter_uuid, const V
   DCHECK(lock_.is_locked());
   DCHECK_EQ(state.response.responder_term(), election_term());
   DCHECK(state.response.vote_granted());
-  if (state.response.has_remaining_leader_lease_duration_ms()) {
-    CoarseTimeLease lease(
-        state.response.leader_lease_uuid(),
-        CoarseMonoClock::Now() + state.response.remaining_leader_lease_duration_ms() * 1ms);
-    result_.old_leader_lease.TryUpdate(lease);
+  if (!state.response.remaining_leader_lease_duration_ms().empty()) {
+    auto now = CoarseMonoClock::Now();
+    for (int i = 0; i != state.response.remaining_leader_lease_duration_ms().size(); ++i) {
+      result_.old_leader_leases.push_back({
+        .holder_uuid = state.response.leader_lease_uuid(i),
+        .expiration = now + state.response.remaining_leader_lease_duration_ms(i) * 1ms,
+      });
+    }
   }
 
-  if (state.response.has_leader_ht_lease_expiration()) {
-    PhysicalComponentLease lease(
-        state.response.leader_ht_lease_uuid(), state.response.leader_ht_lease_expiration());
-    result_.old_leader_ht_lease.TryUpdate(lease);
+  for (int i = 0; i != state.response.leader_ht_lease_expiration().size(); ++i) {
+    result_.old_leader_ht_leases.push_back({
+      .holder_uuid = state.response.leader_ht_lease_uuid(i),
+      .expiration = state.response.leader_ht_lease_expiration(i),
+    });
   }
 
-  LOG_WITH_PREFIX(INFO) << "Vote granted by peer " << voter_uuid;
+  LOG_WITH_PREFIX(INFO)
+      << "Vote granted by peer " << voter_uuid << ", old leader leases: "
+      << AsString(result_.old_leader_leases) << ", old leader ht leases: "
+      << AsString(result_.old_leader_ht_leases);
+
   RecordVoteUnlocked(voter_uuid, ElectionVote::kGranted);
 }
 

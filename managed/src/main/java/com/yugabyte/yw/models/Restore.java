@@ -375,7 +375,7 @@ public class Restore extends Model {
 
     List<Restore> restores = response.getEntities();
     List<RestoreResp> restoreList =
-        restores.parallelStream().map(r -> toRestoreResp(r)).collect(Collectors.toList());
+        restores.stream().map(r -> toRestoreResp(r)).collect(Collectors.toList());
     return response.setData(restoreList, new RestorePagedApiResponse());
   }
 }

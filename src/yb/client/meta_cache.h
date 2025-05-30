@@ -60,16 +60,14 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 
-#include "yb/tablet/metadata.pb.h"
-
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/lockfree.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena.h"
@@ -78,6 +76,7 @@
 namespace yb {
 
 class EventStats;
+class JsonWriter;
 
 namespace client {
 

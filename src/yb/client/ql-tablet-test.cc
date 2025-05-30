@@ -93,6 +93,7 @@ DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_uint64(initial_seqno);
 DECLARE_int32(leader_lease_duration_ms);
+DECLARE_int32(ht_lease_duration_ms);
 DECLARE_string(time_source);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_lease_revocation);
@@ -573,6 +574,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   void TestDeletePartialKey(int num_range_keys_in_delete);
+  void TestLeaderLeaseRevocation(bool ht_lease);
 
   void CreateAndVerifyIndexConsistency(int expected_number_rows_mismatched);
 
@@ -1935,6 +1937,121 @@ TEST_F_EX(QLTabletTest, TruncateTableDuringLongRead, QLTabletRf1Test) {
   TestLongReadAbort([&]{
     return client_->TruncateTable(table1_.table()->id(), /* wait = */ true);
   });
+}
+
+// This test check scenario when and old leader loose connectivity with remaining nodes.
+// And leader changed twice after this split.
+// So the newest leader has correct information about lease of the original leader.
+void QLTabletTest::TestLeaderLeaseRevocation(bool ht_lease) {
+  CreateTable(kTable1Name, &table1_, /* num_tablets= */ 1, /* transactional= */ false);
+  FillTable(0, 10, table1_);
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_EQ(peers.size(), 1);
+  auto old_leader_peer = peers[0];
+  size_t old_leader_idx = 0;
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    if (cluster_->mini_tablet_server(i)->server()->permanent_uuid() ==
+            old_leader_peer->permanent_uuid()) {
+      old_leader_idx = i;
+      break;
+    }
+  }
+  auto old_leader_ts = cluster_->mini_tablet_server(old_leader_idx);
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    if (i == old_leader_idx) {
+      continue;
+    }
+    ASSERT_OK(BreakConnectivity(cluster_.get(), old_leader_idx, i));
+  }
+  ASSERT_OK(WaitFor([this, old_leader_peer, &peers] {
+    peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      if (peer != old_leader_peer) {
+        return true;
+      }
+    }
+    return false;
+  }, 20s, "Wait new leader"));
+  // If old leader already decided that he is not leader anymore just add it to peer artificially.
+  if (peers.size() < 2) {
+    peers.push_back(old_leader_peer);
+  }
+  // Old leader first and new leader second.
+  if (peers[0] != old_leader_peer) {
+    std::swap(peers[0], peers[1]);
+  }
+
+  auto intermediate_leader_ts = cluster_->find_tablet_server(peers[1]->permanent_uuid());
+  tserver::MiniTabletServer* final_leader_ts = nullptr;
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto ts = cluster_->mini_tablet_server(i);
+    if (ts == old_leader_ts || ts == intermediate_leader_ts) {
+      continue;
+    }
+    final_leader_ts = ts;
+  }
+  ASSERT_NE(final_leader_ts, nullptr);
+  LOG(INFO) << "Old leader: " << old_leader_peer->permanent_uuid()
+            << ", intermediate leader: " << intermediate_leader_ts->server()->permanent_uuid()
+            << ", final leader: " << final_leader_ts->server()->permanent_uuid();
+
+  {
+    auto intermediate_leader_consensus = ASSERT_RESULT(peers[1]->GetRaftConsensus());
+    ASSERT_OK(WaitFor([intermediate_leader_consensus] {
+      return intermediate_leader_consensus->GetLeaderLeaseStatusIfLeader(nullptr) !=
+                 consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+    }, 10s, "Intermediate leader replicated lease"));
+    consensus::LeaderStepDownRequestPB req;
+    consensus::LeaderStepDownResponsePB resp;
+    req.set_tablet_id(intermediate_leader_consensus->tablet_id());
+    req.set_new_leader_uuid(final_leader_ts->server()->permanent_uuid());
+    ASSERT_OK(intermediate_leader_consensus->StepDown(&req, &resp));
+  }
+  peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  ASSERT_EQ(peers.size(), 3);
+  std::vector<std::string> uuids = {
+    old_leader_ts->server()->permanent_uuid(),
+    intermediate_leader_ts->server()->permanent_uuid(),
+    final_leader_ts->server()->permanent_uuid(),
+  };
+  for (int i = 0;; ++i) {
+    std::array<consensus::LeaderLeaseStatus, 3> statuses;
+    for (const auto& peer : peers) {
+      auto status = ASSERT_RESULT(peer->GetRaftConsensus())->GetLeaderLeaseStatusIfLeader(nullptr);
+      auto it = std::find(uuids.begin(), uuids.end(), peer->permanent_uuid());
+      ASSERT_NE(it, uuids.end());
+      statuses[it - uuids.begin()] = status;
+    }
+    LOG(INFO) << "LEASES: " << AsString(statuses);
+    ASSERT_NE(statuses[1], consensus::LeaderLeaseStatus::HAS_LEASE);
+    if (statuses[2] == consensus::LeaderLeaseStatus::HAS_LEASE) {
+      ASSERT_NE(statuses[0], consensus::LeaderLeaseStatus::HAS_LEASE);
+      break;
+    }
+    std::this_thread::sleep_for(250ms * kTimeMultiplier);
+    ASSERT_LE(i, 100);
+  }
+
+  if (ht_lease) {
+    auto session = CreateSession();
+    session->SetTimeout(5s * kTimeMultiplier);
+    auto op = CreateSetValueOp(42, ValueForKey(42), table1_);
+    auto status = session->TEST_ApplyAndFlush(op);
+    // Fail because the old leader have lease and it cannot be revoked because lack of connectivity.
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "Leader does not have a valid lease");
+  }
+}
+
+TEST_F(QLTabletTest, LeaderLeaseRevocation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 10000;
+  TestLeaderLeaseRevocation(/* ht_lease= */ false);
+}
+
+TEST_F(QLTabletTest, LeaderHtLeaseRevocation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 30000;
+  TestLeaderLeaseRevocation(/* ht_lease= */ true);
 }
 
 class GetTabletKeyRangesTest : public QLTabletRf1TestToggleEnablePackedRow {

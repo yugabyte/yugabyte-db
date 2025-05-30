@@ -145,6 +145,15 @@ select (fn).first, substr((fn).last, 1, 20), length((fn).last) from people;
  Jim   | abcdefghijklabcdefgh | 1200000
 (2 rows)
 
+-- try an update on a toasted composite value, too
+update people set fn.first = 'Jack';
+select (fn).first, substr((fn).last, 1, 20), length((fn).last) from people;
+ first |        substr        | length  
+-------+----------------------+---------
+ Jack  | Blow                 |       4
+ Jack  | abcdefghijklabcdefgh | 1200000
+(2 rows)
+
 -- Test row comparison semantics.  Prior to PG 8.2 we did this in a totally
 -- non-spec-compliant way.
 select ROW(1,2) < ROW(1,3) as true;
@@ -1198,6 +1207,120 @@ select r, r is null as isnull, r is not null as isnotnull from r;
  (,"(1,2)")  | f      | f
  (,"(,)")    | f      | f
  (,)         | t      | f
+(6 rows)
+
+--
+-- Check parsing of indirect references to composite values (bug #18077)
+--
+explain (verbose, costs off)
+with cte(c) as materialized (select row(1, 2)),
+     cte2(c) as (select * from cte)
+select * from cte2 as t
+where (select * from (select c as c1) s
+       where (select (c1).f1 > 0)) is not null;
+                 QUERY PLAN                 
+--------------------------------------------
+ CTE Scan on cte
+   Output: cte.c
+   Filter: ((SubPlan 3) IS NOT NULL)
+   CTE cte
+     ->  Result
+           Output: '(1,2)'::record
+   SubPlan 3
+     ->  Result
+           Output: cte.c
+           One-Time Filter: $2
+           InitPlan 2 (returns $2)
+             ->  Result
+                   Output: ((cte.c).f1 > 0)
+(13 rows)
+
+with cte(c) as materialized (select row(1, 2)),
+     cte2(c) as (select * from cte)
+select * from cte2 as t
+where (select * from (select c as c1) s
+       where (select (c1).f1 > 0)) is not null;
+   c   
+-------
+ (1,2)
+(1 row)
+
+-- Also check deparsing of such cases
+create view composite_v as
+with cte(c) as materialized (select row(1, 2)),
+     cte2(c) as (select * from cte)
+select 1 as one from cte2 as t
+where (select * from (select c as c1) s
+       where (select (c1).f1 > 0)) is not null;
+select pg_get_viewdef('composite_v', true);
+                     pg_get_viewdef                     
+--------------------------------------------------------
+  WITH cte(c) AS MATERIALIZED (                        +
+          SELECT ROW(1, 2) AS "row"                    +
+         ), cte2(c) AS (                               +
+          SELECT cte.c                                 +
+            FROM cte                                   +
+         )                                             +
+  SELECT 1 AS one                                      +
+    FROM cte2 t                                        +
+   WHERE (( SELECT s.c1                                +
+            FROM ( SELECT t.c AS c1) s                 +
+           WHERE ( SELECT (s.c1).f1 > 0))) IS NOT NULL;
+(1 row)
+
+drop view composite_v;
+--
+-- Check cases where the composite comes from a proven-dummy rel (bug #18576)
+--
+explain (verbose, costs off)
+select (ss.a).x, (ss.a).n from
+  (select information_schema._pg_expandarray(array[1,2]) AS a) ss;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Subquery Scan on ss
+   Output: (ss.a).x, (ss.a).n
+   ->  ProjectSet
+         Output: information_schema._pg_expandarray('{1,2}'::integer[])
+         ->  Result
+(5 rows)
+
+explain (verbose, costs off)
+select (ss.a).x, (ss.a).n from
+  (select information_schema._pg_expandarray(array[1,2]) AS a) ss
+where false;
+        QUERY PLAN        
+--------------------------
+ Result
+   Output: (a).f1, (a).f2
+   One-Time Filter: false
+(3 rows)
+
+explain (verbose, costs off)
+with cte(c) as materialized (select row(1, 2)),
+     cte2(c) as (select * from cte)
+select (c).f1 from cte2 as t;
+            QUERY PLAN             
+-----------------------------------
+ CTE Scan on cte
+   Output: (cte.c).f1
+   CTE cte
+     ->  Result
+           Output: '(1,2)'::record
+(5 rows)
+
+explain (verbose, costs off)
+with cte(c) as materialized (select row(1, 2)),
+     cte2(c) as (select * from cte)
+select (c).f1 from cte2 as t
+where false;
+            QUERY PLAN             
+-----------------------------------
+ Result
+   Output: (cte.c).f1
+   One-Time Filter: false
+   CTE cte
+     ->  Result
+           Output: '(1,2)'::record
 (6 rows)
 
 --

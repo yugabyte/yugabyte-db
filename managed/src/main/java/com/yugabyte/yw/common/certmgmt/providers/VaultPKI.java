@@ -195,7 +195,7 @@ public class VaultPKI extends CertificateProviderBase {
       // fetch key
       String newCertKeyStr = result.get(ISSUE_FIELD_PRV_KEY);
       curKeyStr = newCertKeyStr;
-      PrivateKey pKeyObj = CertificateHelper.convertStringToPrivateKey(newCertKeyStr);
+      PrivateKey pKeyObj = CertificateHelper.getPrivateKey(newCertKeyStr);
       // fetch issue ca cert
       String issuingCAStr = result.get(ISSUE_FIELD_CA);
       curCaCertificateStr = issuingCAStr;
@@ -204,7 +204,7 @@ public class VaultPKI extends CertificateProviderBase {
       LOG.debug("Issue CA is:: {}", CertificateHelper.getCertificateProperties(issueCAcert));
       LOG.debug("Certificate is:: {}", CertificateHelper.getCertificateProperties(certObj));
 
-      certObj.verify(issueCAcert.getPublicKey(), "BC");
+      certObj.verify(issueCAcert.getPublicKey());
 
       // for client certificate: later it is read using CertificateHelper.getClientCertFile
       return CertificateHelper.dumpNewCertsToFile(

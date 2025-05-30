@@ -1,0 +1,438 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 50000;
+SET documentdb.next_collection_id TO 5000;
+SET documentdb.next_collection_index_id TO 5000;
+SELECT documentdb_api.create_collection('db', 'indexselection');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- create a wildcard index on path a.b.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indexselection', 'indexsel_path_a_b', '{"a.b.$**": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create a non wildcard index on path 'b.c'
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indexselection', 'indexsel_path_b_c', '{"b.c": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create a wildcard projection index with include paths at specific trees 'd.e.f' and 'g.h'
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indexselection", "indexes": [ { "key": { "$**": 1 }, "name": "indexsel_path_wild_def_gh", "wildcardProjection": { "d.e.f": 1, "g.h": 1 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create two overlapping indexes.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indexselection', 'indexsel_path_overl_2', '{"r.s.$**": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indexselection', 'indexsel_path_overl_1', '{"r.s.t": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indexselection', 'some_long_index_name_that_is_definitely_over_64_characters_to_test_explain_index_name_length', '{"randomPath": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create a wildcard projection index that excludes all the above paths.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indexselection", "indexes": [ { "key": { "$**": 1 }, "name": "indexsel_path_wild_excl_1", "wildcardProjection": { "d": 0, "g": 0, "a": 0, "b": 0, "r": 0, "randomPath": 0 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_5000
+                      Table "documentdb_data.documents_5000"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_5000" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5001" documentdb_rum (document bson_rum_single_path_ops (path='a.b', iswildcard='true', tl='2699'))
+    "documents_rum_index_5002" documentdb_rum (document bson_rum_single_path_ops (path='b.c', tl='2699'))
+    "documents_rum_index_5003" documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "d.e.f", "g.h" ]', isexclusion='false'))
+    "documents_rum_index_5004" documentdb_rum (document bson_rum_single_path_ops (path='r.s', iswildcard='true', tl='2699'))
+    "documents_rum_index_5005" documentdb_rum (document bson_rum_single_path_ops (path='r.s.t', tl='2699'))
+    "documents_rum_index_5006" documentdb_rum (document bson_rum_single_path_ops (path='randomPath', tl='2699'))
+    "documents_rum_index_5007" documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "d", "g", "a", "b", "r", "randomPath" ]', isexclusion='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5000'::bigint)
+
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan TO off;
+set local documentdb.forceUseIndexIfAvailable to on;
+-- now explain queries
+-- filter on a.b - should select indexsel_path_a_b
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a.b": { "$gte" : 1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_a_b
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a.b.c.d": { "$gte" : 1 }}';
+                                                              QUERY PLAN                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.c.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_a_b
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.c.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+-- does not match a_b (sequential scan)
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a.bar": { "$gte" : 1 }}';
+                                                        QUERY PLAN                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (shard_key_value = '5000'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.bar" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5000'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a": { "$gte" : 1 }}';
+                                                      QUERY PLAN                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (shard_key_value = '5000'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5000'::bigint)
+(10 rows)
+
+-- path root at is not exactly 'a' - matches excl_1.
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "abc": { "$gte" : 1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "abc" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_wild_excl_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "abc" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+-- filter on b.c - should select indexsel_path_b_c
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b.c": { "$gte" : 1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "b.c" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_b_c
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "b.c" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+-- not a wildcard - does not match.
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b.car": { "$gte" : 1 }}';
+                                                        QUERY PLAN                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (shard_key_value = '5000'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "b.car" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5000'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b.c.d": { "$gte" : 1 }}';
+                                                        QUERY PLAN                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (shard_key_value = '5000'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "b.c.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5000'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b": { "$gte" : 1 }}';
+                                                      QUERY PLAN                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (shard_key_value = '5000'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5000'::bigint)
+(10 rows)
+
+-- wildcard matches a projection
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "d.e.f.g": { "$gte" : 1 }}';
+                                                              QUERY PLAN                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "d.e.f.g" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_wild_def_gh
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "d.e.f.g" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "g.1": { "$gte" : 1 }}';
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (shard_key_value = '5000'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "g.1" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5000'::bigint)
+(10 rows)
+
+-- any other root paths or nested paths match the wildcard projection index.
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "e": { "$gte" : 1 }}';
+                                                           QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "e" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_wild_excl_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "e" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "k.l.m": { "$gte" : 1 }}';
+                                                             QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "k.l.m" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_wild_excl_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "k.l.m" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "graph": { "$gte" : 1 }}';
+                                                             QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "graph" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_wild_excl_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "graph" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+-- on the overlapping indexes, last path wins.
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "r.s.t": { "$gte" : 1 }}';
+                                                             QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "r.s.t" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_overl_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "r.s.t" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "r.s.u.1": { "$gte" : 1 }}';
+                                                              QUERY PLAN                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "r.s.u.1" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on indexsel_path_overl_2
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "r.s.u.1" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+-- intersect two indexes
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "$and": [ { "a.b.c.d": { "$gte" : 1 } }, { "b.c": 2 } ]}';
+                                                                                                               QUERY PLAN                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "b.c" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.c.d" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  BitmapAnd
+                     ->  Bitmap Index Scan on indexsel_path_b_c
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.c" : { "$numberInt" : "2" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on indexsel_path_a_b
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.c.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "$or": [ { "a.b.c.d": { "$gte" : 1 } }, { "b.c": 2 } ]}';
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.c.d" : { "$numberInt" : "1" } }'::documentdb_core.bson) OR (document OPERATOR(documentdb_api_catalog.@=) '{ "b.c" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on indexsel_path_a_b
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.c.d" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on indexsel_path_b_c
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b.c" : { "$numberInt" : "2" } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "randomPath": 1 }';
+                                                               QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5000_50000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "randomPath" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on some_long_index_name_that_is_definitely_over_64_characters_to_test_explain_index_name_length
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "randomPath" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+-- now insert documents that match each of the filters
+-- matches a.b
+SELECT documentdb_api.insert_one('db','indexselection', '{"_id": 1, "a" : { "b" : { "c": 1 } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- matches b.c
+SELECT documentdb_api.insert_one('db','indexselection', '{"_id": 2, "b" : { "c" : 0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- matches g.h
+SELECT documentdb_api.insert_one('db','indexselection', '{"_id": 3, "g" : { "h" :  { "i" : 0 } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- matches wildcard
+SELECT documentdb_api.insert_one('db','indexselection', '{"_id": 4, "k" : { "l" :  { "m" : 0 } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- matches none.
+SELECT documentdb_api.insert_one('db','indexselection', '{"_id": 5, "g" : 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- now query each one to see documents being returned.
+SELECT COUNT(*) FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a.b.c" : 1 }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b.c" : { "$eq": 0 } }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "g.h.i" : { "$gt": -1 } }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "k.l.m" : { "$lt": 1 } }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "g" : { "$exists": 1 } }';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+ROLLBACK;

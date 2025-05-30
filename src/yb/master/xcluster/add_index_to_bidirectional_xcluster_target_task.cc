@@ -13,9 +13,11 @@
 
 #include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 
+#include "yb/client/client.h"
 #include "yb/client/table_info.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
@@ -23,6 +25,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+
 #include "yb/util/is_operation_done_result.h"
 
 namespace yb::master {

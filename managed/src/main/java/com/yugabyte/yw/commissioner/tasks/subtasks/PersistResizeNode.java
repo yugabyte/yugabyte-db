@@ -31,6 +31,7 @@ public class PersistResizeNode extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public UserIntent newUserIntent;
     public UUID clusterUUID;
+    public boolean onlyPersistDeviceInfo;
   }
 
   protected Params taskParams() {
@@ -87,10 +88,12 @@ public class PersistResizeNode extends UniverseTaskBase {
                   nodeDetails.lastVolumeUpdateTime = now;
                 }
               }
-              userIntent.instanceType = newUserIntent.instanceType;
-              userIntent.setUserIntentOverrides(newUserIntent.getUserIntentOverrides());
-              userIntent.setCgroupSize(newUserIntent.getCgroupSize());
-              userIntent.masterInstanceType = newUserIntent.masterInstanceType;
+              if (!taskParams().onlyPersistDeviceInfo) {
+                userIntent.instanceType = newUserIntent.instanceType;
+                userIntent.setUserIntentOverrides(newUserIntent.getUserIntentOverrides());
+                userIntent.setCgroupSize(newUserIntent.getCgroupSize());
+                userIntent.masterInstanceType = newUserIntent.masterInstanceType;
+              }
               DeviceInfo oldDeviceInfo = userIntent.deviceInfo.clone();
               userIntent.deviceInfo.volumeSize = newUserIntent.deviceInfo.volumeSize;
               userIntent.deviceInfo.diskIops = newUserIntent.deviceInfo.diskIops;

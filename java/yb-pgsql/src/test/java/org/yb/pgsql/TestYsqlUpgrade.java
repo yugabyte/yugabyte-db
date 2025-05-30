@@ -18,12 +18,16 @@ import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertLessThanOrEqualTo;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
+
+import com.yugabyte.jdbc.PgArray;
 
 import java.io.File;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
@@ -190,6 +194,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private static final String CATALOG_VERSION_TABLE        = "pg_yb_catalog_version";
   private static final String MIGRATIONS_TABLE             = "pg_yb_migration";
   private static final String LOGICAL_CLIENT_VERSION_TABLE = "pg_yb_logical_client_version";
+  private static final String INVALIDATION_MESSAGES_TABLE  = "pg_yb_invalidation_messages";
 
   /** Guaranteed to be greated than any real OID, needed for sorted entities to appear at the end */
   private static final long PLACEHOLDER_OID = 1234567890L;
@@ -716,7 +721,28 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + "         WHEN stakind3 = 5 THEN stanumbers3"
           + "         WHEN stakind4 = 5 THEN stanumbers4"
           + "         WHEN stakind5 = 5 THEN stanumbers5"
-          + "     END AS elem_count_histogram"
+          + "     END AS elem_count_histogram,"
+          + "     CASE"
+          + "         WHEN stakind1 = 6 THEN stavalues1"
+          + "         WHEN stakind2 = 6 THEN stavalues2"
+          + "         WHEN stakind3 = 6 THEN stavalues3"
+          + "         WHEN stakind4 = 6 THEN stavalues4"
+          + "         WHEN stakind5 = 6 THEN stavalues5"
+          + "     END AS range_length_histogram,"
+          + "     CASE"
+          + "         WHEN stakind1 = 6 THEN stanumbers1[1]"
+          + "         WHEN stakind2 = 6 THEN stanumbers2[1]"
+          + "         WHEN stakind3 = 6 THEN stanumbers3[1]"
+          + "         WHEN stakind4 = 6 THEN stanumbers4[1]"
+          + "         WHEN stakind5 = 6 THEN stanumbers5[1]"
+          + "     END AS range_empty_frac,"
+          + "     CASE"
+          + "         WHEN stakind1 = 7 THEN stavalues1"
+          + "         WHEN stakind2 = 7 THEN stavalues2"
+          + "         WHEN stakind3 = 7 THEN stavalues3"
+          + "         WHEN stakind4 = 7 THEN stavalues4"
+          + "         WHEN stakind5 = 7 THEN stavalues5"
+          + "     END AS range_bounds_histogram"
           + " FROM pg_statistic s JOIN pg_class c ON (c.oid = s.starelid)"
           + "      JOIN pg_attribute a ON (c.oid = attrelid AND attnum = s.staattnum)"
           + "      LEFT JOIN pg_namespace n ON (n.oid = c.relnamespace)"
@@ -955,7 +981,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotent() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     upgradeCheckingIdempotency(false /* useSingleConnection */);
@@ -970,7 +996,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     // Ensures there's never more that one connection opened by an upgrade.
@@ -1035,7 +1061,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       preSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
     boolean snapshot_has_pg_yb_tablegroup = false;
@@ -1244,6 +1270,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
       postSnapshot.catalog.remove(MIGRATIONS_TABLE);
       postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
+
+      // Some migration script contains a DDL such as CREATE OR REPLACE VIEW, which is
+      // not skipped when the migration script is run again (In contrast, CREATE TABLE
+      // IF NOT EXISTS will skip re-executing CREATE TABLE when run again). Re-executing
+      // the DDL will leave different rows in pg_yb_invalidation_messages.
+      preSnapshot.catalog.remove(INVALIDATION_MESSAGES_TABLE);
+      postSnapshot.catalog.remove(INVALIDATION_MESSAGES_TABLE);
 
       assertSysCatalogSnapshotsEquals(preSnapshot, postSnapshot);
     }
@@ -1582,6 +1615,22 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     return row2;
   }
 
+  /** Returns a new row with certain column retained. */
+  private Row retained(Row row, String colNameToRetain) {
+    Row row2 = row.clone();
+    ListIterator<String> colNamesIter = row2.columnNames.listIterator();
+    ListIterator<Object> elemsIter = row2.elems.listIterator();
+    while (colNamesIter.hasNext()) {
+      String currColName = colNamesIter.next();
+      elemsIter.next();
+      if (!currColName.equals(colNameToRetain)) {
+        colNamesIter.remove();
+        elemsIter.remove();
+      }
+    }
+    return row2;
+  }
+
   /** Returns a new row with all occurrences of one value replaced with another. */
   private <T> Row replaced(Row row, T from, T to) {
     Row row2 = row.clone();
@@ -1769,6 +1818,38 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         .max().orElse(0L);
   }
 
+  private void assertSameAcl(Row reinitdbRow, Row migratedRow) {
+    assertEquals(reinitdbRow.elems.size(), 1);
+    assertEquals(migratedRow.elems.size(), 1);
+    Object re = reinitdbRow.elems.get(0);
+    Object me = migratedRow.elems.get(0);
+    if (re != null && me != null) {
+      assertTrue(re instanceof PgArray);
+      assertTrue(me instanceof PgArray);
+      PgArray rpa = (PgArray)re;
+      PgArray mpa = (PgArray)me;
+      try {
+        Object[] ra = (Object[]) rpa.getArray();
+        Object[] ma = (Object[]) mpa.getArray();
+        // Build an array of string representations
+        String[] ras = Arrays.stream(ra).map(Object::toString).toArray(String[]::new);
+        String[] mas = Arrays.stream(ma).map(Object::toString).toArray(String[]::new);
+        Arrays.sort(ras);
+        Arrays.sort(mas);
+        if (!Arrays.equals(ras, mas)) {
+          LOG.error("ras {} {}", ras, ras.length);
+          LOG.error("mas {} {}", mas, ras.length);
+          fail();
+        }
+      } catch (Exception e) {
+        fail("Test failed because of exception " + e);
+      }
+    } else {
+      assertNull(re);
+      assertNull(me);
+    }
+  }
+
   /**
    * Given two system catalog snapshots (fresh one created by reinitdb, and an older one migrated to
    * the latest), verify that they are equivalent for all practical purposes (e.g. OIDs from
@@ -1808,11 +1889,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           totalMigrations + 1, appliedMigrations.size());
       assertRow(new Row(initialMajorVersion, initialMinorVersion, "<baseline>", null),
                 appliedMigrations.get(0));
-      for (int ver = 1; ver <= totalMigrations; ++ver) {
+      for (int i = 1; i <= totalMigrations; ++i) {
         // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
-        Row migrationRow = appliedMigrations.get(ver);
-        final int majorVersion = Math.min(ver, latestMajorVersion) + initialMajorVersion;
-        final int minorVersion = ver - majorVersion + initialMajorVersion;
+        Row migrationRow = appliedMigrations.get(i);
+        final int majorVersion = Math.min(i + initialMajorVersion, latestMajorVersion);
+        final int minorVersion = i - majorVersion + initialMajorVersion;
         assertEquals(majorVersion, migrationRow.getInt(0).intValue());
         assertEquals(minorVersion, migrationRow.getInt(1).intValue());
         String migrationNamePrefix;
@@ -1888,7 +1969,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     SysCatalogSnapshot simplifiedMigratedSnapshot = simplifyCatalogSnapshot.apply(migratedSnapshot);
 
     List<String> tablesToSkip = Arrays.asList(
-      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE);
+      MIGRATIONS_TABLE, CATALOG_VERSION_TABLE, LOGICAL_CLIENT_VERSION_TABLE,
+      INVALIDATION_MESSAGES_TABLE);
 
     simplifiedMigratedSnapshot.catalog.forEach((tableName, migratedRows) -> {
       if (tablesToSkip.contains(tableName))
@@ -1913,7 +1995,24 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           reinitdbRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
           migratedRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
         }
-        assertRow("Table '" + tableName + "': ", reinitdbRow, migratedRow);
+        // PG15 and PG11 initdb generate different default privileges for relacl of pg_class:
+        // PG11: {=r/postgres,postgres=arwdDxt/postgres}
+        // PG15: {postgres=arwdDxt/postgres,=r/postgres}
+        // So we cannot simply compare the as strings.
+        // Similar changes happen for initprivs column of table pg_init_privs.
+        if (tableName.equals("pg_class")) {
+          assertRow("Table '" + tableName + "': ",
+                    excluded(reinitdbRow, "relacl"),
+                    excluded(migratedRow, "relacl"));
+          assertSameAcl(retained(reinitdbRow, "relacl"), retained(migratedRow, "relacl"));
+        } else if (tableName.equals("pg_init_privs")) {
+          assertRow("Table '" + tableName + "': ",
+                    excluded(reinitdbRow, "initprivs"),
+                    excluded(migratedRow, "initprivs"));
+          assertSameAcl(retained(reinitdbRow, "initprivs"), retained(migratedRow, "initprivs"));
+        } else {
+          assertRow("Table '" + tableName + "': ", reinitdbRow, migratedRow);
+        }
       }
     });
   }

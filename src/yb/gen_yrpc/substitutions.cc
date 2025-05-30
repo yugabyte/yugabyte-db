@@ -125,7 +125,10 @@ Substitutions CreateSubstitutions(const google::protobuf::EnumDescriptor* enum_d
   Substitutions result;
   result.emplace_back(
       "enum_name", UnnestedName(enum_desc, Lightweight::kFalse, FullPath::kFalse));
-  result.emplace_back("enum_lw_name", *LightweightName(enum_desc));
+  auto lw_name = LightweightName(enum_desc);
+  if (lw_name) {
+    result.emplace_back("enum_lw_name", std::move(*lw_name));
+  }
   return result;
 }
 

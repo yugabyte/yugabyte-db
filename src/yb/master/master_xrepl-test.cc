@@ -14,6 +14,7 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/common/schema.h"

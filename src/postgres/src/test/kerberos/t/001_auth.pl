@@ -96,6 +96,22 @@ $stdout =~ m/Kerberos 5 release ([0-9]+\.[0-9]+)/
   or BAIL_OUT("could not get Kerberos version");
 $krb5_version = $1;
 
+# Build the krb5.conf to use.
+#
+# Explicitly specify the default (test) realm and the KDC for
+# that realm to avoid the Kerberos library trying to look up
+# that information in DNS, and also because we're using a
+# non-standard KDC port.
+#
+# Also explicitly disable DNS lookups since this isn't really
+# our domain and we shouldn't be causing random DNS requests
+# to be sent out (not to mention that broken DNS environments
+# can cause the tests to take an extra long time and timeout).
+#
+# Reverse DNS is explicitly disabled to avoid any issue with a
+# captive portal or other cases where the reverse DNS succeeds
+# and the Kerberos library uses that as the canonical name of
+# the host and then tries to acquire a cross-realm ticket.
 append_to_file(
 	$krb5_conf,
 	qq![logging]
@@ -103,7 +119,10 @@ default = FILE:$krb5_log
 kdc = FILE:$kdc_log
 
 [libdefaults]
+dns_lookup_realm = false
+dns_lookup_kdc = false
 default_realm = $realm
+rdns = false
 
 [realms]
 $realm = {
@@ -165,7 +184,12 @@ system_or_bail $krb5kdc, '-P', $kdc_pidfile;
 
 END
 {
-	kill 'INT', `cat $kdc_pidfile` if -f $kdc_pidfile;
+	# take care not to change the script's exit value
+	my $exit_code = $?;
+
+	kill 'INT', `cat $kdc_pidfile` if defined($kdc_pidfile) && -f $kdc_pidfile;
+
+	$? = $exit_code;
 }
 
 note "setting up PostgreSQL instance";

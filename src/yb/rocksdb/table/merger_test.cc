@@ -171,7 +171,7 @@ class MergerTest : public RocksDBTest {
         values.push_back(ValueForKey(key));
       }
       auto iterator = arena_.NewObject<test::VectorIterator>(iterator_keys, values);
-      iterator->ExpectSeekToPrefixOnly();
+      created_iterators_.push_back(iterator);
       builder.AddIterator(iterator);
     }
 
@@ -191,6 +191,7 @@ class MergerTest : public RocksDBTest {
   InternalIterator* filter_iterator_ = nullptr;
   std::vector<std::string> all_keys_;
   std::vector<std::vector<std::string>> subkeys_;
+  std::vector<test::VectorIterator*> created_iterators_;
 };
 
 TEST_F(MergerTest, SeekToRandomNextTest) {
@@ -256,16 +257,36 @@ void MergerTest::TestFilter(bool forward_only) {
       return all_keys_[lhs] < all_keys_[rhs];
     });
   }
+  Slice prev_key = all_keys_.back();
   for (auto i : indexes) {
-    const auto& key = all_keys_[i];
     if (!rnd_.OneIn(2)) {
       continue;
     }
+    const auto& key = all_keys_[i];
+    filter_iterator_->UpdateFilterKey(key);
     {
-      const auto& entry = filter_iterator_->SeekWithNewFilter(key, key);
-      ASSERT_TRUE(entry.Valid());
-      ASSERT_EQ(entry.key, key);
-      ASSERT_EQ(entry.value, ValueForKey(key));
+      const KeyValueEntry* entry;
+      if (key > prev_key && rnd_.OneIn(2)) {
+        for (auto iterator : created_iterators_) {
+          iterator->ExpectSeekToPrefixOnly(false);
+        }
+        for (;;) {
+          entry = &filter_iterator_->Next();
+          ASSERT_TRUE(entry->Valid());
+          ASSERT_LE(entry->key, key);
+          if (entry->key == key) {
+            break;
+          }
+        }
+      } else {
+        for (auto iterator : created_iterators_) {
+          iterator->ExpectSeekToPrefixOnly(true);
+        }
+        entry = &filter_iterator_->Seek(key);
+        ASSERT_TRUE(entry->Valid());
+      }
+      ASSERT_EQ(entry->key, key);
+      ASSERT_EQ(entry->value, ValueForKey(key));
     }
     for (size_t j = 0, nj = rnd_.Uniform(narrow_cast<int>(subkeys_[i].size() + 1)); j != nj; ++j) {
       const auto& entry = filter_iterator_->Next();
@@ -273,6 +294,7 @@ void MergerTest::TestFilter(bool forward_only) {
       ASSERT_EQ(entry.key, subkeys_[i][j]);
       ASSERT_EQ(entry.value, ValueForKey(entry.key));
     }
+    prev_key = key;
   }
 }
 

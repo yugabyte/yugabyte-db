@@ -88,7 +88,7 @@ void ConsistentReadPoint::RestartRequired(const TabletId& tablet,
 
 void ConsistentReadPoint::RestartRequiredUnlocked(
     const TabletId& tablet, const ReadHybridTime& restart_time) {
-  DCHECK(read_time_) << "Unexpected restart without a read time set";
+  LOG_IF(DFATAL, !read_time_) << "Unexpected restart without a read time set";
   restart_read_ht_.MakeAtLeast(restart_time.read);
   // We should inherit per-tablet restart time limits before restart, doing it lazily.
   if (restarts_.empty()) {
@@ -199,7 +199,8 @@ void ConsistentReadPoint::SetInTxnLimit(HybridTime value) {
 
 ReadHybridTime ConsistentReadPoint::GetReadTime() const {
   std::lock_guard lock(mutex_);
-  DCHECK_LE(read_time_.read, read_time_.global_limit);
+  LOG_IF(DFATAL, read_time_.read > read_time_.global_limit)
+      << "Read time cannot be higher than the global limit" << read_time_;
   return read_time_;
 }
 

@@ -28,12 +28,16 @@
 #include <inttypes.h>
 #include <limits>
 #include <string>
+
 #include <gtest/gtest.h>
+
 #include "yb/rocksdb/env.h"
+
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/util/random.h"
-
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
@@ -105,7 +109,7 @@ TEST_F(RateLimiterTest, Rate) {
       // second iteration changes the target dynamically
       if (iter == 2) {
         target *= 2;
-        arg.limiter->SetBytesPerSecond(target);
+        ASSERT_OK(arg.limiter->SetBytesPerSecond(target));
       }
       auto start = env->NowMicros();
       for (int t = 0; t < i; ++t) {

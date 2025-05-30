@@ -4,6 +4,7 @@ PGFILEDESC = "yb_xcluster_ddl_replication - YugaByte xCluster DDL replication"
 
 EXTENSION = yb_xcluster_ddl_replication
 DATA = yb_xcluster_ddl_replication--1.0.sql
+SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lyb_pggate
 
 MODULE_big = yb_xcluster_ddl_replication
 OBJS = \

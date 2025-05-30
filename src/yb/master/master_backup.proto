@@ -70,7 +70,15 @@ message SnapshotInfoPB {
   // Detailed snapshot entries.
   optional SysSnapshotEntryPB entry = 2;
 
-  optional int64 format_version = 3 [ default = 1 ];
+  // Specifies what format of snaphot info is provided. The current versions are:
+  // Format 0 - latest format (== Format 3 at the moment).
+  // Format -1 - old format (no 'namespace_name' in the Table entry).
+  // Format 1 - old format (no BackupRowEntryPB. Instead, namespaces, tables, and tablets are
+  // stored in SysSnapshotEntryPB entry.entries).
+  // Format 2 - Using BackupRowEntryPB wrapper which has pg_schema_name for ysql table entries.
+  // Format 3 - Using relfilenode for import snapshot in Ysql databases. This format guarantees that
+  // a ysql_dump taken for a backup preserves relfilenode for ysql tables.
+  optional int64 format_version = 3 [ default = 2 ];
 
   // Stored extended info about snapshot (1) namespaces (2) tables (3) tablets
   // instead of 'SysRowEntry entry.entries'.

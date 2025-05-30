@@ -17,6 +17,8 @@
 
 #include "yb/common/common.pb.h"
 
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_types.h"
@@ -59,18 +61,12 @@ Result<std::string> DocDBKeyToDebugStr(
           Format("Reverse txn record for: $0", transaction_id));
       return Format("TXN REV $0 $1", transaction_id, doc_ht);
     }
-    case KeyType::kTransactionMetadata: {
+    case KeyType::kTransactionMetadata:
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
-      auto transaction_id = DecodeTransactionId(&key_slice);
-      RETURN_NOT_OK(transaction_id);
-      return Format("TXN META $0", *transaction_id);
-    }
-    case KeyType::kPostApplyTransactionMetadata: {
+      return Format("TXN META $0", VERIFY_RESULT(DecodeTransactionId(&key_slice)));
+    case KeyType::kPostApplyTransactionMetadata:
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
-      auto transaction_id = DecodeTransactionId(&key_slice);
-      RETURN_NOT_OK(transaction_id);
-      return Format("TXN POST META $0", *transaction_id);
-    }
+      return Format("TXN POST META $0", VERIFY_RESULT(DecodeTransactionId(&key_slice)));
     case KeyType::kEmpty:
       FALLTHROUGH_INTENDED;
     case KeyType::kPlainSubDocKey:
@@ -86,6 +82,9 @@ Result<std::string> DocDBKeyToDebugStr(
           Format("External txn record for: $0", transaction_id));
       return Format("TXN EXT $0 $1", transaction_id, doc_hybrid_time);
     }
+    case KeyType::kApplyState:
+      RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionApplyState));
+      return Format("TXN APPLY STATE $0", VERIFY_RESULT(DecodeTransactionId(&key_slice)));
   }
   return STATUS_FORMAT(Corruption, "Invalid KeyType: $0", yb::ToString(key_type));
 }
@@ -256,6 +255,14 @@ Result<std::string> DocDBValueToDebugStr(
       FALLTHROUGH_INTENDED;
     case KeyType::kPlainSubDocKey: {
       return DocDBValueToDebugStrInternal(key_type, key, value, schema_packing_provider);
+    }
+
+    case KeyType::kApplyState: {
+      ApplyTransactionStatePB pb;
+      if (!pb.ParseFromArray(value.cdata() + 1, narrow_cast<int>(value.size()) - 1)) {
+        return STATUS_FORMAT(Corruption, "Bad apply state: $0", value.ToDebugHexString());
+      }
+      return ApplyStateWithCommitInfo::FromPB(pb).ToString();
     }
 
     case KeyType::kExternalIntents: {

@@ -33,9 +33,6 @@
 #include "access/relscan.h"
 #include "access/tableam.h"
 #include "catalog/pg_am.h"
-#include "catalog/pg_opfamily.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "lib/pairingheap.h"
@@ -47,11 +44,15 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "optimizer/clauses.h"
+#include "utils/fmgroids.h"
 
 /*
  * When an ordering operator is used, tuples fetched from the index that
@@ -77,6 +78,8 @@ static int	reorderqueue_cmp(const pairingheap_node *a,
 static void reorderqueue_push(IndexScanState *node, TupleTableSlot *slot,
 							  Datum *orderbyvals, bool *orderbynulls);
 static HeapTuple reorderqueue_pop(IndexScanState *node);
+
+/* YB declarations */
 static void yb_init_index_scandesc(IndexScanState *node);
 static void yb_agg_pushdown_init_scan_slot(IndexScanState *node);
 
@@ -157,7 +160,7 @@ IndexNext(IndexScanState *node)
 	}
 
 	/*
-	 * Set up any locking that happens at the time of the scan.
+	 * YB: Set up any locking that happens at the time of the scan.
 	 */
 	if (IsYugaByteEnabled())
 	{
@@ -229,7 +232,7 @@ IndexNext(IndexScanState *node)
 		CHECK_FOR_INTERRUPTS();
 
 		/*
-		 * Index aggregate pushdown currently cannot support recheck,
+		 * YB: Index aggregate pushdown currently cannot support recheck,
 		 * and this should have been prevented by earlier logic.
 		 */
 		if (IsYugaByteEnabled() && scandesc->yb_aggrefs)
@@ -242,6 +245,7 @@ IndexNext(IndexScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
+			/* YB modified.  TODO(tanuj): is this really the right move? */
 			if (!ExecQual(node->indexqualorig, econtext))
 			{
 				ResetExprContext(econtext);
@@ -927,7 +931,12 @@ ExecEndIndexScan(IndexScanState *node)
 	if (indexScanDesc)
 		index_endscan(indexScanDesc);
 	if (indexRelationDesc)
+	{
+		if (node->ss.ps.state->yb_exec_params.yb_index_check)
+			yb_free_dummy_baserel_index(indexRelationDesc);
+
 		index_close(indexRelationDesc, NoLock);
+	}
 }
 
 /* ----------------------------------------------------------------
@@ -1088,8 +1097,12 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 
 	/* Open the index relation. */
 	lockmode = exec_rt_fetch(node->scan.scanrelid, estate)->rellockmode;
-	indexstate->iss_RelationDesc = index_open(node->indexid, lockmode);
 
+	if (!estate->yb_exec_params.yb_index_check)
+		indexstate->iss_RelationDesc = index_open(node->indexid, lockmode);
+	else
+		indexstate->iss_RelationDesc =
+			yb_dummy_baserel_index_open(node->indexid, lockmode);
 	/*
 	 * Initialize index-specific scan state
 	 */
@@ -1112,10 +1125,10 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 						   NULL);
 
 	/*
-	 * For aggregate pushdown purposes, using the scan keys, determine ahead of
-	 * beginning the scan whether indexqual recheck might happen, and pass that
-	 * information up to the aggregate node.  Only attempt this for YB
-	 * relations since pushdown is not supported otherwise.
+	 * YB: For aggregate pushdown purposes, using the scan keys, determine
+	 * ahead of beginning the scan whether indexqual recheck might happen, and
+	 * pass that information up to the aggregate node.  Only attempt this for
+	 * YB relations since pushdown is not supported otherwise.
 	 */
 	if (IsYBRelation(indexstate->iss_RelationDesc) &&
 		(eflags & EXEC_FLAG_YB_AGG_PARENT))
@@ -1176,7 +1189,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 			SortSupport orderbysort = &indexstate->iss_SortSupport[i];
 
 			/* Initialize sort support */
-			orderbysort->ssup_cxt = GetCurrentMemoryContext();
+			orderbysort->ssup_cxt = CurrentMemoryContext;
 			orderbysort->ssup_collation = orderbyColl;
 			/* See cmp_orderbyvals() comments on NULLS LAST */
 			orderbysort->ssup_nulls_first = false;
@@ -1373,8 +1386,11 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 			Assert(leftop != NULL);
 
+			/*
+			 * Check for yb_hash_code() and set flag if present.
+			 */
 			if (IsA(leftop, FuncExpr)
-				&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+				&& ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE)
 			{
 				flags |= YB_SK_IS_HASHED;
 			}
@@ -1467,6 +1483,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 								   opfuncid,	/* reg proc to use */
 								   scanvalue);	/* constant */
 		}
+		/* YB-modified condition */
 		else if (IsA(clause, RowCompareExpr) &&
 				 castNode(RowCompareExpr, clause)->rctype != ROWCOMPARE_EQ)
 		{
@@ -1511,7 +1528,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				 * Check for yb_hash_code() and set flag if present.
 				 */
 				if (IsA(leftop, FuncExpr)
-					&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+					&& ((FuncExpr *) leftop)->funcid == F_YB_HASH_CODE)
 					flags |= YB_SK_IS_HASHED;
 
 				if (!(IsA(leftop, Var) &&
@@ -1748,6 +1765,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 								   opfuncid,	/* reg proc to use */
 								   scanvalue);	/* constant */
 		}
+		/* YB-added condition */
 		else if (IsA(clause, RowCompareExpr))
 		{
 			Assert(IsYugaByteEnabled());

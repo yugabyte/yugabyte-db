@@ -2,7 +2,9 @@ package com.yugabyte.yw.common.operator;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.fabric8.kubernetes.api.model.HasMetadata;
+import lombok.NoArgsConstructor;
 
+@NoArgsConstructor
 public class KubernetesResourceDetails {
   @JsonProperty("resourceType")
   public String resourceType;
@@ -19,5 +21,10 @@ public class KubernetesResourceDetails {
     krn.namespace = resource.getMetadata().getNamespace();
     krn.name = resource.getMetadata().getName();
     return krn;
+  }
+
+  public KubernetesResourceDetails(String name, String namespace) {
+    this.name = name;
+    this.namespace = namespace;
   }
 }

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Evaluate the performance of slow queries that have run on your cluster using the **Slow Queries** option on the cluster **Performance** tab.
+Evaluate the performance of slow queries that have run on your cluster using the **Slow Queries** option on the cluster **Perf Advisor** tab.
 
 {{< youtube id="hXphqRCQImQ" title="Monitor and optimize queries in YugabyteDB Aeon" >}}
 
@@ -27,7 +27,7 @@ Slow queries are only available for YSQL.
 
 ## View Slow Queries
 
-To view slow queries, navigate to the cluster **Performance** tab and choose **Slow Queries**.
+To view slow queries, navigate to the cluster **Perf Advisor** tab and choose **Slow Queries**.
 
 ![Cluster Slow Queries](/images/yb-cloud/managed-monitor-slow-queries.png)
 

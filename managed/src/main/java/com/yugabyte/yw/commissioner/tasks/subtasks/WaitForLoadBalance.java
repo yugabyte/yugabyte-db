@@ -71,7 +71,7 @@ public class WaitForLoadBalance extends AbstractTaskBase {
       // When an AZ is down and Platform is unaware(external failure) then load balancing will not
       // work if we pass in the expected number of TServers to the API as the first step for load
       // balancing is the liveness check. All those TServers will be expected to be alive at the
-      // minimum. The TServer which is down becuase of an external fault will fail this liveness
+      // minimum. The TServer which is down because of an external fault will fail this liveness
       // check, so load will not be balanced. NOTE: Zero implies load distribution can be checked
       // across all servers which the master leader knows about.
       ret = client.waitForLoadBalance(TIMEOUT_SERVER_WAIT_MS, taskParams().numTservers);

@@ -346,7 +346,7 @@ class OutboundCall : public RpcCall {
     thread_pool_failure_ = status;
   }
 
-  const Status& thread_pool_failure() const EXCLUDES(mtx_) {
+  Status thread_pool_failure() const EXCLUDES(mtx_) {
     std::lock_guard lock(mtx_);
     return thread_pool_failure_;
   }

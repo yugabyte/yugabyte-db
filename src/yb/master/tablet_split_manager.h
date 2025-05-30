@@ -21,8 +21,6 @@
 
 #include "yb/rpc/rpc_context.h"
 
-#include "yb/util/metrics.h"
-
 namespace yb {
 namespace master {
 

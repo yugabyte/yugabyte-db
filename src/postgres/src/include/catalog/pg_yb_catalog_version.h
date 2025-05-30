@@ -18,7 +18,6 @@
 #define PG_YB_CATALOG_VERSION_H
 
 #include "catalog/genbki.h"
-
 #include "catalog/pg_yb_catalog_version_d.h"
 
 /* ----------------

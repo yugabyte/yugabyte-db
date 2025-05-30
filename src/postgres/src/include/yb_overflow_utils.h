@@ -27,7 +27,6 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-
 #include <stdint.h>
 
 /* Using built-ins listed here for overflow checking:

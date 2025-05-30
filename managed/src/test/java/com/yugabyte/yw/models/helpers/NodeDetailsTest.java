@@ -29,6 +29,7 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.ToJoinCluster);
     activeStates.add(NodeDetails.NodeState.Provisioned);
     activeStates.add(NodeDetails.NodeState.SoftwareInstalled);
+    activeStates.add(NodeDetails.NodeState.UpgradeMasterSoftware);
     activeStates.add(NodeDetails.NodeState.UpgradeSoftware);
     activeStates.add(NodeDetails.NodeState.FinalizeUpgrade);
     activeStates.add(NodeDetails.NodeState.RollbackUpgrade);
@@ -53,6 +54,7 @@ public class NodeDetailsTest {
   @Test
   public void testIsQueryable() {
     Set<NodeDetails.NodeState> queryableStates = new HashSet<>();
+    queryableStates.add(NodeDetails.NodeState.UpgradeMasterSoftware);
     queryableStates.add(NodeDetails.NodeState.UpgradeSoftware);
     queryableStates.add(NodeDetails.NodeState.RollbackUpgrade);
     queryableStates.add(NodeDetails.NodeState.FinalizeUpgrade);

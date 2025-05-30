@@ -56,6 +56,8 @@ YBA Installer also supports non-root installation. Refer to [Non-sudo installati
 
 Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
 
+Installation requires a license file. To obtain your license, contact your sales representative. If you are not yet a customer and want to try YugabyteDB Anywhere, [book a demo](https://www.yugabyte.com/demo/).
+
 {{< warning title="Keep the control plane separate from the data plane" >}}
 Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
 {{< /warning >}}
@@ -64,7 +66,6 @@ Don't install YugabyteDB Anywhere on servers that you will use for database clus
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from {{% support-platform %}}.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -103,7 +104,7 @@ tar -xf yba_installer_full-{{<yb-version version="preview" format="build">}}-lin
 cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
 ```
 
-This bundle provides everything needed, except a [license](#provide-a-license), to complete a fresh install of YBA:
+This bundle provides everything needed (except your license), to complete a fresh install of YBA:
 
 - `yba-ctl` executable binary is used to perform all of the YBA Installer workflows.
 - `yba-ctl.yml.reference` is a YAML reference for the available configuration options for both YBA Installer and YugabyteDB Anywhere.
@@ -143,8 +144,6 @@ You can change some configuration options post-installation using the [reconfigu
 
 ### Provide a license
 
-YBA Installer requires a valid license before installing. To obtain a license, contact {{% support-platform %}}.
-
 Provide the license to YBA Installer by running the `license` command as follows:
 
 ```sh
@@ -179,7 +178,7 @@ sudo ./yba-ctl preflight
 
 Some checks, such as CPU or memory, can be skipped, though this is not recommended for a production installation. Others, such as having a license and python installed, are hard requirements, and YugabyteDB Anywhere can't work until these checks pass. All checks should pass for a production installation.
 
-If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `–skip_preflight <name>[,<name2>]`. For example:
+If you are installing YBA for testing and evaluation and you want to skip a check that is failing, you can pass `--skip_preflight <name>[,<name2>]`. For example:
 
 ```sh
 sudo ./yba-ctl preflight --skip_preflight cpu
@@ -193,7 +192,7 @@ To perform an install, run the `install` command. Once started, an install can t
 sudo ./yba-ctl install
 ```
 
-You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license) :
+You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license):
 
 ```sh
 sudo ./yba-ctl install -l /path/to/license
@@ -213,27 +212,93 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 
 The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YBA to start. After the install succeeds, you can immediately start using YBA.
 
+### Use a stand-alone data disk
+
+By default, YugabyteDB Anywhere stores its data in `/opt/yugabyte/data`. You can also use a stand-alone data disk for YugabyteDB Anywhere data.
+
+Using a stand-alone data disk allows you to swap your YugabyteDB Anywhere data between installations for tasks such as boot disk replacement.
+
+#### Prerequisites
+
+- The data disk should have a minimum of 200GB free space. If you use a data disk, the root disk does not need the full size requirement.
+- The data disk should be formatted and have a filesystem. YBA Installer does not format, partition, or run mkfs on the disk.
+- If you are replacing a data disk, the data on the replacement must be from the same or earlier version of YugabyteDB Anywhere. YugabyteDB Anywhere will not start if you attempt to use a data disk from a later version of YugabyteDB Anywhere.
+
+Note that if you run [clean –-all](#clean-uninstall), the data disk will be cleaned, regardless of the installation type.
+
+#### New installation
+
+To have YugabyteDB Anywhere use a new stand-alone data disk, do the following:
+
+1. Mount the data disk to `/opt/yugabyte/data`. For example:
+
+    ```sh
+    mount /dev/sdb1 /opt/yugabyte/data
+    ```
+
+1. Install YugabyteDB Anywhere.
+
+    ```sh
+    sudo ./yba-ctl install
+    ```
+
+1. Add the mount to `/etc/fstab`.
+
+#### Existing installation
+
+To use an existing data disk, first unmount the disk from the existing YugabyteDB Anywhere installation as follows:
+
+1. Run `sudo yba-ctl stop` to stop YugabyteDB Anywhere.
+
+1. Unmount the data disk:
+
+    ```sh
+    unmount /opt/yugabyte/data
+    ```
+
+1. Optionally, with the disk unmounted you can safely clean up the YugabyteDB Anywhere installation by running `sudo yba-ctl clean --all`.
+
+The disk is now ready to be reused with a new installation.
+
+To use the data disk with a new installation, do the following:
+
+1. Install YugabyteDB Anywhere using the `--without-data` option:
+
+    ```sh
+    sudo ./yba-ctl install --without-data
+    ```
+
+1. Mount the data disk to `/opt/yugabyte/data`. For example:
+
+    ```sh
+    mount /dev/sdb1 /opt/yugabyte/data
+    ```
+
+1. Start YugabyteDB Anywhere by running `sudo yba-ctl start`.
+
+1. Add the mount to `/etc/fstab`.
+
 ## Manage a YBA installation
 
 ### Reconfigure
 
-YBA Installer can be used to reconfigure an installed YBA instance.
+You can use YBA Installer to make changes to an installed YBA instance.
 
-To reconfigure an installation, edit the `/opt/yba-ctl/yba-ctl.yml` configuration file with your changes, and then run the command as follows:
+To reconfigure an installation, edit the configuration file with your changes, and then run the command as follows:
 
 ```sh
 sudo yba-ctl reconfigure
 ```
 
-For a list of options, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
+For more information, refer to [Configuration options](#configuration-options). Note that some settings can't be reconfigured, such as the install root, service username, or the PostgreSQL version.
 
 ### Service management
 
 YBA Installer provides basic service management, with `start`, `stop`, and `restart` commands. Each of these can be performed for all the services (`platform`, `postgres`, and `prometheus`), or any individual service.
 
 ```sh
-sudo yba-ctl [start, stop, reconfigure]
-sudo yba-ctl [start, stop, reconfigure] prometheus
+sudo yba-ctl [start, stop, restart]
+sudo yba-ctl [start, stop, restart] prometheus
 ```
 
 In addition to the state changing operations, you can use the `status` command to show the status of all YugabyteDB Anywhere services, in addition to other information such as the log and configuration location, versions of each service, and the URL to access the YugabyteDB Anywhere UI.
@@ -306,7 +371,7 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-To delete all data, run `clean` with the `–-all` flag as follows:
+To delete all data, run `clean` with the `--all` flag as follows:
 
 ```sh
 sudo yba-ctl clean --all
@@ -363,32 +428,47 @@ To perform a non-sudo installation, run any of the preceding commands without su
 
 ## Configuration options
 
-### YBA Installer configuration options
+To customize your installation, edit the settings in the `yba-ctl.yml` configuration file.
 
-You can set the following YBA Installer configuration options.
+YBA Installer [automatically generates](#configure-yba-installer) the file when you run certain commands. Alternatively, you can edit the `yba-ctl.yml.reference` file included in the installer bundle, and copy it to the appropriate location.
+
+| Installation type | Location for configuration file |
+| :--- | :--- |
+| sudo | opt/yba-ctl/ |
+| non-sudo | ~/opt/yba-ctl/ |
+
+To make changes to an existing installation, edit the configuration file with your changes and run the [reconfigure](#reconfigure) command. Note that some settings (marked with {{<icon/partial>}}) cannot be changed after installation.
+
+Note that the file must include all fields. Optional fields may be left blank.
+
+### Configure YBA Installer
+
+You can configure YBA Installer by setting the following options.
 
 | Option | Description |      |
 | :----- | :---------- | :--- |
-| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. | {{<icon/partial>}} |
+| `installRoot` | Location where YBA is installed. Default for a sudo installation is `/opt/yugabyte`; for a non-sudo installation, it is the current user's home directory. | {{<icon/partial>}} |
 | `host` | Hostname or IP Address used for CORS and certificate creation. Optional. | |
 | `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
 | `server_cert_path`<br />`server_key_path` | If you are using custom certificates, provide the path to the location of the server cert and server key files (in PEM format). If you don't specify server_cert_path and server_key_path, the installation process generates self-signed certificates in $installRoot/data/yba-installer/certs. Optional. | |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
-| `as_root` | If you ran yba-ctl as root during installation, this is automatically set to true. Otherwise it is set to false. Note that you can't switch between running yba-ctl as root and non-root. | {{<icon/partial>}} |
+| `as_root` | If you are providing a custom configuration file, set to true to perform a [sudo installation](#non-sudo-installation), or false for non-sudo. If the configuration is [auto-generated](#configure-yba-installer), this is set automatically according to whether you used sudo to run the command that triggered the auto generation - true with sudo, or false for non-sudo. Note that you can't switch between running yba-ctl as sudo and non-sudo. | {{<icon/partial>}} |
 
 {{<icon/partial>}} You can't change these settings after installation.
 
-### YBA configuration options
+### Configure YBA
 
-You can configure the following YBA configuration options.
+You can configure YugabyteDB Anywhere using the following options.
 
 | Option | Description |
 | :--- | :--- |
-| `port` | Specify a custom port for the YBA UI to run on. |
+| `port` | Specify a custom port for the YBA UI to run on. Default: 443. |
 | `keyStorePassword` | Password for the Java keystore. Automatically generated if left empty. |
 | `appSecret` | Play framework crypto secret. Automatically generated if left empty. |
 
-OAuth related settings are described in the following table. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave it empty).
+#### OAuth
+
+OAuth related settings are described in the following table. With the exception of `useOauth`, they are all optional. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave them empty).
 
 | Option | Description |
 | :--- | :--- |
@@ -401,24 +481,29 @@ OAuth related settings are described in the following table. Only set these fiel
 | `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your YBA installation. |
 | `ybOidcEmailAtr` | The OIDC Email Attribute corresponding to the OIDC SSO for your YBA installation. Must be a valid email address. |
 
-Http and Https proxy settings are described in the following table.
+#### Proxy
+
+When configuring proxy values for YBA, all values must be set correctly. On AWS, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the EC2 metadata service.
+
+If you are setting these values on an existing system, run `yba-ctl reconfigure` to set the new values for YBA.
 
 | Option | Description |
 | :--- | :--- |
-| `http_proxy` |            Specify the setting for HTTP_PROXY |
-| `java_http_proxy_port` |  Specify -Dhttp.proxyPort |
-| `java_http_proxy_host` |  Specify -Dhttp.proxyHost |
-| `https_proxy` |           Specify the setting for HTTPS_PROXY |
-| `java_https_proxy_port` | Specify -Dhttps.proxyPort |
-| `java_https_proxy_host` | Specify -Dhttps.proxyHost |
-| `no_proxy` |              Specify the setting for NO_PROXY |
-| `java_non_proxy` |        Specify -Dhttps.nonProxyHosts |
+| `enable` |            A boolean to turn the proxy on or off without having to change further values. If `false`, no proxy settings will be used. |
+| `http_proxy` |            Specify the HTTP_PROXY and http_proxy environment variables, in the form `http://<host>:<port>` |
+| `java_http_proxy_port` |  Specify -Dhttp.proxyPort port value |
+| `java_http_proxy_host` |  Specify -Dhttp.proxyHost as a hostname or IP address |
+| `https_proxy` |           Specify the HTTPS_PROXY and https_proxy environment variables, in the form `https://<host>:<port>` |
+| `java_https_proxy_port` | Specify -Dhttps.proxyPort port |
+| `java_https_proxy_host` | Specify -Dhttps.proxyHost as a hostname or IP address |
+| `no_proxy` |              Specify the NO_PROXY and no_proxy environment variables, as a comma-separated list of URLs and IP addresses that will not be sent to the proxy server. For example, `127.0.0.1,localhost,169.254.169.254` |
+| `java_non_proxy` |        Specify -Dhttps.nonProxyHosts, as a vertical bar (\|) separated list of URLs and IP addresses that will not be sent to the proxy server. For example, `127.0.0.1\|localhost\|169.254.169.254` |
 
-### Prometheus configuration options
+### Configure Prometheus
 
 | Option | Description |
 | :--- | :--- |
-| `port` | External Prometheus port. |
+| `port` | External Prometheus port. Default: 9090. |
 | `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash. |
 | `scrapeInterval` | How often Prometheus scrapes for database metrics. |
 | `scrapeTimeout` | Timeout for inactivity during scraping. |
@@ -442,7 +527,7 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 | Option | Description |      |
 | :----- | :---------- | :--- |
-| `enabled` | Boolean indicating whether yba-ctl will install PostgreSQL. | {{<icon/partial>}} |
+| `enabled` | Boolean indicating whether yba-ctl will install PostgreSQL. Default: true | {{<icon/partial>}} |
 | `port` | Port PostgreSQL is listening to. | |
 | `restartSecond` | Wait time to restart PostgreSQL if the service crashes. | |
 | `locale` | locale is used during initialization of the database. | |
@@ -454,7 +539,7 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 | Option | Description |      |
 | :----- | :---------- | :--- |
-| `enabled` | Boolean indicating whether to use a PostgreSQL instance that you provision and manage separately. | {{<icon/partial>}} |
+| `enabled` | Boolean indicating whether to use a PostgreSQL instance that you provision and manage separately. Default: false | {{<icon/partial>}} |
 | `host` | IP address/domain name of the PostgreSQL server. | |
 | `port` | Port PostgreSQL is running on. | |
 | `username` and `password` | Used to authenticate with PostgreSQL. | |

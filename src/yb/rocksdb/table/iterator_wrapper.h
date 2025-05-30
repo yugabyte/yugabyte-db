@@ -159,44 +159,23 @@ class IteratorWrapperBase {
     return Update(iter_->Prev());
   }
 
-  bool had_seek() const {
-    return had_seek_;
-  }
-
-  const KeyValueEntry& Seek(const Slice& k) {
+  const KeyValueEntry& Seek(Slice key) {
     DCHECK(iter_);
-    had_seek_ = true;
-    return Update(SkipLastIfNecessary(iter_->Seek(k)));
+    return Update(SkipLastIfNecessary(iter_->Seek(key)));
   }
 
   const KeyValueEntry& SeekToFirst() {
     DCHECK(iter_);
-    had_seek_ = true;
     return Update(SkipLastIfNecessary(iter_->SeekToFirst()));
   }
 
   const KeyValueEntry& SeekToLast() {
     DCHECK(iter_);
-    had_seek_ = true;
     const auto& last_entry = iter_->SeekToLast();
     if (!kSkipLastEntry || !last_entry.Valid()) {
       return Update(last_entry);
     }
     return Update(iter_->Prev());
-  }
-
-  ScanForwardResult ScanForward(
-      const Comparator* user_key_comparator, const Slice& upperbound,
-      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
-    if (kSkipLastEntry) {
-      LOG(FATAL)
-          << "IteratorWrapperBase</* kSkipLastEntry = */ true>::ScanForward is not supported";
-    }
-    LOG_IF(DFATAL, !iter_) << "Iterator is invalid";
-    auto result =
-        iter_->ScanForward(user_key_comparator, upperbound, key_filter_callback, scan_callback);
-    Update(iter_->Entry());
-    return result;
   }
 
   // Returns true iff iterator matches updated file filter.
@@ -249,7 +228,6 @@ class IteratorWrapperBase {
 
   int64_t last_checked_filter_version_ = 0;
   bool matches_filter_ = true;
-  bool had_seek_ = false;
 };
 
 }  // namespace rocksdb

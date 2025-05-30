@@ -350,15 +350,12 @@ class RaftConsensusQuorumTest : public YBTest {
       backoff_exp = std::min(backoff_exp + 1, kMaxBackoffExp);
     }
 
-    LOG(ERROR) << "Max timeout reached (" << timeout.ToString() << ") while waiting for commit of "
-               << "op " << to_wait_for << " on replica. Last committed op on replica: "
-               << committed_op_id << ". Dumping state and quitting.";
-    vector<string> lines;
+    LOG(WARNING)
+        << "Max timeout reached (" << timeout.ToString() << ") while waiting for commit of "
+        << "op " << to_wait_for << " on replica. Last committed op on replica: "
+        << committed_op_id << ". Dumping state and quitting.";
     shared_ptr<RaftConsensus> leader;
     ASSERT_OK(peers_->GetPeerByIdx(leader_idx, &leader));
-    for (const string& line : lines) {
-      LOG(ERROR) << line;
-    }
 
     // Gather the replica and leader operations for printing
     log::LogEntries replica_ops = GatherLogEntries(peer_idx, logs_[peer_idx]);

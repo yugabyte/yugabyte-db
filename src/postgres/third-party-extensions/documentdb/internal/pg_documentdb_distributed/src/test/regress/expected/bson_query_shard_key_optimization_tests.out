@@ -1,0 +1,221 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 170000;
+SET documentdb.next_collection_id TO 1700;
+SET documentdb.next_collection_index_id TO 1700;
+SELECT documentdb_api.drop_collection('db', 'shardkeyopt') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'shardkeyopt');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- create an index on a.b
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('shardkeyopt', 'a_b_1', '{"a.b": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan TO off;
+set local documentdb.forceUseIndexIfAvailable to on;
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }}';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on a_b_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170000 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on a_b_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "_id": { "$gt": { "$minKey": 1 } }}';
+                                                                                                       QUERY PLAN                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1700_170000 collection
+               Index Cond: ((shard_key_value = '1700'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson))
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "_id": { "$gt": { "$minKey": 1 } }}';
+                                                                     QUERY PLAN                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1700_170000 collection
+               Index Cond: ((shard_key_value = '1700'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson))
+               Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson)
+(8 rows)
+
+ROLLBACK;
+-- shard the collection
+SELECT documentdb_api.shard_collection('db', 'shardkeyopt', '{ "c": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan TO off;
+set local documentdb.forceUseIndexIfAvailable to on;
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }}';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170016 documents_1700
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on a_b_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170016 documents_1700
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on a_b_1
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "_id": { "$gt": { "$minKey": 1 } }}';
+                                                                                                          QUERY PLAN                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170016 documents_1700
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson))
+               ->  BitmapAnd
+                     ->  Bitmap Index Scan on a_b_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson)
+(12 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "_id": { "$gt": { "$minKey": 1 } }}';
+                                                         QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170016 documents_1700
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }, "c": 2 }';
+                                                                                      QUERY PLAN                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170017 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (shard_key_value = '-1389566185330078543'::bigint))
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "2" } }'::documentdb_core.bson)
+               ->  BitmapAnd
+                     ->  Bitmap Index Scan on a_b_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '-1389566185330078543'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "c": 2 }';
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170017 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (shard_key_value = '-1389566185330078543'::bigint))
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "2" } }'::documentdb_core.bson)
+               ->  BitmapAnd
+                     ->  Bitmap Index Scan on a_b_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '-1389566185330078543'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "c": 2, "_id": { "$gt": { "$minKey": 1 } }}';
+                                                                                                                            QUERY PLAN                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1700_170017 collection
+               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (shard_key_value = '-1389566185330078543'::bigint))
+               ->  BitmapAnd
+                     ->  Bitmap Index Scan on a_b_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson)
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "c": 2, "_id": { "$gt": { "$minKey": 1 } }}';
+                                                                                                      QUERY PLAN                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1700_170017 collection
+               Index Cond: ((shard_key_value = '-1389566185330078543'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson))
+(8 rows)
+
+ROLLBACK;

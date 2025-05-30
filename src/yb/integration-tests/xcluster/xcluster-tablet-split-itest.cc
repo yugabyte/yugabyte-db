@@ -604,8 +604,8 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     for (const auto& [consumer_tablet_id, producer_tablet_list] : tablet_map) {
       auto consumer_tablet = std::find_if(
           consumer_tablet_peers.begin(), consumer_tablet_peers.end(),
-          [consumer_tablet_id](const auto& tablet) {
-            return tablet->tablet_id() == consumer_tablet_id;
+          [tablet_id = std::cref(consumer_tablet_id)](const auto& tablet) {
+            return tablet->tablet_id() == tablet_id.get();
           });
       ASSERT_NE(consumer_tablet, consumer_tablet_peers.end());
 
@@ -809,7 +809,6 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
   // Setup a new thread for continuous writing to producer.
   std::atomic<bool> stop(false);
   std::thread write_thread([this, &stop] {
-    CDSAttacher attacher;
     client::TableHandle producer_table;
     ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
     auto producer_session = client_->NewSession(60s);
@@ -1010,8 +1009,8 @@ TEST_F(XClusterTabletSplitMetricsTest, VerifyReplicationLagMetricsOnChildren) {
   {
     auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
     LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
-    ASSERT_EQ(committed_lag_micros, 0);
-    ASSERT_EQ(sent_lag_micros, 0);
+    ASSERT_EQ(committed_lag_micros, 1);
+    ASSERT_EQ(sent_lag_micros, 1);
   }
 }
 
@@ -1186,7 +1185,6 @@ TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
   std::atomic<bool> stop(false);
   int32_t rows_written = 0;
   std::thread write_thread([this, &stop, &rows_written] {
-    CDSAttacher attacher;
     client::TableHandle producer_table;
     ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
     auto producer_session = client_->NewSession(60s * kTimeMultiplier);

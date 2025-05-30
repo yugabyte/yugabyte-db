@@ -1090,7 +1090,7 @@ class ApplyPatch {
     LOG(INFO) << "Renaming " << src << " to " << dst;
     Status s = env_->RenameFile(src, dst);
     if (!s.ok()) {
-      LOG(ERROR) << "Error renaming " << src << " to " << dst << ": " << s;
+      LOG(DFATAL) << "Error renaming " << src << " to " << dst << ": " << s;
     }
     return s;
   }

@@ -96,6 +96,7 @@ Status CreateDirIfMissing(Env* env, const std::string& path,
 Status CopyFile(
     Env* env, const std::string& source_path, const std::string& dest_path,
     WritableFileOptions opts = WritableFileOptions());
+Status CopyFilePermissions(const std::string& source_path, const std::string& dest_path);
 
 // Deletes a file or directory when this object goes out of scope.
 //

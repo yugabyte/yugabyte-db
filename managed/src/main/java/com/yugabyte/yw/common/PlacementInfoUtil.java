@@ -552,7 +552,7 @@ public class PlacementInfoUtil {
       return true;
     }
     if (clusterOpType == UniverseConfigureTaskParams.ClusterOperationType.EDIT) {
-      Cluster currentCluster = universe.getUniverseDetails().getPrimaryCluster();
+      Cluster currentCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
       DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       DeviceInfo currentDeviceInfo = currentCluster.userIntent.getDeviceInfoForNode(node);
       if (!Objects.equals(newDeviceInfo, currentDeviceInfo) && newDeviceInfo != null) {
@@ -578,6 +578,14 @@ public class PlacementInfoUtil {
             "assignPublicIP has changed from {} to {}",
             currentCluster.userIntent.assignPublicIP,
             cluster.userIntent.assignPublicIP);
+        return true;
+      }
+      if (!Objects.equals(
+          currentCluster.userIntent.imageBundleUUID, cluster.userIntent.imageBundleUUID)) {
+        LOG.debug(
+            "imageBundleUUID has changed from {} to {}",
+            currentCluster.userIntent.imageBundleUUID,
+            cluster.userIntent.imageBundleUUID);
         return true;
       }
     }
@@ -1104,6 +1112,8 @@ public class PlacementInfoUtil {
           || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
           || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
           || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)
+          || !Objects.equals(
+              newCluster.userIntent.imageBundleUUID, oldCluster.userIntent.imageBundleUUID)
           || existingIntent.assignPublicIP != userIntent.assignPublicIP) {
         throw new UnsupportedOperationException(
             "Cannot change anything but placement if replication factor is altered.");
@@ -2143,6 +2153,8 @@ public class PlacementInfoUtil {
     // We currently only support one cloud per deployment.
     assert pi.cloudList.size() == 1;
     PlacementCloud pc = pi.cloudList.get(0);
+    // Ensure RF is first set to 0.
+    pi.azStream().forEach(az -> az.replicationFactor = 0);
     // Create a queue of zones for placing masters.
     while (numRegionsCompleted != pc.regionList.size() && zones.size() < numTotalMasters) {
       for (PlacementRegion pr : pc.regionList) {
@@ -2152,8 +2164,6 @@ public class PlacementInfoUtil {
         } else if (idx > pr.azList.size()) {
           continue;
         }
-        // Ensure RF is first set to 0.
-        pr.azList.get(idx).replicationFactor = 0;
         zones.add(pr.azList.get(idx));
       }
       idx++;

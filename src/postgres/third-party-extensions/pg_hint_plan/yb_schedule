@@ -8,4 +8,4 @@ test: hints_anywhere
 # TODO(#TBD): These tests are broken in upstream. Once a hint is given by a statement, all
 # subsequent statements continue to use the same hints.
 # test: plpgsql
-test: yb_hint_table
+test: yb.orig.hint_table

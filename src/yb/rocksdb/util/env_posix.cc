@@ -396,7 +396,7 @@ class PosixEnv : public Env {
       int fd = fileno(f);
 #ifdef ROCKSDB_FALLOCATE_PRESENT
       if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024) != 0) {
-        LOG(ERROR) << STATUS_IO_ERROR(fname, errno);
+        LOG(WARNING) << STATUS_IO_ERROR(fname, errno);
       }
 #endif
       SetFD_CLOEXEC(fd, nullptr);

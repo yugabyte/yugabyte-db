@@ -26,7 +26,7 @@
 #include "storage/proc.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -37,8 +37,9 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
 #include "commands/yb_cmds.h"
-#include "utils/fmgroids.h"
 #include "pg_yb_utils.h"
+#include "utils/fmgroids.h"
+
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
 #define VAR_OID_PREFETCH		8192
@@ -702,7 +703,7 @@ GetNewObjectId(void)
 	}
 
 	const bool	ysql_enable_pg_per_database_oid_allocator =
-	*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator;
+		*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator;
 
 	if (ysql_enable_pg_per_database_oid_allocator &&
 		IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())

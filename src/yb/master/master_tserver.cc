@@ -19,6 +19,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/client/client.h"
+
 #include "yb/common/pg_types.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -64,6 +66,10 @@ server::Clock* MasterTabletServer::Clock() {
 
 const scoped_refptr<MetricEntity>& MasterTabletServer::MetricEnt() const {
   return metric_entity_;
+}
+
+tserver::TSLocalLockManagerPtr MasterTabletServer::ts_local_lock_manager() const {
+  return nullptr;
 }
 
 Result<tablet::TabletPeerPtr> MasterTabletServer::GetServingTablet(
@@ -142,13 +148,12 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
     master_->catalog_manager()->GetYsqlDBCatalogVersion(
         db_oid, current_version, last_breaking_version);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not get YSQL catalog version for master's tserver API: "
-               << s.ToUserMessage();
+    LOG(WARNING) << "Could not get YSQL catalog version for master's tserver API: " << s;
     fill_vers();
   }
 }
 
-tserver::TServerSharedData& MasterTabletServer::SharedObject() {
+ConcurrentPointerReference<tserver::TServerSharedData> MasterTabletServer::SharedObject() {
   return master_->shared_object();
 }
 
@@ -156,6 +161,19 @@ Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB* resp) const {
   return master_->get_ysql_db_oid_to_cat_version_info_map(req, resp);
+}
+
+Status MasterTabletServer::GetTserverCatalogMessageLists(
+    const tserver::GetTserverCatalogMessageListsRequestPB& req,
+    tserver::GetTserverCatalogMessageListsResponsePB *resp) const {
+  return master_->GetTserverCatalogMessageLists(req, resp);
+}
+
+Status MasterTabletServer::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const std::optional<std::string>& message_list) {
+  return master_->SetTserverCatalogMessageList(db_oid, is_breaking_change,
+                                               new_catalog_version, message_list);
 }
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
@@ -236,8 +254,17 @@ bool MasterTabletServer::SkipCatalogVersionChecks() {
   return master_->catalog_manager()->SkipCatalogVersionChecks();
 }
 
+Result<tserver::YSQLLeaseInfo> MasterTabletServer::GetYSQLLeaseInfo() const {
+  return STATUS(InternalError, "Unexpected call of GetYSQLLeaseInfo");
+}
+
 const std::string& MasterTabletServer::permanent_uuid() const {
   return master_->permanent_uuid();
+}
+
+Result<std::string> MasterTabletServer::GetUniverseUuid() const {
+  LOG(DFATAL) << "Unexpected call of GetUniverseUuid()";
+  return STATUS_FORMAT(InternalError, "Unexpected call of GetUniverseUuid()");
 }
 
 } // namespace master

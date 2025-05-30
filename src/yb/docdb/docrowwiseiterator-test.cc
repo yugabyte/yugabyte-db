@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -57,6 +57,14 @@ using dockv::KeyEntryValues;
 using dockv::SubDocKey;
 
 YB_DEFINE_ENUM(IteratorMode, (kGeneric)(kPg));
+
+// Represents operation on a key.
+// Key can be inserted and/or deleted.
+// Represents when the key is inserted or deleted.
+struct KeyOpHtRollback {
+  std::optional<MicrosTime> insert_time;
+  std::optional<MicrosTime> delete_time;
+};
 
 class DocRowwiseIteratorTest : public DocDBTestBase {
  protected:
@@ -202,6 +210,12 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestDeletedDocumentUsingLivenessColumnDelete();
   void TestPartialKeyColumnsProjection();
   void TestMaxNextsToAvoidSeek();
+  void SetupDataForLastSeenHtRollback(
+      TransactionStatusManagerMock& txn_status_manager);
+  void TestLastSeenHtRollback(
+      int low, int high, MicrosTime read_ht, MicrosTime expected_max_seen_ht);
+  void TestHtRollbackWithKeyOps(const std::vector<KeyOpHtRollback>& ops);
+  void TestHtRollbackRecursive(std::vector<KeyOpHtRollback>& ops);
 
   void ValidateIterator(
       YQLRowwiseIteratorIf *iter,
@@ -827,10 +841,11 @@ void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
       population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
+  // No rows match the index scan => no rows should be seen by max_seen_ht.
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
       "",
-      HybridTime::FromMicros(1000));
+      HybridTime::kMin);
 }
 
 void DocRowwiseIteratorTest::SetupDocRowwiseIteratorData() {
@@ -2042,6 +2057,356 @@ SubDocKey(DocKey([], ["row2", 22222]), [SystemColumnId(0); HT{ physical: 1000 }]
   }
 }
 
+void DocRowwiseIteratorTest::SetupDataForLastSeenHtRollback(
+    TransactionStatusManagerMock& txn_status_manager) {
+  SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+
+  auto txn1 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000001"));
+  auto txn2 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000002"));
+
+  SetCurrentTransactionId(txn1);
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
+      QLValue::Primitive("row1_c_t1"), HybridTime::FromMicros(500)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
+      QLValue::PrimitiveInt64(40000), HybridTime::FromMicros(500)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::Primitive("row1_e_t1"), HybridTime::FromMicros(500)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
+      QLValue::PrimitiveInt64(42000), HybridTime::FromMicros(500)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::Primitive("row2_e_t1"), HybridTime::FromMicros(500)));
+  ResetCurrentTransactionId();
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
+      QLValue::Primitive("row1_c"), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
+      QLValue::PrimitiveInt64(10000), HybridTime::FromMicros(1000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::Primitive("row1_e"), HybridTime::FromMicros(1000)));
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
+      QLValue::PrimitiveInt64(20000), HybridTime::FromMicros(2000)));
+
+  ASSERT_OK(DeleteSubDoc(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
+      HybridTime::FromMicros(2500)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
+      QLValue::PrimitiveInt64(30000), HybridTime::FromMicros(3000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::Primitive("row2_e"), HybridTime::FromMicros(2000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::Primitive("row2_e_prime"), HybridTime::FromMicros(4000)));
+
+  txn_status_manager.Commit(txn1, HybridTime::FromMicros(3500));
+
+  SetCurrentTransactionId(txn2);
+  ASSERT_OK(DeleteSubDoc(
+      DocPath(kEncodedDocKey1),
+      HybridTime::FromMicros(4000)));
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(50_ColId)),
+      QLValue::Primitive("row2_e_t2"), HybridTime::FromMicros(4000)));
+  ResetCurrentTransactionId();
+  txn_status_manager.Commit(txn2, HybridTime::FromMicros(6000));
+
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> "row1_e"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 3000 }]) -> 30000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2500 }]) -> DEL
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1", 11111]), []) [kStrongRead, kStrongWrite] HT{ physical: 4000 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) WriteId(5) DEL
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) "row1_c_t1"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) 40000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(2) "row1_e_t1"
+SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(3) 42000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 4000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(6) "row2_e_t2"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(4) "row2_e_t1"
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
+    SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
+    SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 } -> \
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 4000 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
+    SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
+    SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 3 }
+      )#");
+}
+
+void DocRowwiseIteratorTest::TestLastSeenHtRollback(
+    int low, int high, MicrosTime read_ht, MicrosTime expected_max_seen_ht) {
+  TransactionStatusManagerMock txn_status_manager;
+  SetupDataForLastSeenHtRollback(txn_status_manager);
+
+  const auto txn_context = TransactionOperationContext(
+      TransactionId::GenerateRandom(), &txn_status_manager);
+
+  const std::string strKeyLow = Format("row$0", low);
+  const int64_t intKeyLow = 11111 * low;
+  const std::string strKeyHigh = Format("row$0", high);
+  const int64_t intKeyHigh = 11111 * high;
+
+  PgsqlConditionPB cond;
+  auto ids = cond.add_operands()->mutable_tuple();
+  ids->add_elems()->set_column_id(10_ColId);
+  ids->add_elems()->set_column_id(20_ColId);
+  cond.set_op(QL_OP_IN);
+  auto options = cond.add_operands()->mutable_value()->mutable_list_value();
+  auto option1 = options->add_elems()->mutable_tuple_value();
+  option1->add_elems()->set_string_value(strKeyLow);
+  option1->add_elems()->set_int64_value(intKeyLow);
+  auto option2 = options->add_elems()->mutable_tuple_value();
+  option2->add_elems()->set_string_value(strKeyHigh);
+  option2->add_elems()->set_int64_value(intKeyHigh);
+
+  const KeyEntryValues empty_key_components;
+  std::optional<int32_t> empty_hash_code;
+  DocPgsqlScanSpec spec(
+      doc_read_context().schema(),
+      rocksdb::kDefaultQueryId,
+      empty_key_components,
+      empty_key_components,
+      &cond,
+      empty_hash_code,
+      empty_hash_code);
+
+  LOG(INFO) << Format(
+      "SELECT ... WHERE key IN (key$0, key$1) at time=$2",
+      low, high, read_ht);
+  CreateIteratorAndValidate(
+      doc_read_context().schema(),
+      ReadHybridTime::FromMicros(read_ht),
+      spec,
+      "",
+      HybridTime::FromMicros(expected_max_seen_ht),
+      nullptr,
+      txn_context);
+}
+
+constexpr MicrosTime kInsertBeforeReadTime = 1000;
+constexpr MicrosTime kDeleteBeforeReadTime = 1000;
+constexpr MicrosTime kReadTime = 3000;
+constexpr MicrosTime kInsertAfterReadTime = 4000;
+constexpr MicrosTime kDeleteAfterReadTime = 5000;
+constexpr int kNumKeyOps = 5;
+
+void DocRowwiseIteratorTest::TestHtRollbackWithKeyOps(const std::vector<KeyOpHtRollback>& ops) {
+  // Setup rockdb for each test separately.
+  ASSERT_OK(DestroyRocksDB());
+  ASSERT_OK(InitRocksDBDir());
+  ASSERT_OK(OpenRocksDB());
+  ResetMonotonicCounter();
+
+  // Setup data for each op.
+  for (auto key = 0; key < kNumKeyOps; key++) {
+    const KeyBytes encodedKey = dockv::MakeDocKey(Format("row$0", key), key * 11111).Encode();
+    auto op = ops[key];
+    if (!op.insert_time) {
+      continue;
+    }
+    auto insert_time = HybridTime::FromMicros(*op.insert_time);
+    ASSERT_OK(SetPrimitive(
+        DocPath(encodedKey, KeyEntryValue::MakeColumnId(30_ColId)),
+        QLValue::Primitive("row_c"), insert_time));
+    if (!op.delete_time) {
+      continue;
+    }
+    auto delete_time = HybridTime::FromMicros(*op.delete_time);
+    ASSERT_OK(DeleteSubDoc(
+        DocPath(encodedKey, KeyEntryValue::MakeColumnId(30_ColId)), delete_time));
+  }
+
+  // Test queries of form: key >= 1 && key <= 3
+  for (auto strict_ineq1 : {false, true}) {
+    for (auto strict_ineq2 : {false, true}) {
+      PgsqlConditionPB cond;
+      cond.set_op(QL_OP_BETWEEN);
+
+      // a
+      auto* op1 = cond.add_operands();
+      op1->set_column_id(10_ColId);
+
+      // a >= "row1"
+      auto* op2 = cond.add_operands();
+      op2->mutable_value()->set_string_value("row1");
+
+      // a <= "row3"
+      auto* op3 = cond.add_operands();
+      op3->mutable_value()->set_string_value("row3");
+
+      // inclusive?
+      auto* op4 = cond.add_operands();
+      auto* op5 = cond.add_operands();
+      op4->mutable_value()->set_bool_value(!strict_ineq1);
+      op5->mutable_value()->set_bool_value(!strict_ineq2);
+
+      const KeyEntryValues empty_key_components;
+      std::optional<int32_t> empty_hash_code;
+      auto schema = doc_read_context().schema();
+      DocPgsqlScanSpec spec(
+          schema,
+          rocksdb::kDefaultQueryId,
+          empty_key_components,
+          empty_key_components,
+          &cond,
+          empty_hash_code,
+          empty_hash_code);
+
+      // Compute expected values.
+      std::string expected;
+      HybridTime max_seen_ht = HybridTime::kMin;
+      // Key satsifies the condition. Output the key.
+      auto output_op = [&](int key) {
+        auto op = ops[key];
+        // Ignore if the insert happened after the read.
+        if (!op.insert_time || op.insert_time > kReadTime) {
+          return;
+        }
+        // Check if the key is deleted before read.
+        if (op.delete_time && *op.delete_time < kReadTime) {
+          max_seen_ht.MakeAtLeast(HybridTime::FromMicros(kDeleteBeforeReadTime));
+        } else {
+          max_seen_ht.MakeAtLeast(HybridTime::FromMicros(kInsertBeforeReadTime));
+        }
+        // Output key if it is not deleted before read.
+        if (!op.delete_time || *op.delete_time > kReadTime) {
+          expected.append(Format(
+              "{string:\"row$0\",missing,missing,missing,missing}\n", key));
+        }
+      };
+
+      // Output key = 1 when cond is key >= 1.
+      if (!strict_ineq1) {
+        output_op(1);
+      }
+
+      // 2 is always present in the output.
+      output_op(2);
+
+      // Output key = 3 when cond is key <= 3.
+      if (!strict_ineq2) {
+        output_op(3);
+      }
+
+      // SELECT a @ kReadTime
+      Schema projection;
+      ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"a"}, &projection));
+      CreateIteratorAndValidate(
+          doc_read_context().schema(),
+          ReadHybridTime::FromMicros(kReadTime),
+          spec,
+          expected,
+          max_seen_ht,
+          &projection);
+    }
+  }
+}
+
+void DocRowwiseIteratorTest::TestHtRollbackRecursive(std::vector<KeyOpHtRollback>& ops) {
+  if (ops.size() == kNumKeyOps) {
+    return TestHtRollbackWithKeyOps(ops);
+  }
+
+  auto add_op = [&](KeyOpHtRollback op) {
+    ops.push_back(op);
+    TestHtRollbackRecursive(ops);
+    ops.pop_back();
+  };
+
+  // What happens to key: ops.size() + 1?
+  // Case 1: Never present.
+  add_op(KeyOpHtRollback{
+    .insert_time = std::nullopt,
+    .delete_time = std::nullopt,
+  });
+
+  // Case 2: Insert before read.
+  add_op(KeyOpHtRollback{
+    .insert_time = kInsertBeforeReadTime,
+    .delete_time = std::nullopt,
+  });
+
+  // Case 3: Insert after read.
+  add_op(KeyOpHtRollback{
+    .insert_time = kInsertAfterReadTime,
+    .delete_time = std::nullopt,
+  });
+
+  // Case 4: Insert before read and delete before read.
+  add_op(KeyOpHtRollback{
+    .insert_time = kInsertBeforeReadTime,
+    .delete_time = kDeleteBeforeReadTime,
+  });
+
+  // Case 5: Insert before read and delete after read.
+  add_op(KeyOpHtRollback{
+    .insert_time = kInsertBeforeReadTime,
+    .delete_time = kDeleteAfterReadTime,
+  });
+
+  // Case 6: Insert after read and delete after read.
+  add_op(KeyOpHtRollback{
+    .insert_time = kInsertAfterReadTime,
+    .delete_time = kDeleteAfterReadTime,
+  });
+}
+
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
   TestClusteredFilterRange();
 }
@@ -2156,6 +2521,35 @@ TEST_F(DocRowwiseIteratorTest, PartialKeyColumnsProjection) {
 
 TEST_F(DocRowwiseIteratorTest, MaxNextsToAvoidSeek) {
   TestMaxNextsToAvoidSeek();
+}
+
+// Absent Keys should not influence max_seen_ht.
+// However, the iterator abstraction makes it difficult to do so.
+// This test demonstrates behavior of point reads on absent keys.
+TEST_F(DocRowwiseIteratorTest, NoHtSeenOnAbsentKeys) {
+  // max_seen_ht = 6000 without GH Issue #25214 since
+  // it touches a key from txn2 committed at 6000.
+  TestLastSeenHtRollback(0, 9, 6000, 0);
+}
+
+// Same goes for keys invisible because of MVCC
+TEST_F(DocRowwiseIteratorTest, NoHtSeenOnInvisibleKeys) {
+  // max_seen_ht = 1000 without GH Issue #25214 since the iteration
+  // touches key11 in regularDB even though it is not part of spec.
+  TestLastSeenHtRollback(0, 2, 1000, 0);
+}
+
+// We cannot ignore tombstones when calculating max_seen_ht.
+// This is a simple test case checking the same.
+TEST_F(DocRowwiseIteratorTest, HtSeenOnDeletedKeys) {
+  TestLastSeenHtRollback(0, 1, 6000, 6000);
+}
+
+TEST_F(DocRowwiseIteratorTest, ExhaustiveHtRollbackTest) {
+  // Run the test for 6^5 combinations of ops.
+  std::vector<KeyOpHtRollback> ops;
+  ops.reserve(kNumKeyOps);
+  TestHtRollbackRecursive(ops);
 }
 
 }  // namespace docdb

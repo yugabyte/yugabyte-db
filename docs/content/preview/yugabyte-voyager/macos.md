@@ -4,9 +4,9 @@ private=true
 +++
 -->
 
-{{< note title = "Note on migrating from MySQL/Oracle on macOS" >}}
+{{< note title = "Migrating from MySQL/Oracle on macOS" >}}
 
-To migrate from MySQL/Oracle source databases on macOS to YugabyteDB, install yb-voyager using docker-based instructions.
+The brew install on macOS does not support installing ora2pg, which is required for MySQL/Oracle database schema export. If you are planning to migrate MySQL or Oracle source databases on macOS, install yb-voyager using Docker instead.
 
 {{< /note >}}
 

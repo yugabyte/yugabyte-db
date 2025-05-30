@@ -61,6 +61,9 @@ LINE 1: ..._3 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (c * 2) STO...
 -- generation expression must be immutable
 CREATE TABLE gtest_err_4 (a int PRIMARY KEY, b double precision GENERATED ALWAYS AS (random()) STORED);
 ERROR:  generation expression is not immutable
+-- ... but be sure that the immutability test is accurate
+CREATE TABLE gtest2 (a int, b text GENERATED ALWAYS AS (a || ' sec') STORED);
+DROP TABLE gtest2;
 -- cannot have default/identity and generated
 CREATE TABLE gtest_err_5a (a int PRIMARY KEY, b int DEFAULT 5 GENERATED ALWAYS AS (a * 2) STORED);
 ERROR:  both default and generation expression specified for column "b" of table "gtest_err_5a"
@@ -726,6 +729,7 @@ DROP TABLE gtest_parent;
 -- partitioned table
 CREATE TABLE gtest_parent (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE (f1);
 CREATE TABLE gtest_child PARTITION OF gtest_parent FOR VALUES FROM ('2016-07-01') TO ('2016-08-01');
+CREATE TABLE gtest_child3 PARTITION OF gtest_parent FOR VALUES FROM ('2016-09-01') TO ('2016-10-01');
 INSERT INTO gtest_parent (f1, f2) VALUES ('2016-07-15', 1);
 SELECT * FROM gtest_parent;
      f1     | f2 | f3 
@@ -737,6 +741,19 @@ SELECT * FROM gtest_child;
      f1     | f2 | f3 
 ------------+----+----
  07-15-2016 |  1 |  2
+(1 row)
+
+UPDATE gtest_parent SET f1 = f1 + 60, f2 = f2 + 1;
+SELECT * FROM gtest_parent;
+     f1     | f2 | f3 
+------------+----+----
+ 09-13-2016 |  2 |  4
+(1 row)
+
+SELECT * FROM gtest_child3;
+     f1     | f2 | f3 
+------------+----+----
+ 09-13-2016 |  2 |  4
 (1 row)
 
 DROP TABLE gtest_parent;
@@ -819,7 +836,8 @@ SELECT * FROM gtest27;
 (2 rows)
 
 ALTER TABLE gtest27 ALTER COLUMN x TYPE boolean USING x <> 0;  -- error
-ERROR:  generation expression for column "x" cannot be cast automatically to type boolean
+ERROR:  cannot specify USING when altering type of generated column
+DETAIL:  Column "x" is a generated column.
 ALTER TABLE gtest27 ALTER COLUMN x DROP DEFAULT;  -- error
 ERROR:  column "x" of relation "gtest27" is a generated column
 HINT:  Use ALTER TABLE ... ALTER COLUMN ... DROP EXPRESSION instead.

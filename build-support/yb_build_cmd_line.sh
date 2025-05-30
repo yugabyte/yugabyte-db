@@ -363,12 +363,10 @@ set_default_yb_build_args() {
 
   test_ybc=true
   if is_linux; then
-    ybc_default=1
+    export YB_TEST_YB_CONTROLLER=1
   else
-    ybc_default=0
+    export YB_TEST_YB_CONTROLLER=0
   fi
-  export YB_TEST_YB_CONTROLLER=${YB_TEST_YB_CONTROLLER:-$ybc_default}
-  export YB_DISABLE_MINICLUSTER_BACKUP_TESTS=${YB_DISABLE_MINICLUSTER_BACKUP_TESTS:-$ybc_default}
 
   # The default value of this parameter will be set based on whether we're running on Jenkins.
   reduce_log_output=""
@@ -944,7 +942,6 @@ parse_yb_build_cmd_line() {
       --no-ybc)
         test_ybc=false
         YB_TEST_YB_CONTROLLER=0
-        YB_DISABLE_MINICLUSTER_BACKUP_TESTS=0
       ;;
       *)
         if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then

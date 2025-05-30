@@ -161,7 +161,7 @@ export const RecommendedClusterSize: FC<RecommendedClusterSizeProps> = ({
                     {t("clusterDetail.voyager.planAndAssess.recommendation.clusterSize.vcpu")}
                   </Typography>
                   {isNaN(Number(vCpuPerNode) * Number(nodeCount))
-                    ? "N/A"
+                    ? t("common.notAvailable")
                     : Number(vCpuPerNode) * Number(nodeCount)}
                 </Box>
                 <Box display="flex" flexDirection="column" gridGap={theme.spacing(0.5)}>
@@ -170,7 +170,7 @@ export const RecommendedClusterSize: FC<RecommendedClusterSizeProps> = ({
                         "memory")}
                   </Typography>
                   {isNaN(Number(memoryPerNode) * Number(nodeCount))
-                    ? "N/A"
+                    ? t("common.notAvailable")
                     : Number(memoryPerNode) * Number(nodeCount) + " GB"}
                 </Box>
                 <Box display="flex" flexDirection="column" gridGap={theme.spacing(0.5)}>
@@ -181,7 +181,7 @@ export const RecommendedClusterSize: FC<RecommendedClusterSizeProps> = ({
                 {isNaN(
                   (Number(optimalInsertConnPerNode) + Number(optimalSelectConnPerNode)) *
                    Number(nodeCount))
-                  ? "N/A"
+                  ? t("common.notAvailable")
                   : (Number(optimalInsertConnPerNode) + Number(optimalSelectConnPerNode)) *
                     Number(nodeCount)}
                 </Box>

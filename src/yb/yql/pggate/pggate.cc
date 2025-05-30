@@ -29,11 +29,9 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -50,6 +48,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
+#include "yb/util/metrics.h"
 #include "yb/util/range.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
@@ -68,14 +67,15 @@
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_truncate_colocated.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pg_update.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
@@ -126,14 +126,6 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
           client_name, num_reactors, metric_entity, parent_mem_tracker, secure_context.get()))};
 }
 
-tserver::TServerSharedObject BuildTServerSharedObject() {
-  VLOG(1) << __func__
-          << ": " << YBCIsInitDbModeEnvVarSet()
-          << ", " << FLAGS_pggate_tserver_shm_fd;
-  LOG_IF(DFATAL, FLAGS_pggate_tserver_shm_fd == -1) << "pggate_tserver_shm_fd is not specified";
-  return CHECK_RESULT(tserver::TServerSharedObject::OpenReadOnly(FLAGS_pggate_tserver_shm_fd));
-}
-
 class ExplicitRowLockErrorInfoAdapter {
  public:
   explicit ExplicitRowLockErrorInfoAdapter(YbcPgExplicitRowLockErrorInfo& pg_error_info)
@@ -161,13 +153,13 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
   if (!index_id.IsValid()) {
     return std::nullopt;
   }
-  return PgSelect::IndexQueryInfo{index_id, params && params->querying_colocated_table};
+  return PgSelect::IndexQueryInfo{index_id, params && params->embedded_idx};
 }
 
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params, bool is_region_local) {
-  if (params && (params->index_only_scan || YBCIsNonColocatedYbctidsOnlyFetch(params))) {
+  if (params && params->index_only_scan) {
     return PgSelectIndex::Make(pg_session, index_id, is_region_local);
   }
   return PgSelect::Make(
@@ -296,7 +288,7 @@ constexpr std::pair<size_t, bool> UniqTagsCount(
     std::tie(count, has_duplicates) = UniqTagsCount(found_items, std::forward<Args>(args)...);
   }
   for (auto t : tags) {
-    const auto idx = to_underlying(t.stmt_op);
+    const auto idx = std::to_underlying(t.stmt_op);
     if (idx < found_items.size() && !found_items.data()[idx]) {
       ++count;
       found_items.data()[idx] = true;
@@ -547,7 +539,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
       values->emplace_back(dockv::KeyEntryType::kNullLow);
       continue;
     }
-    if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
+    if (attr->attr_num == std::to_underlying(PgSystemAttrNum::kYBRowId)) {
       SCHECK(new_row_id_holder.empty(), Corruption, "Multiple kYBRowId attribute detected");
       new_row_id_holder = session->GenerateNewYbrowid();
       expr_pb->mutable_value()->ref_binary_value(new_row_id_holder);
@@ -600,14 +592,21 @@ PgApiImpl::PgApiImpl(
       }),
       pg_client_(ash_config, wait_event_watcher_),
       clock_(new server::HybridClock()),
-      tserver_shared_object_(BuildTServerSharedObject()),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)) {
+      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)),
+      ybctid_reader_provider_(pg_session_),
+      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
+      explicit_row_lock_buffer_(ybctid_reader_provider_) {
+  PgBackendSetupSharedMemory();
+  // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
+  // it's safe to just save the pointer.
+  tserver_shared_object_ = PgSharedMemoryManager().SharedData().get();
+
   CHECK_OK(interrupter_->Start());
   CHECK_OK(clock_->Init());
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      tserver_shared_object_, session_id));
+      *tserver_shared_object_, session_id));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -624,25 +623,18 @@ void PgApiImpl::Interrupt() {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
+void PgApiImpl::InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
   CHECK(!pg_session_);
 
-  auto session = make_scoped_refptr<PgSession>(
-      pg_client_, pg_txn_manager_, pg_callbacks_, session_stats,
-      [&pg_session = pg_session_](
-          PgOid database_id, TableYbctidVector& ybctids, const OidSet& region_local_tables,
-          const ExecParametersMutator& mutator) {
-        return FetchExistingYbctids(pg_session, database_id, ybctids, region_local_tables, mutator);
-      }, is_binary_upgrade, wait_event_watcher_);
-
-  pg_session_.swap(session);
-  return Status::OK();
+  pg_session_ = make_scoped_refptr<PgSession>(
+      pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
+      wait_event_watcher_, buffering_settings_);
 }
 
 uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }
 
-Status PgApiImpl::InvalidateCache() {
-  pg_session_->InvalidateAllTablesCache();
+Status PgApiImpl::InvalidateCache(uint64_t min_ysql_catalog_version) {
+  pg_session_->InvalidateAllTablesCache(min_ysql_catalog_version);
   return Status::OK();
 }
 
@@ -820,7 +812,8 @@ Status PgApiImpl::NewCreateDatabase(
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateDatabase>(
           pg_session_, database_name, database_oid, source_database_oid, next_oid, yb_clone_info,
-          colocated, pg_txn_manager_->IsDdlMode()),
+          colocated, pg_txn_manager_->IsDdlMode(),
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
       handle);
 }
 
@@ -896,7 +889,8 @@ Status PgApiImpl::NewCreateTablegroup(
          "Tablegroup is being created outside of DDL mode");
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateTablegroup>(
-          pg_session_, database_name, database_oid, tablegroup_oid, tablespace_oid),
+          pg_session_, database_name, database_oid, tablegroup_oid, tablespace_oid,
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
       handle);
 }
 
@@ -910,9 +904,11 @@ Status PgApiImpl::NewDropTablegroup(
          IllegalState,
          "Tablegroup is being dropped outside of DDL mode");
   return AddToCurrentPgMemctx(
-      std::make_unique<PgDropTablegroup>(pg_session_, database_oid, tablegroup_oid), handle);
+      std::make_unique<PgDropTablegroup>(
+          pg_session_, database_oid, tablegroup_oid,
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
+      handle);
 }
-
 
 Status PgApiImpl::ExecDropTablegroup(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgDropTablegroup>(handle, *pg_session_);
@@ -943,7 +939,8 @@ Status PgApiImpl::NewCreateTable(const char* database_name,
           pg_session_, database_name, schema_name, table_name, table_id, is_shared_table,
           is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
           tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
-          old_relfilenode_oid, is_truncate, pg_txn_manager_->IsDdlMode()),
+          old_relfilenode_oid, is_truncate, pg_txn_manager_->IsDdlMode(),
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
       handle);
 }
 
@@ -970,7 +967,10 @@ Status PgApiImpl::ExecCreateTable(PgStatement* handle) {
 
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id, PgStatement** handle) {
   return AddToCurrentPgMemctx(
-      std::make_unique<PgAlterTable>(pg_session_, table_id, pg_txn_manager_->IsDdlMode()), handle);
+      std::make_unique<PgAlterTable>(
+          pg_session_, table_id, pg_txn_manager_->IsDdlMode(),
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
+      handle);
 }
 
 Status PgApiImpl::AlterTableAddColumn(
@@ -1024,7 +1024,9 @@ Status PgApiImpl::NewDropTable(const PgObjectId& table_id, bool if_exist, PgStat
          IllegalState,
          "Table is being dropped outside of DDL mode");
   return AddToCurrentPgMemctx(
-      std::make_unique<PgDropTable>(pg_session_, table_id, if_exist), handle);
+      std::make_unique<PgDropTable>(
+          pg_session_, table_id, if_exist, pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
+      handle);
 }
 
 Status PgApiImpl::NewTruncateTable(const PgObjectId& table_id, PgStatement** handle) {
@@ -1139,7 +1141,8 @@ Status PgApiImpl::NewCreateIndex(const char* database_name,
           pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
           is_sys_catalog_index, if_not_exist, PG_YBROWID_MODE_NONE, is_colocated_via_database,
           tablegroup_oid, colocation_id, tablespace_oid, false /* is_matview */, pg_table_id,
-          old_relfilenode_id, false /* is_truncate */, pg_txn_manager_->IsDdlMode(), base_table_id,
+          old_relfilenode_id, false /* is_truncate */, pg_txn_manager_->IsDdlMode(),
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock(), base_table_id,
           is_unique_index, skip_index_backfill),
       handle);
 }
@@ -1160,6 +1163,12 @@ Status PgApiImpl::CreateIndexSetVectorOptions(PgStatement* handle, YbcPgVectorId
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle)).SetVectorOptions(options);
 }
 
+Status PgApiImpl::CreateIndexSetHnswOptions(
+    PgStatement* handle, int m, int m0, int ef_construction) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgCreateIndex>(handle))
+      .SetHnswOptions(m, m0, ef_construction);
+}
+
 Status PgApiImpl::ExecCreateIndex(PgStatement* handle) {
   return ExecDdlWithSyscatalogChanges<PgCreateIndex>(handle, *pg_session_);
 }
@@ -1168,7 +1177,10 @@ Status PgApiImpl::NewDropIndex(
     const PgObjectId& index_id, bool if_exist, bool ddl_rollback_enabled, PgStatement** handle) {
   SCHECK(pg_txn_manager_->IsDdlMode(), IllegalState, "Index is being dropped outside of DDL mode");
   return AddToCurrentPgMemctx(
-      std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist, ddl_rollback_enabled), handle);
+      std::make_unique<PgDropIndex>(
+          pg_session_, index_id, if_exist, ddl_rollback_enabled,
+          pg_txn_manager_->IsDdlModeWithRegularTransactionBlock()),
+      handle);
 }
 
 Status PgApiImpl::ExecPostponedDdlStmt(PgStatement* handle) {
@@ -1200,7 +1212,7 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement* handle) {
 
 #undef YB_EXECUTE_PG_STMT
 
-  RSTATUS_DCHECK(false, IllegalState, "Unexpected stmt_op $0", to_underlying(stmt_op));
+  RSTATUS_DCHECK(false, IllegalState, "Unexpected stmt_op $0", std::to_underlying(stmt_op));
   return Status::OK();
 }
 
@@ -1345,6 +1357,10 @@ void PgApiImpl::ResetOperationsBuffering() {
 
 Status PgApiImpl::FlushBufferedOperations() {
   return pg_session_->FlushBufferedOperations();
+}
+
+Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
+  return pg_session_->AdjustOperationsBuffering(multiple);
 }
 
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
@@ -1532,12 +1548,27 @@ Status PgApiImpl::FetchRequestedYbctids(
   return select.Exec(exec_params);
 }
 
+Status PgApiImpl::BindYbctids(PgStatement* handle, int n, uintptr_t* ybctids) {
+  std::vector<Slice> ybctid_slice;
+  ybctid_slice.reserve(n);
+  for (int i = 0; i < n; i++)
+    ybctid_slice.push_back(YbctidAsSlice(pg_types(), ybctids[i]));
+
+  auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
+  select.SetHoldingRequestedYbctids(ybctid_slice);
+  return Status::OK();
+}
+
 Status PgApiImpl::DmlANNBindVector(PgStatement* handle, PgExpr* vector) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNBindVector(vector);
 }
 
 Status PgApiImpl::DmlANNSetPrefetchSize(PgStatement* handle, int prefetch_size) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).ANNSetPrefetchSize(prefetch_size);
+}
+
+Status PgApiImpl::DmlHnswSetReadOptions(PgStatement* handle, int ef_search) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).HnswSetReadOptions(ef_search);
 }
 
 Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exec_params) {
@@ -1556,6 +1587,10 @@ Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exe
     }
   }
   return select.Exec(exec_params);
+}
+
+void PgApiImpl::IncrementIndexRecheckCount() {
+  pg_session_->metrics().RecordRowRemovedByIndexRecheck();
 }
 
 
@@ -1763,13 +1798,14 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
     // heartbeat response from yb-master that has set a value in
     // catalog_version_table_in_perdb_mode_ in the shared memory object
     // yet. Let's wait with 500ms interval until a value is set or until
-    // a 10-second timeout.
+    // a 20-second timeout.
     auto status = LoggedWaitFor(
         [this]() -> Result<bool> {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
-        10s /* timeout */,
-        "catalog_version_table_in_perdb_mode is not set in shared memory",
+        20s /* timeout */,
+        "catalog_version_table mode not set in shared memory, "
+        "tserver not ready to serve requests",
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
     RETURN_NOT_OK_PREPEND(
@@ -1777,6 +1813,25 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
         "Failed to find out pg_yb_catalog_version mode");
   }
   return tserver_shared_object_->catalog_version_table_in_perdb_mode().value();
+}
+
+Result<tserver::PgGetTserverCatalogMessageListsResponsePB>
+PgApiImpl::GetTserverCatalogMessageLists(
+    uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions) {
+  return pg_client_.GetTserverCatalogMessageLists(
+      db_oid, ysql_catalog_version, num_catalog_versions);
+}
+
+Result<tserver::PgSetTserverCatalogMessageListResponsePB>
+PgApiImpl::SetTserverCatalogMessageList(
+    uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list) {
+  std::optional<std::string> messages;
+  if (message_list->message_list) {
+    messages.emplace(message_list->message_list, message_list->num_bytes);
+  }
+  return pg_client_.SetTserverCatalogMessageList(
+      db_oid, is_breaking_change, new_catalog_version, messages);
 }
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {
@@ -1789,6 +1844,10 @@ const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
 
 pid_t PgApiImpl::GetLocalTServerPid() const {
   return tserver_shared_object_->pid();
+}
+
+Result<int> PgApiImpl::GetXClusterRole(uint32_t db_oid) {
+  return pg_session_->GetXClusterRole(db_oid);
 }
 
 // Tuple Expression -----------------------------------------------------------------------------
@@ -1805,17 +1864,17 @@ Status PgApiImpl::NewTupleExpr(
 
 // Transaction Control -----------------------------------------------------------------------------
 Status PgApiImpl::BeginTransaction(int64_t start_time) {
-  pg_session_->InvalidateForeignKeyReferenceCache();
+  fk_reference_cache_.Clear();
   return pg_txn_manager_->BeginTransaction(start_time);
 }
 
 Status PgApiImpl::RecreateTransaction() {
-  RollbackTransactionScopedSessionState();
+  ClearSessionState();
   return pg_txn_manager_->RecreateTransaction();
 }
 
 Status PgApiImpl::RestartTransaction() {
-  RollbackTransactionScopedSessionState();
+  ClearSessionState();
   return pg_txn_manager_->RestartTransaction();
 }
 
@@ -1835,13 +1894,20 @@ bool PgApiImpl::IsRestartReadPointRequested() {
   return pg_txn_manager_->IsRestartReadPointRequested();
 }
 
-Status PgApiImpl::CommitPlainTransaction() {
-  RETURN_NOT_OK(CommitTransactionScopedSessionState());
-  return pg_txn_manager_->CommitPlainTransaction();
+Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
+  RSTATUS_DCHECK(
+      explicit_row_lock_buffer_.IsEmpty(),
+      IllegalState, "Expected row lock buffer to be empty");
+  RSTATUS_DCHECK(
+      pg_session_->IsInsertOnConflictBufferEmpty(),
+      IllegalState, "Expected INSERT ... ON CONFLICT buffer to be empty");
+  fk_reference_cache_.Clear();
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  return pg_txn_manager_->CommitPlainTransaction(ddl_commit_info);
 }
 
 Status PgApiImpl::AbortPlainTransaction() {
-  RollbackTransactionScopedSessionState();
+  ClearSessionState();
   return pg_txn_manager_->AbortPlainTransaction();
 }
 
@@ -1873,15 +1939,20 @@ Status PgApiImpl::SetReadOnlyStmt(bool read_only_stmt) {
   return pg_txn_manager_->SetReadOnlyStmt(read_only_stmt);
 }
 
+Status PgApiImpl::SetDdlStateInPlainTransaction() {
+  pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
+  return pg_txn_manager_->SetDdlStateInPlainTransaction();
+}
+
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  pg_session_->ResetHasWriteOperationsInDdlMode();
+  pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
 
 bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
-  return pg_session_->HasWriteOperationsInDdlMode();
+  return pg_session_->HasCatalogWriteOperationsInDdlMode();
 }
 
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
@@ -1894,7 +1965,7 @@ Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modificati
 }
 
 Status PgApiImpl::ClearSeparateDdlTxnMode() {
-  RollbackTransactionScopedSessionState();
+  ClearSessionState();
   return pg_txn_manager_->ExitSeparateDdlTxnModeWithAbort();
 }
 
@@ -1904,7 +1975,7 @@ Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
 }
 
 Status PgApiImpl::RollbackToSubTransaction(SubTransactionId id) {
-  RollbackSubTransactionScopedSessionState();
+  ClearSessionState();
   return pg_session_->RollbackToSubTransaction(id);
 }
 
@@ -1962,29 +2033,32 @@ void PgApiImpl::ResetCatalogReadTime() {
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
-  return pg_session_->ForeignKeyReferenceExists(
-      database_id, LightweightTableYbctid(table_id, ybctid));
+  return fk_reference_cache_.IsReferenceExists(
+      database_id, LightweightTableYbctid{table_id, ybctid});
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(
-    PgOid table_id, bool is_region_local, const Slice& ybctid) {
-  pg_session_->AddForeignKeyReferenceIntent(
-      LightweightTableYbctid(table_id, ybctid), is_region_local);
+    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options) {
+  fk_reference_cache_.AddIntent(LightweightTableYbctid{table_id, ybctid}, options);
 }
 
 void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
-  pg_session_->DeleteForeignKeyReference(LightweightTableYbctid(table_id, ybctid));
+  fk_reference_cache_.DeleteReference(LightweightTableYbctid{table_id, ybctid});
 }
 
 void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
-  pg_session_->AddForeignKeyReference(LightweightTableYbctid(table_id, ybctid));
+  fk_reference_cache_.AddReference(LightweightTableYbctid{table_id, ybctid});
+}
+
+void PgApiImpl::NotifyDeferredTriggersProcessingStarted() {
+  fk_reference_cache_.OnDeferredTriggersProcessingStarted();
 }
 
 Status PgApiImpl::AddExplicitRowLockIntent(
     const PgObjectId& table_id, const Slice& ybctid, const YbcPgExplicitRowLockParams& params,
     bool is_region_local, YbcPgExplicitRowLockErrorInfo& error_info) {
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return pg_session_->explicit_row_lock_buffer().Add(
+  return explicit_row_lock_buffer_.Add(
       {.rowmark = params.rowmark,
        .pg_wait_policy = params.pg_wait_policy,
        .docdb_wait_policy = params.docdb_wait_policy,
@@ -1994,7 +2068,7 @@ Status PgApiImpl::AddExplicitRowLockIntent(
 
 Status PgApiImpl::FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info) {
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return pg_session_->explicit_row_lock_buffer().Flush(adapter);
+  return explicit_row_lock_buffer_.Flush(adapter);
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -2041,6 +2115,10 @@ void PgApiImpl::ClearInsertOnConflictCache(void* state) {
 
 void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
+}
+
+void PgApiImpl::SetLockTimeout(int lock_timeout_ms) {
+  pg_session_->SetLockTimeout(lock_timeout_ms);
 }
 
 Result<yb::tserver::PgGetLockStatusResponsePB> PgApiImpl::GetLockStatusData(
@@ -2128,10 +2206,12 @@ void PgApiImpl::RestoreSessionState(const YbcPgSessionState& session_data) {
 
 Status PgApiImpl::NewCreateReplicationSlot(
     const char* slot_name, const char* plugin_name, PgOid database_oid,
-    YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type, PgStatement** handle) {
+    YbcPgReplicationSlotSnapshotAction snapshot_action, YbcLsnType lsn_type,
+    YbcOrderingMode ordering_mode, PgStatement** handle) {
   return AddToCurrentPgMemctx(
       std::make_unique<PgCreateReplicationSlot>(
-          pg_session_, slot_name, plugin_name, database_oid, snapshot_action, lsn_type),
+          pg_session_, slot_name, plugin_name, database_oid, snapshot_action, lsn_type,
+          ordering_mode),
       handle);
 }
 
@@ -2139,7 +2219,6 @@ Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicat
     PgStatement* handle) {
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateReplicationSlot>(handle)).Exec();
 }
-
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
   return pg_session_->ListReplicationSlots();
@@ -2151,8 +2230,15 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
 }
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return pg_session_->pg_client().InitVirtualWALForCDC(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid) {
+  return pg_session_->pg_client().InitVirtualWALForCDC(
+    stream_id, table_ids, slot_hash_range, active_pid);
+}
+
+Result<cdc::GetLagMetricsResponsePB> PgApiImpl::GetLagMetrics(
+    const std::string& stream_id, int64_t* lag_metric) {
+  return pg_session_->pg_client().GetLagMetrics(stream_id, lag_metric);
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
@@ -2199,29 +2285,11 @@ Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
     return pg_session_->ServersMetrics();
 }
 
-void PgApiImpl::RollbackSubTransactionScopedSessionState() {
+void PgApiImpl::ClearSessionState() {
+  fk_reference_cache_.Clear();
   pg_session_->DropBufferedOperations();
-  pg_session_->explicit_row_lock_buffer().Clear();
+  explicit_row_lock_buffer_.Clear();
   pg_session_->ClearAllInsertOnConflictBuffers();
-}
-
-void PgApiImpl::RollbackTransactionScopedSessionState() {
-  RollbackSubTransactionScopedSessionState();
-  pg_session_->InvalidateForeignKeyReferenceCache();
-}
-
-Status PgApiImpl::CommitTransactionScopedSessionState() {
-  RSTATUS_DCHECK(
-      pg_session_->explicit_row_lock_buffer().IsEmpty(),
-      IllegalState,
-      "Expected row lock buffer to be empty");
-  RSTATUS_DCHECK(
-      pg_session_->IsInsertOnConflictBufferEmpty(),
-      IllegalState,
-      "Expected INSERT ... ON CONFLICT buffer to be empty");
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  pg_session_->InvalidateForeignKeyReferenceCache();
-  return Status::OK();
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
@@ -2232,13 +2300,18 @@ Status PgApiImpl::SetCronLastMinute(int64_t last_minute) {
 
 Result<int64_t> PgApiImpl::GetCronLastMinute() { return pg_session_->GetCronLastMinute(); }
 
-uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
-  return pg_txn_manager_->GetCurrentReadTimePoint();
+YbcReadPointHandle PgApiImpl::GetCurrentReadPoint() const {
+  return pg_txn_manager_->GetCurrentReadPoint();
 }
 
-Status PgApiImpl::RestoreReadTimePoint(uint64_t read_time_point_handle) {
+Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
   RETURN_NOT_OK(FlushBufferedOperations());
-  return pg_txn_manager_->RestoreReadTimePoint(read_time_point_handle);
+  return pg_txn_manager_->RestoreReadPoint(read_point);
+}
+
+Result<YbcReadPointHandle> PgApiImpl::RegisterSnapshotReadTime(
+    uint64_t read_time, bool use_read_time) {
+  return pg_txn_manager_->RegisterSnapshotReadTime(read_time, use_read_time);
 }
 
 void PgApiImpl::DdlEnableForceCatalogModification() {
@@ -2263,18 +2336,27 @@ Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 //------------------------------------------------------------------------------------------------
+// Table Locks.
+//------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
+  return pg_txn_manager_->AcquireObjectLock(lock_id, mode);
+}
+
+//------------------------------------------------------------------------------------------------
 // Export/Import Pg Txn Snapshot.
 //------------------------------------------------------------------------------------------------
 
-Result<std::string> PgApiImpl::ExportSnapshot(const YbcPgTxnSnapshot& snapshot) {
-  return pg_txn_manager_->ExportSnapshot(snapshot);
+Result<std::string> PgApiImpl::ExportSnapshot(
+    const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time) {
+  return pg_txn_manager_->ExportSnapshot(snapshot, explicit_read_time);
 }
 
 Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
   return pg_txn_manager_->ImportSnapshot(snapshot_id);
 }
 
-bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->HasExportedSnapshots(); }
+bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->has_exported_snapshots(); }
 
 void PgApiImpl::ClearExportedTxnSnapshots() { pg_txn_manager_->ClearExportedTxnSnapshots(); }
 

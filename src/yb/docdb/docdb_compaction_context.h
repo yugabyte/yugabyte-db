@@ -28,6 +28,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/expiration.h"
 
+#include "yb/dockv/value_type.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/rocksdb/compaction_filter.h"

@@ -86,31 +86,26 @@ try:
         if args.pre_release:
             # Pre-release is for local testing only.
             release_file = packaged_file
-            if args.include_pex:
-                repackaged_file = os.path.join(args.source_dir, "build",
-                                               "node_agent-{}-{}-{}-repackaged.tar.gz"
-                                               .format(version, parts[0], parts[1]))
-                with tarfile.open(repackaged_file, "w|gz") as repackaged_tarfile:
-                    with tarfile.open(release_file, "r|gz") as tarfile:
-                        for member in tarfile:
-                            repackaged_tarfile.addfile(member, tarfile.extractfile(member))
+            repackaged_file = os.path.join(args.source_dir, "build",
+                                           "node_agent-{}-{}-{}-repackaged.tar.gz"
+                                           .format(version, parts[0], parts[1]))
+            with tarfile.open(repackaged_file, "w|gz") as repackaged_tarfile:
+                with tarfile.open(release_file, "r|gz") as tarfile:
+                    for member in tarfile:
+                        repackaged_tarfile.addfile(member, tarfile.extractfile(member))
 
-                    repackaged_tarfile.add(devops_home, arcname="{}/devops".format(version),
-                                           filter=lambda x: x if filter_function(version, x.name)
-                                           else None)
+                thirdparty_folder = "/opt/third-party/"
+                for file in os.listdir(thirdparty_folder):
+                    # Skip Packaging alertmanager with NodeAgent.
+                    # TODO: Make a list of packages that are actually needed.
+                    if "alertmanager" in file:
+                        continue
+                    filepath = os.path.join(thirdparty_folder, file)
+                    if os.path.isfile(filepath):
+                        repackaged_tarfile.add(filepath,
+                                               "{}/thirdparty/{}".format(version, file))
 
-                    thirdparty_folder = "/opt/third-party/"
-                    for file in os.listdir(thirdparty_folder):
-                        # Skip Packaging alertmanager with NodeAgent.
-                        # TODO: Make a list of packages that are actually needed.
-                        if "alertmanager" in file:
-                            continue
-                        filepath = os.path.join(thirdparty_folder, file)
-                        if os.path.isfile(filepath):
-                            repackaged_tarfile.add(filepath,
-                                                   "{}/thirdparty/{}".format(version, file))
-
-                shutil.move(repackaged_file, packaged_file)
+            shutil.move(repackaged_file, packaged_file)
 
         logging.info("Copying file {} to {}".format(release_file, args.destination))
         shutil.copy(release_file, args.destination)

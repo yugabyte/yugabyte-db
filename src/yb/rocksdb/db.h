@@ -930,6 +930,12 @@ class DB {
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey() = 0;
 
+  // If true, will allow compactions to fail without setting bg_error and not causing writes to
+  // fail. Should only be used with extra care for troubleshooting when/while there are no other
+  // options available.
+  // Default: false
+  virtual void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) = 0;
+
   // Returns a table reader for the largest SST file.
   virtual yb::Result<TableReader*> TEST_GetLargestSstTableReader() {
     return STATUS(NotSupported, "");

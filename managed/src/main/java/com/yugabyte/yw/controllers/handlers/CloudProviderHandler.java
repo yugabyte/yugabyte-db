@@ -128,7 +128,7 @@ public class CloudProviderHandler {
     JsonNode errors = null;
     if (validate) {
       try {
-        providerValidator.validate(reqProvider);
+        providerValidator.validate(reqProvider, null /* existing provider */);
       } catch (PlatformServiceException e) {
         LOG.error(
             "Received validation error,  ignoreValidationErrors=" + ignoreValidationErrors, e);
@@ -411,6 +411,7 @@ public class CloudProviderHandler {
     Provider.UsabilityState state = provider.getUsabilityState();
     try {
       provider.setUsabilityState(Provider.UsabilityState.UPDATING);
+      provider.setUpdateSource(Provider.UpdateSource.USER);
       provider.save();
       editProviderReq.setVersion(provider.getVersion());
       CloudProviderEdit.Params taskParams = new CloudProviderEdit.Params();

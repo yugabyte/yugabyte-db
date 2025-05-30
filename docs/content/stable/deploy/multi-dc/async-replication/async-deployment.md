@@ -38,7 +38,7 @@ After you created the required tables, you can set up unidirectional replication
       ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id
       ```
 
-      The preceding command lists all the tables, including system tables. To locate a specific table, you can add `grep`, as follows:
+      The preceding command lists all the tables, including system tables. To locate a specific table, you can add grep as follows:
 
       ```sh
       ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id | grep table_name
@@ -553,11 +553,26 @@ However, to add a new index to a table that already has data, the following addi
     Replication altered successfully
     ```
 
-#### Adding indexes in bidirectional replication
+#### Adding YCQL indexes in bidirectional replication
 
-Stop all write traffic when adding a new index to a table that is bidirectionally replicated.
+Stop all write traffic when adding a new index to a YCQL table that is bidirectionally replicated.
 
 Follow the same steps as described in [Adding indexes in unidirectional replication](#adding-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in the opposite direction).
+
+#### Adding YSQL indexes in bidirectional replication
+
+{{< note title="Note" >}}
+For v2024.2.1 and earlier, follow the same steps as described in [Adding YCQL indexes in bidirectional replication](#adding-ycql-indexes-in-bidirectional-replication).
+{{< /note >}}
+
+New YSQL indexes are automatically added to xCluster replication if the YSQL table being indexed is bidirectionally replicated.
+Adding new indexes is supported even if the table being indexed contains data and is actively receiving writes on both the universes.
+
+Create the [index](../../../../api/ysql/the-sql-language/statements/ddl_create_index/) on both the universes **simultaneously**. xCluster will internally detect and add the new indexes to replication in both directions, and ensure all the data is backfilled.
+
+{{< note title="Note" >}}
+If the create index DDL statement is only issued on one universe, it will timeout and fail.
+{{< /note >}}
 
 ### Removing objects
 

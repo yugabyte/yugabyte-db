@@ -121,7 +121,7 @@ ErrorCode GetErrorCode(const Status& s) {
 const char *ErrorText(const ErrorCode error_code) {
   auto it = kQLErrorMessage.find(error_code);
   if (it == kQLErrorMessage.end()) {
-    LOG(DFATAL) << "Unknown error code: " << to_underlying(error_code);
+    LOG(DFATAL) << "Unknown error code: " << std::to_underlying(error_code);
     return "Unknown error";
   }
   return it->second;

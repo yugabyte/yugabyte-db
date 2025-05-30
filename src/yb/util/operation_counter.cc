@@ -17,6 +17,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
@@ -187,7 +188,7 @@ Status RWOperationCounter::WaitForOpsToFinish(
 ScopedRWOperation::ScopedRWOperation(
     RWOperationCounter* counter, const StatusHolder* abort_status_holder,
     const CoarseTimePoint& deadline)
-    : data_{counter, abort_status_holder, counter ? counter->resource_name() : ""
+    : data_{counter, abort_status_holder, ""
 #ifndef NDEBUG
             , counter ? LongOperationTracker("ScopedRWOperation", 1s) : LongOperationTracker()
 #endif
@@ -200,6 +201,7 @@ ScopedRWOperation::ScopedRWOperation(
     if (!counter->Increment() && !counter->WaitMutexAndIncrement(deadline)) {
       data_.counter_ = nullptr;
       data_.abort_status_holder_ = nullptr;
+      data_.resource_name_ = counter->resource_name();
     }
   }
 }
@@ -215,7 +217,16 @@ void ScopedRWOperation::Reset() {
     data_.counter_ = nullptr;
   }
   data_.abort_status_holder_ = nullptr;
-  data_.resource_name_ = "";
+}
+
+std::string ScopedRWOperation::resource_name() const {
+  if (data_.counter_) {
+    return data_.counter_->resource_name();
+  }
+  if (!data_.resource_name_.empty()) {
+    return data_.resource_name_;
+  }
+  return "null";
 }
 
 Status ScopedRWOperation::GetAbortedStatus() const {

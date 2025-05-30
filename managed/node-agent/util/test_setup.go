@@ -205,21 +205,6 @@ func GetTestInstanceTypeData() model.NodeInstanceType {
 	return result
 }
 
-func GetTestAccessKeyData(
-	installNodeExporter bool,
-	skipProvisioning bool,
-	airGapInstall bool,
-) model.AccessKey {
-	result := model.AccessKey{
-		KeyInfo: model.AccessKeyInfo{
-			InstallNodeExporter: installNodeExporter,
-			SkipProvisioning:    skipProvisioning,
-			AirGapInstall:       airGapInstall,
-		},
-	}
-	return result
-}
-
 func GetPublicAndPrivateKey() ([]byte, []byte) {
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(2019),

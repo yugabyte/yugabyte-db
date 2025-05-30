@@ -22,7 +22,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
@@ -308,7 +308,7 @@ pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 {
 	TestDecodingData *data = ctx->output_plugin_private;
 	TestDecodingTxnData *txndata =
-	MemoryContextAllocZero(ctx->context, sizeof(TestDecodingTxnData));
+		MemoryContextAllocZero(ctx->context, sizeof(TestDecodingTxnData));
 
 	txndata->xact_wrote_changes = false;
 	txn->output_plugin_private = txndata;
@@ -368,7 +368,7 @@ pg_decode_begin_prepare_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 {
 	TestDecodingData *data = ctx->output_plugin_private;
 	TestDecodingTxnData *txndata =
-	MemoryContextAllocZero(ctx->context, sizeof(TestDecodingTxnData));
+		MemoryContextAllocZero(ctx->context, sizeof(TestDecodingTxnData));
 
 	txndata->xact_wrote_changes = false;
 	txn->output_plugin_private = txndata;

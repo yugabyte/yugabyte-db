@@ -22,6 +22,8 @@ import static org.yb.AssertionWrappers.fail;
 import static org.junit.Assume.*;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -35,6 +37,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 import org.junit.Before;
 import org.junit.Ignore;
@@ -56,8 +60,14 @@ import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonTsanAsan;
+import org.yb.util.ProcessUtil;
+import org.yb.util.SideBySideDiff;
+import org.yb.util.StringUtil;
+import static org.yb.pgsql.TestYsqlDump.assertOutputFile;
+
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Sets;
 import com.yugabyte.util.PSQLException;
 
 import static org.yb.AssertionWrappers.assertArrayEquals;
@@ -99,6 +109,12 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_num_tablets", "2");
+    return flagMap;
+  }
+  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
 
@@ -124,6 +140,79 @@ public class TestYbBackup extends BasePgSQLTest {
   protected int getNumShardsPerTServer() {
     return 2;
   }
+
+  private void testPgRegressStyleUtil(
+    String testName,
+    String backupPopulatePath,
+    String restoreDbName,
+    String expectedRestoreDumpPath,
+    String restoreDescribePath,
+    String expectedRestoreDescribePath) throws Exception {
+
+    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
+
+    // Populate the backup db as specified
+    int tserverIndex = 0;
+    File ysqlshExec = new File(pgBinDir, "ysqlsh");
+    File inputFile  = new File(pgRegressDir, backupPopulatePath);
+
+    ProcessUtil.executeSimple(Arrays.asList(
+      ysqlshExec.toString(),
+      "-h", getPgHost(tserverIndex),
+      "-p", Integer.toString(getPgPort(tserverIndex)),
+      "-U", TEST_PG_USER,
+      "-f", inputFile.toString()
+    ), "ysqlsh (" + testName + ")");
+
+
+    // Perform the backup
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", "ysql.yugabyte");
+    if (!TestUtils.useYbController()) {
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    // Perform the restore
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + restoreDbName);
+    File expected = new File(pgRegressDir, expectedRestoreDumpPath);
+    File actual   = new File(pgRegressDir, "results/" + expected.getName());
+    actual.getParentFile().mkdirs();
+
+    // Validate that a dump of the restored db matches what we expect
+    File ysqlDumpExec = new File(pgBinDir, "ysql_dump");
+    List<String> args = new ArrayList<>(Arrays.asList(
+      ysqlDumpExec.toString(),
+      "-h", getPgHost(tserverIndex),
+      "-p", Integer.toString(getPgPort(tserverIndex)),
+      "-U", DEFAULT_PG_USER,
+      "-d", restoreDbName,
+      "-f", actual.toString(),
+      "--no-tablespaces",
+      "--include-yb-metadata"
+      ));
+    ProcessUtil.executeSimple(args, "ysql_dump (" + testName + ")" );
+    TestYsqlDump.assertOutputFile(expected, actual);
+
+    // Additional validations
+    File restoreDescFile = new File(pgRegressDir, restoreDescribePath);
+    File expectedRestoreDesc = new File(pgRegressDir, expectedRestoreDescribePath);
+    File actualDesc   = new File(pgRegressDir, "results/" + expectedRestoreDesc.getName());
+    actualDesc.getParentFile().mkdirs();
+
+    List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
+      ysqlshExec.toString(),
+      "-h", getPgHost(tserverIndex),
+      "-p", Integer.toString(getPgPort(tserverIndex)),
+      "-U", DEFAULT_PG_USER,
+      "-f", restoreDescFile.toString(),
+      "-o", actualDesc.toString(),
+      "-d", restoreDbName
+    ));
+    ProcessUtil.executeSimple(ysqlsh_args, "ysqlsh (validate describes " + testName + ")");
+    TestYsqlDump.assertOutputFile(expectedRestoreDesc, actualDesc);
+  }
+
 
   public void doAlteredTableBackup(String dbName, TableProperties tp) throws Exception {
     String colocString = tp.isColocated() ? "TRUE" : "FALSE";
@@ -194,7 +283,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testAlteredTableInLegacyColocatedDB() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -258,12 +346,9 @@ public class TestYbBackup extends BasePgSQLTest {
     }
 
     // Verify that the new database and tables are properly configured.
-    List<String> tbl1Tablets = YBBackupUtil.getTabletsForTable("ysql." + restoreDBName,
-                                                                "test_tbl1");
-    List<String> tbl2Tablets = YBBackupUtil.getTabletsForTable("ysql." + restoreDBName,
-                                                                "test_tbl2");
-    List<String> tbl3Tablets = YBBackupUtil.getTabletsForTable("ysql." + restoreDBName,
-                                                                "test_tbl3");
+    List<String> tbl1Tablets = getTabletsForYsqlTable(restoreDBName, "test_tbl1");
+    List<String> tbl2Tablets = getTabletsForYsqlTable(restoreDBName, "test_tbl2");
+    List<String> tbl3Tablets = getTabletsForYsqlTable(restoreDBName, "test_tbl3");
     // test_tbl1 and test_tbl2 are colocated and so should share the exact same tablet.
     assertEquals("test_tbl1 is not colocated", 1, tbl1Tablets.size());
     assertEquals("test_tbl2 is not colocated", 1, tbl2Tablets.size());
@@ -308,7 +393,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testMixedLegacyColocatedDatabase() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -459,7 +543,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testLegacyColocatedDBWithColocationIdAlreadySet() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -738,84 +821,6 @@ public class TestYbBackup extends BasePgSQLTest {
       runInvalidQuery(stmt, "CREATE TABLE e3(a text) TABLEGROUP test_grant",
                       "permission denied for tablegroup test_grant");
     }
-  }
-
-  private void doColocatedDatabaseRestoreToOriginalDB() throws Exception {
-    String initialDBName = "yb_colocated";
-    int num_tables = 2;
-
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute(String.format("CREATE DATABASE %s COLOCATION=TRUE", initialDBName));
-    }
-
-    try (Connection connection2 = getConnectionBuilder().withDatabase(initialDBName).connect();
-         Statement stmt = connection2.createStatement()) {
-      stmt.execute("CREATE TABLE test_tbl1 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATION=TRUE)");
-      stmt.execute("CREATE TABLE test_tbl2 (h INT PRIMARY KEY, a INT, b FLOAT) " +
-                   "WITH (COLOCATION=TRUE)");
-
-      // Insert random rows/values for tables to snapshot
-      for (int j = 1; j <= num_tables; ++j) {
-        for (int i = 1; i <= 2000; ++i) {
-          stmt.execute("INSERT INTO test_tbl" + String.valueOf(j) + " (h, a, b) VALUES" +
-            " (" + String.valueOf(i * j) +                       // h
-            ", " + String.valueOf((100 + i) * j) +               // a
-            ", " + String.valueOf((2.14 + (float)i) * j) + ")"); // b
-        }
-      }
-
-      String backupDir = YBBackupUtil.getTempBackupDir();
-      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-          "--keyspace", "ysql." + initialDBName);
-      if (!TestUtils.useYbController()) {
-        backupDir = new JSONObject(output).getString("snapshot_url");
-      }
-
-      // Delete all rows from the tables after taking a snapshot.
-      for (int j = 1; j <= num_tables; ++j) {
-        stmt.execute("DELETE FROM test_tbl" + String.valueOf(j));
-      }
-
-      // Restore back into this same database, this way all the ids will happen to be the same.
-      YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + initialDBName);
-
-      // Verify rows.
-      for (int j = 1; j <= num_tables; ++j) {
-        for (int i : new int[] {1, 500, 2000}) {
-          assertQuery(stmt, String.format("SELECT * FROM test_tbl%d WHERE h=%d", j, i * j),
-            new Row(i * j, (100 + i) * j, (2.14 + (float)i) * j));
-          assertQuery(stmt, String.format("SELECT h FROM test_tbl%d WHERE h=%d", j, i * j),
-            new Row(i * j));
-          assertQuery(stmt, String.format("SELECT a FROM test_tbl%d WHERE h=%d", j, i * j),
-            new Row((100 + i) * j));
-          assertQuery(stmt, String.format("SELECT b FROM test_tbl%d WHERE h=%d", j, i * j),
-            new Row((2.14 + (float)i) * j));
-        }
-      }
-    }
-
-    // Cleanup.
-    try (Statement stmt = connection.createStatement()) {
-      if (isTestRunningWithConnectionManager())
-        waitForStatsToGetUpdated();
-      stmt.execute(String.format("DROP DATABASE %s", initialDBName));
-    }
-  }
-
-  @Test
-  public void testColocatedDatabaseRestoreToOriginalDB() throws Exception {
-    doColocatedDatabaseRestoreToOriginalDB();
-  }
-
-  @Test
-  public void testLegacyColocatedDatabaseRestoreToOriginalDB() throws Exception {
-    markClusterNeedsRecreation();
-    restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
-                                                     "true"),
-                            Collections.emptyMap());
-    initYBBackupUtil();
-    doColocatedDatabaseRestoreToOriginalDB();
   }
 
   @Test
@@ -1309,10 +1314,10 @@ public class TestYbBackup extends BasePgSQLTest {
           ", 'R" + String.valueOf(1 + i % 3) + "')"); // geo
       }
 
-      List<String> tblTablets = getTabletsForTable("yugabyte", "tbl");
-      List<String> tblR1Tablets = getTabletsForTable("yugabyte", "tbl_r1");
-      List<String> tblR2Tablets = getTabletsForTable("yugabyte", "tbl_r2");
-      List<String> tblR3Tablets = getTabletsForTable("yugabyte", "tbl_r3");
+      List<String> tblTablets = getTabletsForYsqlTable("yugabyte", "tbl");
+      List<String> tblR1Tablets = getTabletsForYsqlTable("yugabyte", "tbl_r1");
+      List<String> tblR2Tablets = getTabletsForYsqlTable("yugabyte", "tbl_r2");
+      List<String> tblR3Tablets = getTabletsForYsqlTable("yugabyte", "tbl_r3");
 
       String backupDir = YBBackupUtil.getTempBackupDir(), output = null;
       List<String> args = new ArrayList<>(Arrays.asList("--keyspace", "ysql.yugabyte"));
@@ -1493,7 +1498,8 @@ public class TestYbBackup extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
+        isTestRunningWithConnectionManager());
 
     if (disableGeoPartitionedTests()) {
       return;
@@ -1531,7 +1537,8 @@ public class TestYbBackup extends BasePgSQLTest {
     // session would latch onto a new physical connection. Instead, two logical
     // connections use the same physical connection, leading to unexpected
     // results as per the expectations of the test.
-    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED,
+        isTestRunningWithConnectionManager());
 
     if (disableGeoPartitionedTests()) {
       return;
@@ -1610,12 +1617,20 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public void doTestBackupRestoreRoles(boolean restoreRoles, boolean useRoles)
-      throws Exception {
+  private static enum RestoreRoles { ON, OFF }
+  private static enum UseRoles { ON, OFF }
+  private static enum DumpRoleChecks { ON, OFF }
+
+  public void doTestBackupRestoreRoles(final RestoreRoles restoreRoles,
+                                       final UseRoles useRoles,
+                                       final DumpRoleChecks dumpRoleChecks) throws Exception {
     // ybc doesn't support --ignore_existing_roles currently
     if (TestUtils.useYbController()){
       return;
     }
+
+    // Uncomment the next line to get detailed log from the 'yb_backup.py' script.
+    // YBBackupUtil.enableVerboseMode();
 
     String[] roles = {"admin", "CaseSensitiveRole", "role_with_a space", "Role with spaces",
                       "Role with a quote '", "Role with 'quotes'",
@@ -1635,8 +1650,13 @@ public class TestYbBackup extends BasePgSQLTest {
       }
 
       backupDir = YBBackupUtil.getTempBackupDir();
-      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-          "--keyspace", "ysql.yugabyte", "--backup_roles");
+      List<String> args = new ArrayList<>(Arrays.asList(
+          "--backup_location", backupDir, "--keyspace", "ysql.yugabyte", "--backup_roles"));
+      if (dumpRoleChecks == DumpRoleChecks.ON) {
+        args.add("--dump_role_checks");
+      }
+
+      String output = YBBackupUtil.runYbBackupCreate(args);
       backupDir = new JSONObject(output).getString("snapshot_url");
     }
 
@@ -1655,17 +1675,22 @@ public class TestYbBackup extends BasePgSQLTest {
 
     List<String> args = new ArrayList<>(Arrays.asList(
         "--keyspace", "ysql.yb2", "--ignore_existing_roles"));
-    if (restoreRoles) {
+    if (restoreRoles == RestoreRoles.ON) {
       args.add("--restore_roles");
     }
-    if (useRoles) {
+    if (useRoles == UseRoles.ON) {
       args.add("--use_roles");
     }
 
     try {
       YBBackupUtil.runYbBackupRestore(backupDir, args);
     } catch (YBBackupException ex) {
-      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR && !restoreRoles) {
+      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR &&
+          restoreRoles == RestoreRoles.OFF && dumpRoleChecks == DumpRoleChecks.OFF) {
+        // The exception is expected if
+        //     (1) the roles were NOT restored (restoreRoles == RestoreRoles.OFF)
+        // AND (2) --dump_role_checks was NOT used on the backup create
+        //         phase (dumpRoleChecks == DumpRoleChecks.OFF)
         LOG.info("Expected exception", ex);
         assertTrue(ex.getMessage().contains("ERROR:  role \"admin\" does not exist"));
         return;
@@ -1688,7 +1713,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
         runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
       } catch (PSQLException ex) {
-        if (restoreRoles) {
+        if (restoreRoles == RestoreRoles.ON) {
           throw ex;
         } else {
           LOG.info("Expected exception", ex);
@@ -1707,17 +1732,31 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testBackupRestoreRoles() throws Exception {
-    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ true);
+    doTestBackupRestoreRoles(RestoreRoles.ON, UseRoles.ON, DumpRoleChecks.OFF);
   }
 
   @Test
   public void testBackupRolesWithoutUseRoles() throws Exception {
-    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ false);
+    doTestBackupRestoreRoles(RestoreRoles.ON, UseRoles.OFF, DumpRoleChecks.OFF);
   }
 
   @Test
   public void testBackupRolesWithoutRestoreRoles() throws Exception {
-    doTestBackupRestoreRoles(/* restoreRoles */ false, /* useRoles */ false);
+    doTestBackupRestoreRoles(RestoreRoles.OFF, UseRoles.OFF, DumpRoleChecks.OFF);
+  }
+
+  @Test
+  public void testBackupRolesWithDumpRoleChecks() throws Exception {
+    // Ignore not restored role 'admin' - via the message:
+    // "Skipping grant privilege due to missing role: admin".
+    doTestBackupRestoreRoles(RestoreRoles.OFF, UseRoles.ON, DumpRoleChecks.ON);
+  }
+
+  @Test
+  public void testBackupRolesWithoutDumpRoleChecks() throws Exception {
+    // Ignore not restored role 'admin' - via the expected exception (YSQL error):
+    // ERROR:  role "admin" does not exist.
+    doTestBackupRestoreRoles(RestoreRoles.OFF, UseRoles.ON, DumpRoleChecks.OFF);
   }
 
   @Test
@@ -2002,7 +2041,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testLegacyColocatedMateralizedViewBackup() throws Exception {
-    markClusterNeedsRecreation();
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
                             Collections.emptyMap());
@@ -2162,7 +2200,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(1,100)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(50.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(78));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(79));
 
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
@@ -2196,7 +2234,7 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("INSERT INTO tbl SELECT generate_series(101,200)");
       assertQuery(stmt, "SELECT median(v) FROM tbl", new Row(100.5));
       // Test view.
-      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(78));
+      assertQuery(stmt, "SELECT COUNT(*) FROM oracle.user_tables", new Row(79));
 
       // Test whether extension membership is set correctly after restoration.
       stmt.execute("DROP EXTENSION orafce CASCADE");
@@ -2488,7 +2526,6 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testLegacyColocatedDBMigration() throws Exception {
-    markClusterNeedsRecreation();
     // Create a backup of a legacy colocated database.
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
@@ -2573,7 +2610,6 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testLegacyColocatedDBWithNoColocatedTablesMigration() throws Exception {
     // This unit test tests for an edge case where a legacy colocated database doesn't contain any
     // colocated table.
-    markClusterNeedsRecreation();
     // Create a backup of a legacy colocated database.
     restartClusterWithFlags(Collections.singletonMap("ysql_legacy_colocated_database_creation",
                                                      "true"),
@@ -2679,50 +2715,15 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
-  public void testPartitionsWithConstaints() throws Exception {
-    String backupDir = null;
-    try (Statement stmt = connection.createStatement()) {
-      // Create partitioned tables with a unique constraint
-      stmt.execute("CREATE TABLE part_uniq_const(v1 INT, v2 INT) PARTITION BY RANGE(v1);");
-      stmt.execute("CREATE TABLE part_uniq_const_50_100 PARTITION OF " +
-        "part_uniq_const FOR VALUES FROM (50) TO (100)");
-      stmt.execute("CREATE TABLE part_uniq_const_30_50 PARTITION OF " +
-        "part_uniq_const FOR VALUES FROM (30) TO (50);");
-      stmt.execute("CREATE TABLE part_uniq_const_default PARTITION OF part_uniq_const DEFAULT;");
-      stmt.execute("ALTER TABLE part_uniq_const ADD CONSTRAINT " +
-        "part_uniq_const_unique UNIQUE (v1, v2);");
-      stmt.execute("INSERT INTO part_uniq_const VALUES (51, 100), (31, 200), (1, 1000);");
-
-      backupDir = YBBackupUtil.getTempBackupDir();
-      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-          "--keyspace", "ysql.yugabyte");
-      if (!TestUtils.useYbController()) {
-        backupDir = new JSONObject(output).getString("snapshot_url");
-      }
-    }
-
-    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
-
-    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
-    Statement stmt = connection2.createStatement()) {
-      assertQuery(stmt, "SELECT * FROM part_uniq_const_default", new Row(1, 1000));
-      assertQuery(stmt, "SELECT * FROM part_uniq_const_50_100", new Row(51, 100));
-      assertQuery(stmt, "SELECT * FROM part_uniq_const_30_50", new Row(31, 200));
-
-      assertQuery(stmt,
-        "select tablename, indexname from pg_indexes where schemaname = 'public'",
-        new Row("part_uniq_const", "part_uniq_const_unique"),
-        new Row("part_uniq_const_30_50", "part_uniq_const_30_50_v1_v2_key"),
-        new Row("part_uniq_const_50_100", "part_uniq_const_50_100_v1_v2_key"),
-        new Row("part_uniq_const_default", "part_uniq_const_default_v1_v2_key")
-      );
-
-      assertQuery(stmt,
-        "select conname from pg_constraint where conrelid = 'part_uniq_const'::regclass::oid;",
-        new Row("part_uniq_const_unique")
-      );
-    }
-
+  public void testPgRegressStyle() throws Exception {
+    testPgRegressStyleUtil(
+      "yb.orig.backup_restore",
+      "sql/yb.orig.backup_restore.sql",
+      "db2",
+      "expected/yb.orig.backup_restore.out",
+      "sql/yb.orig.backup_restore_describe.sql",
+      "expected/yb.orig.backup_restore_describe.out"
+    );
   }
 
   /**

@@ -613,6 +613,7 @@ make_expanded_record_from_datum(Datum recorddatum, MemoryContext parentcontext)
 	ItemPointerSetInvalid(&(tmptup.t_self));
 	tmptup.t_tableOid = InvalidOid;
 	tmptup.t_data = tuphdr;
+	HEAPTUPLE_YBCTID(&tmptup) = 0;
 
 	oldcxt = MemoryContextSwitchTo(objcxt);
 	newtuple = heap_copytuple(&tmptup);
@@ -936,7 +937,7 @@ DatumGetExpandedRecord(Datum d)
 	}
 
 	/* Else expand the hard way */
-	d = make_expanded_record_from_datum(d, GetCurrentMemoryContext());
+	d = make_expanded_record_from_datum(d, CurrentMemoryContext);
 	return (ExpandedRecordHeader *) DatumGetEOHP(d);
 }
 

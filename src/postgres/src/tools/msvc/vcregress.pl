@@ -163,9 +163,7 @@ sub installcheck_internal
 		"--dlpath=.",
 		"--bindir=../../../$Config/psql",
 		"--schedule=${schedule}_schedule",
-		"--max-concurrent-tests=20",
-		"--encoding=SQL_ASCII",
-		"--no-locale");
+		"--max-concurrent-tests=20");
 	push(@args, $maxconn) if $maxconn;
 	push(@args, @EXTRA_REGRESS_OPTS);
 	system(@args);
@@ -406,13 +404,15 @@ sub plcheck
 		# Move on if no tests are listed.
 		next if (scalar @tests == 0);
 
+		my @opts = fetchRegressOpts();
+
 		print
 		  "============================================================\n";
 		print "Checking $lang\n";
 		my @args = (
 			"$topdir/$Config/pg_regress/pg_regress",
 			"--bindir=$topdir/$Config/psql",
-			"--dbname=pl_regression", @lang_args, @tests);
+			"--dbname=pl_regression", @lang_args, @opts, @tests);
 		system(@args);
 		my $status = $? >> 8;
 		exit $status if $status;

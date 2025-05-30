@@ -12,7 +12,7 @@
   The object-relational database management system now known as
   <productname>PostgreSQL</productname> is derived from the
   <productname>POSTGRES</productname> package written at the
-  University of California at Berkeley.  With over two decades of
+  University of California at Berkeley.  With decades of
   development behind it, <productname>PostgreSQL</productname> is now
   the most advanced open-source database available anywhere.
  </para>
@@ -69,9 +69,8 @@
    url="https://www.ibm.com/">IBM</ulink>) picked up the code and
    commercialized it.  In late 1992,
    <productname>POSTGRES</productname> became the primary data manager
-   for the
-   <ulink url="http://meteora.ucsd.edu/s2k/s2k_home.html">
-   Sequoia 2000 scientific computing project</ulink>.
+   for the Sequoia 2000 scientific computing project described in
+   <xref linkend="ston92"/>.
   </para>
 
   <para>

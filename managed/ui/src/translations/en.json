@@ -13,6 +13,7 @@
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
       "proceed": "Proceed",
+      "upgrade": "Upgrade",
       "requiredField": "Required field",
       "fieldRequired": "This field is required",
       "save": "Save",
@@ -29,6 +30,7 @@
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
       "back": "Back",
+      "next": "Next",
       "selectAll": "Select All",
       "selected": "Selected",
       "note": "Note :",
@@ -45,6 +47,7 @@
       "reset": "Reset",
       "expand": "Expand",
       "collapse": "Collapse",
+      "formFieldRequired": "Required.",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -54,7 +57,8 @@
       "unitAbbreviation": {
         "milliseconds": "ms",
         "seconds": "s",
-        "megabyte": "MB"
+        "megabyte": "MB",
+        "megabytesPerSecond": "MBps"
       }
     },
     "imgAltText": {
@@ -89,17 +93,28 @@
       "async_replication_sent_lag_micros": "Async Replication Lag",
       "consumer_safe_time_lag": "Consumer Safe Time Lag",
       "consumer_safe_time_skew": "Consumer Safe Time Skew",
+      "xcluster_consumer_replication_error_count": "Consumer Replication Error Count",
+      "service_response_bytes_yb_cdc_CDCService_GetChanges": "CDC Service Get Changes Throughput (MBps)",
       "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)",
-      "yba_ha_last_backup_size_mb": "HA Last Backup Size (mb)"
+      "yba_ha_last_backup_size_mb": "HA Last Backup Size (MB)"
     },
     "dashboard": {
-      "nodeAgentReminderBanner": {
-        "primaryText": "Automatic installation of node agent failed on some nodes.",
-        "additionalDetailText": "<paragraph>Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.</paragraph><paragraph>Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation.</paragraph><paragraph><nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink></paragraph>",
-        "viewNodeAgentsButton": "View Node Agents"
+      "installNodeAgentReminderBanner": {
+        "primaryText": "Node agent needs to be installed on some nodes",
+        "nodeAgentMustBeInstallToUpgradeYba": "Node agent manages communication between universe nodes and YugabyteDB Anywhere, and must be installed on all nodes before you can upgrade to future versions of YugabyteDB Anywhere.",
+        "waysToInstallNodeAgent": "YugabyteDB Anywhere can automatically install node agent on universes that require it, or you can install node agent manually.",
+        "howToManuallyInstallNodeAgent": "To manually install node agent, navigate to the universe and choose Actions>More>Install Node Agent.",
+        "automaticInstallationsInProgress": "Automatic installation of node agent is in progress. Click View Node Agents to see which nodes have node agent installed.",
+        "manuallyUnregisteredNodeAgent": "If you manually removed node agent on any nodes, then you must also manually reinstall by navigating to the universe and choosing Actions>More>Install Node Agent. The automatic installation of node agent will not reinstall node agent on those nodes for you.",
+        "someNodeAgentsAreNotFunctional": "We found some universes where node agent is not functional. Click View Node Agents to find the problem nodes, verify they fulfill the <nodeAgentPrereqDocsLink>node prerequisites</nodeAgentPrereqDocsLink> and retry the installation by choosing Actions>Reinstall Node Agent.",
+        "learnMoreText": "<nodeAgentFaqDocsLink>Learn more about Node Agent.</nodeAgentFaqDocsLink>",
+        "viewNodeAgentsButton": "View Node Agents",
+        "enableAutomaticNodeAgentInstallationButton": " Automatically Install Node Agents"
       }
     },
     "universeActions": {
+      "precheckInitiatedMsg": "Running Prechecks...",
+      "runPrecheckOnlyButton": "Run Pre-check Only",
       "lbState": {
         "loadBalancerEnabled": "Tablet Load Balancer",
         "loadIsBalanced": "Tablet load is balanced",
@@ -205,6 +220,7 @@
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
+        "dbUpgradeInitiated": "Database upgrade initiated",
         "chooseTarget": "1. Choose target version",
         "currentVersion": "Current Version",
         "targetVersion": "Target Version",
@@ -217,6 +233,7 @@
         "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "footerMsg1": "Once the upgrade is finished, you can assess Universe performance and ",
         "footerMsg2": "if any unusual behavior is detected.",
+        "footerMsg3": "We recommend you to take backup of your universe before upgrading.",
         "rollbackPrevious": "roll back to the previous version",
         "avoidDisruption": "Avoid disruption to xCluster configuration",
         "xclusterWarning": "This universe is part of one or more xCluster configurations. To minimize disruptions to these configurations during the upgrade process, you should, if possible, upgrade the target universe first.",
@@ -232,6 +249,11 @@
         "upgradeFialedNonRollback": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state,you can choose to either retry the upgrade or get in touch our support team.",
         "viewTask": "View Task Details",
         "retryTask": "Retry Task",
+        "upgradeModal": {
+          "upgradeWarning": "<b>Warning:</b> You cannot run DDL operations while the upgrade is in progress. DDL operations are re-enabled after you finalize the upgrade.<br/><b>Warning:</b> Backups taken after the upgrade can only be restored to <b>{{version}} or later</b>.",
+          "submitAction": "Proceed to Upgrade",
+          "title": "Before you proceed..."
+        },
         "preFinalize": {
           "finalizeUpgrade": "Finalize Upgrade",
           "rollback": "Roll back to the previous version",
@@ -292,6 +314,21 @@
         "disableWarning2RF1": "<strong>The universe won't be available for reads and writes during the restart.</strong>",
         "overrideWarningRF3": "<strong>Note!</strong> Editing connection pooling ports requires a rolling restart of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "overrideWarningRF1": "<strong>Note!</strong> Editing connection pooling ports requires a restart of <strong>{{universeName}}</strong>. The universe won't be available for reads and writes during the restart."
+      },
+      "supportBundle": {
+        "editCustomPrometheusQueriesModal": {
+          "title": "Custom Queries",
+          "infoText": "The provided PromQL expressions will be run and the result will be stored in the support bundle under the corresponding folder name.",
+          "addCustomQuery": "Add Custom Query",
+          "customQuery": "Custom Query",
+          "folderName": "Folder Name",
+          "prometheusQuery": "PromQL expression",
+          "validationError": {
+            "folderNameHasSpecialCharacters": "The folder name cannot contain any of these special characters: #%&{}\\<>*?/$!'\":@+`|=",
+            "folderNameMustBeUnique": "The folder name must be unique."
+          },
+          "submitLabel": "Confirm"
+        }
       }
     },
     "commonErrors": {
@@ -348,6 +385,7 @@
         "tserverHttpPort": "T-Server HTTP Port",
         "tserverRpcPort": "T-Server RPC Port",
         "ybcPackagePath": "YBC Package Path",
+        "ybControllerrRpcPort": "YB Controller RPC Port",
         "yqlServerHttpPort": "YCQL HTTP Port",
         "yqlServerRpcPort": "YCQL Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
@@ -355,10 +393,10 @@
         "internalYsqlServerRpcPort": "Internal YSQL Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
         "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
         "enableConnectionPooling": "Enable Connection Pooling",
-        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of<br /> simultaneous connections to your database.",
+        "conPoolTooltip": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
         "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
         "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
         "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
@@ -497,6 +535,7 @@
         "azOverrides": "AZ Overrides",
         "forceApply": "Force Apply",
         "k8sOverrides": "Kubernetes Overrides",
+        "validateAndSaveSuccess": "Validated and Saved Successfully",
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
@@ -509,6 +548,7 @@
         "ebs": "EBS Type",
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
         "premiumv2Storage": "! Selected storage type is only available in select regions. Your creation will fail if you choose incorrect region.",
+        "hyperdiskStorage": "! Please refer to the official documentation for information about supported instance types. Your creation will fail if you choose incorrect instance type.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",
@@ -736,18 +776,25 @@
             "dbName": "Database",
             "elapsedMillis": "Elapsed Time",
             "keyspace": "Keyspace",
+            "leader_pid": "Leader PID",
             "local_blks_hit": "Tmp tables RAM",
             "local_blks_written": "Tmp tables On Disk",
+            "max_plan_time": "Max Plan Time",
             "max_time": "Max Exec Time",
+            "mean_plan_time": "Mean Plan Time",
             "mean_time": "Avg Exec Time",
+            "min_plan_time": "Min Plan Time",
             "min_time": "Min Exec Time",
             "nodeName": "Node Name",
             "privateIp": "Private IP",
+            "query_id": "Query ID",
             "queryStartTime": "Query Start",
             "rolname": "User",
             "rows": "Rows",
             "sessionStatus": "Session Status",
+            "stddev_plan_time": "Stdev Plan Time",
             "stddev_time": "Stdev Exec Time",
+            "total_plan_time": "Total Plan Time",
             "total_time": "Total Time",
             "type": "Type"
           },
@@ -784,6 +831,10 @@
         }
       },
       "disasterRecovery": {
+        "breadcrumb": {
+          "undefinedUniverse": "Undefined Universe",
+          "xClusterDisasterRecovery": "xCluster Disaster Recovery"
+        },
         "heading": "xCluster Disaster Recovery",
         "actionButton": {
           "createDrConfig": {
@@ -834,8 +885,7 @@
           "failoverInProgress": "<bold>Failover in progress...</bold> Universe operations are not available while the operation is in progress.",
           "switchoverInProgress": "<bold>Switchover in progress...</bold> Universe operations are not available while the operation is in progress.",
           "connectYourApps": "<bold>Connect your applications</bold> to the new DR primary universe to direct read and writes to it.",
-          "drConfigHalted": "<bold>Warning!</bold> DR replication stream has been manually halted. ",
-          "drConfigRestartRequired": "<bold>Warning!</bold> DR replication failed which means the DR replica is severely out-of-sync with the DR primary."
+          "drConfigHalted": "<bold>Warning!</bold> DR replication stream has been manually halted. "
         },
         "switchover": {
           "initiateModal": {
@@ -847,7 +897,10 @@
             "confirmationInstructions": "Enter DR replica universe name to confirm.",
             "submitButton": "Initiate Switchover",
             "note": {
-              "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during switchover."
+              "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during switchover.",
+              "versionMismatch": "<bold>Warning!</bold> A clean switchover will not be possible because DR primary database version and DR replica database version do not match. To avoid issues with auto flag support, please ensure the DR primary and DR replica are both on the same database version.",
+              "drPrimaryYbdbVersion": "<bold>DR Primary Database Version:</bold> {{ybdbVersion}}",
+              "drReplicaYbdbVersion": "<bold>DR Replica Database Version:</bold> {{ybdbVersion}}"
             },
             "error": {
               "taskFailure": "Switchover task failed.",
@@ -904,6 +957,7 @@
             },
             "useNewTargetUniverse": {
               "optionName": "Select a new universe as DR replica",
+              "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
               "drReplica": "DR Replica Universe"
             }
           },
@@ -944,7 +998,8 @@
               "label": "Halted",
               "tooltip": "The DR replication was halted during the failover as the DR replica is not in sync with the DR primary anymore due to the data loss during failover."
             },
-            "Failed": "Failed"
+            "Failed": "Failed",
+            "Updating": "Updating"
           },
           "sourceUniverseDrStatus": {
             "Unconfigured for DR": "Unconfigured",
@@ -1006,17 +1061,9 @@
                 "submitButton": "Next: Confirm Full Copy",
                 "pitrSetUpNote": "<bold>Note!</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
               },
-              "configureBootstrap": {
-                "instruction": "Choose the storage config to use for performing the initial copy",
-                "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
-                "submitButton": "Next: Configure PITR Settings",
-                "backupStorageConfig": {
-                  "label": "Backup Storage Config",
-                  "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
-                },
-                "error": {
-                  "backupStorageConfigRequired": "Required."
-                }
+              "bootstrapSummary": {
+                "instruction": "Confirm full copy creation plan",
+                "submitButton": "Next: Configure PITR Settings"
               },
               "configurePitr": {
                 "instruction": "Configure point-in-time recovery (PITR) settings",
@@ -1277,8 +1324,15 @@
           }
         },
         "shared": {
+          "tablesOfConcernExist": "Some tables need attention",
           "banner": {
-            "mismatchedTables": "<bold>Warning!</bold> Database schema does not match across {{sourceUniverseTerm}} and the {{targetUniverseTerm}}. See the Tables tab for the list of problematic tables. DDL operations must be performed in a <ddlChangeStepsDocsLink>specified order</ddlChangeStepsDocsLink>."
+            "mismatchedTables": "<bold>Warning!</bold> Database schema does not match across {{sourceUniverseTerm}} and the {{targetUniverseTerm}}. See the Tables tab for the list of problematic tables. DDL operations must be performed in a <ddlChangeStepsDocsLink>specified order</ddlChangeStepsDocsLink>.",
+            "unableToFetchTableStatus": "<bold>Warning!</bold> YugabyteDB Anywhere could not gather statuses for some tables on the {{targetUniverseTerm}}. See the Tables tab for the list of problematic tables.",
+            "autoFlagMismatch": "<bold>Warning!</bold> There is a mismatch in database version between the {{sourceUniverseTerm}} and the {{targetUniverseTerm}}. As a result, replication is paused for the affected tables. See the Tables tab for the list of problematic tables.",
+            "tableFailedReplicationSetup": "<bold>Warning!</bold> YugabyteDB Anywhere could not set up replication for some tables. See the Tables tab for the list of problematic tables.",
+            "tableUnknownError": "<bold>Warning!</bold> There are some tables in error status. See the Tables tab for the list of problematic tables.",
+            "tableReplicationLagAlertThresholdExceeded": "<bold>Warning!</bold> There are some tables which have replication lag above the lowest replication lag alert threshold. See the Tables tab for the list of problematic tables.",
+            "tableMissingOperation": "<bold>Warning!</bold> There are some tables which are severely out of sync and require a replication restart."
           },
           "confirmAlert": {
             "instruction": "Confirm alert threshold for acceptable replication lag",
@@ -1301,6 +1355,7 @@
             "backupStorageConfig": {
               "instruction": "Choose the storage config to use for performing the initial copy",
               "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
+              "infoTextDrRequirement": "Regardless of the full copy creation plan, YBA requires a backup storage configuration to be selected when creating a disaster recovery configuration because it is necessary for running disaster recovery operations like failover.",
               "label": "Backup Storage Config",
               "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both {{sourceUniverseTerm}} and {{targetUniverseTerm}} universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>",
               "currentStorageConfigInfo": "<bold>{{storageConfigName}}</bold> will be used as the storage config for this operation. To use a different storage config, edit the DR config.",
@@ -1452,7 +1507,9 @@
           "graphTitle": {
             "asyncReplicationSentLag": "Async Replication Lag",
             "consumerSafeTimeLag": "Consumer Safe Time Lag",
-            "consumerSafeTimeSkew": "Consumer Safe Time Skew"
+            "consumerSafeTimeSkew": "Consumer Safe Time Skew",
+            "consumerReplicationErrorCount": "Consumer Replication Error Count",
+            "cdcGetChangesThroughput": "CDC Service Get Changes Throughput"
           }
         },
         "error": {
@@ -1697,6 +1754,12 @@
         "CONNECTION_ERROR": "Connection Error",
         "TIMED_OUT": "Timed Out",
         "universePaused": "Universe Paused"
+      },
+      "enableAutomaticNodeAgentInstallationModal": {
+        "title": "Automatically Install Node Agent",
+        "infoText": "<paragraph>YugabyteDB Anywhere can automatically install node agent on universes that require it. Installation is quick and does not impact application or database performance.</paragraph><paragraph>Some universe tasks will be unavailable while installation is in progress. If other tasks are in progress (for example, backups), wait until they complete before starting automatic installation.</paragraph>",
+        "confirmationText": "Type YES to proceeed.",
+        "submitLabel": "Start"
       },
       "installNodeAgentModal": {
         "title": {
@@ -2173,7 +2236,8 @@
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
         "successMsg": "Success. Click <0>here</0> for task details",
         "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation.",
-        "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade."
+        "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade.",
+        "runPrecheckOnlyButton": "Run Pre-check Only"
       },
       "deleteModal": {
         "title": "Delete Linux Version",
@@ -2315,7 +2379,8 @@
         "diffs": {
           "Update": "View Universe Changes",
           "SoftwareUpgrade": "View Software Upgrade Changes",
-          "GFlagsUpgrade": "View GFlags Changes"
+          "GFlagsUpgrade": "View GFlags Changes",
+          "ResizeNode": "View Universe Changes"
         },
         "messages": {
           "abortConfirmTitle": "Abort Running Task ?",
@@ -2335,6 +2400,9 @@
         "status": "Status",
         "startTime": "Start Time",
         "endTime": "End time",
+        "upgradeMethod": "Upgrade Method",
+        "delay": "Delay between servers",
+        "delayValue": "{{delay}} secs",
         "startVersion": "Start Version",
         "targetVersion": "Target Version",
         "Failure": "Failed",
@@ -2349,12 +2417,17 @@
         "expand": "Expand",
         "viewLess": "Collapse",
         "showLog": "YugaWare Log",
+        "expandAll":"Expand All",
+        "collapseAll":"Collapse All",
         "percentComplete": "<b>{{percent}}</b>% Completed"
       },
       "banner": {
         "viewDetails": "View Details",
         "taskProgress": "{{percent}}%",
-        "opNotAvailable": "Some operations are not available while the current operation is in progress"
+        "opNotAvailable": "Some operations are not available while the current operation is in progress",
+        "softwareUpgradeFailed": "Software Upgrade Failed",
+        "softwareUpgradeFailedText": "To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+        "rollbackUpgrade": "Rollback Upgrade"
       },
       "simple": {
         "viewDetails": "View Details"
@@ -2371,7 +2444,8 @@
         "titles": {
           "Update": "Universe Changes",
           "SoftwareUpgrade": "Software Upgrade Changes",
-          "GFlagsUpgrade": " GFlags Upgrade Changes"
+          "GFlagsUpgrade": " GFlags Upgrade Changes",
+          "ResizeNode": "Universe Changes"
         },
         "universeDiff": {
           "region": "Region",
@@ -2527,6 +2601,14 @@
       "dataDogApiKey": "Datadog API Key",
       "dataDogURLPlaceholder": "Custom Datadog URL",
       "dataDogSite": "Datadog Site",
+      "lokiEndpoint": "Loki endpoint",
+      "lokiEndpointPlaceholder": "http://<loki-url>:<loki-port>",
+      "lokiEndpointTooltip": "Loki endpoint URL. Ensure loki is accessible through the mentioned port. YugbayteDB Anywhere will push logs to <endpoint>/loki/api/v1/push.",
+      "lokiUsername": "Username",
+      "lokiPassword": "Password",
+      "lokiOrganizationID": "Organization / Tenant ID (Optional)",
+      "lokiOrganizationIDTooltip": "Organization ID is required when multi-tenancy is set up in Loki. Optional for Grafana Cloud since the authentication reroutes requests according to scope.",
+      "authType": "Authentication Type",
       "siteURL": "Site URL",
       "splunkToken": "Splunk Access Token",
       "endpointURL": "Endpoint URL",
@@ -2908,6 +2990,51 @@
       "github": "GitHub",
       "freeTShirtAt": "Free t-shirt at",
       "yugabyteInc": "Yugabyte, Inc."
+    },
+    "createUniverseV2": {
+      "title": "Create Universe",
+      "steps": {
+        "general": "General",
+        "generalSettings": "General Settings",
+        "placement": "Placement",
+        "resilienceAndRegions": "Resilience and Regions",
+        "nodesAndAvailabilityZone": "Nodes and Availability Zones",
+        "hardware": "Hardware",
+        "instanceSettings": "Instance Settings",
+        "database": "Database",
+        "databaseSettings": "Database Settings",
+        "security": "Security",
+        "securitySettings": "Security Settings",
+        "advanced": "Advanced",
+        "proxySettings": "Proxy Settings",
+        "otherAdvancedSettings": "Other Advanced Settings",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost"
+      },
+      "generalSettings": {
+        "title": "General Settings",
+        "universeName": "Universe Name",
+        "universeNamePlaceholder": "Enter Universe Name",
+        "cloudProvider": "Cloud Provider",
+        "providerconfiguration": "Provider Configuration",
+        "providerConfigurationPlaceholder": "Select Provider Configuration",
+        "databaseVersion": "Database Version",
+        "databaseVersionPlaceholder": "Select Database Version",
+        "errMsg": {
+          "universeNameRequired": "Universe name is required",
+          "cloudProviderRequired": "Cloud provider is required",
+          "providerConfigurationRequired": "Provider configuration is required",
+          "databaseVersionRequired": "Database version is required"
+        }
+      },
+      "resilienceAndRegions": {
+        "title": "Resilience",
+        "resilienceType": {
+          "regular": "Regular Cluster",
+          "singleNode": "Single-Node Cluster",
+          "quickSetup": "Quick Setup"
+        }
+      }
     }
   }
 }

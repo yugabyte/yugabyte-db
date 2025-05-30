@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import java.util.Arrays;
@@ -67,26 +68,27 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
   }
 
   @Override
-  protected byte[] createKeyWithService(
+  protected EncryptionKey createKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
-    return "some_key_id".getBytes();
+    return new EncryptionKey("some_key_id".getBytes());
   }
 
   @Override
-  protected byte[] rotateKeyWithService(
+  protected EncryptionKey rotateKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
-    return "some_key_id".getBytes();
+    return new EncryptionKey("some_key_id".getBytes());
   }
 
   @Override
-  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
+  public byte[] retrieveKeyWithService(
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
     this.createRequest = !this.createRequest;
     return this.createRequest ? null : "some_key_value".getBytes();
   }
 
   @Override
   public byte[] validateRetrieveKeyWithService(
-      UUID configUUID, byte[] keyRef, ObjectNode authConig) {
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext, ObjectNode authConig) {
     this.createRequest = !this.createRequest;
     return this.createRequest ? null : "some_key_value".getBytes();
   }
@@ -98,7 +100,7 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
   }
 
   @Override
-  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+  public EncryptionKey encryptKeyWithService(UUID configUUID, byte[] universeKey) {
     return null;
   }
 
@@ -145,8 +147,9 @@ public class EncryptionAtRestServiceTest extends FakeDBApplication {
     service.createAuthConfig(
         customerUUID, "some_config_name", Json.newObject().put("some_key", "some_value"));
     EncryptionAtRestConfig testConfig = config.clone();
-    byte[] key = service.createKey(universeUUID, customerUUID, testConfig);
+    EncryptionKey key = service.createKey(universeUUID, customerUUID, testConfig);
     assertNotNull(key);
-    assertEquals("some_key_id", new String(key));
+    assertNotNull(key.getKeyBytes());
+    assertEquals("some_key_id", new String(key.getKeyBytes()));
   }
 }

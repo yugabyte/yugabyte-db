@@ -29,13 +29,6 @@ type: docs
   </li>
 
   <li >
-    <a href="../build-from-src-centos/" class="nav-link">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      CentOS
-    </a>
-  </li>
-
-  <li >
     <a href="../build-from-src-ubuntu/" class="nav-link active">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
@@ -64,6 +57,9 @@ source <(cat /etc/os-release | grep '^VERSION_ID=')
 case "$VERSION_ID" in
   20.04)
     gcc_version=10
+    # 20.04 needs deadsnakes repo for python3.11 installed below
+    sudo add-apt-repository ppa:deadsnakes/ppa
+    sudo apt update
     ;;
   22.04)
     gcc_version=11
@@ -93,9 +89,9 @@ packages=(
   npm
   patchelf
   pkg-config
-  python3
-  python3-dev
-  python3-venv
+  python3.11
+  python3.11-dev
+  python3.11-venv
   rsync
 )
 # Avoid tzdata package configuration prompt.
@@ -111,8 +107,8 @@ sudo mkdir /opt/yb-build
 # variables are set appropriately when switching users).
 sudo chown "$USER" /opt/yb-build
 mkdir ~/tools
-curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.tar.gz" | tar xzC ~/tools
-source <(echo 'export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"' \
+curl -L "https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-x86_64.tar.gz" | tar xzC ~/tools
+source <(echo 'export PATH="$HOME/tools/cmake-3.31.0-linux-x86_64/bin:$PATH"' \
          | tee -a "$shellrc")
 source <(echo 'export PATH="/usr/lib/go-1.20/bin:$PATH"' \
          | tee -a "$shellrc")
@@ -161,21 +157,17 @@ sudo locale-gen en_US.UTF-8
 {{% readfile "includes/python.md" %}}
 
 ```sh
-sudo apt install -y libffi-dev python3 python3-dev python3-venv
+# 20.04 needs deadsnakes repo for python3.11 installed below.
+if grep -q '20.04' /etc/os-release; then
+  sudo add-apt-repository ppa:deadsnakes/ppa
+  sudo apt update
+fi
+sudo apt install -y libffi-dev python3.11 python3.11-dev python3.11-venv
 ```
 
 ### CMake 3
 
 {{% readfile "includes/cmake.md" %}}
-
-The CMake version in the package manager is too old (3.16), so manually download a release as follows:
-
-```sh
-mkdir ~/tools
-curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.tar.gz" | tar xzC ~/tools
-# Also add the following line to your .bashrc or equivalent.
-export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"
-```
 
 ### Java
 

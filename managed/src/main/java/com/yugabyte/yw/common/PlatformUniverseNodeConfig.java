@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import lombok.AllArgsConstructor;
@@ -29,10 +30,16 @@ public class PlatformUniverseNodeConfig implements UniverseNodeConfigInterface {
     return nodeDetails.cloudInfo.private_ip;
   }
 
+  @Override
   public String getK8sNamespace() {
     if (CloudType.kubernetes.toString().equals(nodeDetails.cloudInfo.cloud)) {
       return nodeDetails.getK8sNamespace();
     }
     return null;
+  }
+
+  @Override
+  public String getTempDir() {
+    return GFlagsUtil.getCustomTmpDirectory(nodeDetails, universe);
   }
 }

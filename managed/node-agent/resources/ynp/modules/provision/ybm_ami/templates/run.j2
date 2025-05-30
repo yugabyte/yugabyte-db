@@ -1,0 +1,174 @@
+yb_bin_dir="{{ yb_home_dir }}/bin"
+yb_cores_dir="{{ yb_home_dir }}/cores"
+yb_software_dir="{{ yb_home_dir }}/yb-software"
+
+# Create the bin directory inside the YB HOME directory.
+mkdir -p "$yb_bin_dir"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_bin_dir"
+chmod 0755 "$yb_bin_dir"
+
+# Create the software directory inside the YB HOME directory.
+mkdir -p "$yb_software_dir"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_software_dir"
+chmod 0755 "$yb_software_dir"
+
+# Retrieve the mount_paths.
+mount_points={{ mount_paths }}
+IFS=',' read -ra mount_paths <<< "$mount_points"
+
+# Create Mount Core directory
+mount_cores_dir="${mount_paths[0]}/cores"
+mkdir -p "$mount_cores_dir"
+chown -R {{ yb_user }}:{{ yb_user }} "$mount_cores_dir"
+chmod 0755 "$mount_cores_dir"
+
+{% if mount_cores_dir != yb_cores_dir %}
+resolved_core_dir="$(readlink -f "{{ yb_cores_dir }}")"
+if [ ! -L "{{ yb_cores_dir }}" ] || [ "$resolved_core_dir" != "{{ mount_cores_dir }}" ]; then
+  ln -sf "{{ mount_cores_dir }}" "{{ yb_cores_dir }}"
+  chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_cores_dir }}"
+  chmod 755 "{{ yb_cores_dir }}"
+fi
+{% endif %}
+
+# Add clean cores script
+cat > "{{ yb_bin_dir }}/clean_cores.sh" << 'EOF'
+{% include 'clean_cores.sh.j2' %}
+EOF
+chmod 755 "{{ yb_bin_dir }}/clean_cores.sh"
+chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_bin_dir }}/clean_cores.sh"
+
+# Add purge logs script
+cat > "{{ yb_bin_dir }}/zip_purge_yb_logs.sh" << 'EOF'
+{% include 'zip_purge_yb_logs.sh.j2' %}
+EOF
+chmod 755 "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+
+# Add collect metrics wrapper script
+cat > "{{ yb_bin_dir }}/collect_metrics_wrapper.sh" << 'EOF'
+{% include 'collect_metrics_wrapper.sh.j2' %}
+EOF
+chmod 755 "{{ yb_bin_dir }}/collect_metrics_wrapper.sh"
+chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_bin_dir }}/collect_metrics_wrapper.sh"
+
+# Create Master/Tserver conf directory
+{% for yb_process_type in ['master', 'tserver'] %}
+yb_process_dir={{ yb_home_dir }}/{{ yb_process_type }}
+yb_conf_dir="$yb_process_dir/conf"
+yb_logs_dir="$yb_process_dir/logs"
+
+if [ ! -d "$yb_process_dir" ]; then
+  mkdir -p "$yb_process_dir"
+  chown -R {{ yb_user }}:{{ yb_user }} "$yb_process_dir"
+  chmod 0755 "$yb_process_dir"
+fi
+
+if [ ! -d "$yb_conf_dir" ]; then
+  mkdir -p "$yb_conf_dir"
+  chown -R {{ yb_user }}:{{ yb_user }} "$yb_conf_dir"
+  chmod 0755 "$yb_conf_dir"
+fi
+
+mount_logs_dir="${mount_paths[0]}/yb-data/{{ yb_process_type }}/logs"
+mkdir -p "$mount_logs_dir"
+chown -R {{ yb_user }}:{{ yb_user }} "$mount_logs_dir"
+chmod 0755 "$mount_logs_dir"
+
+if [ ! -L "$yb_logs_dir" ] || [ "$(readlink -f "$yb_logs_dir")" != "$mount_logs_dir" ]; then
+  rm -rf "$yb_logs_dir"
+  ln -s "$mount_logs_dir" "$yb_logs_dir"
+  chown -R {{ yb_user }}:{{ yb_user }} "$yb_logs_dir"
+  chmod 0755 "$yb_logs_dir"
+fi
+{% endfor %}
+
+# Configure the YB package.
+package={{ package }}
+package_name="$(basename "$package")"
+package_folder="${package_name%.tar.gz}"
+version="$(echo "$package_name" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')"
+build_number=$(echo "$package_name" | sed -n 's/.*-b\([0-9]\+\).*/\1/p')
+release_name="${version}-b${build_number}"
+release_folder="releases/${release_name}"
+
+yb_package_folder=$yb_software_dir/$package_folder
+# Delete the directory if it exists
+if [ -d "$yb_package_folder" ]; then
+  rm -rf "$yb_package_folder"
+fi
+mkdir -p $yb_package_folder
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_package_folder"
+chmod 0755 "$yb_package_folder"
+
+dest_path="$yb_software_dir/$version-b$build_number"
+mkdir -p $dest_path
+chown -R {{ yb_user }}:{{ yb_user }} "$dest_path"
+chmod 0755 "$dest_path"
+
+s3_package_path={{ s3_package_path }}
+
+# Only run if s3_package_path is defined
+{% if s3_package_path is defined %}
+retries=5
+delay=10
+
+# Check if package already exists
+if [ ! -f "$dest_path/$package_name" ]; then
+  echo "Downloading $package_name from $s3_package_path to $dest_path"
+
+  attempt=1
+  while [ $attempt -le $retries ]; do
+    if curl -o "$dest_path/$package_name" "$s3_package_path"; then
+      echo "Download succeeded"
+      break
+    else
+      echo "Download failed, attempt $attempt of $retries"
+      sleep $delay
+      attempt=$((attempt + 1))
+    fi
+  done
+
+  if [ ! -f "$dest_path/$package_name" ]; then
+    echo "ERROR: Failed to download package after $retries attempts"
+    exit 1
+  fi
+else
+  echo "Package already exists at $dest_path, skipping download"
+fi
+{% endif %}
+
+tar --strip-components=1 -xzf "$dest_path/$package_name" -C "$yb_package_folder"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_package_folder"
+chmod 0755 "$yb_package_folder"
+
+# Move the package to the home user directory
+rm -rf {{ yb_home_dir }}/$release_folder
+mkdir -p {{ yb_home_dir }}/$release_folder
+chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/$release_folder
+chmod 0755 {{ yb_home_dir }}/$release_folder
+mv "$dest_path" {{ yb_home_dir }}/$release_folder
+
+chmod +x "$yb_package_folder/bin/post_install.sh"
+# Run the post install script.
+bash "$yb_package_folder/bin/post_install.sh"
+
+symlink_items=$(ls "$yb_package_folder" || true)
+symlink_folders=(master tserver)
+
+for folder in "${symlink_folders[@]}"; do
+  for item in $symlink_items; do
+    src="$yb_package_folder/$item"
+    dest="{{ yb_home_dir }}/$folder/$item"
+
+    # Ensure parent directory exists
+    mkdir -p "$(dirname "$dest")"
+
+    # Create symlink if not exists or incorrect
+    if [ ! -L "$dest" ] || [ "$(readlink -f "$dest")" != "$(readlink -f "$src")" ]; then
+      ln -sf "$src" "$dest"
+      chown -R "{{ yb_user }}":"{{ yb_user }}" "$dest"
+      chmod 0755 "$dest"
+    fi
+  done
+done

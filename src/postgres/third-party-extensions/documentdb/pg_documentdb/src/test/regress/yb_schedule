@@ -1,0 +1,3 @@
+# third-party-extensions/documentdb/pg_documentdb/src/test/regress/yb_schedule
+
+test: yb.orig.documentdb

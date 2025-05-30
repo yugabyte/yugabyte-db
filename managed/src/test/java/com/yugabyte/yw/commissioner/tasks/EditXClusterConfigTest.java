@@ -54,6 +54,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -137,6 +138,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
           TaskType.XClusterConfigSetStatusForTables,
           TaskType.BootstrapProducer,
           TaskType.XClusterConfigModifyTables,
+          TaskType.XClusterConfigSetStatusForTables,
           TaskType.XClusterConfigSetStatus,
           TaskType.UniverseUpdateSucceeded,
           TaskType.UniverseUpdateSucceeded);
@@ -754,6 +756,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     CdcConsumer.ProducerEntryPB.Builder fakeProducerEntry =
         CdcConsumer.ProducerEntryPB.newBuilder();
     switch (numberOfTables) {
+      case 0:
+        break;
       case 3:
         CdcConsumer.StreamEntryPB.Builder fakeStreamEntry3 =
             CdcConsumer.StreamEntryPB.newBuilder().setProducerTableId(exampleTableID3);
@@ -772,16 +776,15 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     }
 
     CdcConsumer.ConsumerRegistryPB.Builder fakeConsumerRegistryBuilder =
-        CdcConsumer.ConsumerRegistryPB.newBuilder()
-            .putProducerMap(replicationGroupName, fakeProducerEntry.build());
-
+        CdcConsumer.ConsumerRegistryPB.newBuilder();
+    if (Objects.nonNull(replicationGroupName)) {
+      fakeConsumerRegistryBuilder.putProducerMap(replicationGroupName, fakeProducerEntry.build());
+    }
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder fakeClusterConfigBuilder =
         CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder()
             .setConsumerRegistry(fakeConsumerRegistryBuilder.build());
-
     GetMasterClusterConfigResponse fakeClusterConfigResponse =
         new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
-
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
     } catch (Exception ignore) {
@@ -794,6 +797,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
     initClientGetTablesList();
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 1);
 
     try {
       BootstrapUniverseResponse mockBootstrapUniverseResponse =
@@ -865,6 +869,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     HighAvailabilityConfig.create("test-cluster-key");
     initClientGetTablesList();
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 1);
 
     try {
       BootstrapUniverseResponse mockBootstrapUniverseResponse =
@@ -880,8 +885,6 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
       IsSetupUniverseReplicationDoneResponse mockIsAlterReplicationDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
-      when(mockClient.isAlterUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
-          .thenReturn(mockIsAlterReplicationDoneResponse);
       when(mockClient.isAlterUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
           .thenAnswer(
               invocation -> {
@@ -937,7 +940,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
     initClientGetTablesList();
-    String alterErrMsg = "failed to modify tables";
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 1);
+
+    String alterErrMsg = "Failed to add tables";
     try {
       BootstrapUniverseResponse mockBootstrapUniverseResponse =
           new BootstrapUniverseResponse(0, "", null, ImmutableList.of(exampleStreamID3));
@@ -984,6 +989,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
+    System.out.println("taskInfo.getSubTasks()");
+    taskInfo.getSubTasks().forEach(task -> System.out.println(task.getTaskType()));
+
     assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.size(), taskInfo.getSubTasks().size());
     for (int i = 0; i < ADD_TABLE_IS_ALTER_DONE_FAILURE.size(); i++) {
       TaskInfo subtaskGroup = taskInfo.getSubTasks().get(i);
@@ -1017,6 +1025,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
     initClientGetTablesList();
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 1);
 
     String alterErrMsg = "failed to modify tables";
     try {
@@ -1246,6 +1255,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
     initClientGetTablesList();
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 1);
 
     try {
       BootstrapUniverseResponse mockBootstrapUniverseResponse =
@@ -1329,6 +1339,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     HighAvailabilityConfig.create("test-cluster-key");
     initClientGetTablesList();
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 1);
 
     try {
       BootstrapUniverseResponse mockBootstrapUniverseResponse =

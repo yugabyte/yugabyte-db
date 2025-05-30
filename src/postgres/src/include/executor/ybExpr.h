@@ -28,10 +28,9 @@
 #pragma once
 
 #include "postgres.h"
+
 #include "nodes/execnodes.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*  Construct column reference expression. */
@@ -53,7 +52,7 @@ extern Expr *YbExprInstantiateParams(Expr *expr, EState *estate);
 extern YbPushdownExprs *YbInstantiatePushdownParams(YbPushdownExprs *pushdown,
 													EState *estate);
 
-extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
+extern bool YbCanPushdownExpr(Expr *pg_expr, List **params, Oid relid);
 
 extern bool YbIsTransactionalExpr(Node *pg_expr);
 

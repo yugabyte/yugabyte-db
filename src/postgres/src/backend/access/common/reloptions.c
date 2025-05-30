@@ -24,13 +24,10 @@
 #include "access/nbtree.h"
 #include "access/reloptions.h"
 #include "access/spgist_private.h"
-#include "access/transam.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
-#include "commands/tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/view.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "postmaster/postmaster.h"
 #include "utils/array.h"
@@ -39,6 +36,11 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+
+/* YB includes */
+#include "access/transam.h"
+#include "commands/yb_tablegroup.h"
+#include "miscadmin.h"
 
 /*
  * Contents of pg_class.reloptions
@@ -1321,7 +1323,7 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 				/* No match, so keep old option */
 				astate = accumArrayResult(astate, oldoptions[i],
 										  false, TEXTOID,
-										  GetCurrentMemoryContext());
+										  CurrentMemoryContext);
 			}
 		}
 	}
@@ -1422,12 +1424,12 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 
 			astate = accumArrayResult(astate, PointerGetDatum(t),
 									  false, TEXTOID,
-									  GetCurrentMemoryContext());
+									  CurrentMemoryContext);
 		}
 	}
 
 	if (astate)
-		result = makeArrayResult(astate, GetCurrentMemoryContext());
+		result = makeArrayResult(astate, CurrentMemoryContext);
 	else
 		result = (Datum) 0;
 
@@ -1487,11 +1489,11 @@ ybExcludeNonPersistentReloptions(Datum options)
 
 		astate = accumArrayResult(astate, optiondatums[i],
 								  false, TEXTOID,
-								  GetCurrentMemoryContext());
+								  CurrentMemoryContext);
 	}
 
 	if (astate)
-		result = makeArrayResult(astate, GetCurrentMemoryContext());
+		result = makeArrayResult(astate, CurrentMemoryContext);
 	else
 		result = (Datum) 0;
 
@@ -1534,7 +1536,7 @@ untransformRelOptions(Datum options)
 			val = (Node *) makeString(pstrdup(p));
 		}
 		result = lappend(result, makeDefElem(pstrdup(s), val, -1));
-		pfree(s);
+		pfree(s);				/* YB-added */
 	}
 
 	return result;
@@ -1913,7 +1915,7 @@ allocateReloptStruct(Size base, relopt_value *options, int numoptions)
 			if (optstr->fill_cb)
 			{
 				const char *val = optval->isset ? optval->values.string_val :
-				optstr->default_isnull ? NULL : optstr->default_val;
+					optstr->default_isnull ? NULL : optstr->default_val;
 
 				size += optstr->fill_cb(val, NULL);
 			}
@@ -1997,8 +1999,8 @@ fillRelOptions(void *rdopts, Size basesize,
 						if (optstring->fill_cb)
 						{
 							Size		size =
-							optstring->fill_cb(string_val,
-											   (char *) rdopts + offset);
+								optstring->fill_cb(string_val,
+												   (char *) rdopts + offset);
 
 							if (size)
 							{
@@ -2177,8 +2179,9 @@ build_local_reloptions(local_relopts *relopts, Datum options, bool validate)
 	fillRelOptions(opts, relopts->relopt_struct_size, vals, noptions, validate,
 				   elems, noptions);
 
-	foreach(lc, relopts->validators)
-		((relopts_validator) lfirst(lc)) (opts, vals, noptions);
+	if (validate)
+		foreach(lc, relopts->validators)
+			((relopts_validator) lfirst(lc)) (opts, vals, noptions);
 
 	if (elems)
 		pfree(elems);

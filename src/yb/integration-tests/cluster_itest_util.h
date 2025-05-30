@@ -135,7 +135,9 @@ client::YBSchema SimpleIntKeyYBSchema();
 // Create a populated TabletServerMap by interrogating the master.
 Result<TabletServerMap> CreateTabletServerMap(
     const master::MasterClusterProxy& proxy, rpc::ProxyCache* cache);
-Result<TabletServerMap> CreateTabletServerMap(ExternalMiniCluster* cluster);
+
+template <typename MiniClusterType>
+Result<TabletServerMap> CreateTabletServerMap(MiniClusterType* cluster);
 
 template <class Getter>
 auto GetForEachReplica(const std::vector<TServerDetails*>& replicas,
@@ -457,7 +459,8 @@ Status RemoveServer(const TServerDetails* leader,
 // Get the list of tablets from the remote server.
 Status ListTablets(const TServerDetails* ts,
                    const MonoDelta& timeout,
-                   std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets);
+                   std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets,
+                   bool user_tablets_only = true);
 
 // Get the list of RUNNING tablet ids from the remote server.
 Status ListRunningTabletIds(const TServerDetails* ts,

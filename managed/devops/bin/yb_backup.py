@@ -996,6 +996,7 @@ class YBManifest:
             properties['use-tablespaces'] = self.backup.args.use_tablespaces
         properties['backup-tablespaces'] = self.backup.args.backup_tablespaces
         properties['backup-roles'] = self.backup.args.backup_roles
+        properties['dump-role-checks'] = self.backup.args.dump_role_checks
         properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
@@ -1358,6 +1359,9 @@ class YBBackup:
         parser.add_argument(
             '--backup_roles', required=False, action='store_true', default=False,
             help='Backup YSQL ROLE objects into the backup.')
+        parser.add_argument(
+            '--dump_role_checks', required=False, action='store_true', default=False,
+            help='Add to the dump additional checks if the used ROLE exists.')
         parser.add_argument(
             '--restore_roles', required=False, action='store_true', default=False,
             help='Restore YSQL ROLE objects from the backup.')
@@ -3091,6 +3095,10 @@ class YBBackup:
             db_name = keyspace_name(self.args.keyspace[0])
             ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
                               '--schema-only', '--dbname=' + db_name, '--file=' + sql_dump_path]
+
+            if self.args.dump_role_checks:
+                ysql_dump_args.append('--dump-role-checks')
+
             if sql_tbsp_dump_path:
                 logging.info("[app] Creating ysql dump for tablespaces to {}".format(
                     sql_tbsp_dump_path))

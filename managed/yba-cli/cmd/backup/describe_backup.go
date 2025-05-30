@@ -34,7 +34,11 @@ var describeBackupCmd = &cobra.Command{
 		if len(backupUUID) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No backup UUID specified to describe backup\n", formatter.RedColor))
+				formatter.Colorize(
+					"No backup UUID specified to describe backup\n",
+					formatter.RedColor,
+				),
+			)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -53,7 +57,7 @@ var describeBackupCmd = &cobra.Command{
 			BackupUUIDList: backupUUIDList,
 		}
 
-		backupAPIDirection := "DESC"
+		backupAPIDirection := util.DescSortDirection
 		backupAPISort := "createTime"
 
 		backupAPIQuery := ybaclient.BackupPagedApiQuery{
@@ -130,7 +134,7 @@ var describeBackupCmd = &cobra.Command{
 
 func init() {
 	describeBackupCmd.Flags().SortFlags = false
-	describeBackupCmd.Flags().String("uuid", "",
+	describeBackupCmd.Flags().StringP("uuid", "u", "",
 		"[Required] The UUID of the backup to be described.")
 	describeBackupCmd.MarkFlagRequired("uuid")
 }

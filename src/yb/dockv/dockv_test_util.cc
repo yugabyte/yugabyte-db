@@ -19,6 +19,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/primitive_value.h"
 
+#include "yb/dockv/value_type.h"
 #include "yb/util/random_util.h"
 
 namespace yb::dockv {

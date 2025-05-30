@@ -254,7 +254,7 @@ az network private-endpoint create \
     --resource-group <resource_group_name> \
     --subnet <subnet_name> \
     --vnet-name <private_endpoint_vnet_name> \
-    –-location <private_endpoint_region_name>
+    --location <private_endpoint_region_name>
 ```
 
 Replace values as follows:

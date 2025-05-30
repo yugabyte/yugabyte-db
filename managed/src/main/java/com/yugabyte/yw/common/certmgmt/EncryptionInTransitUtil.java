@@ -42,6 +42,7 @@ import org.springframework.security.crypto.encrypt.TextEncryptor;
 @Slf4j
 public class EncryptionInTransitUtil {
   public static final String SALT_STR = "hashicorpcert";
+  public static final String MULTI_ROOT_CERT_TMP_LABEL_SUFFIX = " (TEMPORARY)";
 
   @Inject static RuntimeConfGetter runtimeConfGetter;
 

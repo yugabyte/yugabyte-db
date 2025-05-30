@@ -123,6 +123,7 @@ public class MockUpgrade extends UpgradeTaskBase {
             })
         .when(fakeSubTaskGroup)
         .addSubTask(any());
+    doAnswer(inv -> tasksForTaskGroup.size()).when(fakeSubTaskGroup).getSubTaskCount();
   }
 
   @Override

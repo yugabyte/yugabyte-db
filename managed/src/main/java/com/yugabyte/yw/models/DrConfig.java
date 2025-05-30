@@ -72,6 +72,9 @@ public class DrConfig extends Model {
   @JsonIgnore
   private UUID storageConfigUuid;
 
+  @OneToMany(mappedBy = "drConfig", cascade = CascadeType.ALL)
+  private List<Webhook> webhooks;
+
   @JsonIgnore private int parallelism;
 
   /**

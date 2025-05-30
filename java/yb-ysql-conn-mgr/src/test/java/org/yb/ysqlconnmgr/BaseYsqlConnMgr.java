@@ -56,6 +56,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final int STATS_UPDATE_INTERVAL = 2;
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
+  private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -74,6 +75,8 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
       builder.addCommonTServerFlag(
       "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
     }
+    builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
+      Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
   }
 
   @Override
@@ -134,6 +137,12 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), myMap);
   }
 
+  protected void reduceMaxPoolSize(int max_pool_size) throws Exception {
+    Map<String, String> myMap = new HashMap<>();
+    myMap.put("ysql_conn_mgr_max_pools", Integer.toString(max_pool_size));
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), myMap);
+  }
+
 protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
         throws Exception {
     Map<String, String> tsFlagMap = new HashMap<>();
@@ -159,6 +168,12 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
 
   protected void enableVersionMatchingAndRestartCluster() throws Exception {
     enableVersionMatchingAndRestartCluster(true);
+  }
+
+  protected void modifyExtendedQueryProtocolAndRestartCluster(
+      boolean optimized_extended_query_protocol) throws Exception {
+    ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
   protected void disableWarmupModeAndRestartCluster() throws Exception {

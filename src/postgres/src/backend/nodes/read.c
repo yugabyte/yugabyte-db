@@ -25,7 +25,10 @@
 #include "nodes/pg_list.h"
 #include "nodes/readfuncs.h"
 #include "nodes/value.h"
+
+/* YB includes */
 #include "yb/yql/pggate/ybc_pggate.h"
+
 
 /* Static state for pg_strtok */
 static const char *pg_strtok_ptr = NULL;
@@ -59,6 +62,19 @@ SetPgStrTokPtr(const char *new_pg_strtok_ptr)
 	{
 		pg_strtok_ptr = new_pg_strtok_ptr;
 	}
+}
+
+int
+GetYbExpressionVersion(void)
+{
+	return IsMultiThreadedMode() ? YBCPgGetThreadLocalYbExpressionVersion() : PG_MAJORVERSION_NUM;
+}
+
+static void
+SetYbExpressionVersion(int yb_expr_version)
+{
+	Assert(IsMultiThreadedMode());
+	YBCPgSetThreadLocalYbExpressionVersion(yb_expr_version);
 }
 
 /*
@@ -113,6 +129,14 @@ stringToNodeInternal(const char *str, bool restore_loc_fields)
 void *
 stringToNode(const char *str)
 {
+	return stringToNodeInternal(str, false);
+}
+
+void *
+ybDeserializeNode(const char *str, int yb_expr_version)
+{
+	Assert(IsMultiThreadedMode());
+	SetYbExpressionVersion(yb_expr_version);
 	return stringToNodeInternal(str, false);
 }
 

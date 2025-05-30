@@ -17,12 +17,17 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 import org.apache.commons.collections4.MapUtils;
 
 @Data
@@ -30,6 +35,8 @@ import org.apache.commons.collections4.MapUtils;
 public class SpecificGFlags {
 
   @EqualsAndHashCode
+  @AllArgsConstructor
+  @NoArgsConstructor
   public static class PerProcessFlags {
     public Map<UniverseTaskBase.ServerType, Map<String, String>> value = new HashMap<>();
 
@@ -114,13 +121,118 @@ public class SpecificGFlags {
     return false;
   }
 
-  private PerProcessFlags clone(PerProcessFlags perProcessFlags) {
+  private static PerProcessFlags clone(PerProcessFlags perProcessFlags) {
     if (perProcessFlags == null) {
       return null;
     }
     PerProcessFlags result = new PerProcessFlags();
-    result.value = new HashMap<>(perProcessFlags.value);
+    Map<UniverseTaskBase.ServerType, Map<String, String>> cloneValue =
+        perProcessFlags.value.entrySet().stream()
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey, // Copy key as is
+                    e -> new HashMap<>(e.getValue()) // Deep copy inner map
+                    ));
+
+    result.value = new HashMap<>(cloneValue);
     return result;
+  }
+
+  public static PerProcessFlags combine(
+      PerProcessFlags basePerProcessFlags, PerProcessFlags extraPerProcessFlags) {
+    PerProcessFlags finalPerProcessFlags = clone(basePerProcessFlags);
+    if (finalPerProcessFlags == null) {
+      finalPerProcessFlags = new PerProcessFlags();
+    }
+    if (extraPerProcessFlags == null) {
+      return finalPerProcessFlags;
+    }
+    for (Map.Entry<UniverseTaskBase.ServerType, Map<String, String>> entry :
+        extraPerProcessFlags.value.entrySet()) {
+      UniverseTaskBase.ServerType serverType = entry.getKey();
+      Map<String, String> flagsMap = entry.getValue();
+      if (finalPerProcessFlags.value.containsKey(serverType)) {
+        finalPerProcessFlags.value.get(serverType).putAll(flagsMap);
+      } else {
+        finalPerProcessFlags.value.put(serverType, flagsMap);
+      }
+    }
+    return finalPerProcessFlags;
+  }
+
+  public static SpecificGFlags combine(
+      SpecificGFlags specificGflags1, SpecificGFlags specificGflags2) {
+    if (specificGflags1 == null && specificGflags2 == null) {
+      return null;
+    }
+    if (specificGflags1 == null) {
+      specificGflags1 = new SpecificGFlags();
+    }
+    if (specificGflags2 == null) {
+      return specificGflags1;
+    }
+    SpecificGFlags finalSpecificGFlags = specificGflags1.clone();
+    // Add the extra gflag groups.
+    List<GroupName> finalGflagGroups = finalSpecificGFlags.getGflagGroups();
+    for (GroupName groupName : specificGflags2.gflagGroups) {
+      if (!finalGflagGroups.contains(groupName)) {
+        finalGflagGroups.add(groupName);
+      }
+    }
+    finalSpecificGFlags.setGflagGroups(finalGflagGroups);
+
+    // Add the per process flags.
+    PerProcessFlags finalPerProcessFlags =
+        combine(specificGflags1.getPerProcessFlags(), specificGflags2.getPerProcessFlags());
+    finalSpecificGFlags.setPerProcessFlags(finalPerProcessFlags);
+
+    // Add the per AZ flags.
+    for (Map.Entry<UUID, PerProcessFlags> entry : specificGflags2.getPerAZ().entrySet()) {
+      UUID azUUID = entry.getKey();
+      PerProcessFlags extraAzPerProcessFlags = entry.getValue();
+      if (finalSpecificGFlags.getPerAZ().containsKey(azUUID)) {
+        PerProcessFlags baseAzPerProcessFlags = finalSpecificGFlags.getPerAZ().get(azUUID);
+        finalSpecificGFlags
+            .getPerAZ()
+            .put(azUUID, combine(baseAzPerProcessFlags, extraAzPerProcessFlags));
+      } else {
+        finalSpecificGFlags.getPerAZ().put(azUUID, extraAzPerProcessFlags);
+      }
+    }
+
+    return finalSpecificGFlags;
+  }
+
+  /**
+   * Fetches all GFlag keys from the provided SpecificGFlags object. This method aggregates GFlag
+   * keys from both per-process and per-AZ (Availability Zone) configurations within the
+   * SpecificGFlags object.
+   *
+   * @param specificGFlags The SpecificGFlags object containing GFlag configurations. Can be null,
+   *     in which case an empty set is returned.
+   * @return A set of all GFlag keys found in the provided SpecificGFlags object.
+   */
+  public static Set<String> fetchAllGFlagsFlat(SpecificGFlags specificGFlags) {
+    Set<String> allGflagKeys = new HashSet<>();
+    if (specificGFlags != null) {
+      // Add the per process gflags.
+      if (specificGFlags.perProcessFlags != null) {
+        for (Map<String, String> value : specificGFlags.perProcessFlags.value.values()) {
+          allGflagKeys.addAll(value.keySet());
+        }
+      }
+      // Add the per AZ gflags.
+      if (specificGFlags.perAZ != null) {
+        for (PerProcessFlags flags : specificGFlags.perAZ.values()) {
+          if (flags != null) {
+            for (Map<String, String> value : flags.value.values()) {
+              allGflagKeys.addAll(value.keySet());
+            }
+          }
+        }
+      }
+    }
+    return allGflagKeys;
   }
 
   public static boolean isEmpty(SpecificGFlags specificGFlags) {

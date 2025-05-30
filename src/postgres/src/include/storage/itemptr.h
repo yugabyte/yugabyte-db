@@ -123,7 +123,6 @@ typedef ItemPointerData *ItemPointer;
 /*
  * ItemPointerSet
  *		Sets a disk item pointer to the specified block and offset.
- *      For Yugabyte, initialize yb_item to 0 here. It's then set to a valid value when being used.
  */
 #define ItemPointerSet(pointer, blockNumber, offNum) \
 ( \

@@ -27,6 +27,9 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   }
 
   if (db_type == StorageDbType::kRegular) {
+    if (slice[0] == dockv::KeyEntryTypeAsChar::kTransactionApplyState) {
+      return KeyType::kApplyState;
+    }
     return KeyType::kPlainSubDocKey;
   }
 

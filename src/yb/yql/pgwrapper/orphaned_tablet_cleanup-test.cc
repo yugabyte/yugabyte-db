@@ -17,7 +17,6 @@
 #include <memory>
 #include <thread>
 
-#include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
@@ -43,6 +42,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -104,8 +104,7 @@ class OrphanedTabletCleanupTest : public PgMiniTestBase {
   void VerifyTabletDataOnTserver(size_t num_expected_tablet_peers) {
     // Ensure that the number of tablet peers present on tservers matches the expected count. As
     // more tests are added to this class, we can make this a stronger condition.
-    auto tablet_peers = ListTabletPeers(
-        cluster_.get(), ListPeersFilter::kAll, IncludeTransactionStatusTablets::kFalse);
+    auto tablet_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     ASSERT_EQ(tablet_peers.size(), num_expected_tablet_peers);
   }
 

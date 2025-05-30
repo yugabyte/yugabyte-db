@@ -28,10 +28,13 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
+#include "yb/tserver/ysql_lease.h"
+
+#include "yb/util/concurrent_value.h"
 
 namespace yb {
 
@@ -50,7 +53,6 @@ namespace tserver {
 class PgYCQLStatementStatsRequestPB;
 class PgYCQLStatementStatsResponsePB;
 
-using CertificateReloader = std::function<Status(void)>;
 using PgConfigReloader = std::function<Status(void)>;
 
 class TabletServerIf : public LocalTabletServer {
@@ -59,10 +61,12 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual TSTabletManager* tablet_manager() = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
-  virtual tablet::TSLocalLockManager* ts_local_lock_manager() const = 0;
+  virtual TSLocalLockManagerPtr ts_local_lock_manager() const = 0;
 
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
+
+  virtual uint32_t get_oid_cache_invalidations_count() const = 0;
 
   virtual void get_ysql_catalog_version(uint64_t* current_version,
                                         uint64_t* last_breaking_version) const = 0;
@@ -74,13 +78,21 @@ class TabletServerIf : public LocalTabletServer {
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const = 0;
 
+  virtual Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const = 0;
+
+  virtual Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) = 0;
+
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
   virtual client::TransactionPool& TransactionPool() = 0;
 
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
 
-  virtual tserver::TServerSharedData& SharedObject() = 0;
+  virtual ConcurrentPointerReference<TServerSharedData> SharedObject() = 0;
 
   virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
@@ -130,6 +142,17 @@ class TabletServerIf : public LocalTabletServer {
   virtual bool SkipCatalogVersionChecks() { return false; }
 
   virtual const std::string& permanent_uuid() const = 0;
+
+  virtual Result<std::string> GetUniverseUuid() const = 0;
+
+  virtual void SetYsqlDBCatalogVersions(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data) = 0;
+
+  virtual Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const = 0;
+
+  virtual Status RestartPG() const = 0;
+
+  virtual Status KillPg() const = 0;
 };
 
 } // namespace tserver

@@ -1,0 +1,1484 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 413000;
+SET documentdb.next_collection_id TO 4130;
+SET documentdb.next_collection_index_id TO 4130;
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- fetch all rows
+SELECT shard_key_value, object_id, document FROM documentdb_api.collection('db', 'aggregation_pipeline_let') ORDER BY object_id;
+ shard_key_value |  object_id   |                                                               document                                                               
+---------------------------------------------------------------------
+            4130 | { "" : "1" } | { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+            4130 | { "" : "2" } | { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+            4130 | { "" : "3" } | { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true }
+(3 rows)
+
+-- add newField
+-- with let enabled
+EXPLAIN (VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": 20 } }');
+                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::documentdb_core.bson, '{ }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "varRef" : { "$literal" : { "$numberInt" : "20" } } } }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_4130_413001 collection  (cost=4.18..12.65 rows=4 width=32)
+               Output: documentdb_api_internal.bson_dollar_project_find(document, '{ "newField" : "$$varRef" }'::documentdb_core.bson, '{ }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "varRef" : { "$literal" : { "$numberInt" : "20" } } } }'::documentdb_core.bson)
+               Recheck Cond: (collection.shard_key_value = '4130'::bigint)
+               ->  Bitmap Index Scan on _id_  (cost=0.00..4.18 rows=4 width=0)
+                     Index Cond: (collection.shard_key_value = '4130'::bigint)
+(12 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": 20 } }');
+                       document                        
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "20" } }
+ { "_id" : "2", "newField" : { "$numberInt" : "20" } }
+ { "_id" : "3", "newField" : { "$numberInt" : "20" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": { "$avg": [ 20, 40 ] } } }');
+                          document                          
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberDouble" : "30.0" } }
+ { "_id" : "2", "newField" : { "$numberDouble" : "30.0" } }
+ { "_id" : "3", "newField" : { "$numberDouble" : "30.0" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varNotRef" }, "filter": {}, "let": { "varRef": { "$avg": [ 20, 40 ] } } }');
+ERROR:  Use of undefined variable: varNotRef
+-- let support in $expr
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$lt": [ "$_id", "$$varRef" ]} }, "let": { "varRef": "3" } }');
+             document              
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : "3" }
+ { "_id" : "2", "newField" : "3" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ]} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+ { "_id" : "2", "newField" : { "$numberInt" : "3" } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$lt": [ "$_id", "$$varNotRef" ]} }, "let": { "varRef": "3" } }');
+ERROR:  Use of undefined variable: varNotRef
+-- let support in $expr with nested $let
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varNotRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+ { "_id" : "2", "newField" : { "$numberInt" : "3" } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+(1 row)
+
+-- same scenario but with aggregation pipeline
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ "$_id", "$$varRef" ]} } } ], "let": { "varRef": "3" } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } } } ], "let": { "varRef": 3 } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ { "$toInt": "$_id" }, "$$varNotRef" ] } } } ], "let": { "varRef": 3 } }');
+ERROR:  Use of undefined variable: varNotRef
+-- let support in $expr with nested $let
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varNotRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+ { "_id" : "2", "newField" : { "$numberInt" : "3" } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+(1 row)
+
+-- same scenario but with aggregation pipeline
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$let": { "vars": { "varRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} } } ], "let": { "varRef": 3 } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+(1 row)
+
+-- find/aggregate with variables referencing other variables on the same let spec should work
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply"  }, "filter": {}, "let": { "varRef": 20, "add": {"$add": ["$$varRef", 2]}, "multiply": {"$multiply": ["$$add", 2]} } }');
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+ { "_id" : "2", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+ { "_id" : "3", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{"$project": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply"  }}], "let": { "varRef": 20, "add": {"$add": ["$$varRef", 2]}, "multiply": {"$multiply": ["$$add", 2]} } }');
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : "1", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+ { "_id" : "2", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+ { "_id" : "3", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+(3 rows)
+
+-- nested $let should also work
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply", "nestedLet": "$$nestedLet"  }, "filter": {}, "let": { "varRef": 20, "add": {"$add": ["$$varRef", 2]}, "multiply": {"$multiply": ["$$add", 2]}, "nestedLet": {"$let": {"vars": {"add": {"$add": ["$$multiply", 1]}}, "in": "$$add"}} } }');
+                                                                             document                                                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+ { "_id" : "2", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+ { "_id" : "3", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{"$project": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply", "nestedLet": "$$nestedLet"  }}], "let": { "varRef": 20, "add": {"$add": ["$$varRef", 2]}, "multiply": {"$multiply": ["$$add", 2]}, "nestedLet": {"$let": {"vars": {"add": {"$add": ["$$multiply", 1]}}, "in": "$$add"}} } }');
+                                                                             document                                                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+ { "_id" : "2", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+ { "_id" : "3", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+(3 rows)
+
+-- if we change the order and the variable that we're referencing is defined afterwards we should fail
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply"  }, "filter": {}, "let": { "add": {"$add": ["$$varRef", 2]}, "varRef": 20, "multiply": {"$multiply": ["$$add", 2]} } }');
+ERROR:  Use of undefined variable: varRef
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{"$project": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply"  }}], "let": { "add": {"$add": ["$$varRef", 2]}, "varRef": 20, "multiply": {"$multiply": ["$$add", 2]} } }');
+ERROR:  Use of undefined variable: varRef
+-- $addFields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : false, "newField" : { "$numberInt" : "3" } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$set": { "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : false, "newField" : { "$numberInt" : "3" } }
+(3 rows)
+
+-- pipeline with inlined $project then addFields, on exclusion
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": "$$varRef", "xyz": "$_id" } } ], "let": {"varRef": 1}}');
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "1" }, "xyz" : "1" }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "$numberInt" : "1" }, "xyz" : "2" }
+ { "_id" : "3", "a" : { "$numberInt" : "1" }, "b" : "yes", "c" : true, "xyz" : "3" }
+(3 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "let": {"varRef": 1}}');
+                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "varRef" : { "$literal" : { "$numberInt" : "1" } } } }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4130_413001 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '4130'::bigint)
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_4130_413001 collection
+               Output: documentdb_api_internal.bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE, "let" : { "varRef" : { "$literal" : { "$numberInt" : "1" } } } }'::documentdb_core.bson)
+               Recheck Cond: (collection.shard_key_value = '4130'::bigint)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '4130'::bigint)
+(12 rows)
+
+-- $replaceRoot
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$replaceRoot": { "newRoot": { "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } } }} ], "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $replaceWith
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$replaceWith": { "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $group (with simple aggregators)
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" } } } ], "let": { "varRef": 3 } }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
+(1 row)
+
+-- $group (with sorted accumulators)
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" }, "first": { "$first" : "$a.b" } } } ], "let": { "varRef": 3 } }');
+                                                                    document                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" }, "first" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" }, "last": { "$last" : "$a.b" } } } ], "let": { "varRef": 3 } }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$set": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id": "$$varRef", "top": {"$top": {"output": [ "$_id" ], "sortBy": { "_id": 1 }}}}} ], "let": { "varRef": 3 } }');
+                      document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "top" : [ "1" ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$set": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id": "$$varRef", "bottom": {"$bottom": {"output": [ "$_id" ], "sortBy": { "_id": 1 }}}}} ], "let": { "varRef": 3 } }');
+                        document                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "bottom" : [ "3" ] }
+(1 row)
+
+-- $project
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "_id": 1, "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "2", "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "3", "c" : false, "newField" : { "$numberInt" : "3" } }
+(3 rows)
+
+-- $unionWith
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": { "c": "foo" }}, { "$unionWith": { "coll": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "bar": "$$varRef" } } ] } } ], "let": { "varRef": 30 }}');
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "c" : "foo" }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "c" : "foo" }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : "foo" }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "bar" : { "$numberInt" : "30" } }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "bar" : { "$numberInt" : "30" } }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true, "bar" : { "$numberInt" : "30" } }
+(6 rows)
+
+-- $sortByCount
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$sortByCount": { "$lt": [ "$_id", "$$varRef" ] } } ], "let": { "varRef": "2" } }');
+                      document                       
+---------------------------------------------------------------------
+ { "_id" : false, "count" : { "$numberInt" : "2" } }
+ { "_id" : true, "count" : { "$numberInt" : "1" } }
+(2 rows)
+
+-- $facet
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "newField": "myvalue" }}, { "$facet": { "sb1": [ { "$addFields": { "myVar": "$$varRef" }} ], "sb2": [ { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" } } } ] }} ], "let": { "varRef": "2" } }');
+                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ { "sb1" : [ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "newField" : "myvalue", "myVar" : "2" }, { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "newField" : "myvalue", "myVar" : "2" }, { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true, "newField" : "myvalue", "myVar" : "2" } ], "sb2" : [ { "_id" : "2", "c" : { "$numberInt" : "0" } } ] }
+(1 row)
+
+-- $graphLookup
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 1, "name" : "Dev" }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 2, "name" : "Eliot", "reportsTo" : "Dev" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 3, "name" : "Ron", "reportsTo" : "Eliot" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 4, "name" : "Andrew", "reportsTo" : "Eliot" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 5, "name" : "Asya", "reportsTo" : "Ron" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_gl', '{ "_id" : 6, "name" : "Dan", "reportsTo" : "Andrew" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let_gl", "pipeline": [ { "$graphLookup": { "from": "aggregation_pipeline_let_gl", "startWith": { "$max": [ "$reportsTo", "$$reportsTo" ] }, "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ], "let": { "reportsTo": "Dev" } }');
+                                                                                                                                                   document                                                                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" } ] }
+ { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" } ] }
+ { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }
+ { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }
+ { "_id" : { "$numberInt" : "5" }, "name" : "Asya", "reportsTo" : "Ron", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot" } ] }
+ { "_id" : { "$numberInt" : "6" }, "name" : "Dan", "reportsTo" : "Andrew", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" } ] }
+(6 rows)
+
+-- $inverseMatch
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_inv', '{ "_id" : 1, "policy" : { "name": "Dev" } }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'aggregation_pipeline_let_inv', '{ "_id" : 1, "policy" : { "name": "Elliot" } }');
+                                                                                                                       insert_one                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let_inv", "pipeline": [ { "$inverseMatch": { "path": "policy", "from": "aggregation_pipeline_let_gl", "pipeline": [{"$match": {"$expr": { "$eq": [ "$name", "$$varRef"] }} }] }  }], "let": { "varRef": "Dev" } }');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "policy" : { "name" : "Dev" } }
+(1 row)
+
+-- $window operators
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 1, "a": "abc", "cost": 10, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 2, "a": "def", "cost": 8, "quantity": 502, "date": { "$date": { "$numberLong": "1718841605000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_setWindowFields','{ "_id": 3, "a": "ghi", "cost": 4, "quantity": 503, "date": { "$date": { "$numberLong": "1718841610000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "aggregation_pipeline_let_setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$concat": ["$a", "$$varRef" ] }, "output": {"total": { "$sum": "$$varRefNum"}}}}], "let": { "varRef": "prefix", "varRefNum": 2 } }');
+                                                                                                        document                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } }, "total" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "def", "cost" : { "$numberInt" : "8" }, "quantity" : { "$numberInt" : "502" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } }, "total" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "ghi", "cost" : { "$numberInt" : "4" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } }, "total" : { "$numberInt" : "2" } }
+(3 rows)
+
+-- $lookup
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelinefrom',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelinefrom','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House", "qval": 100 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade", "qval": 120 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelineto','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda", "qval": 140 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelinefrom_second',' {"_id": 1, "country": "America", "qq": 100 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_pipelinefrom_second','{ "_id": 2, "country": "Canada", "qq": 120 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Add a $lookup with let
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }}, { "$addFields": { "addedQval": "$$qval" }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                   document                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedQval" : { "$numberInt" : "100" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedQval" : { "$numberInt" : "120" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+(3 rows)
+
+-- Add a $lookup with let but add a subquery stage
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$sort": { "_id": 1 } }, { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                               document                                                                                                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$addFields": { "addedQvalBefore": "$$qval" }}, { "$sort": { "_id": 1 } }, { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }}, { "$addFields": { "addedQvalAfter": "$$qval" }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                             document                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedQvalBefore" : { "$numberInt" : "100" }, "addedQvalAfter" : { "$numberInt" : "100" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedQvalBefore" : { "$numberInt" : "120" }, "addedQvalAfter" : { "$numberInt" : "120" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+(3 rows)
+
+-- nested $lookup
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                                  document                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "myMatch" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "myExtra" : [ { "_id" : { "$numberInt" : "1" }, "country" : "America", "qq" : { "$numberInt" : "100" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "myExtra" : [ { "_id" : { "$numberInt" : "2" }, "country" : "Canada", "qq" : { "$numberInt" : "120" } } ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "myExtra" : [ { "_id" : { "$numberInt" : "2" }, "country" : "Canada", "qq" : { "$numberInt" : "120" } } ] } ] }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$qval" }}, { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                                                      document                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "myMatch" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedVal" : { "$numberInt" : "100" }, "myExtra" : [ { "_id" : { "$numberInt" : "1" }, "country" : "America", "qq" : { "$numberInt" : "100" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedVal" : { "$numberInt" : "120" }, "myExtra" : [ { "_id" : { "$numberInt" : "2" }, "country" : "Canada", "qq" : { "$numberInt" : "120" } } ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedVal" : { "$numberInt" : "140" }, "myExtra" : [ { "_id" : { "$numberInt" : "2" }, "country" : "Canada", "qq" : { "$numberInt" : "120" } } ] } ] }
+(3 rows)
+
+-- multiple variable in lookup let
+SELECT documentdb_api.insert('db', '{"insert":"orderscoll", "documents":[
+  { "_id": 1, "orderId": "A001", "productId": "P001", "quantity": 10 },
+  { "_id": 2, "orderId": "A002", "productId": "P002", "quantity": 5 },
+  { "_id": 3, "orderId": "A003", "productId": "P001", "quantity": 2 }
+]
+
+}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.insert('db', '{"insert":"products", "documents":[
+  { "_id": "P001", "name": "Product 1", "price": 100 },
+  { "_id": "P002", "name": "Product 2", "price": 200 }
+]
+
+}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('db', '{ "aggregate": "orderscoll", "pipeline": [ { "$lookup": { "from": "products", "let": { "productId": "$productId", "hello" : "parag" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$_id", "$$productId" ] } } }, { "$project": { "name": 1, "price": 1, "_id": 0 , "field" : "$$hello" } } ], "as": "productDetails" } }, { "$unwind": "$productDetails" } ] , "cursor": {} }');
+                                                                                                        document                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "orderId" : "A001", "productId" : "P001", "quantity" : { "$numberInt" : "10" }, "productDetails" : { "name" : "Product 1", "price" : { "$numberInt" : "100" }, "field" : "parag" } }
+ { "_id" : { "$numberInt" : "2" }, "orderId" : "A002", "productId" : "P002", "quantity" : { "$numberInt" : "5" }, "productDetails" : { "name" : "Product 2", "price" : { "$numberInt" : "200" }, "field" : "parag" } }
+ { "_id" : { "$numberInt" : "3" }, "orderId" : "A003", "productId" : "P001", "quantity" : { "$numberInt" : "2" }, "productDetails" : { "name" : "Product 1", "price" : { "$numberInt" : "100" }, "field" : "parag" } }
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT document from bson_aggregation_pipeline('db', '{ "aggregate": "orderscoll", "pipeline": [ { "$lookup": { "from": "products", "let": { "productId": "$productId", "hello" : "parag" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$_id", "$$productId" ] } } }, { "$project": { "name": 1, "price": 1, "_id": 0 , "field" : "$$hello" } } ], "as": "productDetails" } }, { "$unwind": "$productDetails" } ] , "cursor": {} }');
+                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               ->  Nested Loop Left Join
+                     ->  Bitmap Heap Scan on documents_4137_413118 collection
+                           Recheck Cond: (shard_key_value = '4137'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (shard_key_value = '4137'::bigint)
+                     ->  Aggregate
+                           ->  Bitmap Heap Scan on documents_4138_413128 collection_0_1
+                                 Recheck Cond: (shard_key_value = '4138'::bigint)
+                                 Filter: documentdb_api_internal.bson_dollar_expr(document, '{ "" : { "$eq" : [ "$_id", "$$productId" ] } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "productId" : "$productId", "hello" : "parag" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (shard_key_value = '4138'::bigint)
+               SubPlan 1
+                 ->  Aggregate
+                       ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_0
+(20 rows)
+
+-- only part of the pipeline uses let
+SELECT document from bson_aggregation_pipeline('db', '{ "aggregate": "orderscoll", "pipeline": [ { "$lookup": { "from": "products", "let": { "productId": "$productId", "hello" : "parag" }, "pipeline": [ { "$match": { "_id": { "$gt": "P001" } } }, { "$project": { "name": 1, "price": 1, "_id": 0 , "field" : "$$hello" } } ], "as": "productDetails" } }, { "$unwind": "$productDetails" } ] , "cursor": {} }');
+                                                                                                        document                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "orderId" : "A001", "productId" : "P001", "quantity" : { "$numberInt" : "10" }, "productDetails" : { "name" : "Product 2", "price" : { "$numberInt" : "200" }, "field" : "parag" } }
+ { "_id" : { "$numberInt" : "2" }, "orderId" : "A002", "productId" : "P002", "quantity" : { "$numberInt" : "5" }, "productDetails" : { "name" : "Product 2", "price" : { "$numberInt" : "200" }, "field" : "parag" } }
+ { "_id" : { "$numberInt" : "3" }, "orderId" : "A003", "productId" : "P001", "quantity" : { "$numberInt" : "2" }, "productDetails" : { "name" : "Product 2", "price" : { "$numberInt" : "200" }, "field" : "parag" } }
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT document from bson_aggregation_pipeline('db', '{ "aggregate": "orderscoll", "pipeline": [ { "$lookup": { "from": "products", "let": { "productId": "$productId", "hello" : "parag" }, "pipeline": [ { "$match": { "_id": { "$gt": "P001" } } }, { "$project": { "name": 1, "price": 1, "_id": 0 , "field" : "$$hello" } } ], "as": "productDetails" } }, { "$unwind": "$productDetails" } ] , "cursor": {} }');
+                                                                                 QUERY PLAN                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               ->  Nested Loop Left Join
+                     ->  Bitmap Heap Scan on documents_4137_413118 collection
+                           Recheck Cond: (shard_key_value = '4137'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (shard_key_value = '4137'::bigint)
+                     ->  Materialize
+                           ->  Aggregate
+                                 ->  Index Scan using _id_ on documents_4138_413128 collection_0_1
+                                       Index Cond: ((shard_key_value = '4138'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : "P001" }'::documentdb_core.bson))
+                                       Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : "P001" }'::documentdb_core.bson)
+               SubPlan 1
+                 ->  Aggregate
+                       ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_0
+(19 rows)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$qval" }}, { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }}, { "$addFields": { "addedVal": "$$qval" }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "myMatch" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedVal" : { "$numberInt" : "100" }, "myExtra" : [ { "_id" : { "$numberInt" : "1" }, "country" : "America", "qq" : { "$numberInt" : "100" }, "addedVal" : { "$numberInt" : "100" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedVal" : { "$numberInt" : "120" }, "myExtra" : [ { "_id" : { "$numberInt" : "2" }, "country" : "Canada", "qq" : { "$numberInt" : "120" }, "addedVal" : { "$numberInt" : "120" } } ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedVal" : { "$numberInt" : "140" }, "myExtra" : [ { "_id" : { "$numberInt" : "2" }, "country" : "Canada", "qq" : { "$numberInt" : "120" }, "addedVal" : { "$numberInt" : "140" } } ] } ] }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$sort": { "_id": 1 }}, { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$qval" }}, { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }}, { "$addFields": { "addedVal": "$$secondVar" }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "myMatch" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedVal" : { "$numberInt" : "100" }, "myExtra" : [ { "_id" : { "$numberInt" : "1" }, "country" : "America", "qq" : { "$numberInt" : "100" }, "addedVal" : { "$numberInt" : "100" } } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedVal" : { "$numberInt" : "120" }, "myExtra" : [ { "_id" : { "$numberInt" : "2" }, "country" : "Canada", "qq" : { "$numberInt" : "120" }, "addedVal" : { "$numberInt" : "120" } } ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedVal" : { "$numberInt" : "140" }, "myExtra" : [ { "_id" : { "$numberInt" : "2" }, "country" : "Canada", "qq" : { "$numberInt" : "120" }, "addedVal" : { "$numberInt" : "120" } } ] } ] }
+(3 rows)
+
+-- with an expression that returns empty, the variable should be defined as empty
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "c": "$$c" }, "filter": {}, "let": { "c": {"$getField": {"field": "c", "input": {"a": 1}}}} }');
+    document     
+---------------------------------------------------------------------
+ { "_id" : "1" }
+ { "_id" : "2" }
+ { "_id" : "3" }
+(3 rows)
+
+-- $literal should be treated as literal
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "c": "$$c" }, "filter": {}, "let": { "c": {"$literal": "$$NOW"}} }');
+            document            
+---------------------------------------------------------------------
+ { "_id" : "1", "c" : "$$NOW" }
+ { "_id" : "2", "c" : "$$NOW" }
+ { "_id" : "3", "c" : "$$NOW" }
+(3 rows)
+
+-- these should fail - parse and validate no path, CURRENT or ROOT in let spec.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": "$a" } }');
+ERROR:  Command let Expression tried to access a field, but this is not allowed because command let expressions run before the query examines any documents.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": "$$ROOT" } }');
+ERROR:  Command let Expression tried to access a field, but this is not allowed because command let expressions run before the query examines any documents.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": "$$CURRENT" } }');
+ERROR:  Command let Expression tried to access a field, but this is not allowed because command let expressions run before the query examines any documents.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": {}, "let": { "varRef": { "$sum": [ "$a", "$a" ] } } }');
+ERROR:  Command let Expression tried to access a field, but this is not allowed because command let expressions run before the query examines any documents.
+-- internal, lookup expression eval merge should wrap variables into $literal and if the variable evaluates to empty, should transform into $$REMOVE
+SELECT documentdb_api_internal.bson_dollar_lookup_expression_eval_merge('{"_id": 1, "b": "$someField"}', '{ "local_b" : "$b", "local_a": "$a" }'::documentdb_core.bson, '{}'::documentdb_core.bson);
+                     bson_dollar_lookup_expression_eval_merge                      
+---------------------------------------------------------------------
+ { "let" : { "local_b" : { "$literal" : "$someField" }, "local_a" : "$$REMOVE" } }
+(1 row)
+
+SELECT documentdb_api_internal.bson_dollar_lookup_expression_eval_merge('{"_id": 1, "b": "$someField"}', '{ "local_b" : "$b", "local_a": "$a", "local_var1": "$$var1" }'::documentdb_core.bson, '{"var1": {"$literal": "ABC"}}'::documentdb_core.bson);
+                                                         bson_dollar_lookup_expression_eval_merge                                                          
+---------------------------------------------------------------------
+ { "var1" : { "$literal" : "ABC" }, "let" : { "local_b" : { "$literal" : "$someField" }, "local_a" : "$$REMOVE", "local_var1" : { "$literal" : "ABC" } } }
+(1 row)
+
+-- lookup with let when a field is missing the path a variable references and when that field is a string in the form of a field expression
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"1", "a": { } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"2", "b": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_pipeline_let_lookup_missing','{"_id":"3", "a": "$notAFieldPath" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let_lookup_missing", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_lookup_missing", "as": "res", "let": {"local_a": "$a"}, "pipeline": [ { "$match": {"$expr": {"$eq": ["$$local_a", "$a"]}}}, {"$project":{"_id": 1}} ] } } ], "cursor": {} }');
+                                  document                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  }, "res" : [ { "_id" : "1" } ] }
+ { "_id" : "2", "b" : { "$numberInt" : "1" }, "res" : [ { "_id" : "2" } ] }
+ { "_id" : "3", "a" : "$notAFieldPath", "res" : [ { "_id" : "3" } ] }
+(3 rows)
+
+/* Shard the collections */
+SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$lt": [ "$_id", "$$varNotRef" ]} }, "let": { "varRef": "3" } }');
+ERROR:  Use of undefined variable: varNotRef
+-- let support in $expr with nested $let
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varNotRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "2", "newField" : { "$numberInt" : "3" } }
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+(1 row)
+
+-- same scenario but with aggregation pipeline
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ "$_id", "$$varRef" ]} } } ], "let": { "varRef": "3" } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } } } ], "let": { "varRef": 3 } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+(2 rows)
+
+-- let support in $expr with nested $let
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "newField" : "$$varRef" }, "filter": { "$expr": { "$let": { "vars": { "varNotRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} }, "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : "2", "newField" : { "$numberInt" : "3" } }
+ { "_id" : "1", "newField" : { "$numberInt" : "3" } }
+(2 rows)
+
+-- same scenario but with aggregation pipeline
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$match": { "$expr": { "$let": { "vars": { "varRef": 2 }, "in": { "$lt": [ { "$toInt": "$_id" }, "$$varRef" ] } }} } } ], "let": { "varRef": 3 } }');
+                                                               document                                                               
+---------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+(1 row)
+
+-- find/aggregate with variables referencing other variables on the same let spec should work
+SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline_let", "projection": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply"  }, "filter": {}, "let": { "varRef": 20, "add": {"$add": ["$$varRef", 2]}, "multiply": {"$multiply": ["$$add", 2]} } }');
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : "3", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+ { "_id" : "2", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+ { "_id" : "1", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" } }
+(3 rows)
+
+-- nested $let should also work
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{"$project": { "varRef" : "$$varRef", "add": "$$add", "multiply": "$$multiply", "nestedLet": "$$nestedLet"  }}], "let": { "varRef": 20, "add": {"$add": ["$$varRef", 2]}, "multiply": {"$multiply": ["$$add", 2]}, "nestedLet": {"$let": {"vars": {"add": {"$add": ["$$multiply", 1]}}, "in": "$$add"}} } }');
+                                                                             document                                                                              
+---------------------------------------------------------------------
+ { "_id" : "3", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+ { "_id" : "2", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+ { "_id" : "1", "varRef" : { "$numberInt" : "20" }, "add" : { "$numberInt" : "22" }, "multiply" : { "$numberInt" : "44" }, "nestedLet" : { "$numberInt" : "45" } }
+(3 rows)
+
+-- $addFields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "newField1" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                                                                                        document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : false, "newField1" : { "$numberInt" : "3" } }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "newField1" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "newField1" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $replaceRoot
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$replaceRoot": { "newRoot": { "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } } }} ], "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $replaceWith
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$replaceWith": { "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                       document                       
+---------------------------------------------------------------------
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "newField" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $group (with simple aggregators)
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" } } } ], "let": { "varRef": 3 } }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
+(1 row)
+
+-- $group (with sorted accumulators)
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" }, "first": { "$first" : "$a.b" } } } ], "let": { "varRef": 3 } }');
+                                                                    document                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" }, "first" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" }, "last": { "$last" : "$a.b" } } } ], "let": { "varRef": 3 } }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "9" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$set": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id": "$$varRef", "top": {"$top": {"output": [ "$_id" ], "sortBy": { "_id": 1 }}}}} ], "let": { "varRef": 3 } }');
+                      document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "top" : [ "1" ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$set": {"newField": "new"} }, { "$sort": { "_id": 1} }, { "$group": { "_id": "$$varRef", "bottom": {"$bottom": {"output": [ "$_id" ], "sortBy": { "_id": 1 }}}}} ], "let": { "varRef": 3 } }');
+                        document                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "bottom" : [ "3" ] }
+(1 row)
+
+-- $project
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$project": { "_id": 1, "newField" : "$$varRef", "c": { "$lt": [ "$_id", "$$varRef" ] } }} ], "let": { "varRef": 3 } }');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : "3", "c" : false, "newField" : { "$numberInt" : "3" } }
+ { "_id" : "2", "newField" : { "$numberInt" : "3" }, "c" : false }
+ { "_id" : "1", "newField" : { "$numberInt" : "3" }, "c" : false }
+(3 rows)
+
+-- $unionWith
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [{ "$addFields": { "c": "foo" }}, { "$unionWith": { "coll": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "bar": "$$varRef" } } ] } } ], "let": { "varRef": 30 }}');
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : "foo" }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "c" : "foo" }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "c" : "foo" }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true, "bar" : { "$numberInt" : "30" } }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "bar" : { "$numberInt" : "30" } }
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "bar" : { "$numberInt" : "30" } }
+(6 rows)
+
+-- $sortByCount
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$sortByCount": { "$lt": [ "$_id", "$$varRef" ] } } ], "let": { "varRef": "2" } }');
+                      document                       
+---------------------------------------------------------------------
+ { "_id" : false, "count" : { "$numberInt" : "2" } }
+ { "_id" : true, "count" : { "$numberInt" : "1" } }
+(2 rows)
+
+-- $facet
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let", "pipeline": [ { "$addFields": { "newField": "myvalue" }}, { "$facet": { "sb1": [ { "$addFields": { "myVar": "$$varRef" }} ], "sb2": [ { "$group": { "_id" : "$$varRef", "c": { "$sum": "$$varRef" } } } ] }} ], "let": { "varRef": "2" } }');
+                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ { "sb1" : [ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true, "newField" : "myvalue", "myVar" : "2" }, { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } }, "newField" : "myvalue", "myVar" : "2" }, { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }, "newField" : "myvalue", "myVar" : "2" } ], "sb2" : [ { "_id" : "2", "c" : { "$numberInt" : "0" } } ] }
+(1 row)
+
+-- $graphLookup
+SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_gl', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let_gl", "pipeline": [ { "$graphLookup": { "from": "aggregation_pipeline_let_gl", "startWith": { "$max": [ "$reportsTo", "$$reportsTo" ] }, "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ], "let": { "reportsTo": "Dev" } }');
+ERROR:  $graphLookup with 'from' on a sharded collection is not supported
+-- $inverseMatch
+SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_inv', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline_let_inv", "pipeline": [ { "$inverseMatch": { "path": "policy", "from": "aggregation_pipeline_let_gl", "pipeline": [{"$match": {"$expr": { "$eq": [ "$name", "$$varRef"] }} }] }  }], "let": { "varRef": "Dev" } }');
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "policy" : { "name" : "Dev" } }
+(1 row)
+
+-- $window operators
+SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_setWindowFields', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "aggregation_pipeline_let_setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$concat": ["$a", "$$varRef" ] }, "output": {"total": { "$sum": "$$varRefNum"}}}}], "let": { "varRef": "prefix", "varRefNum": 2 } }');
+                                                                                                        document                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } }, "total" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "def", "cost" : { "$numberInt" : "8" }, "quantity" : { "$numberInt" : "502" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } }, "total" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "ghi", "cost" : { "$numberInt" : "4" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } }, "total" : { "$numberInt" : "2" } }
+(3 rows)
+
+-- $lookup
+SELECT documentdb_api.shard_collection('db', 'aggregation_pipeline_let_pipelineto', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }}, { "$addFields": { "addedQval": "$$qval" }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                   document                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedQval" : { "$numberInt" : "120" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedQval" : { "$numberInt" : "100" } } ] }
+(3 rows)
+
+-- Add a $lookup with let but add a subquery stage
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$sort": { "_id": 1 } }, { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                               document                                                                                                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ] } ] }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [ { "$addFields": { "addedQvalBefore": "$$qval" }}, { "$sort": { "_id": 1 } }, { "$match": { "$expr": { "$eq": [ "$quantity", "$$qval" ] } }}, { "$addFields": { "addedQvalAfter": "$$qval" }} ], "as": "matched_docs", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                             document                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade", "qval" : { "$numberInt" : "120" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "name" : "Honest John Pizza", "food" : [ "cheese pizza", "pepperoni pizza" ], "quantity" : { "$numberInt" : "120" }, "beverages" : [ "soda" ], "addedQvalBefore" : { "$numberInt" : "120" }, "addedQvalAfter" : { "$numberInt" : "120" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda", "qval" : { "$numberInt" : "140" }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House", "qval" : { "$numberInt" : "100" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "name" : "American Steak House", "food" : [ "filet", "sirloin" ], "quantity" : { "$numberInt" : "100" }, "beverages" : [ "beer", "wine" ], "addedQvalBefore" : { "$numberInt" : "100" }, "addedQvalAfter" : { "$numberInt" : "100" } } ] }
+(3 rows)
+
+-- nested $lookup
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+ERROR:  Nested lookup with let on sharded collections not supported yet
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "aggregation_pipeline_let_pipelineto", "pipeline": [ { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom", "pipeline": [{ "$addFields": { "addedVal": "$$qval" }}, { "$lookup": { "from": "aggregation_pipeline_let_pipelinefrom_second", "localField": "qq", "foreignField": "qval", "as": "myExtra", "let": { "secondVar": "$quantity" }, "pipeline": [ { "$match": { "$expr": { "$eq": [ "$qq", "$$secondVar" ] }  }} ] }} ], "as": "myMatch", "localField": "restaurant_name", "foreignField": "name", "let": { "qval": "$qval" } }} ], "cursor": {} }');
+ERROR:  Nested lookup with let on sharded collections not supported yet
+-- Test for lookup with let and $match with $expr
+SELECT documentdb_api.insert_one('db','lookup_left',' { "_id" : 1, "item" : 1 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','lookup_left',' { "_id" : 2, "item" : 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Fill right collection with more than 100 MB of data
+DO $$
+DECLARE i int;
+BEGIN
+FOR i IN 1..50 LOOP
+PERFORM documentdb_api.insert_one('db', 'lookup_right', FORMAT('{ "_id": %s, "name": %s, "c": { "%s": [ %s "d" ] } }',  i, i, i, REPEAT('"' || i || REPEAT('a', 1000) || '", ', 5000))::documentdb_core.bson, NULL);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+-- This will throw size error because $match in not inlined with right query as it is not the first stage
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$project": { "c": 0 } }, { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+ERROR:  Size 106297794 is larger than maximum size allowed for an intermediate document 104857600
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$project": { "c": 0 } }, { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents("left", (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, lookup_non_inlined_stage_1.let), 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson) AS "funcName" FROM documentdb_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'myMatch'::text) lookup_subpipeline_substage_0(lookup_unwind) WHERE documentdb_api_internal.bson_dollar_expr(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, lookup_non_inlined_stage_1.let), '{ "" : { "$eq" : [ "$name", "$$item_name" ] } }'::documentdb_core.bson, lookup_non_inlined_stage_1.let))) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right", documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(lookup_stage_1.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM documentdb_data.documents_4140_413201 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4140'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_4141_413218 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '4141'::bigint)) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop Left Join
+               Output: documentdb_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1))
+               ->  Bitmap Heap Scan on documentdb_data.documents_4140_413201 collection
+                     Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
+                     Recheck Cond: (collection.shard_key_value = '4140'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '4140'::bigint)
+               ->  Materialize
+                     Output: (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson))
+                     ->  Aggregate
+                           Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)
+                           ->  Bitmap Heap Scan on documentdb_data.documents_4141_413218 collection_0_1
+                                 Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                                 Recheck Cond: (collection_0_1.shard_key_value = '4141'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection_0_1.shard_key_value = '4141'::bigint)
+               SubPlan 1
+                 ->  Aggregate
+                       Output: COALESCE(documentdb_api_catalog.bson_array_agg(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)
+                       ->  Function Scan on documentdb_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
+                             Output: lookup_subpipeline_substage_0.lookup_unwind
+                             Function Call: documentdb_api_catalog.bson_lookup_unwind((COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)), 'myMatch'::text)
+                             Filter: documentdb_api_internal.bson_dollar_expr(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), '{ "" : { "$eq" : [ "$name", "$$item_name" ] } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+(30 rows)
+
+-- This should not throw error as $match is inlined with right query
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+                                                                         document                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : { "$numberInt" : "1" }, "myMatch" : [ { "_id" : { "$numberInt" : "1" }, "name" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : { "$numberInt" : "2" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : { "$numberInt" : "2" } } ] }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents("left", (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, lookup_non_inlined_stage_1.let), 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson) AS "funcName" FROM documentdb_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'myMatch'::text) lookup_subpipeline_substage_0(lookup_unwind))) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right", documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(lookup_stage_1.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM documentdb_data.documents_4140_413201 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4140'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson) AS document FROM (SELECT collection_0_1.document FROM documentdb_data.documents_4141_413218 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '4141'::bigint)) lookup_right_query_stage_0 WHERE documentdb_api_internal.bson_dollar_expr(lookup_right_query_stage_0.document, '{ "" : { "$eq" : [ "$name", "$$item_name" ] } }'::documentdb_core.bson, lookup_stage_1.let)) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop Left Join
+               Output: documentdb_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1))
+               ->  Bitmap Heap Scan on documentdb_data.documents_4140_413201 collection
+                     Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
+                     Recheck Cond: (collection.shard_key_value = '4140'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '4140'::bigint)
+               ->  Aggregate
+                     Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)
+                     ->  Bitmap Heap Scan on documentdb_data.documents_4141_413218 collection_0_1
+                           Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                           Recheck Cond: (collection_0_1.shard_key_value = '4141'::bigint)
+                           Filter: documentdb_api_internal.bson_dollar_expr(collection_0_1.document, '{ "" : { "$eq" : [ "$name", "$$item_name" ] } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection_0_1.shard_key_value = '4141'::bigint)
+               SubPlan 1
+                 ->  Aggregate
+                       Output: COALESCE(documentdb_api_catalog.bson_array_agg(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(collection.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)
+                       ->  Function Scan on documentdb_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
+                             Output: lookup_subpipeline_substage_0.lookup_unwind
+                             Function Call: documentdb_api_catalog.bson_lookup_unwind((COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)), 'myMatch'::text)
+(28 rows)
+
+-- Shard left collection and right collections
+SET citus.explain_all_tasks to on;
+SET citus.max_adaptive_executor_pool_size to 1;
+SELECT documentdb_api.shard_collection('{ "shardCollection": "db.lookup_left", "key": { "_id": "hashed" }, "numInitialChunks": 2 }');
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+                                                                         document                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : { "$numberInt" : "2" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "1" }, "item" : { "$numberInt" : "1" }, "myMatch" : [ { "_id" : { "$numberInt" : "1" }, "name" : { "$numberInt" : "1" } } ] }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   ->  Distributed Subplan 409_1
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan."left", remote_scan."right", remote_scan.let
+               ->  Distributed Subplan 412_1
+                     ->  Custom Scan (Citus Adaptive)
+                           Output: remote_scan.document, remote_scan.let
+                           Task Count: 2
+                           Tasks Shown: All
+                           ->  Task
+                                 Query: SELECT document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM documentdb_data.documents_4140_413232 collection WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on documentdb_data.documents_4140_413232 collection
+                                       Output: document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                           ->  Task
+                                 Query: SELECT document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM documentdb_data.documents_4140_413233 collection WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on documentdb_data.documents_4140_413233 collection
+                                       Output: document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+               ->  Distributed Subplan 412_2
+                     ->  Custom Scan (Citus Adaptive)
+                           Output: remote_scan.document
+                           Task Count: 1
+                           Tasks Shown: All
+                           ->  Task
+                                 Query: SELECT document FROM documentdb_data.documents_4141_413218 collection_0_1 WHERE (shard_key_value OPERATOR(pg_catalog.=) '4141'::bigint)
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Bitmap Heap Scan on documentdb_data.documents_4141_413218 collection_0_1
+                                       Output: document
+                                       Recheck Cond: (collection_0_1.shard_key_value = '4141'::bigint)
+                                       ->  Bitmap Index Scan on _id_
+                                             Index Cond: (collection_0_1.shard_key_value = '4141'::bigint)
+               Task Count: 1
+               Tasks Shown: All
+               ->  Task
+                     Query: SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right", documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(lookup_stage_1.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM ((SELECT intermediate_result.document, intermediate_result.let FROM read_intermediate_result('412_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson, let documentdb_core.bson)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('412_2'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) lookup_right_query_stage_0 WHERE documentdb_api_internal.bson_dollar_expr(lookup_right_query_stage_0.document, '{ "" : { "$eq" : [ "$name", "$$item_name" ] } }'::documentdb_core.bson, lookup_stage_1.let)) "lookupRight_stage_1" ON (true))
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Nested Loop Left Join
+                           Output: intermediate_result.document, (COALESCE(documentdb_api_catalog.bson_array_agg(intermediate_result_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)), documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(intermediate_result.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                           ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                                 Output: intermediate_result.document, intermediate_result.let
+                                 Function Call: read_intermediate_result('412_1'::text, 'binary'::citus_copy_format)
+                           ->  Aggregate
+                                 Output: COALESCE(documentdb_api_catalog.bson_array_agg(intermediate_result_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)
+                                 ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result_1
+                                       Output: intermediate_result_1.document
+                                       Function Call: read_intermediate_result('412_2'::text, 'binary'::citus_copy_format)
+                                       Filter: documentdb_api_internal.bson_dollar_expr(intermediate_result_1.document, '{ "" : { "$eq" : [ "$name", "$$item_name" ] } }'::documentdb_core.bson, intermediate_result.let)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents("left", (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, lookup_non_inlined_stage_1.let), 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson) AS "funcName" FROM documentdb_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'myMatch'::text) lookup_subpipeline_substage_0(lookup_unwind))) AS document FROM (SELECT intermediate_result."left", intermediate_result."right", intermediate_result.let FROM read_intermediate_result('409_1'::text, 'binary'::citus_copy_format) intermediate_result("left" documentdb_core.bson, "right" documentdb_core.bson, let documentdb_core.bson)) lookup_non_inlined_stage_1
+         Node: host=localhost port=58070 dbname=regression
+         ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+               Output: documentdb_api_internal.bson_dollar_merge_documents(intermediate_result."left", (SubPlan 1))
+               Function Call: read_intermediate_result('409_1'::text, 'binary'::citus_copy_format)
+               SubPlan 1
+                 ->  Aggregate
+                       Output: COALESCE(documentdb_api_catalog.bson_array_agg(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, intermediate_result.let), 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)
+                       ->  Function Scan on documentdb_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
+                             Output: lookup_subpipeline_substage_0.lookup_unwind
+                             Function Call: documentdb_api_catalog.bson_lookup_unwind(intermediate_result."right", 'myMatch'::text)
+(63 rows)
+
+SELECT documentdb_api.shard_collection('{ "shardCollection": "db.lookup_right", "key": { "_id": "hashed" }, "numInitialChunks": 2 }');
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+                                                                         document                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item" : { "$numberInt" : "2" }, "myMatch" : [ { "_id" : { "$numberInt" : "2" }, "name" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "1" }, "item" : { "$numberInt" : "1" }, "myMatch" : [ { "_id" : { "$numberInt" : "1" }, "name" : { "$numberInt" : "1" } } ] }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "lookup_left", "pipeline": [ { "$lookup": { "from": "lookup_right", "pipeline": [ { "$match": { "$expr": { "$eq": [ "$name", "$$item_name" ] }}}, { "$project": { "c": 0 } }], "as": "myMatch", "let": { "item_name": "$item" } }} ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   ->  Distributed Subplan 437_1
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan."left", remote_scan."right", remote_scan.let
+               ->  Distributed Subplan 440_1
+                     ->  Custom Scan (Citus Adaptive)
+                           Output: remote_scan.document, remote_scan.let
+                           Task Count: 2
+                           Tasks Shown: All
+                           ->  Task
+                                 Query: SELECT document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM documentdb_data.documents_4140_413232 collection WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on documentdb_data.documents_4140_413232 collection
+                                       Output: document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                           ->  Task
+                                 Query: SELECT document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM documentdb_data.documents_4140_413233 collection WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on documentdb_data.documents_4140_413233 collection
+                                       Output: document, documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+               ->  Distributed Subplan 440_2
+                     ->  Custom Scan (Citus Adaptive)
+                           Output: remote_scan.document
+                           Task Count: 2
+                           Tasks Shown: All
+                           ->  Task
+                                 Query: SELECT document FROM documentdb_data.documents_4141_413234 collection_0_1 WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on documentdb_data.documents_4141_413234 collection_0_1
+                                       Output: document
+                           ->  Task
+                                 Query: SELECT document FROM documentdb_data.documents_4141_413235 collection_0_1 WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on documentdb_data.documents_4141_413235 collection_0_1
+                                       Output: document
+               Task Count: 1
+               Tasks Shown: All
+               ->  Task
+                     Query: SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right", documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(lookup_stage_1.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS let FROM ((SELECT intermediate_result.document, intermediate_result.let FROM read_intermediate_result('440_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson, let documentdb_core.bson)) lookup_stage_1 LEFT JOIN LATERAL (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('440_2'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) lookup_right_query_stage_0 WHERE documentdb_api_internal.bson_dollar_expr(lookup_right_query_stage_0.document, '{ "" : { "$eq" : [ "$name", "$$item_name" ] } }'::documentdb_core.bson, lookup_stage_1.let)) "lookupRight_stage_1" ON (true))
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Nested Loop Left Join
+                           Output: intermediate_result.document, (COALESCE(documentdb_api_catalog.bson_array_agg(intermediate_result_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)), documentdb_api_internal.bson_dollar_lookup_expression_eval_merge(intermediate_result.document, '{ "item_name" : "$item" }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                           ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                                 Output: intermediate_result.document, intermediate_result.let
+                                 Function Call: read_intermediate_result('440_1'::text, 'binary'::citus_copy_format)
+                           ->  Aggregate
+                                 Output: COALESCE(documentdb_api_catalog.bson_array_agg(intermediate_result_1.document, 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)
+                                 ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result_1
+                                       Output: intermediate_result_1.document
+                                       Function Call: read_intermediate_result('440_2'::text, 'binary'::citus_copy_format)
+                                       Filter: documentdb_api_internal.bson_dollar_expr(intermediate_result_1.document, '{ "" : { "$eq" : [ "$name", "$$item_name" ] } }'::documentdb_core.bson, intermediate_result.let)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents("left", (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, lookup_non_inlined_stage_1.let), 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson) AS "funcName" FROM documentdb_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'myMatch'::text) lookup_subpipeline_substage_0(lookup_unwind))) AS document FROM (SELECT intermediate_result."left", intermediate_result."right", intermediate_result.let FROM read_intermediate_result('437_1'::text, 'binary'::citus_copy_format) intermediate_result("left" documentdb_core.bson, "right" documentdb_core.bson, let documentdb_core.bson)) lookup_non_inlined_stage_1
+         Node: host=localhost port=58070 dbname=regression
+         ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+               Output: documentdb_api_internal.bson_dollar_merge_documents(intermediate_result."left", (SubPlan 1))
+               Function Call: read_intermediate_result('437_1'::text, 'binary'::citus_copy_format)
+               SubPlan 1
+                 ->  Aggregate
+                       Output: COALESCE(documentdb_api_catalog.bson_array_agg(documentdb_api_internal.bson_dollar_project(lookup_subpipeline_substage_0.lookup_unwind, '{ "c" : { "$numberInt" : "0" } }'::documentdb_core.bson, intermediate_result.let), 'myMatch'::text), '{ "myMatch" : [  ] }'::documentdb_core.bson)
+                       ->  Function Scan on documentdb_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
+                             Output: lookup_subpipeline_substage_0.lookup_unwind
+                             Function Call: documentdb_api_catalog.bson_lookup_unwind(intermediate_result."right", 'myMatch'::text)
+(65 rows)
+
+RESET citus.explain_all_tasks;
+RESET citus.max_adaptive_executor_pool_size;
+-- query match
+-- enableLetAndCollationForQueryMatch GUC off: ignore variableSpec
+SET documentdb.enableLetAndCollationForQueryMatch TO off;
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"$expr": {"a": "$$varRef"} }', '{ "let": {"varRef": "cat"} }', NULL);
+NOTICE:  using bson_query_match implementation
+ERROR:  Use of undefined variable: varRef
+-- enableLetAndCollationForQueryMatch GUC on: use variableSpec
+SET documentdb.enableLetAndCollationForQueryMatch TO on;
+-- query match: wrong access of variable in query (outside $expr)
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"a": "$$varRef"}', '{ "let": {"varRef": "cat"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 5}', '{"a": {"$lt": "$$varRef"} }', '{ "let": {"varRef": 10} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- query match: using $expr
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"$expr": {"$eq": ["$a", "$$varRef"] } }', '{ "let": {"varRef": "cat"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat", "b": "dog"}', '{"$expr": {"$and": [{"$eq": ["$a", "$$varRef1"] }, {"$eq": ["$b", "$$varRef2"] } ]} }', '{ "let": {"varRef1": "cat", "varRef2": "dog"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"$expr": {"$ne": ["$a", "$$varRef"] } }', '{ "let": {"varRef": "dog"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$gt": ["$a", "$$varRef"] } }', '{ "let": {"varRef": 5} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$gte": ["$a", "$$varRef"] } }', '{ "let": {"varRef": -2} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$or": [{"$lt": ["$a", "$$varRef1"] }, {"$gt": ["$b", "$$varRef2"] } ]} }', '{ "let": {"varRef1": 2, "varRef2": 2} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$and": [{"$lt": ["$a", "$$varRef1"] }, {"$gt": ["$b", "$$varRef2"] } ]} }', '{ "let": {"varRef1": 2, "varRef2": 2} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": 2}', '{"$expr": {"$not": {"$lt": ["$a", "$$varRef"] } } }', '{ "let": {"varRef": 5} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_match('{"a": "cat"}', '{"$expr": {"$in": ["$a", ["$$varRef1", "$$varRef2"]] } }', '{ "let": {"varRef1": "cat", "varRef2": "dog"} }', NULL);
+ bson_query_match 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- query match: sharded collection
+SELECT documentdb_api.shard_collection('db', 'coll_query_op_let', '{ "_id": "hashed" }', false);
+NOTICE:  creating collection
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'coll_query_op_let', '{"_id": 1, "a": "cat" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'coll_query_op_let', '{"_id": 2, "a": "dog" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE documentdb_api_internal.bson_query_match(document, '{"$expr": {"$eq": ["$a", "$$varRef"] } }', '{ "let": {"varRef": "cat"} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$ne": ["$a", "$$varRef"] } }', '{ "let": {"varRef": "dog"} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$in": ["$a", ["$$varRef1", "$$varRef2"]] } }', '{ "let": {"varRef1": "cat", "varRef2": "dog"} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$lt": ["$_id", "$$varRef"] } }', '{ "let": {"varRef": 2} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$lte": ["$_id", "$$varRef"] } }', '{ "let": {"varRef": 2} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$gt": ["$_id", "$$varRef"] } }', '{ "let": {"varRef": 1} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$gte": ["$_id", "$$varRef"] } }', '{ "let": {"varRef": 1} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$and": [{"$lt": ["$_id", "$$varRef1"] }, {"$gt": ["$_id", "$$varRef2"] } ]} }', '{ "let": {"varRef1": 2, "varRef2": 1} }', NULL);
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$or": [{"$lt": ["$_id", "$$varRef1"] }, {"$gt": ["$_id", "$$varRef2"] } ]} }', '{ "let": {"varRef1": 2, "varRef2": 1} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+SELECT document from documentdb_api.collection('db', 'coll_query_op_let') WHERE  documentdb_api_internal.bson_query_match(document, '{"$expr": {"$not": {"$lt": ["$_id", "$$varRef"] } } }', '{ "let": {"varRef": 1} }', NULL);
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "cat" }
+(2 rows)
+
+RESET documentdb.enableLetAndCollationForQueryMatch;
+-- let with geonear
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "agg_geonear_let", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }]}');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear_let','{ "_id": 1, "a": { "b": [ 5, 5]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear_let','{ "_id": 2, "a": { "b": [ 5, 6]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear_let','{ "_id": 3, "a": { "b": [ 5, 7]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', $$
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": "$location", 
+            "distanceField": "dist.calculated",
+            "key": "a.b" 
+          } 
+      } 
+    ]
+}
+$$);
+ERROR:  $geoNear requires a constant near argument
+SELECT document FROM bson_aggregation_pipeline('db', $$
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": { "$literal" : "Not a valid point" }, 
+            "distanceField": "dist.calculated",
+            "key": "a.b" 
+          } 
+      } 
+    ],
+    "let": { "pointRef": [5, 6], "dist1": 0, "dist2": 2}
+}
+$$);
+ERROR:  $geoNear requires near argument to be a GeoJSON object or a legacy point(array)
+SELECT document FROM bson_aggregation_pipeline('db', $$
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": { "$literal" : [5, 6] }, 
+            "distanceField": "dist.calculated",
+            "minDistance": "$p",
+            "key": "a.b" 
+          } 
+      } 
+    ],
+    "let": { "pointRef": [5, 6], "dist1": 0, "dist2": 2}
+}
+$$);
+ERROR:  $geoNear requires $minDistance to evaluate to a constant number
+SELECT document FROM bson_aggregation_pipeline('db', $$ 
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": { "$literal" : [5, 6] }, 
+            "distanceField": "dist.calculated",
+            "maxDistance": { "$literal": [1, 2] },
+            "key": "a.b" 
+          } 
+      } 
+    ],
+    "let": { "pointRef": [5, 6], "dist1": 0, "dist2": 2}
+}
+$$);
+ERROR:  maxDistance must be a number
+-- a valid query
+SELECT document FROM bson_aggregation_pipeline('db', $spec$
+{
+    "aggregate": "agg_geonear_let", 
+    "pipeline": [
+      {
+        "$geoNear":
+          { 
+            "near": "$$pointRef", 
+            "distanceField": "dist.calculated",
+            "minDistance": "$$dist1",
+            "maxDistance": "$$dist2",
+            "key": "a.b" 
+          } 
+      } 
+    ],
+    "let": { "pointRef": [5, 5], "dist1": 0, "dist2": 2}
+}
+$spec$);
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "5" }, { "$numberInt" : "5" } ] }, "dist" : { "calculated" : { "$numberDouble" : "0.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "dist" : { "calculated" : { "$numberDouble" : "1.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }, "dist" : { "calculated" : { "$numberDouble" : "2.0" } } }
+(3 rows)
+

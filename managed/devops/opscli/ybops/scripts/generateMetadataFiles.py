@@ -13,9 +13,9 @@ YB_LISCENCE = '''
 
 '''
 
-AWS_OS_VERSION = "8.9"
-GCP_OS_VERSION = "8"
-AZU_OS_VERSION = "8-gen2"
+AWS_OS_VERSION = "9.5"
+GCP_OS_VERSION = "9"
+AZU_OS_VERSION = "9-gen2"
 
 AWS_METADATA_FILENAME = "aws-metadata.yml"
 GCP_METADATA_FILENAME = "gcp-metadata.yml"
@@ -77,7 +77,10 @@ def get_azu_image_for_cmd(cmd, arch):
             print('Auth Error')
             return None
         result_json = json.loads(result)
-        filtered_result = [x for x in result_json if x['sku'] == AZU_OS_VERSION and (arch in x['offer'])]
+        filtered_result = [
+            x for x in result_json
+            if x['sku'] == AZU_OS_VERSION and (arch in x['offer'])
+        ]
         filtered_result.sort(key=lambda image: image['version'])
         latest_image = filtered_result[-1]
         return latest_image['urn']

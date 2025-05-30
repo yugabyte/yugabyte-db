@@ -40,6 +40,7 @@ void od_router_free(od_router_t *);
 
 int od_router_reconfigure(od_router_t *, od_rules_t *);
 int od_router_expire(od_router_t *, od_list_t *);
+void yb_mark_routes_inactive(od_router_t *router, int db_oid, int user_oid);
 void od_router_gc(od_router_t *);
 void od_router_stat(od_router_t *, uint64_t,
 #ifdef PROM_FOUND

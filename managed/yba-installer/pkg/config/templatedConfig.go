@@ -160,7 +160,7 @@ func GenerateTemplate(component common.Component) error {
 			defer file.Close()
 
 			// Add the additional raw text to yb-platform.conf if it exists.
-			additionalEntryString := strings.TrimSuffix(GetYamlPathData(".platform.additional"), "\n")
+			additionalEntryString := strings.TrimSuffix(GetYamlPathData("platform.additional"), "\n")
 
 			log.DebugLF("Writing addition data to yb-platform config: " + additionalEntryString)
 			if _, err := file.WriteString(additionalEntryString); err != nil {

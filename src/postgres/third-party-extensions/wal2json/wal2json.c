@@ -34,7 +34,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 #define WAL2JSON_VERSION				"2.6"

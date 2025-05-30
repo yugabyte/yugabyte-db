@@ -28,7 +28,6 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 @Slf4j
 public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
 
-  private static final int MAX_ATTEMPTS = 20;
   private static final int DELAY_BETWEEN_ATTEMPTS_SEC = 60; // 1 minute
 
   public static class Params extends ServerSubTaskParams {}
@@ -63,7 +62,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
       StartYsqlMajorCatalogUpgradeResponse resp = client.startYsqlMajorCatalogUpgrade();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();
-        log.error("Error while starting YSQL major version catalog upgrade: ", errorPB);
+        log.error("Error while starting YSQL major version catalog upgrade: {}", errorPB);
         throw new RuntimeException(
             " Error while starting YSQL major version catalog upgrade: " + errorPB.toString());
       }
@@ -71,21 +70,20 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
     }
   }
 
-  protected void waitForCatalogUpgradeToFinish() throws Exception {
-    try (YBClient client = getClient()) {
-      int attempts = 0;
-      while (attempts < MAX_ATTEMPTS) {
-        attempts++;
-        log.debug(
-            "Waiting for YSQL major version catalog upgrade to finish. Attempt {} of {}",
-            attempts,
-            MAX_ATTEMPTS);
-        waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
-
+  protected void waitForCatalogUpgradeToFinish(int maxAttempts) throws Exception {
+    int attempts = 0;
+    while (attempts < maxAttempts) {
+      attempts++;
+      log.debug(
+          "Waiting for YSQL major version catalog upgrade to finish. Attempt {} of {}",
+          attempts,
+          maxAttempts);
+      waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
+      try (YBClient client = getClient()) {
         IsYsqlMajorCatalogUpgradeDoneResponse resp = client.isYsqlMajorCatalogUpgradeDone();
         if (resp.hasError()) {
           MasterErrorPB errorPB = resp.getServerError();
-          log.error("Error while checking YSQL major version catalog upgrade status: ", errorPB);
+          log.error("Error while checking YSQL major version catalog upgrade status: {}", errorPB);
           throw new RuntimeException(
               " Error while checking YSQL major version catalog upgrade status: "
                   + errorPB.toString());
@@ -96,16 +94,17 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
         }
       }
     }
+    throw new RuntimeException("YSQL major version catalog upgrade did not finish in time");
   }
 
   protected YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState() throws Exception {
     try (YBClient client = getClient()) {
       GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
       if (resp.hasError()) {
-        log.error("Error while getting YSQL major version catalog upgrade state: ", resp);
+        MasterErrorPB errorPB = resp.getServerError();
+        log.error("Error while getting YSQL major version catalog upgrade state: {}", errorPB);
         throw new RuntimeException(
-            "Error while getting YSQL major version catalog upgrade state: "
-                + resp.getServerError().toString());
+            "Error while getting YSQL major version catalog upgrade state: " + errorPB.toString());
       }
       return resp.getState();
     }
@@ -115,10 +114,10 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
     try (YBClient client = getClient()) {
       RollbackYsqlMajorCatalogVersionResponse resp = client.rollbackYsqlMajorCatalogVersion();
       if (resp.hasError()) {
-        log.error("Error while rolling back YSQL major version catalog upgrade: ", resp);
+        MasterErrorPB errorPB = resp.getServerError();
+        log.error("Error while rolling back YSQL major version catalog upgrade: {}", errorPB);
         throw new RuntimeException(
-            "Error while rolling back YSQL major version catalog upgrade: "
-                + resp.getServerError().toString());
+            "Error while rolling back YSQL major version catalog upgrade: " + errorPB.toString());
       }
       log.debug("Successfully rolled back YSQL major version catalog upgrade");
     }
@@ -128,10 +127,10 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
     try (YBClient client = getClient()) {
       FinalizeYsqlMajorCatalogUpgradeResponse resp = client.finalizeYsqlMajorCatalogUpgrade();
       if (resp.hasError()) {
-        log.error("Error while finalizing YSQL major version catalog upgrade: ", resp);
+        MasterErrorPB errorPB = resp.getServerError();
+        log.error("Error while finalizing YSQL major version catalog upgrade: {}", errorPB);
         throw new RuntimeException(
-            "Error while finalizing YSQL major version catalog upgrade: "
-                + resp.getServerError().toString());
+            "Error while finalizing YSQL major version catalog upgrade: " + errorPB.toString());
       }
     } catch (Exception e) {
       log.error("Error while finalizing YSQL major version catalog upgrade: ", e);

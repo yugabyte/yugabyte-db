@@ -30,7 +30,7 @@ yba provider gcp create -n dkumar-cli \
       --create-vpc                            [Optional] Creating a new VPC network in GCP (Beta Feature). Specify VPC name using --network. (default false)
       --use-host-vpc                          [Optional] Using VPC from YugabyteDB Anywhere Host. If set to false, specify an exsiting VPC using --network. Ignored if create-vpc is set. (default false)
       --project-id string                     [Optional] Project ID that hosts universe nodes in GCP.
-      --shared-vpc-project-id string          [Optional] Shared VPC project ID in GCP.
+      --shared-vpc-project-id string          [Optional] Shared VPC project ID in GCP. Set if you want use Shared VPC to connect resources from multiple projects to a common VPC.
       --region stringArray                    [Required] Region associated with the GCP provider. Minimum number of required regions = 1. Provide the following double colon (::) separated fields as key-value pairs: "region-name=<region-name>::shared-subnet=<subnet-id>::instance-template=<instance-templates-for-YugabyteDB-nodes>". Region name and Shared subnet are required key-value pairs. YB Image (AMI) and Instance Template are optional. Each region can be added using separate --region flags. Example: --region region-name=us-west1::shared-subnet=<shared-subnet-id>
       --image-bundle stringArray              [Optional] Intel x86_64 image bundles associated with GCP provider. Provide the following double colon (::) separated fields as key-value pairs: "image-bundle-name=<image-bundle-name>::machine-image=<custom-ami>::ssh-user=<ssh-user>::ssh-port=<ssh-port>::default=<true/false>". Image bundle name, machine image and SSH user are required key-value pairs. The default SSH Port is 22. Default marks the image bundle as default for the provider. Each image bundle can be added using separate --image-bundle flag. Example: --image-bundle image-bundle-name=<image-bundle>::machine-image=<custom-ami>::ssh-user=<ssh-user>::ssh-port=22
       --custom-ssh-keypair-name string        [Optional] Provide custom key pair name to access YugabyteDB nodes. If left empty, YugabyteDB Anywhere will generate key pairs to access YugabyteDB nodes.
@@ -44,12 +44,15 @@ yba provider gcp create -n dkumar-cli \
 
 ```
   -a, --apiToken string    YugabyteDB Anywhere api token.
-      --config string      Config file, defaults to $HOME/.yba-cli.yaml
+      --ca-cert string     CA certificate file path for secure connection to YugabyteDB Anywhere. Required when the endpoint is https and --insecure is not set.
+      --config string      Full path to a specific configuration file for YBA CLI. If provided, this takes precedence over the directory specified via --directory, and the generated files are added to the same path. If not provided, the CLI will look for '.yba-cli.yaml' in the directory specified by --directory. Defaults to '$HOME/.yba-cli/.yba-cli.yaml'.
       --debug              Use debug mode, same as --logLevel debug.
+      --directory string   Directory containing YBA CLI configuration and generated files. If specified, the CLI will look for a configuration file named '.yba-cli.yaml' in this directory. Defaults to '$HOME/.yba-cli/'.
       --disable-color      Disable colors in output. (default false)
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
+      --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, update.
+  -n, --name string        [Optional] The name of the provider for the action. Required for create, delete, describe, update and some instance-type subcommands.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)

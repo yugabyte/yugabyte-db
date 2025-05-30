@@ -63,13 +63,14 @@ public class XClusterRemoveNamespaceFromTargetUniverse extends XClusterConfigTas
       AlterUniverseReplicationResponse createResponse =
           client.alterUniverseReplicationRemoveNamespace(
               xClusterConfig.getReplicationGroupName(), dbId);
-
       if (createResponse.hasError()) {
         throw new RuntimeException(
             String.format(
                 "AlterUniverseReplication rpc failed with error: %s",
                 createResponse.errorMessage()));
       }
+
+      xClusterConfig.updateReplicationSetupTimeForNamespace(dbId, null /* moment */);
 
       log.debug(
           "Removing source db id: {} from xClusterConfig {} completed",

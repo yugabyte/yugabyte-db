@@ -2627,12 +2627,9 @@ TEST_P(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
        "create"}));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(0, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(1, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(2, {}));
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
@@ -2643,12 +2640,9 @@ TEST_P(
   ASSERT_NO_FATALS(
       InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(0, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(1, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(2, {}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -2830,6 +2824,51 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithout
   // Verify index table is not restored.
   ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(index_table_name)));
 
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingNextColumnId)) {
+  const std::string backup_db_name = "backup_db";
+  const std::string restore_db_name = "restored_db";
+  const std::string table_name = "my_table";
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("CREATE DATABASE $0", backup_db_name), "CREATE DATABASE"));
+  SetDbName(backup_db_name);
+  {
+    ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (x INT PRIMARY KEY)", table_name)));
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN y INT", table_name), "ALTER TABLE"));
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN z INT", table_name), "ALTER TABLE"));
+    ASSERT_NO_FATALS(
+        InsertRows(Format("INSERT INTO $0 (x, y, z) VALUES (1,2,3), (4,5,6)", table_name), 2));
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("ALTER TABLE $0 DROP COLUMN z", table_name), "ALTER TABLE"));
+  }
+  // Take a backup.
+  const auto backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql." + backup_db_name, "create"}));
+  // Restore.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql." + restore_db_name, "restore"}));
+  SetDbName(restore_db_name);  // Connecting to the second DB.
+  {
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN q TEXT", table_name), "ALTER TABLE"));
+    ASSERT_NO_FATALS(
+        InsertRows(Format("INSERT INTO $0 (x, y, q) VALUES (7,8,'foobar')", table_name), 1));
+  }
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY x", table_name),
+      R"#(
+ x | y |   q
+---+---+--------
+ 1 | 2 |
+ 4 | 5 |
+ 7 | 8 | foobar
+(3 rows)
+)#"));
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
@@ -3132,10 +3171,10 @@ TEST_F_EX(
 }
 
 TEST_F_EX(
-    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingPgTypeAndClassOids),
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingPgTypeAndClassAndRelfilenodeOids),
     YBBackupTestOneTablet) {
   // Attempt to create one instance of each thing that consumes a pg_type or pg_class OID.  Also
-  // create some fillers that will we will drop at the end to make sure we don't just use the same
+  // create some fillers that we will drop at the end to make sure we don't just use the same
   // default OIDs by accident.
 
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE filler_table (a INT, b INT)"));
@@ -3143,6 +3182,15 @@ TEST_F_EX(
 
   // Creating basic tables.
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE simple_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE truncate_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_to_be_rewritten (a INT, b INT)"));
+  // The following alters incure table rewrite, which means a new relfilenode is assigned to the
+  // relation i.e., relfilenode != pg_class.oid in such a relation. Test that relfilenode is
+  // preserved at restore side.
+  ASSERT_NO_FATALS(RunPsqlCommand("TRUNCATE TABLE truncate_table", "TRUNCATE TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+    "ALTER TABLE table_to_be_rewritten ADD PRIMARY KEY (a)",
+    "ALTER TABLE"));
   // Backup ignores temporary tables so no need to test.
 
   // Creating tables with indexes and constraints.
@@ -3220,6 +3268,17 @@ TEST_F_EX(
       "CREATE DOMAIN"));
   // This extension creates a new base type, vector.
   ASSERT_NO_FATALS(RunPsqlCommand("CREATE EXTENSION vector", "CREATE EXTENSION"));
+  // Create partitioned table and index, then perform an alter which rewrites the parent, children
+  // DocDB tables for both base and index relation.
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE parent_table (id INT, created_date DATE) PARTITION BY RANGE (created_date)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE parent_table_2023 PARTITION OF parent_table"
+      " FOR VALUES FROM ('2023-01-01') TO ('2023-12-31')"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE parent_table_2024 PARTITION OF parent_table"
+    " FOR VALUES FROM ('2024-01-01') TO ('2024-12-31')"));
+  ASSERT_NO_FATALS(CreateIndex("CREATE INDEX parent_table_idx ON parent_table (created_date ASC)"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE parent_table ADD PRIMARY KEY (id, created_date)",
+    "ALTER TABLE"));
 
   // Done creating stuff, time to drop the filler objects.
   ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE filler_table", "DROP TABLE"));
@@ -3246,7 +3305,7 @@ TEST_F_EX(
 
   // Assert the pg class OIDs are the same in both databases.
   {
-    auto query = "SELECT oid, relname FROM pg_class ORDER BY oid ASC";
+    auto query = "SELECT oid, relfilenode, relname FROM pg_class ORDER BY oid ASC";
     Result<std::string> query_result{""};
     SetDbName("yugabyte");
     ASSERT_NO_FATALS(query_result = RunPsqlCommand(query));
@@ -3386,5 +3445,92 @@ TEST_F(
         (6 rows)
       )#"));
 }
+
+TEST_F(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRenamedUniqueConstraint)) {
+    // Create a table with a unique constraint and rename the constraint.
+    ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_1 (a INT, b INT)"));
+    ASSERT_NO_FATALS(CreateIndex("CREATE UNIQUE INDEX index_1 ON table_1 (a)"));
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "ALTER TABLE table_1 ADD CONSTRAINT unique_1 UNIQUE USING INDEX index_1", "ALTER TABLE"));
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        "ALTER TABLE table_1 RENAME CONSTRAINT unique_1 TO unique_2", "ALTER TABLE"));
+    ASSERT_NO_FATALS(RunPsqlCommand("INSERT INTO table_1 (a, b) VALUES (1, 1)", "INSERT 0 1"));
+    // Verify that backup/restore works.
+    const string backup_dir = GetTempDir("backup");
+    ASSERT_OK(RunBackupCommand(
+        {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+    ASSERT_OK(RunBackupCommand(
+        {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+    // Verify that the unique constraint works.
+    SetDbName("yugabyte_new");
+    ASSERT_NO_FATALS(RunPsqlCommand("INSERT INTO table_1 (a, b) VALUES (1, 2)",
+        "duplicate key value violates unique constraint", TuplesOnly::kFalse,
+        CheckErrorString::kTrue));
+}
+
+class YBBackupTestAutoAnalyze : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_enable_auto_analyze_service=true");
+
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze_service=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_table_mutation_counter=true");
+    options->extra_tserver_flags.push_back("--ysql_node_level_mutation_reporting_interval_ms=10");
+    options->extra_tserver_flags.push_back("--ysql_cluster_level_mutation_persist_interval_ms=10");
+  }
+};
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestAutoAnalyzeEnabledDuringRestore),
+    YBBackupTestAutoAnalyze) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "pg_auto_analyze_service=5"));
+  const int num_tables = 20;
+  for (int i = 0; i < num_tables; ++i) {
+    ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", i)));
+    ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", i), 3));
+  }
+
+  // Set auto analyze threshold to a small number to make auto analyze service
+  // run ANALYZEs aggressively.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_threshold", "1"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_auto_analyze_scale_factor", "0.1"));
+  SleepFor(3s * kTimeMultiplier);
+
+  // Verify that the auto analyze service is running.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT reltuples FROM pg_class WHERE relname = 'tbl_0'",
+      R"#(
+         reltuples
+        -----------
+                 3
+        (1 row)
+      )#"
+  ));
+
+  // Backup and restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.db2", "restore"}));
+
+  // Verify that the auto analyze service is still enabled and works correctly after restore.
+  SetDbName("db2");
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tbl_$0(a INT)", num_tables)));
+  ASSERT_NO_FATALS(InsertRows(Format("INSERT INTO tbl_$0 VALUES (1), (2), (3)", num_tables), 3));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT reltuples FROM pg_class WHERE relname = 'tbl_$0'", num_tables),
+      R"#(
+         reltuples
+        -----------
+                 3
+        (1 row)
+      )#"
+  ));
+}
+
 }  // namespace tools
 }  // namespace yb

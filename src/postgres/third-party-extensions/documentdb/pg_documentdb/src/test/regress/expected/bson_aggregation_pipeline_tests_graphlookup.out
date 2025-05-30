@@ -1,0 +1,299 @@
+SET search_path TO documentdb_api,documentdb_core;
+SET documentdb.next_collection_id TO 9200;
+SET documentdb.next_collection_index_id TO 9200;
+SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 1, "name" : "Dev" }');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 2, "name" : "Eliot", "reportsTo" : "Dev" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 3, "name" : "Ron", "reportsTo" : "Eliot" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 4, "name" : "Andrew", "reportsTo" : "Eliot" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 5, "name" : "Asya", "reportsTo" : "Ron" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_employees', '{ "_id" : 6, "name" : "Dan", "reportsTo" : "Andrew" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ]}');
+                                                                                                                                                      document                                                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "reportingHierarchy" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" } ] }
+ { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }
+ { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }
+ { "_id" : { "$numberInt" : "5" }, "name" : "Asya", "reportsTo" : "Ron", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot" } ] }
+ { "_id" : { "$numberInt" : "6" }, "name" : "Dan", "reportsTo" : "Andrew", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot" } ] }
+(6 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ]}');
+                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documentdb_data.documents_9200 collection
+   Output: documentdb_api_internal.bson_dollar_merge_documents(collection.document, COALESCE((SubPlan 2), '{ "reportingHierarchy" : [  ] }'::bson))
+   Recheck Cond: (collection.shard_key_value = '9200'::bigint)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '9200'::bigint)
+   SubPlan 2
+     ->  Aggregate
+           Output: COALESCE(documentdb_api_catalog.bson_array_agg("graphLookup_stage_2".document, 'reportingHierarchy'::text), '{ "reportingHierarchy" : [  ] }'::bson)
+           ->  Unique
+                 Output: "graphLookup_stage_2".document, "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                 CTE graphLookupRecurseStage
+                   ->  Recursive Union
+                         ->  Bitmap Heap Scan on documentdb_data.documents_9200 collection_0_2
+                               Output: collection_0_2.document, '{ "depth" : { "$numberInt" : "0" } }'::bson, documentdb_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::bson, false), false, ARRAY[ROW(documentdb_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::bson, false))]
+                               Recheck Cond: (collection_0_2.shard_key_value = '9200'::bigint)
+                               Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(collection_0_2.document, documentdb_api_internal.bson_expression_get(collection.document, '{ "name" : { "$makeArray" : "$reportsTo" } }'::bson, false, '{ "now" : NOW_SYS_VARIABLE }'::bson), 'name'::text)
+                               ->  Bitmap Index Scan on _id_
+                                     Index Cond: (collection_0_2.shard_key_value = '9200'::bigint)
+                         ->  Nested Loop
+                               Output: collection_0_2_1.document, documentdb_api_catalog.bson_dollar_add_fields("lookupRecursive_stage_1".depth, '{ "depth" : { "$add" : [ "$depth", { "$numberInt" : "1" } ] } }'::bson), documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false), CASE WHEN (ROW(documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false)) = ANY ("lookupRecursive_stage_1".path)) THEN true ELSE false END, array_cat("lookupRecursive_stage_1".path, ARRAY[ROW(documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false))])
+                               Join Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(collection_0_2_1.document, documentdb_api_internal.bson_expression_get("lookupRecursive_stage_1".document, '{ "name" : { "$makeArray" : "$reportsTo" } }'::bson, false, '{ "now" : NOW_SYS_VARIABLE }'::bson), 'name'::text)
+                               ->  WorkTable Scan on "graphLookupRecurseStage" "lookupRecursive_stage_1"
+                                     Output: "lookupRecursive_stage_1".depth, "lookupRecursive_stage_1".path, "lookupRecursive_stage_1".document
+                                     Filter: (NOT "lookupRecursive_stage_1".is_cycle)
+                               ->  Materialize
+                                     Output: collection_0_2_1.document
+                                     ->  Bitmap Heap Scan on documentdb_data.documents_9200 collection_0_2_1
+                                           Output: collection_0_2_1.document
+                                           Recheck Cond: (collection_0_2_1.shard_key_value = '9200'::bigint)
+                                           ->  Bitmap Index Scan on _id_
+                                                 Index Cond: (collection_0_2_1.shard_key_value = '9200'::bigint)
+                 ->  Sort
+                       Output: "graphLookup_stage_2".document, "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                       Sort Key: "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                       ->  CTE Scan on "graphLookupRecurseStage" "graphLookup_stage_2"
+                             Output: "graphLookup_stage_2".document, "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+(36 rows)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 0, "airport" : "JFK", "connects" : [ "BOS", "ORD" ] }');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 1, "airport" : "BOS", "connects" : [ "JFK", "PWM" ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 2, "airport" : "ORD", "connects" : [ "JFK" ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 3, "airport" : "PWM", "connects" : [ "BOS", "LHR" ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_airports', '{ "_id" : 4, "airport" : "LHR", "connects" : [ "PWM" ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_travelers', '{ "_id" : 1, "name" : "Dev", "nearestAirport" : "JFK" }');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_travelers', '{ "_id" : 2, "name" : "Eliot", "nearestAirport" : "JFK" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'graph_lookup_travelers', '{ "_id" : 3, "name" : "Jeff", "nearestAirport" : "BOS" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+                                                                                                                                                                                                                                                              document                                                                                                                                                                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "nearestAirport" : "JFK", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ] }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ] }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ] }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "nearestAirport" : "JFK", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ] }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ] }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ] }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "name" : "Jeff", "nearestAirport" : "BOS", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ] }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ] }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ] }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ] }, { "_id" : { "$numberInt" : "4" }, "airport" : "LHR", "connects" : [ "PWM" ] } ] }
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documentdb_data.documents_9202 collection
+   Output: documentdb_api_internal.bson_dollar_merge_documents(collection.document, COALESCE((SubPlan 2), '{ "destinations" : [  ] }'::bson))
+   Recheck Cond: (collection.shard_key_value = '9202'::bigint)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '9202'::bigint)
+   SubPlan 2
+     ->  Aggregate
+           Output: COALESCE(documentdb_api_catalog.bson_array_agg("graphLookup_stage_2".document, 'destinations'::text), '{ "destinations" : [  ] }'::bson)
+           ->  Unique
+                 Output: "graphLookup_stage_2".document, "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                 CTE graphLookupRecurseStage
+                   ->  Recursive Union
+                         ->  Bitmap Heap Scan on documentdb_data.documents_9201 collection_0_2
+                               Output: collection_0_2.document, '{ "depth" : { "$numberInt" : "0" } }'::bson, documentdb_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::bson, false), false, ARRAY[ROW(documentdb_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::bson, false))]
+                               Recheck Cond: (collection_0_2.shard_key_value = '9201'::bigint)
+                               Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(collection_0_2.document, documentdb_api_internal.bson_expression_get(collection.document, '{ "airport" : { "$makeArray" : "$nearestAirport" } }'::bson, false, '{ "now" : NOW_SYS_VARIABLE }'::bson), 'airport'::text)
+                               ->  Bitmap Index Scan on _id_
+                                     Index Cond: (collection_0_2.shard_key_value = '9201'::bigint)
+                         ->  Nested Loop
+                               Output: collection_0_2_1.document, documentdb_api_catalog.bson_dollar_add_fields("lookupRecursive_stage_1".depth, '{ "depth" : { "$add" : [ "$depth", { "$numberInt" : "1" } ] } }'::bson), documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false), CASE WHEN (ROW(documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false)) = ANY ("lookupRecursive_stage_1".path)) THEN true ELSE false END, array_cat("lookupRecursive_stage_1".path, ARRAY[ROW(documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false))])
+                               Join Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(collection_0_2_1.document, documentdb_api_internal.bson_expression_get("lookupRecursive_stage_1".document, '{ "airport" : { "$makeArray" : "$connects" } }'::bson, false, '{ "now" : NOW_SYS_VARIABLE }'::bson), 'airport'::text)
+                               ->  WorkTable Scan on "graphLookupRecurseStage" "lookupRecursive_stage_1"
+                                     Output: "lookupRecursive_stage_1".depth, "lookupRecursive_stage_1".path, "lookupRecursive_stage_1".document
+                                     Filter: ((NOT "lookupRecursive_stage_1".is_cycle) AND ("lookupRecursive_stage_1".depth OPERATOR(documentdb_api_catalog.#<) '{ "depth" : { "$numberInt" : "2" } }'::bsonquery))
+                               ->  Materialize
+                                     Output: collection_0_2_1.document
+                                     ->  Bitmap Heap Scan on documentdb_data.documents_9201 collection_0_2_1
+                                           Output: collection_0_2_1.document
+                                           Recheck Cond: (collection_0_2_1.shard_key_value = '9201'::bigint)
+                                           ->  Bitmap Index Scan on _id_
+                                                 Index Cond: (collection_0_2_1.shard_key_value = '9201'::bigint)
+                 ->  Sort
+                       Output: "graphLookup_stage_2".document, "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                       Sort Key: "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                       ->  CTE Scan on "graphLookupRecurseStage" "graphLookup_stage_2"
+                             Output: "graphLookup_stage_2".document, "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+(36 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "depthField": "depth" } } ]}');
+                                                                                                                                                                                                                                                                                                                                                   document                                                                                                                                                                                                                                                                                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "nearestAirport" : "JFK", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ], "depth" : { "$numberInt" : "0" } }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ], "depth" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ], "depth" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ], "depth" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "4" }, "airport" : "LHR", "connects" : [ "PWM" ], "depth" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "nearestAirport" : "JFK", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ], "depth" : { "$numberInt" : "0" } }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ], "depth" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ], "depth" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ], "depth" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "4" }, "airport" : "LHR", "connects" : [ "PWM" ], "depth" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "name" : "Jeff", "nearestAirport" : "BOS", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ], "depth" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ], "depth" : { "$numberInt" : "0" } }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ], "depth" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ], "depth" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "4" }, "airport" : "LHR", "connects" : [ "PWM" ], "depth" : { "$numberInt" : "2" } } ] }
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "depthField": "depth" } } ]}');
+                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documentdb_data.documents_9202 collection
+   Output: documentdb_api_internal.bson_dollar_merge_documents(collection.document, COALESCE((SubPlan 2), '{ "destinations" : [  ] }'::bson))
+   Recheck Cond: (collection.shard_key_value = '9202'::bigint)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '9202'::bigint)
+   SubPlan 2
+     ->  Aggregate
+           Output: COALESCE(documentdb_api_catalog.bson_array_agg((documentdb_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), 'destinations'::text), '{ "destinations" : [  ] }'::bson)
+           ->  Unique
+                 Output: (documentdb_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                 CTE graphLookupRecurseStage
+                   ->  Recursive Union
+                         ->  Bitmap Heap Scan on documentdb_data.documents_9201 collection_0_2
+                               Output: collection_0_2.document, '{ "depth" : { "$numberInt" : "0" } }'::bson, documentdb_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::bson, false), false, ARRAY[ROW(documentdb_api_catalog.bson_expression_get(collection_0_2.document, '{ "_id" : "$_id" }'::bson, false))]
+                               Recheck Cond: (collection_0_2.shard_key_value = '9201'::bigint)
+                               Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(collection_0_2.document, documentdb_api_internal.bson_expression_get(collection.document, '{ "airport" : { "$makeArray" : "$nearestAirport" } }'::bson, false, '{ "now" : NOW_SYS_VARIABLE }'::bson), 'airport'::text)
+                               ->  Bitmap Index Scan on _id_
+                                     Index Cond: (collection_0_2.shard_key_value = '9201'::bigint)
+                         ->  Nested Loop
+                               Output: collection_0_2_1.document, documentdb_api_catalog.bson_dollar_add_fields("lookupRecursive_stage_1".depth, '{ "depth" : { "$add" : [ "$depth", { "$numberInt" : "1" } ] } }'::bson), documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false), CASE WHEN (ROW(documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false)) = ANY ("lookupRecursive_stage_1".path)) THEN true ELSE false END, array_cat("lookupRecursive_stage_1".path, ARRAY[ROW(documentdb_api_catalog.bson_expression_get(collection_0_2_1.document, '{ "_id" : "$_id" }'::bson, false))])
+                               Join Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(collection_0_2_1.document, documentdb_api_internal.bson_expression_get("lookupRecursive_stage_1".document, '{ "airport" : { "$makeArray" : "$connects" } }'::bson, false, '{ "now" : NOW_SYS_VARIABLE }'::bson), 'airport'::text)
+                               ->  WorkTable Scan on "graphLookupRecurseStage" "lookupRecursive_stage_1"
+                                     Output: "lookupRecursive_stage_1".depth, "lookupRecursive_stage_1".path, "lookupRecursive_stage_1".document
+                                     Filter: (NOT "lookupRecursive_stage_1".is_cycle)
+                               ->  Materialize
+                                     Output: collection_0_2_1.document
+                                     ->  Bitmap Heap Scan on documentdb_data.documents_9201 collection_0_2_1
+                                           Output: collection_0_2_1.document
+                                           Recheck Cond: (collection_0_2_1.shard_key_value = '9201'::bigint)
+                                           ->  Bitmap Index Scan on _id_
+                                                 Index Cond: (collection_0_2_1.shard_key_value = '9201'::bigint)
+                 ->  Sort
+                       Output: (documentdb_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth)), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                       Sort Key: "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+                       ->  CTE Scan on "graphLookupRecurseStage" "graphLookup_stage_2"
+                             Output: documentdb_api_internal.bson_dollar_merge_documents("graphLookup_stage_2".document, "graphLookup_stage_2".depth), "graphLookup_stage_2"."baseDocId", "graphLookup_stage_2".depth
+(36 rows)
+
+-- $graphLookup inside $facet
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$facet": { "inner": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ] } } ]}');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  document                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "inner" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "reportingHierarchy" : [  ] }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" } ] }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }, { "_id" : { "$numberInt" : "5" }, "name" : "Asya", "reportsTo" : "Ron", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot" } ] }, { "_id" : { "$numberInt" : "6" }, "name" : "Dan", "reportsTo" : "Andrew", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot" } ] } ] }
+(1 row)
+
+-- $graphLookup inside $lookup
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$lookup": { "from": "graph_lookup_employees", "as": "inner", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ] } } ]}');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        document                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "nearestAirport" : "JFK", "inner" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "reportingHierarchy" : [  ] }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" } ] }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }, { "_id" : { "$numberInt" : "5" }, "name" : "Asya", "reportsTo" : "Ron", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot" } ] }, { "_id" : { "$numberInt" : "6" }, "name" : "Dan", "reportsTo" : "Andrew", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot" } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "nearestAirport" : "JFK", "inner" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "reportingHierarchy" : [  ] }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" } ] }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }, { "_id" : { "$numberInt" : "5" }, "name" : "Asya", "reportsTo" : "Ron", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot" } ] }, { "_id" : { "$numberInt" : "6" }, "name" : "Dan", "reportsTo" : "Andrew", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot" } ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "name" : "Jeff", "nearestAirport" : "BOS", "inner" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "reportingHierarchy" : [  ] }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" } ] }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" } ] }, { "_id" : { "$numberInt" : "5" }, "name" : "Asya", "reportsTo" : "Ron", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "3" }, "name" : "Ron", "reportsTo" : "Eliot" } ] }, { "_id" : { "$numberInt" : "6" }, "name" : "Dan", "reportsTo" : "Andrew", "reportingHierarchy" : [ { "_id" : { "$numberInt" : "1" }, "name" : "Dev" }, { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "reportsTo" : "Dev" }, { "_id" : { "$numberInt" : "4" }, "name" : "Andrew", "reportsTo" : "Eliot" } ] } ] }
+(3 rows)
+
+-- source can be sharded
+SELECT documentdb_api.shard_collection('db', 'graph_lookup_travelers', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+                                                                                                                                                                                                                                                              document                                                                                                                                                                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "name" : "Dev", "nearestAirport" : "JFK", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ] }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ] }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ] }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "name" : "Eliot", "nearestAirport" : "JFK", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ] }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ] }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ] }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "name" : "Jeff", "nearestAirport" : "BOS", "destinations" : [ { "_id" : { "$numberInt" : "0" }, "airport" : "JFK", "connects" : [ "BOS", "ORD" ] }, { "_id" : { "$numberInt" : "1" }, "airport" : "BOS", "connects" : [ "JFK", "PWM" ] }, { "_id" : { "$numberInt" : "2" }, "airport" : "ORD", "connects" : [ "JFK" ] }, { "_id" : { "$numberInt" : "3" }, "airport" : "PWM", "connects" : [ "BOS", "LHR" ] }, { "_id" : { "$numberInt" : "4" }, "airport" : "LHR", "connects" : [ "PWM" ] } ] }
+(3 rows)
+
+-- target cannot be sharded
+SELECT documentdb_api.shard_collection('db', 'graph_lookup_airports', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+SELECT documentdb_api.shard_collection('db', 'graph_lookup_employees', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_employees", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_employees", "startWith": "$reportsTo", "connectFromField": "reportsTo", "connectToField": "name", "as": "reportingHierarchy" } } ]}');
+ERROR:  $graphLookup with 'from' on a sharded collection is not supported
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "graph_lookup_travelers", "pipeline": [ { "$graphLookup": { "from": "graph_lookup_airports", "startWith": "$nearestAirport", "connectFromField": "connects", "connectToField": "airport", "as": "destinations", "maxDepth": 2 } } ]}');
+ERROR:  $graphLookup with 'from' on a sharded collection is not supported

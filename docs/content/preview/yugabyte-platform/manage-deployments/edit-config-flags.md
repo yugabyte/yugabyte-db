@@ -24,7 +24,7 @@ For more information about the available configuration flags, see the following:
 
 ## Enhanced Postgres Compatibility
 
-If your cluster database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility by navigating to the universe and clicking **Actions > Edit Postgres Compatibility**. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/).
+If your cluster database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility by navigating to the universe and clicking **Actions > More > Edit Postgres Compatibility**. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/).
 
 {{<warning title="Flag settings">}}
 Enabling Enhanced Postgres Compatibility sets several flags, and overrides any settings you may have set for the same flags on the **G-Flags** tab. The **G-Flags** tab will however continue to display the setting that you customized.
@@ -40,7 +40,7 @@ To customize flags of the read replica of a universe that has a read replica clu
 
 Depending on the flag, the universe may need to be restarted to apply the changes. You can apply changes as follows:
 
-- Immediately using a rolling restart, or [rolling restart in batches](#rolling-restart-in-batches).
+- Immediately using a rolling restart, or [rolling restart in batches](#batched-rolling-restart).
 - Immediately using a concurrent restart.
 - Immediately apply any changes that do not require a restart and wait until the next time the universe is restarted to apply the remaining changes.
 

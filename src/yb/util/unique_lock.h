@@ -77,6 +77,13 @@ void WaitOnConditionVariable(std::condition_variable* cond_var, UniqueLock<Mutex
   cond_var->wait(GetLockForCondition(*lock));
 }
 
+template <typename Mutex, typename TimePoint>
+std::cv_status WaitOnConditionVariableUntil(
+    std::condition_variable* cond_var, UniqueLock<Mutex>* lock, const TimePoint& deadline)
+    REQUIRES(*lock) {
+  return cond_var->wait_until(GetLockForCondition(*lock), deadline);
+}
+
 template<typename Mutex, typename Functor>
 void WaitOnConditionVariable(
     std::condition_variable* cond_var, UniqueLock<Mutex>* lock, Functor f) {

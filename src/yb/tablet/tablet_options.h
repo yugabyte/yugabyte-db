@@ -19,6 +19,7 @@
 
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/util/env.h"
+#include "yb/util/metrics.h"
 #include "yb/util/threadpool.h"
 #include "yb/rocksdb/env.h"
 
@@ -27,6 +28,8 @@
 #include "yb/consensus/log_fwd.h"
 
 #include "yb/docdb/local_waiting_txn_registry.h"
+
+#include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -63,8 +66,19 @@ struct TabletOptions {
   std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> priority_thread_pool_metrics;
 };
 
+struct MutableTabletOptions {
+  rocksdb::AllowCompactionFailures allow_compaction_failures =
+      rocksdb::AllowCompactionFailures::kFalse;
+};
+
 using TransactionManagerProvider = std::function<client::TransactionManager&()>;
-using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*()>;
+
+YB_DEFINE_ENUM(VectorIndexThreadPoolType, (kBackground)(kBackfill)(kInsert));
+YB_DEFINE_ENUM(VectorIndexPriorityThreadPoolType, (kCompaction));
+
+using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*(VectorIndexThreadPoolType)>;
+using VectorIndexPriorityThreadPoolProvider =
+    std::function<PriorityThreadPool*(VectorIndexPriorityThreadPoolType)>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
@@ -74,7 +88,8 @@ struct TabletInitData {
   std::shared_ptr<MemTracker> block_based_table_mem_tracker;
   MetricRegistry* metric_registry = nullptr;
   log::LogAnchorRegistryPtr log_anchor_registry;
-  const TabletOptions tablet_options;
+  TabletOptions tablet_options;
+  MutableTabletOptions mutable_tablet_options;
   std::string log_prefix_suffix;
   TransactionParticipantContext* transaction_participant_context = nullptr;
   client::LocalTabletFilter local_tablet_filter;
@@ -96,6 +111,7 @@ struct TabletInitData {
       get_min_xcluster_schema_version = nullptr;
   rpc::Messenger* messenger = nullptr;
   VectorIndexThreadPoolProvider vector_index_thread_pool_provider = {};
+  VectorIndexPriorityThreadPoolProvider vector_index_priority_thread_pool_provider = {};
 };
 
 } // namespace tablet

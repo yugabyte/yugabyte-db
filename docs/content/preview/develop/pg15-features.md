@@ -28,7 +28,7 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 
 | Product | To try it out |
 | :--- | :--- |
-| YugabyteDB | Follow the instructions in [Quick Start](/preview/tutorials/quick-start/macos/). |
+| YugabyteDB | Follow the instructions in [Quick Start](/preview/tutorials/quick-start/macos/).<br>For information on upgrading a PostgreSQL 11-based universe (v2024.2 and earlier) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../manage/ysql-major-upgrade-yugabyted/). |
 | YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
 | YugabyteDB Aeon| [Create a Sandbox cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) with the Database version set to Preview Track (v2.25). |
 
@@ -116,6 +116,9 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 | [Sampled logging](../../explore/observability/logging/#log-management)
 | Log a fraction of the statements rather than all statements. |
 
+| [Extended statistics](https://www.postgresql.org/docs/15/planner-stats.html#PLANNER-STATS-EXTENDED)
+| Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command. |
+
 {{%/table%}}
 
 ### Security
@@ -142,9 +145,6 @@ The following PG15 features are not yet implemented but are planned for the futu
 | Feature | Description |
 | --------| ----------- |
 
-| [Extended statistics](https://www.postgresql.org/docs/15/planner-stats.html#PLANNER-STATS-EXTENDED)
-| Gather additional statistics using the [CREATE STATISTICS](https://www.postgresql.org/docs/15/sql-createstatistics.html) command. |
-
 | [Merge command](https://www.postgresql.org/docs/15/sql-merge.html)
 | INSERT, UPDATE or DELETE in one statement. |
 
@@ -170,7 +170,7 @@ The following features have different behaviors as compared to previous versions
 When upgrading a YugabyteDB cluster from PostgreSQL 11-compatible versions (v2024.2 and earlier) to a PostgreSQL 15-compatible version (v2.25 and later), review the following to understand how they may affect your upgrade.
 
 {{< warning title="Upgrading to v2.25" >}}
-Upgrading to v2.25 from previous versions (v2.23) is not yet available.
+Currently, upgrades are only supported from v2024.2.2 or later to v2.25.1 or later. Refer to [YSQL major upgrade](../../manage/ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
 
 ### ysqlsh
@@ -195,7 +195,23 @@ SELECT * FROM t WHERE migration_UUID=$1 ORDER BY schema_name
 
 ### TLS and authentication
 
-The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to use a string value. This change was made in [PostgreSQL 12](https://www.postgresql.org/docs/12/ssl-tcp.html) in the PostgreSQL documentation. For more information on TLS in YugabyteDB, refer to [TLS and authentication](../../secure/tls-encryption/tls-authentication/).
+The `clientcert=1` option is no longer supported in `pg_hba.conf`. You need to use a string value of `verify-ca` or `verify-full`. Refer to [TLS and authentication](../../secure/tls-encryption/tls-authentication/).
+
+### TLS minimum version
+
+The default value for `ssl_min_protocol_version` is updated from TLS v1 to TLS v1.2. Ensure that client applications, including the driver, support TLS v1.2 before upgrading YugabyteDB to 2.25.0 or higher.
+
+You can use the version column of the `pg_stat_ssl` view to determine what version of SSL is used in each connection, as follows:
+
+```sql
+SELECT pid, ssl, version FROM pg_stat_ssl;
+```
+
+```output
+ pid  |   ssl  | version |
+-----+---------+---------
+44345 |    t   | TLSv1.2 |
+```
 
 ### CREATE permission on public schema revoked for new users
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AxiosError } from 'axios';
-import { Typography } from '@material-ui/core';
+import { Box, Typography, useTheme } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -8,10 +8,14 @@ import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 
 import {
   fetchTablesInUniverse,
-  fetchTaskUntilItCompletes
+  fetchTaskUntilItCompletes,
+  isBootstrapRequired
 } from '../../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { formatUuidForXCluster } from '../../ReplicationUtils';
+import {
+  formatUuidForXCluster,
+  getCategorizedNeedBootstrapPerTableResponse
+} from '../../ReplicationUtils';
 
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import {
@@ -39,6 +43,8 @@ import { generateUniqueName } from '../../../../redesign/helpers/utils';
 
 import { RunTimeConfigEntry } from '../../../../redesign/features/universe/universe-form/utils/dto';
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { CategorizedNeedBootstrapPerTableResponse } from '../../XClusterTypes';
+import { XClusterConfigNeedBootstrapPerTableResponse } from '../../dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
@@ -60,7 +66,7 @@ interface CreateConfigModalProps {
 export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
   SELECT_TABLES: 'selectDatabases',
-  CONFIGURE_BOOTSTRAP: 'configureBootstrap',
+  BOOTSTRAP_SUMMARY: 'bootstrapSummary',
   CONFIGURE_PITR: 'configurePitr',
   CONFIRM_ALERT: 'configureAlert'
 } as const;
@@ -69,7 +75,7 @@ export type FormStep = typeof FormStep[keyof typeof FormStep];
 const MODAL_NAME = 'CreateConfigModal';
 const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.createModal';
-const SELECT_TABLE_TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
+const TRANSLATION_KEY_PREFIX_SELECT_TABLE = 'clusterDetail.xCluster.selectTable';
 
 export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConfigModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
@@ -77,7 +83,15 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     title: string;
     body: string;
   } | null>(null);
-
+  const [tableSelectionWarning, setTableSelectionWarning] = useState<{
+    title: string;
+    body: string;
+  } | null>(null);
+  const [
+    categorizedNeedBootstrapPerTableResponse,
+    setCategorizedNeedBootstrapPerTableResponse
+  ] = useState<CategorizedNeedBootstrapPerTableResponse | null>(null);
+  const [isTableSelectionProcessed, setIsTableSelectionProcessed] = useState<boolean>(false);
   // The purpose of committedTargetUniverseUuid is to store the target universe uuid prior
   // to the user submitting their select target universe step.
   // This value updates whenever the user submits SelectTargetUniverseStep with a new
@@ -86,6 +100,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
 
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const queryClient = useQueryClient();
+  const theme = useTheme();
 
   const tablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
@@ -289,14 +304,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
       case FormStep.SELECT_TABLES:
-        // For the create DR user flow, we will always ask for bootstrap params from the user.
-        // This means there is no need to check whether the selected tables require bootstrapping in
-        // this step.
         if (formValues.namespaceUuids.length <= 0) {
           formMethods.setError('namespaceUuids', {
             type: 'min',
             message: t('error.validationMinimumNamespaceUuids.title', {
-              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+              keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
             })
           });
           // The TableSelect component expects error objects with title and body fields.
@@ -304,17 +316,62 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           // Thus, we need an store these error objects separately.
           setTableSelectionError({
             title: t('error.validationMinimumNamespaceUuids.title', {
-              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+              keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
             }),
             body: t('error.validationMinimumNamespaceUuids.body', {
-              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+              keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
             })
           });
-        } else {
-          setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         }
+        if (!isTableSelectionProcessed) {
+          let xClusterConfigNeedBootstrapPerTableResponse: XClusterConfigNeedBootstrapPerTableResponse = {};
+          try {
+            xClusterConfigNeedBootstrapPerTableResponse = await isBootstrapRequired(
+              sourceUniverseUuid,
+              targetUniverseUuid,
+              formValues.tableUuids,
+              XClusterConfigType.TXN,
+              true /* includeDetails */
+            );
+            const categorizedNeedBootstrapPerTableResponse = getCategorizedNeedBootstrapPerTableResponse(
+              xClusterConfigNeedBootstrapPerTableResponse
+            );
+            setCategorizedNeedBootstrapPerTableResponse(categorizedNeedBootstrapPerTableResponse);
+          } catch (error: any) {
+            toast.error(
+              <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+                <div className={toastStyles.toastMessage}>
+                  <i className="fa fa-exclamation-circle" />
+                  <Typography variant="body2" component="span">
+                    {t('error.failedToFetchIsBootstrapRequired.title', {
+                      keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
+                    })}
+                  </Typography>
+                </div>
+                <Typography variant="body2" component="div">
+                  {t('error.failedToFetchIsBootstrapRequired.body', {
+                    keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
+                  })}
+                </Typography>
+                <Typography variant="body2" component="div">
+                  {error.message}
+                </Typography>
+              </Box>
+            );
+            setTableSelectionWarning({
+              title: t('error.failedToFetchIsBootstrapRequired.title', {
+                keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
+              }),
+              body: t('error.failedToFetchIsBootstrapRequired.body', {
+                keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
+              })
+            });
+          }
+          setIsTableSelectionProcessed(true);
+        }
+        setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY);
         return;
-      case FormStep.CONFIGURE_BOOTSTRAP:
+      case FormStep.BOOTSTRAP_SUMMARY:
         setCurrentFormStep(FormStep.CONFIGURE_PITR);
         return;
       case FormStep.CONFIGURE_PITR:
@@ -341,11 +398,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.SELECT_TABLES:
         setCurrentFormStep(FormStep.SELECT_TARGET_UNIVERSE);
         return;
-      case FormStep.CONFIGURE_BOOTSTRAP:
+      case FormStep.BOOTSTRAP_SUMMARY:
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
       case FormStep.CONFIGURE_PITR:
-        setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
+        setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY);
         return;
       case FormStep.CONFIRM_ALERT:
         setCurrentFormStep(FormStep.CONFIGURE_PITR);
@@ -361,8 +418,8 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         return t('step.selectTargetUniverse.submitButton');
       case FormStep.SELECT_TABLES:
         return t('step.selectDatabases.submitButton');
-      case FormStep.CONFIGURE_BOOTSTRAP:
-        return t('step.configureBootstrap.submitButton');
+      case FormStep.BOOTSTRAP_SUMMARY:
+        return t('step.bootstrapSummary.submitButton');
       case FormStep.CONFIGURE_PITR:
         return t('step.configurePitr.submitButton');
       case FormStep.CONFIRM_ALERT:
@@ -391,7 +448,13 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       submitTestId={`${MODAL_NAME}-SubmitButton`}
       isSubmitting={formMethods.formState.isSubmitting}
       maxWidth="xl"
-      size={currentFormStep === FormStep.SELECT_TABLES ? 'fit' : 'md'}
+      size={
+        ([FormStep.SELECT_TABLES, FormStep.BOOTSTRAP_SUMMARY] as FormStep[]).includes(
+          currentFormStep
+        )
+          ? 'fit'
+          : 'md'
+      }
       overrideWidth="960px"
       footerAccessory={
         currentFormStep !== FIRST_FORM_STEP && (
@@ -414,7 +477,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             selectedNamespaceUuids: selectedNamespaceUuids,
             selectedTableUuids: selectedTableUuids,
             selectionError: tableSelectionError,
-            selectionWarning: null,
+            selectionWarning: tableSelectionWarning,
             setSelectedNamespaceUuids: setSelectedNamespaceUuids,
             setSelectedTableUuids: setSelectedTableUuids,
             sourceUniverseUuid: sourceUniverseUuid,
@@ -422,6 +485,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             xClusterConfigType: xClusterConfigType,
             targetUniverseUuid: targetUniverseUuid
           }}
+          categorizedNeedBootstrapPerTableResponse={categorizedNeedBootstrapPerTableResponse}
         />
       </FormProvider>
     </YBModal>

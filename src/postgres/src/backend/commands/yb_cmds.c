@@ -23,11 +23,16 @@
 
 #include "postgres.h"
 
-#include "miscadmin.h"
+#include "access/heapam.h"
+#include "access/htup_details.h"
+#include "access/nbtree.h"
+#include "access/relation.h"
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/xact.h"
+#include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
+#include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
@@ -40,46 +45,37 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
-#include "catalog/yb_type.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
+#include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
+#include "commands/defrem.h"
 #include "commands/event_trigger.h"
-#include "commands/tablegroup.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "commands/yb_cmds.h"
-
-#include "access/heapam.h"
-#include "access/htup_details.h"
-#include "access/relation.h"
-#include "utils/builtins.h"
-#include "utils/lsyscache.h"
-#include "utils/relcache.h"
-#include "utils/rel.h"
-#include "utils/syscache.h"
+#include "commands/yb_tablegroup.h"
 #include "executor/executor.h"
 #include "executor/tuptable.h"
 #include "executor/ybExpr.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
-
-#include "access/nbtree.h"
-#include "catalog/heap.h"
-#include "commands/defrem.h"
+#include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
-#include "parser/parser.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
-
-/* Yugabyte includes */
-#include "catalog/binary_upgrade.h"
-#include "catalog/pg_yb_tablegroup.h"
-#include "optimizer/clauses.h"
+#include "parser/parser.h"
+#include "pg_yb_utils.h"
+#include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/relcache.h"
+#include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 /* Utility function to calculate column sorting options */
 static void
@@ -121,7 +117,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 		 */
 		int64_t		num_databases = YbGetNumberOfDatabases();
 		int64_t		num_reserved =
-		*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
+			*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
 
 		if (kYBCMaxNumDbCatalogVersions - num_databases <= num_reserved)
 			ereport(ERROR,
@@ -173,8 +169,17 @@ YBCDropDBSequences(Oid dboid)
 {
 	YbcPgStatement sequences_handle;
 
+	/*
+	 * We need to create the sequences handle in the CurTransactionContext
+	 * because it is executed after the transaction commits.
+	 * The PortalContext is reset by that time, hence we cannot use it.
+	 */
+	Assert(CurTransactionContext != NULL);
+	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+
 	HandleYBStatus(YBCPgNewDropDBSequences(dboid, &sequences_handle));
 	YBSaveDdlHandle(sequences_handle);
+	MemoryContextSwitchTo(oldcontext);
 }
 
 void
@@ -600,7 +605,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	Oid			databaseId = YBCGetDatabaseOidFromShared(is_shared_relation);
 	bool		is_matview = relkind == RELKIND_MATVIEW;
 	bool		is_colocated_tables_with_tablespace_enabled =
-	*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
 
 	char	   *db_name = get_database_name(databaseId);
 	char	   *schema_name = stmt->relation->schemaname;
@@ -1004,8 +1009,17 @@ YBCDropSequence(Oid sequence_oid)
 {
 	YbcPgStatement handle;
 
+	/*
+	 * We need to create the handle in the CurTransactionContext because it is
+	 * executed after the transaction commits.
+	 * The PortalContext is reset by that time, hence we cannot use it.
+	 */
+	Assert(CurTransactionContext != NULL);
+	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+
 	HandleYBStatus(YBCPgNewDropSequence(MyDatabaseId, sequence_oid, &handle));
 	YBSaveDdlHandle(handle);
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
@@ -1268,7 +1282,7 @@ YBCCreateIndex(const char *indexName,
 
 	Assert(amroutine != NULL && amroutine->yb_ambindschema != NULL);
 	amroutine->yb_ambindschema(handle, indexInfo, indexTupleDesc, coloptions,
-							   opclassOids);
+							   opclassOids, reloptions);
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
@@ -1307,8 +1321,7 @@ static List *
 YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						int *col, bool *needsYBAlter,
 						YbcPgStatement *rollbackHandle,
-						bool isPartitionOfAlteredTable,
-						List *volatile *ybAlteredTableIds)
+						bool isPartitionOfAlteredTable)
 {
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1637,53 +1650,44 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				/*
 				 * For drop foreign key case, assigning the primary key table
 				 * as dependent relation.
+				 * For partition and inheritance children, we do not need to identify foreign
+				 * key dependent relations separately. For partition children, the foreign key
+				 * dependent relation is the same as the parent. For inheritance, foreign key
+				 * constraints do not recurse down to children.
 				 */
-				else if (cmd->subtype == AT_DropConstraintRecurse)
+				else if (cmd->subtype == AT_DropConstraintRecurse && !isPartitionOfAlteredTable)
 				{
-					HeapTuple	reltup = SearchSysCache1(RELOID,
-														 ObjectIdGetDatum(relationId));
+					Oid			constraint_oid = get_relation_constraint_oid(relationId,
+																			 cmd->name,
+																			 cmd->missing_ok);
 
-					if (!HeapTupleIsValid(reltup))
-						elog(ERROR,
-							 "cache lookup failed for relation %u",
-							 relationId);
-					Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
-
-					ReleaseSysCache(reltup);
-					if (!relform->relispartition)
+					/*
+					 * If the constraint doesn't exists and IF EXISTS is specified,
+					 * A NOTICE will be reported later in ATExecDropConstraint.
+					 */
+					if (!OidIsValid(constraint_oid))
 					{
-						Oid			constraint_oid = get_relation_constraint_oid(relationId,
-																				 cmd->name,
-																				 cmd->missing_ok);
+						return handles;
+					}
+					HeapTuple	tuple = SearchSysCache1(CONSTROID,
+														ObjectIdGetDatum(constraint_oid));
 
-						/*
-						 * If the constraint doesn't exists and IF EXISTS is specified,
-						 * A NOTICE will be reported later in ATExecDropConstraint.
-						 */
-						if (!OidIsValid(constraint_oid))
-						{
-							return handles;
-						}
-						HeapTuple	tuple = SearchSysCache1(CONSTROID,
-															ObjectIdGetDatum(constraint_oid));
-
-						if (!HeapTupleIsValid(tuple))
-						{
-							ereport(ERROR,
-									(errcode(ERRCODE_SYSTEM_ERROR),
-									 errmsg("cache lookup failed for constraint %u",
-											constraint_oid)));
-						}
-						Form_pg_constraint con =
+					if (!HeapTupleIsValid(tuple))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_SYSTEM_ERROR),
+								 errmsg("cache lookup failed for constraint %u",
+										constraint_oid)));
+					}
+					Form_pg_constraint con =
 						(Form_pg_constraint) GETSTRUCT(tuple);
 
-						ReleaseSysCache(tuple);
-						if (con->contype == CONSTRAINT_FOREIGN &&
-							relationId != con->confrelid)
-						{
-							dependent_rels = lappend(dependent_rels,
-													 table_open(con->confrelid, AccessExclusiveLock));
-						}
+					ReleaseSysCache(tuple);
+					if (con->contype == CONSTRAINT_FOREIGN &&
+						relationId != con->confrelid)
+					{
+						dependent_rels = lappend(dependent_rels,
+												 table_open(con->confrelid, AccessExclusiveLock));
 					}
 				}
 				/*
@@ -1727,7 +1731,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 													  &alter_cmd_handle));
 					HandleYBStatus(YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
 					handles = lappend(handles, alter_cmd_handle);
-					*ybAlteredTableIds = lappend_oid(*ybAlteredTableIds, relationId);
+					YbTrackAlteredTableId(relationId);
 					table_close(dependent_rel, AccessExclusiveLock);
 				}
 				*needsYBAlter = true;
@@ -1753,7 +1757,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			}
 
 		case AT_SetLogged:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AT_SetUnLogged:
 			*needsYBAlter = false;
 			break;
@@ -1766,8 +1770,19 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			break;
 
 		case AT_AddOf:
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case AT_DropOf:
+			*needsYBAlter = false;
+			break;
+
+		case AT_DropInherit:
+			yb_switch_fallthrough();
+		case AT_AddInherit:
+			/*
+			 * Altering the inheritance should keep the docdb column list the same and not
+			 * require an ALTER.
+			 * This will need to be re-evaluated, if NULLability is propagated to docdb.
+			 */
 			*needsYBAlter = false;
 			break;
 
@@ -1785,8 +1800,7 @@ YBCPrepareAlterTable(List **subcmds,
 					 int subcmds_size,
 					 Oid relationId,
 					 YbcPgStatement *rollbackHandle,
-					 bool isPartitionOfAlteredTable,
-					 List *volatile *ybAlteredTableIds)
+					 bool isPartitionOfAlteredTable)
 {
 	/* Appropriate lock was already taken */
 	Relation	rel = relation_open(relationId, NoLock);
@@ -1806,26 +1820,28 @@ YBCPrepareAlterTable(List **subcmds,
 	handles = lappend(handles, db_handle);
 	ListCell   *lcmd;
 	int			col = 1;
-	bool		needsYBAlter = false;
+	bool		needs_yb_alter = false;
 
 	for (int cmd_idx = 0; cmd_idx < subcmds_size; ++cmd_idx)
 	{
 		foreach(lcmd, subcmds[cmd_idx])
 		{
+			bool subcmd_needs_yb_alter = false;
 			handles = YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd),
 											  rel, handles, &col,
-											  &needsYBAlter, rollbackHandle,
-											  isPartitionOfAlteredTable,
-											  ybAlteredTableIds);
+											  &subcmd_needs_yb_alter, rollbackHandle,
+											  isPartitionOfAlteredTable);
+			needs_yb_alter |= subcmd_needs_yb_alter;
 		}
 	}
 	relation_close(rel, NoLock);
 
-	if (!needsYBAlter)
+	if (!needs_yb_alter)
 	{
 		return NULL;
 	}
-	*ybAlteredTableIds = lappend_oid(*ybAlteredTableIds, relationId);
+
+	YbTrackAlteredTableId(relationId);
 	return handles;
 }
 
@@ -1842,27 +1858,28 @@ YBCExecAlterTable(YbcPgStatement handle, Oid relationId)
 }
 
 void
-YBCRename(RenameStmt *stmt, Oid relationId)
+YBCRename(Oid relationId, ObjectType renameType, const char *relname,
+		  const char *colname)
 {
 	YbcPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
 	char	   *db_name = get_database_name(databaseId);
 
-	switch (stmt->renameType)
+	switch (renameType)
 	{
 		case OBJECT_MATVIEW:
 		case OBJECT_TABLE:
 		case OBJECT_INDEX:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  YbGetRelfileNodeIdFromRelId(relationId), &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, relname));
 			break;
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  YbGetRelfileNodeIdFromRelId(relationId), &handle));
 
-			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, stmt->subname, stmt->newname));
+			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, colname, relname));
 			break;
 
 		default:
@@ -2020,8 +2037,16 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	}
 
 	heapId = IndexGetRelation(indexId, false);
-	/* TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock? */
-	heapRel = table_open(heapId, ShareLock);
+	/*
+	 * The backend that initiated index backfill holds the following locks:
+	 * 1. ShareUpdateExclusiveLock on the main table
+	 * 2. RowExclusiveLock on the index table
+	 *
+	 * Theoretically, the child backfill jobs need not acquire any locks on
+	 * either the main table or the index. Yet, we acquire relevant locks for
+	 * reading the main table and inserting rows into the index for safety.
+	 */
+	heapRel = table_open(heapId, AccessShareLock);
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are run
@@ -2033,7 +2058,7 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
-	indexRel = index_open(indexId, ShareLock);
+	indexRel = index_open(indexId, RowExclusiveLock);
 
 	indexInfo = BuildIndexInfo(indexRel);
 	/*
@@ -2052,8 +2077,8 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 				   stmt->bfinfo,
 				   out_param);
 
-	index_close(indexRel, ShareLock);
-	table_close(heapRel, ShareLock);
+	index_close(indexRel, RowExclusiveLock);
+	table_close(heapRel, AccessShareLock);
 
 	/* Roll back any GUC changes executed by index functions */
 	AtEOXact_GUC(false, save_nestlevel);
@@ -2145,7 +2170,8 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 const char *plugin_name,
 						 CRSSnapshotAction snapshot_action,
 						 uint64_t *consistent_snapshot_time,
-						 YbCRSLsnType lsn_type)
+						 YbCRSLsnType lsn_type,
+						 YbCRSOrderingMode yb_ordering_mode)
 {
 	YbcPgStatement handle;
 
@@ -2160,8 +2186,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 			repl_slot_snapshot_action = YB_REPLICATION_SLOT_USE_SNAPSHOT;
 			break;
 		case CRS_EXPORT_SNAPSHOT:
-			/* We return an 'Unsupported' error earlier. */
-			pg_unreachable();
+			repl_slot_snapshot_action = YB_REPLICATION_SLOT_EXPORT_SNAPSHOT;
 	}
 
 	/*
@@ -2171,14 +2196,21 @@ YBCCreateReplicationSlot(const char *slot_name,
 	 */
 	YbcLsnType	repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_SEQUENCE;
 
+	YbcOrderingMode repl_slot_ordering_mode =
+		YB_REPLICATION_SLOT_ORDERING_MODE_TRANSACTION;
+
 	if (lsn_type == CRS_HYBRID_TIME)
 		repl_slot_lsn_type = YB_REPLICATION_SLOT_LSN_TYPE_HYBRID_TIME;
+
+	if (yb_ordering_mode == YB_CRS_ROW)
+		repl_slot_ordering_mode = YB_REPLICATION_SLOT_ORDERING_MODE_ROW;
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
 												 MyDatabaseId,
 												 repl_slot_snapshot_action,
 												 repl_slot_lsn_type,
+												 repl_slot_ordering_mode,
 												 &handle));
 
 	YbcStatus	status = YBCPgExecCreateReplicationSlot(handle, consistent_snapshot_time);
@@ -2254,7 +2286,9 @@ YBCGetRelfileNodes(Oid *table_oids, size_t num_relations, Oid *relfilenodes)
 
 void
 YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
-						size_t numrelations)
+						size_t numrelations,
+						const YbcReplicationSlotHashRange *slot_hash_range,
+						uint64_t active_pid)
 {
 	Assert(MyDatabaseId);
 
@@ -2264,9 +2298,16 @@ YBCInitVirtualWalForCDC(const char *stream_id, Oid *relations,
 	YBCGetRelfileNodes(relations, numrelations, relfilenodes);
 
 	HandleYBStatus(YBCPgInitVirtualWalForCDC(stream_id, MyDatabaseId, relations,
-											 relfilenodes, numrelations));
+											 relfilenodes, numrelations,
+											 slot_hash_range, active_pid));
 
 	pfree(relfilenodes);
+}
+
+void
+YBCGetLagMetrics(const char *stream_id, int64_t *lag_metric)
+{
+	HandleYBStatus(YBCPgGetLagMetrics(stream_id, lag_metric));
 }
 
 void

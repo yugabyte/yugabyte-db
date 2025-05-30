@@ -16,8 +16,9 @@ type: docs
 
 Use the `ALTER ROLE` statement to change the attributes of a role (user or group).
 
-Superusers can change the attributes of any role. Roles with `CREATEROLE` privilege can change the attributes of any non-superuser role.
-Other roles can only change their own password.
+- Superusers can change the attributes of any role.
+- Roles with `CREATEROLE` privilege can change the attributes of any non-superuser role.
+- Other roles can only change their own password.
 
 ## Syntax
 
@@ -58,25 +59,25 @@ Because MD5-encrypted passwords use the role name as cryptographic salt, renamin
 
 - Change a role's password.
 
-```plpgsql
-yugabyte=# ALTER ROLE John WITH PASSWORD 'new_password';
-```
+  ```plpgsql
+  yugabyte=# ALTER ROLE John WITH PASSWORD 'new_password';
+  ```
 
 - Rename a role.
 
-```plpgsql
-yugabyte=# ALTER ROLE John RENAME TO Jane;
-```
+  ```plpgsql
+  yugabyte=# ALTER ROLE John RENAME TO Jane;
+  ```
 
-- Change default_transaction_isolation session parameter for a role.
+- Change `default_transaction_isolation` session parameter for a role.
 
-```plpgsql
-yugabyte=# ALTER ROLE Jane SET default_transaction_isolation='serializable';
-```
+  ```plpgsql
+  yugabyte=# ALTER ROLE Jane SET default_transaction_isolation='serializable';
+  ```
 
 ## See also
 
-- [`CREATE ROLE`](../dcl_create_role)
-- [`DROP ROLE`](../dcl_drop_role)
-- [`GRANT`](../dcl_grant)
-- [`REVOKE`](../dcl_revoke)
+- [CREATE ROLE](../dcl_create_role)
+- [DROP ROLE](../dcl_drop_role)
+- [GRANT](../dcl_grant)
+- [REVOKE](../dcl_revoke)

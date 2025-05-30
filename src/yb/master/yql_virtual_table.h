@@ -111,15 +111,16 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const docdb::ReadOperationData& read_operation_data,
       const docdb::YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const override {
+      docdb::SkipSeek skip_seek,
+      docdb::UseVariableBloomFilter use_variable_bloom_filter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return nullptr;
   }
 
-  Result<SampleBlocksData> GetSampleBlocks(
+  Result<SampleBlocksReservoir> GetSampleBlocks(
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       DocDbBlocksSamplingMethod blocks_sampling_method,
-      size_t num_blocks_for_sample) const override {
+      size_t num_blocks_for_sample, BlocksSamplingState* state) const override {
     return STATUS(NotSupported, "GetSampleBlocks is not implemented for virtual tables");
   }
 

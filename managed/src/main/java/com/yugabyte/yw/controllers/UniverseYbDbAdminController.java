@@ -15,6 +15,8 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -45,6 +47,7 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -52,7 +55,9 @@ import play.mvc.Result;
     value = "Universe database management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseYbDbAdminController extends AuthenticatedController {
+
   @Inject private UniverseYbDbAdminHandler universeYbDbAdminHandler;
+  @Inject private SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @ApiOperation(
       notes = "YbaApi Internal.",
@@ -77,10 +82,17 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
-    universeYbDbAdminHandler.setDatabaseCredentials(
-        customer,
-        universe,
-        formFactory.getFormDataOrBadRequest(request, DatabaseSecurityFormData.class).get());
+    DatabaseSecurityFormData formData =
+        formFactory.getFormDataOrBadRequest(request, DatabaseSecurityFormData.class).get();
+
+    if (!StringUtils.isEmpty(formData.ysqlAdminPassword)
+        && softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot configure ysql admin password while YSQL major upgrade is in progress.");
+    }
+
+    universeYbDbAdminHandler.setDatabaseCredentials(customer, universe, formData);
 
     auditService()
         .createAuditEntryWithReqBody(

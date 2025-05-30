@@ -13,7 +13,11 @@
 
 #include "yb/tserver/pg_create_table.h"
 
+#include "yb/cdc/xcluster_types.h"
+
 #include "yb/client/client.h"
+#include "yb/client/schema.h"  // YB_TODO(#12770): TO BE DELETED AFTER REWORKING
+                               //                  PG-SCHEMA-NAME USAGE IN CDC
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 
@@ -131,11 +135,15 @@ Status PgCreateTable::Exec(
     }
     schema_builder_.SetTableProperties(table_properties);
   }
-  if (!req_.schema_name().empty()) {
-    schema_builder_.SetSchemaName(req_.schema_name());
-  }
 
   RETURN_NOT_OK(schema_builder_.Build(&schema));
+
+  // YB_TODO(#12770): TO BE DELETED AFTER REWORKING PG-SCHEMA-NAME USAGE IN CDC
+  if (!req_.schema_name().empty()) {
+    client::internal::GetSchema(&schema).SetSchemaName(req_.schema_name());
+  }
+  // \YB_TODO(#12770)
+
   const auto split_rows = VERIFY_RESULT(BuildSplitRows(schema));
 
   // Create table.
@@ -152,6 +160,10 @@ Status PgCreateTable::Exec(
   if (req_.is_shared_table()) {
     table_creator->is_pg_shared_table();
   }
+  if (req_.schema_name() == "cron" && req_.table_name() == "job") {
+    table_creator->internal_table_type(master::InternalTableType::PG_CRON_JOB_TABLE);
+  }
+
   if (hash_schema_) {
     table_creator->hash_schema(*hash_schema_);
   } else if (!req_.is_pg_catalog_table()) {
@@ -163,7 +175,10 @@ Status PgCreateTable::Exec(
     table_creator->tablegroup_id(tablegroup_oid.GetYbTablegroupId());
   }
 
-  if (req_.optional_colocation_id_case() !=
+  if (overwrite_colocation_id_ != kColocationIdNotSet) {
+    table_creator->colocation_id(overwrite_colocation_id_);
+  } else if (
+      req_.optional_colocation_id_case() !=
       PgCreateTableRequestPB::OptionalColocationIdCase::OPTIONAL_COLOCATION_ID_NOT_SET) {
     table_creator->colocation_id(req_.colocation_id());
   }
@@ -198,8 +213,17 @@ Status PgCreateTable::Exec(
     }
   }
 
+  // If the table was created in the xCluster DDL replication extension.
+  if (req_.schema_name() == xcluster::kDDLQueuePgSchemaName) {
+    table_creator->internal_table_type(master::InternalTableType::XCLUSTER_DDL_REPLICATION_TABLE);
+  }
+
   if (xcluster_source_table_id_.IsValid()) {
     table_creator->xcluster_source_table_id(xcluster_source_table_id_.GetYbTableId());
+  }
+
+  if (xcluster_backfill_hybrid_time_) {
+    table_creator->xcluster_backfill_hybrid_time(xcluster_backfill_hybrid_time_);
   }
 
   if (transaction_metadata) {
@@ -266,7 +290,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   if (req_.is_unique_index()) {
     auto name = "ybuniqueidxkeysuffix";
     client::YBColumnSpec* col = schema_builder_.AddColumn(name)->Type(yb_type);
-    col->Order(to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix));
+    col->Order(std::to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix));
     col->PrimaryKey();
     range_columns_.emplace_back(name);
   }
@@ -276,7 +300,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   // column if any or before exec() below.
   auto name = "ybidxbasectid";
   client::YBColumnSpec* col = schema_builder_.AddColumn(name)->Type(yb_type);
-  col->Order(to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId));
+  col->Order(std::to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId));
   if (!req_.is_unique_index()) {
     col->PrimaryKey();
     range_columns_.emplace_back(name);
@@ -360,6 +384,14 @@ void PgCreateTable::SetXClusterSourceTableId(const PgObjectId& xcluster_source_t
   xcluster_source_table_id_ = xcluster_source_table_id;
 }
 
+void PgCreateTable::SetXClusterBackfillHybridTime(uint64_t xcluster_backfill_hybrid_time) {
+  xcluster_backfill_hybrid_time_ = xcluster_backfill_hybrid_time;
+}
+
+void PgCreateTable::OverwriteColocationId(const ColocationId& colocation_id) {
+  overwrite_colocation_id_ = colocation_id;
+}
+
 Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline) {
   const client::YBTableName table_name(YQL_DATABASE_PGSQL,
                                        kPgSequencesDataNamespaceId,
@@ -400,7 +432,7 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
     LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
   } else {
     // If any other error, report that!
-    LOG(ERROR) << "Error creating table '" << table_name.ToString() << "': " << status;
+    LOG(WARNING) << "Error creating table '" << table_name.ToString() << "': " << status;
     return status;
   }
   return Status::OK();

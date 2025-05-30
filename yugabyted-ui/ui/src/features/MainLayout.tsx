@@ -10,6 +10,7 @@ import { ClusterRouting } from '@app/features/clusters/ClusterRouting';
 import { DatabasesRouting } from '@app/features/clusters/DatabasesRouting';
 import { AlertsRouting } from './clusters/AlertsRouting';
 import { MigrationRouting } from './clusters/MigrationRouting';
+import { PopupManagerSafe } from './popups/PopupManager';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -75,6 +76,7 @@ export const MainLayout: FC = () => {
   // render all protected content when auth token successfully validated by account/projects queries
   return (
     <div className={classes.root}>
+      <PopupManagerSafe>
       {/* <Route path="/a/:accountId"> */}
       <Route>
         <Sidebar projectId={projectId ?? ''} />
@@ -109,6 +111,7 @@ export const MainLayout: FC = () => {
         </Container>
         <Footer />
       </main>
+      </PopupManagerSafe>
     </div>
   );
 };

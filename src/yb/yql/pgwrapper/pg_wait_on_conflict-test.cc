@@ -44,6 +44,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_string(ysql_pg_conf_csv);
@@ -832,6 +833,11 @@ class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
+    // We flush tablet before triggering tablet splitting to ensure SST files exist,
+    // making them eligible for splitting. However, if the load balancer moves
+    // the tablet afterward, the flush is invalidated, causing the split to fail,
+    // so to make the test robust it's better to disable load balancer.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     PgTabletSplitTestBase::SetUp();
   }
 

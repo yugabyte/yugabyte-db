@@ -100,9 +100,9 @@ void TotalMemWatcher::MemoryMonitoringLoop(std::function<void()> trigger_termina
     }
     std::string termination_explanation = GetTerminationExplanation();
     if (!termination_explanation.empty()) {
-      LOG(ERROR) << "Memory usage exceeded configured limit, terminating the process: "
-                 << termination_explanation << "\nDetails:\n"
-                 << GetMemoryUsageDetails();
+      LOG(DFATAL) << "Memory usage exceeded configured limit, terminating the process: "
+                  << termination_explanation << "\nDetails:\n"
+                  << GetMemoryUsageDetails();
       trigger_termination_fn();
       return;
     }

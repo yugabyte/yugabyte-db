@@ -78,7 +78,7 @@ bool IsRetryable(const Status& status) {
   static const auto kExpectedErrors = {
       "Try again",
       "Catalog Version Mismatch",
-      "Restart read required at",
+      "Restart read required",
       "schema version mismatch for table"
   };
   return HasSubstring(status.message(), kExpectedErrors);

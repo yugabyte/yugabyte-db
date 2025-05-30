@@ -66,8 +66,8 @@ class GlobalStackTraceTracker {
       if (entry.symbolized_trace.empty()) {
         auto s = StackTrace::MakeStackTrace(frames);
         if (!s.ok()) {
-          LOG(ERROR) << "Bad stack trace frames: "
-                     << Slice(frames.data(), frames.size()).ToDebugString();
+          LOG(DFATAL) << "Bad stack trace frames: "
+                      << Slice(frames.data(), frames.size()).ToDebugString();
         }
         entry.symbolized_trace = s->Symbolize();
       }

@@ -120,7 +120,7 @@ func (fp *FullPITRContext) startSubsection(format string) (*template.Template, e
 }
 
 func (fp *FullPITRContext) subSection(name string) {
-	fp.Output.Write([]byte("\n\n"))
+	fp.Output.Write([]byte("\n"))
 	fp.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	fp.Output.Write([]byte("\n"))
 }

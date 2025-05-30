@@ -58,18 +58,13 @@ public class YcqlQueryExecutor {
   }
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
-    CassandraConnection cc = null;
-    try {
-      cc =
-          createCassandraConnection(
-              universe.getUniverseUUID(), true, data.ycqlAdminUsername, data.ycqlAdminPassword);
+    try (CassandraConnection cc =
+        createCassandraConnection(
+            universe.getUniverseUUID(), true, data.ycqlAdminUsername, data.ycqlAdminPassword)) {
+      // Connection created
     } catch (AuthenticationException e) {
       LOG.warn(e.getMessage());
       throw new PlatformServiceException(Http.Status.UNAUTHORIZED, e.getMessage());
-    } finally {
-      if (cc != null) {
-        cc.close();
-      }
     }
   }
 
@@ -120,9 +115,15 @@ public class YcqlQueryExecutor {
     if (certificate != null) {
       builder.withSSL(SslHelper.getSSLOptions(certificate));
     }
-    cc.cluster = builder.build();
-
-    cc.session = cc.cluster.connect();
+    try {
+      cc.cluster = builder.build();
+      cc.session = cc.cluster.connect();
+    } catch (Exception e) {
+      if (cc.cluster != null) {
+        cc.cluster.close();
+      }
+      throw e;
+    }
     return cc;
   }
 
@@ -173,32 +174,27 @@ public class YcqlQueryExecutor {
       String username,
       String password) {
     ObjectNode response = newObject();
-    CassandraConnection cc = null;
-    try {
-      cc = createCassandraConnection(universe.getUniverseUUID(), authEnabled, username, password);
+    try (CassandraConnection cc =
+        createCassandraConnection(universe.getUniverseUUID(), authEnabled, username, password)) {
+      try {
+        ResultSet rs = cc.session.execute(queryParams.getQuery());
+        if (rs.iterator().hasNext()) {
+          List<Map<String, Object>> rows = resultSetToMap(rs);
+          response.set("result", toJson(rows));
+        } else {
+          // For commands without a result we return only executed command identifier
+          // (SELECT/UPDATE/...). We can't return query itself to avoid logging of
+          // sensitive data.
+          response.put("queryType", getQueryType(queryParams.getQuery()));
+        }
+      } catch (Exception e) {
+        response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.getQuery()));
+      }
     } catch (AuthenticationException e) {
       response.put("error", AUTH_ERR_MSG);
       return response;
     }
 
-    try {
-      ResultSet rs = cc.session.execute(queryParams.getQuery());
-      if (rs.iterator().hasNext()) {
-        List<Map<String, Object>> rows = resultSetToMap(rs);
-        response.set("result", toJson(rows));
-      } else {
-        // For commands without a result we return only executed command identifier
-        // (SELECT/UPDATE/...). We can't return query itself to avoid logging of
-        // sensitive data.
-        response.put("queryType", getQueryType(queryParams.getQuery()));
-      }
-    } catch (Exception e) {
-      response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.getQuery()));
-    } finally {
-      if (cc != null) {
-        cc.close();
-      }
-    }
     return response;
   }
 }

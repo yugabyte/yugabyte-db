@@ -12,6 +12,8 @@ override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 
 # keep this list arranged alphabetically or it gets to be a mess
 OBJS = \
+	yb_lockfuncs.o \
+	\
 	acl.o \
 	amutils.o \
 	array_expanded.o \
@@ -48,7 +50,6 @@ OBJS = \
 	int.o \
 	int8.o \
 	json.o \
-	jsonapi.o \
 	jsonb.o \
 	jsonb_gin.o \
 	jsonb_op.o \
@@ -118,8 +119,7 @@ OBJS = \
 	windowfuncs.o \
 	xid.o \
 	xid8funcs.o \
-	xml.o \
-	yb_lockfuncs.o
+	xml.o
 
 jsonpath_scan.c: FLEXFLAGS = -CF -p -p
 jsonpath_scan.c: FLEX_NO_BACKUP=yes

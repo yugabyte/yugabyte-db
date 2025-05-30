@@ -26,10 +26,10 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/doc_ttl_util.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value_type.h"
-#include "yb/dockv/vector_id.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
@@ -893,6 +893,9 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
     auto* kv_pair = kv_pb->add_write_pairs();
     kv_pair->dup_key(entry.key);
     kv_pair->dup_value(entry.value);
+  }
+  if (!delete_vector_ids_.empty()) {
+    kv_pb->dup_delete_vector_ids(delete_vector_ids_.AsSlice());
   }
   MoveLocksToWriteBatchPB(kv_pb, /* is_lock= */ true);
   if (has_ttl()) {

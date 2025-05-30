@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
 import pluralize from 'pluralize';
-import { YBModal } from '../../../../components';
+import { YBButton, YBModal } from '../../../../components';
 import { Cluster, UniverseDetails } from '../utils/dto';
 import { getAsyncCluster, getKubernetesDiffClusterData, getPrimaryCluster } from '../utils/helpers';
 
@@ -13,7 +13,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   regionBox: {
     backgroundColor: '#f7f7f7',
-    borderRadius: theme.spacing[0.75],
+    borderRadius: theme.spacing(0.75),
     padding: theme.spacing(1.5, 2)
   },
   flexColumnBox: {
@@ -33,7 +33,7 @@ interface KubernetesPlacementModalProps {
   open: boolean;
   isPrimary: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (runOnlyPrechecks: boolean) => void;
 }
 
 export const KubernetesPlacementModal: FC<KubernetesPlacementModalProps> = ({
@@ -205,13 +205,43 @@ export const KubernetesPlacementModal: FC<KubernetesPlacementModalProps> = ({
       open={open}
       onClose={onClose}
       size="sm"
-      cancelLabel={t('common.cancel')}
-      submitLabel={t('common.proceed')}
-      onSubmit={onSubmit}
       overrideHeight="auto"
       titleSeparator
-      submitTestId="submit-kuberentes-config"
-      cancelTestId="close-kubernetes-config"
+      footerAccessory={
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            width: '100%'
+          }}
+        >
+          <YBButton
+            type="button"
+            variant="secondary"
+            data-testid="KubernetesPlacementModal-CancelButton"
+            onClick={onClose}
+          >
+            {t('common.cancel')}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            onClick={() => onSubmit(true)}
+            data-testid="KubernetesPlacementModal-RunPrechecksButton"
+          >
+            {t('universeActions.runPrecheckOnlyButton')}
+          </YBButton>
+          <YBButton
+            variant="primary"
+            onClick={() => onSubmit(false)}
+            data-testid="KubernetesPlacementModal-SubmitButton"
+          >
+            {t('common.proceed')}
+          </YBButton>
+        </div>
+      }
     >
       <Box
         display="flex"

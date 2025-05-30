@@ -19,9 +19,10 @@ import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
 import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
 import { restoreSnapShot } from '../common/PitrAPI';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import CautionIcon from '../common/CautionIcon';
 import './PointInTimeRecoveryModal.scss';
-import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -92,6 +93,8 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
   universeUUID
 }) => {
   const queryClient = useQueryClient();
+  const interceptBackupLink = useInterceptBackupTaskLinks();
+  
   const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
 
   const createPITR = useMutation((values: any) => restoreSnapShot(universeUUID, values), {
@@ -99,9 +102,9 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
       toast.success(
         <span>
           {config.dbName} is being recovered. Click &nbsp;
-          <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+          {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
             here
-          </a>
+          </a>)}
           &nbsp; for task details.
         </span>
       );

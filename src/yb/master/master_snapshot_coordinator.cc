@@ -336,7 +336,7 @@ class MasterSnapshotCoordinator::Impl {
       RETURN_NOT_OK(tablet->snapshots().Create(*sys_catalog_snapshot_data));
     }
 
-    ScheduleOperations(operations, leader_term);
+    PostScheduleOperations(std::move(operations), leader_term);
 
     if (leader_term >= 0 && snapshot_empty) {
       // There could be snapshot for 0 tables, so they should be marked as complete right after
@@ -542,7 +542,7 @@ class MasterSnapshotCoordinator::Impl {
     RETURN_NOT_OK(tablet->ApplyOperation(
         operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
 
-    ScheduleOperations(operations, leader_term);
+    PostScheduleOperations(std::move(operations), leader_term);
     return Status::OK();
   }
 
@@ -586,7 +586,8 @@ class MasterSnapshotCoordinator::Impl {
     auto tablet = VERIFY_RESULT(operation.tablet_safe());
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
       RETURN_NOT_OK_PREPEND(
-          context_.RestoreSysCatalog(restoration.get(), tablet.get(), complete_status),
+          context_.RestoreSysCatalog(
+              restoration.get(), tablet.get(), leader_term >= 0, complete_status),
           "Restore sys catalog failed");
     }
     return Status::OK();
@@ -985,12 +986,12 @@ class MasterSnapshotCoordinator::Impl {
             // with restore. Especially with tablet splitting. In Retail mode just log an error and
             // proceed.
             auto error_msg = Format(
-                "PITR: Master metadata verified failed for restoration $0, status: $1",
+                "PITR: Master metadata verification failed for restoration $0, status: $1",
                 restoration->restoration_id(), status);
             if (FLAGS_TEST_fatal_on_snapshot_verify) {
               LOG(DFATAL) << error_msg;
             } else {
-              LOG(ERROR) << error_msg;
+              LOG(WARNING) << error_msg;
             }
           }
 
@@ -1014,7 +1015,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntryType type) {
+      SysRowEntryType type, IncludeHiddenTables includeHiddenTables) {
     std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
     {
       std::lock_guard lock(mutex_);
@@ -1026,7 +1027,7 @@ class MasterSnapshotCoordinator::Impl {
     }
     SnapshotSchedulesToObjectIdsMap result;
     for (const auto& [schedule_id, filter] : schedules) {
-      auto entries = VERIFY_RESULT(CollectEntries(filter));
+      auto entries = VERIFY_RESULT(CollectEntries(filter, includeHiddenTables));
       auto& ids = result[schedule_id];
       for (const auto& entry : entries.entries()) {
         if (entry.type() == type) {
@@ -1378,6 +1379,14 @@ class MasterSnapshotCoordinator::Impl {
                     MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
+  template <class Operations>
+  void PostScheduleOperations(Operations&& operations, int64_t leader_term) {
+    context_.Scheduler().io_service().post(
+        [this, operations = std::move(operations), leader_term] {
+      ScheduleOperations(operations, leader_term);
+    });
+  }
+
   template <typename Operation>
   void ScheduleOperation(const Operation& operation, const TabletInfoPtr& tablet_info,
                          int64_t leader_term);
@@ -1402,9 +1411,8 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  template <typename TableContainer>
   void SetTaskMetadataForColocatedTable(
-      const TableContainer& table_ids, AsyncTabletSnapshotOp* task) {
+      const std::vector<TableId>& table_ids, AsyncTabletSnapshotOp* task) {
     for (const auto& table_id : table_ids) {
       auto table_info_result = context_.GetTableById(table_id);
       // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
@@ -1436,6 +1444,7 @@ class MasterSnapshotCoordinator::Impl {
     if (!l.IsInitializedAndIsLeader()) {
       return;
     }
+    LongOperationTracker long_operation_tracker("Poll", 1s);
     VLOG(4) << __func__ << "()";
     std::vector<TxnSnapshotId> cleanup_snapshots;
     TabletSnapshotOperations operations;
@@ -1454,8 +1463,11 @@ class MasterSnapshotCoordinator::Impl {
             LOG(DFATAL) << "Cleanup of snapshot " << p->id() << " was already started.";
           }
           cleanup_snapshots.push_back(p->id());
-        } else if (p->HasExpired(context_.Clock()->Now())) {
-          LOG(INFO) << "Snapshot " << p->id() << " has expired";
+        } else if (p->HasExpired(context_.Clock()->Now()) &&
+                   p->initial_state() != SysSnapshotEntryPB::DELETING) {
+          // For expired snapshots that we have not already tried to delete, start the deletion
+          // workflow.
+          LOG(INFO) << "Snapshot " << p->id() << " has expired. Trying to delete it.";
           TryDeleteSnapshot(p.get(), &schedules_data);
         } else {
           p->PrepareOperations(&operations);
@@ -1602,6 +1614,7 @@ class MasterSnapshotCoordinator::Impl {
     (**it).CleanupTracker().Abort();
   }
 
+  // Clean up the sys_catalog information for the given object (after it is deleted).
   template <typename Map, typename Id>
   void CleanupObject(int64_t leader_term, Id id, const Map& map,
                      const Result<dockv::KeyBytes>& encoded_key) {
@@ -1985,8 +1998,10 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  Result<SysRowEntries> CollectEntries(const SnapshotScheduleFilterPB& filter) const {
-    return context_.CollectEntriesForSnapshot(filter.tables().tables());
+  Result<SysRowEntries> CollectEntries(
+      const SnapshotScheduleFilterPB& filter,
+      IncludeHiddenTables includeHiddenTables = IncludeHiddenTables::kFalse) const {
+    return context_.CollectEntriesForSnapshot(filter.tables().tables(), includeHiddenTables);
   }
 
   Status ForwardRestoreCheck(
@@ -2051,8 +2066,8 @@ class MasterSnapshotCoordinator::Impl {
         // from external backups where we don't need to restore the sys catalog.
         auto restoration = std::make_unique<RestorationState>(
             &context_, restoration_id, &snapshot, restore_at,
-            (snapshot.schedule_id().IsNil() ? IsSysCatalogRestored::kTrue :
-                                              IsSysCatalogRestored::kFalse),
+            snapshot.schedule_id().IsNil() ? IsSysCatalogRestored::kTrue :
+                                             IsSysCatalogRestored::kFalse,
             GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
                         FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
         restoration_ptr = restorations_.emplace(std::move(restoration)).first->get();
@@ -2429,8 +2444,9 @@ docdb::HistoryCutoff MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
 }
 
 Result<SnapshotSchedulesToObjectIdsMap>
-    MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType type) {
-  return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
+MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(
+    SysRowEntryType type, IncludeHiddenTables includeHiddenTables) {
+  return impl_->MakeSnapshotSchedulesToObjectIdsMap(type, includeHiddenTables);
 }
 
 Result<std::vector<SnapshotScheduleId>> MasterSnapshotCoordinator::GetSnapshotSchedules(

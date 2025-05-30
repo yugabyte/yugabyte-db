@@ -38,30 +38,30 @@ yb-ts-cli [other arguments] -- set_flag ysql_select_parallelism -1
     title="yb-admin"
     body="Administer YugabyteDB cluster configuration and features."
     href="yb-admin/"
-    icon="fa-light fa-screwdriver-wrench">}}
+    icon="fa-thin fa-screwdriver-wrench">}}
 
   {{<index/item
     title="yb-ts-cli"
     body="Perform advanced operations on tablet servers."
     href="yb-ts-cli/"
-    icon="fa-light fa-toolbox">}}
+    icon="fa-thin fa-toolbox">}}
 
   {{<index/item
     title="ysql_dump"
     body="Extract a single YugabyteDB database into an SQL script file."
     href="ysql-dump/"
-    icon="fa-light fa-file-export">}}
+    icon="fa-thin fa-file-export">}}
 
   {{<index/item
     title="ysql_dumpall"
     body="Extract all YugabyteDB databases into an SQL script file."
     href="ysql-dumpall/"
-    icon="fa-light fa-copy">}}
+    icon="fa-thin fa-copy">}}
 
   {{<index/item
     title="yb-ctl"
     body="Create and manage local clusters on macOS or Linux."
     href="yb-ctl/"
-    icon="fa-light fa-toolbox">}}
+    icon="fa-thin fa-toolbox">}}
 
 {{</index/block>}}

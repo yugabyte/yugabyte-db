@@ -26,6 +26,7 @@
 
 #include "access/genam.h"
 #include "nodes/pathnodes.h"
+#include "utils/selfuncs.h"
 
 bytea *
 ybvectoroptions(Datum reloptions, bool validate)
@@ -53,6 +54,20 @@ ybvectorcostestimate(PlannerInfo *root, IndexPath *path,
 					 Cost *indexTotalCost, Selectivity *indexSelectivity,
 					 double *indexCorrelation, double *indexPages)
 {
+	GenericCosts costs;
+	MemSet(&costs, 0, sizeof(costs));
+
+	/*
+	 * Not setting costs.numIndexTuples for input into genericcostestimate
+	 * as there's no good way we estimate that yet.
+	 */
+	genericcostestimate(root, path, loop_count, &costs);
+
+	*indexStartupCost = costs.indexStartupCost;
+	*indexTotalCost = costs.indexTotalCost;
+	*indexSelectivity = costs.indexSelectivity;
+	*indexCorrelation = costs.indexCorrelation;
+	*indexPages = costs.numIndexPages;
 	return;
 }
 

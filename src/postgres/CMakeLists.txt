@@ -10,8 +10,8 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-
-set(POSTGRES_EXTRA_C_CXX_FLAGS "")
+# YB change: Enable catcache stats.
+set(POSTGRES_EXTRA_C_CXX_FLAGS "-DCATCACHE_STATS")
 set(POSTGRES_EXTRA_LD_FLAGS "")
 
 get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

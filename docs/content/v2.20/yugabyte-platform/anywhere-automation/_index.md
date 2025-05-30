@@ -10,6 +10,7 @@ menu:
     identifier: anywhere-automation
     weight: 670
 type: indexpage
+showRightNav: true
 ---
 
 Use the following automation tools to manage your YugabyteDB Anywhere installation and universes:
@@ -46,33 +47,3 @@ For some REST API commands, you may need one or more of the following account de
     ```output
     https://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe
     ```
-
-### Automation
-
-<div class="row">
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="anywhere-api/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">YugabyteDB Anywhere REST API</div>
-      </div>
-      <div class="body">
-        Manage your account and universes using a REST API.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="anywhere-terraform/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/ecosystem/terraform.png" aria-hidden="true" />
-        <div class="title">YugabyteDB Anywhere Terraform Provider</div>
-      </div>
-      <div class="body">
-        Use the Terraform provider to automate tasks.
-      </div>
-    </a>
-  </div>
-
-</div>

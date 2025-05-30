@@ -16,6 +16,8 @@
 #include "common/pg_prng.h"
 #include "storage/block.h"		/* for typedef BlockNumber */
 
+
+/* Random generator for sampling code */
 extern void sampler_random_init_state(uint32 seed,
 									  pg_prng_state *randstate);
 extern double sampler_random_fract(pg_prng_state *randstate);

@@ -57,6 +57,8 @@ void YBCRestorePgSessionState(const YbcPgSessionState* session_data);
 
 YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade);
 
+void YBCPgIncrementIndexRecheckCount();
+
 uint64_t YBCPgGetSessionID();
 
 // Initialize YBCPgMemCtx.
@@ -72,7 +74,7 @@ YbcStatus YBCPgResetMemctx(YbcPgMemctx memctx);
 void YBCPgDeleteStatement(YbcPgStatement handle);
 
 // Invalidate the sessions table cache.
-YbcStatus YBCPgInvalidateCache();
+YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version);
 
 // Check if initdb has been already run.
 YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
@@ -97,6 +99,14 @@ YbcStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 // have one row per database.
 YbcStatus YBCCatalogVersionTableInPerdbMode(bool* perdb_mode);
 
+YbcStatus YBCGetTserverCatalogMessageLists(
+    YbcPgOid db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions,
+    YbcCatalogMessageLists* message_lists);
+
+YbcStatus YBCPgSetTserverCatalogMessageList(
+    YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+    const YbcCatalogMessageList *message_list);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -120,6 +130,14 @@ bool YBCTryMemRelease(int64_t bytes);
 
 YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 
+int64_t YBCGetTCMallocSamplingPeriod();
+void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
+YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
+                             int64_t* num_samples,
+                             bool peak_heap);
+
+void YBCDumpTcMallocHeapProfile(bool peak_heap, size_t max_call_stacks);
+
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YbcStatus YBCValidateJWT(const char *token, const YbcPgJwtAuthOptions *options);
 YbcStatus YBCFetchFromUrl(const char *url, char **buf);
@@ -128,6 +146,8 @@ YbcStatus YBCFetchFromUrl(const char *url, char **buf);
 bool YBCIsCronLeader();
 YbcStatus YBCSetCronLastMinute(int64_t last_minute);
 YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
+
+int YBCGetXClusterRole(uint32_t db_oid);
 
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
@@ -155,7 +175,9 @@ YbcConstSliceVector YBCBitmapCopySetToVector(YbcConstSliceSet set, size_t *size)
 
 // Returns a vector representing a chunk of the given vector. ybctids are
 // shallow copied - their underlying allocations are shared.
-YbcConstSliceVector YBCBitmapGetVectorRange(YbcConstSliceVector vec, size_t start, size_t length);
+YbcConstSliceVector YBCBitmapGetVectorRange(YbcConstSliceVector vec,
+                                            size_t start,
+                                            size_t length);
 
 void YBCBitmapShallowDeleteVector(YbcConstSliceVector vec);
 void YBCBitmapShallowDeleteSet(YbcConstSliceSet set);
@@ -424,6 +446,9 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
 
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options);
 
+YbcStatus YBCPgCreateIndexSetHnswOptions(
+    YbcPgStatement handle, int m, int m0, int ef_construction);
+
 YbcStatus YBCPgExecCreateIndex(YbcPgStatement handle);
 
 YbcStatus YBCPgNewDropIndex(YbcPgOid database_oid,
@@ -548,6 +573,8 @@ YbcStatus YBCPgDmlANNBindVector(YbcPgStatement handle, YbcPgExpr vector);
 
 YbcStatus YBCPgDmlANNSetPrefetchSize(YbcPgStatement handle, int prefetch_size);
 
+YbcStatus YBCPgDmlHnswSetReadOptions(YbcPgStatement handle, int ef_search);
+
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
 YbcStatus YBCPgDmlFetch(YbcPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
@@ -575,6 +602,7 @@ YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
 YbcStatus YBCPgFlushBufferedOperations();
+YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
@@ -668,6 +696,7 @@ YbcStatus YBCPgRetrieveYbctids(YbcPgStatement handle, const YbcPgExecParameters 
                                bool *exceeded_work_mem);
 YbcStatus YBCPgFetchRequestedYbctids(YbcPgStatement handle, const YbcPgExecParameters *exec_params,
                                      YbcConstSliceVector ybctids);
+YbcStatus YBCPgBindYbctids(YbcPgStatement handle, int n, uintptr_t* datums);
 
 // Functions----------------------------------------------------------------------------------------
 YbcStatus YBCAddFunctionParam(
@@ -691,6 +720,8 @@ YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
 YbcStatus YBCPgCommitPlainTransaction();
+YbcStatus YBCPgCommitPlainTransactionContainingDDL(
+    YbcPgOid ddl_db_oid, bool ddl_is_silent_altering);
 YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
@@ -699,6 +730,7 @@ YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);
 YbcStatus YBCPgUpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
+YbcStatus YBCPgSetDdlStateInPlainTransaction();
 YbcStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YbcStatus YBCPgExitSeparateDdlTxnMode(YbcPgOid db_oid, bool is_silent_altering);
@@ -775,8 +807,10 @@ void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uin
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
 YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor* descr, bool* res);
-YbcStatus YBCAddForeignKeyReferenceIntent(const YbcPgYBTupleIdDescriptor* descr,
-                                          bool relation_is_region_local);
+YbcStatus YBCAddForeignKeyReferenceIntent(
+    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
+    bool is_deferred_trigger);
+void YBCNotifyDeferredTriggersProcessingStarted();
 
 // Explicit Row-level Locking.
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
@@ -810,6 +844,8 @@ bool YBCPgIsYugaByteEnabled();
 // Sets the specified timeout in the rpc service.
 void YBCSetTimeout(int timeout_ms, void* extra);
 
+void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
+
 //--------------------------------------------------------------------------------------------------
 // Thread-Local variables.
 
@@ -822,6 +858,10 @@ void YBCPgResetCurrentMemCtxThreadLocalVars();
 void* YBCPgGetThreadLocalStrTokPtr();
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
+
+int YBCPgGetThreadLocalYbExpressionVersion();
+
+void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version);
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
 
@@ -895,6 +935,7 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgOid database_oid,
                                         YbcPgReplicationSlotSnapshotAction snapshot_action,
                                         YbcLsnType lsn_type,
+                                        YbcOrderingMode ordering_mode,
                                         YbcPgStatement *handle);
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);
@@ -911,7 +952,9 @@ YbcStatus YBCPgExecDropReplicationSlot(YbcPgStatement handle);
 
 YbcStatus YBCPgInitVirtualWalForCDC(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
-    size_t num_relations);
+    size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid);
+
+YbcStatus YBCPgGetLagMetrics(const char *stream_id, int64_t *lag_metric);
 
 YbcStatus YBCPgUpdatePublicationTableList(
     const char *stream_id, const YbcPgOid database_oid, YbcPgOid *relations, YbcPgOid *relfilenodes,
@@ -943,8 +986,10 @@ YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* 
 
 YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** databaseClones, size_t* count);
 
-uint64_t YBCPgGetCurrentReadTimePoint();
-YbcStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
+YbcReadPointHandle YBCPgGetCurrentReadPoint();
+YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
+YbcStatus YBCPgRegisterSnapshotReadTime(
+    uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
 
 void YBCDdlEnableForceCatalogModification();
 
@@ -955,11 +1000,23 @@ YbcStatus YBCAcquireAdvisoryLock(
 YbcStatus YBCReleaseAdvisoryLock(YbcAdvisoryLockId lock_id, YbcAdvisoryLockMode mode);
 YbcStatus YBCReleaseAllAdvisoryLocks(uint32_t db_oid);
 
-YbcStatus YBCPgExportSnapshot(const YbcPgTxnSnapshot *snapshot, char** snapshot_id);
-YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot *snapshot);
+YbcStatus YBCPgExportSnapshot(
+    const YbcPgTxnSnapshot* snapshot, char** snapshot_id,
+    const YbcReadPointHandle* explicit_read_point);
+YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapshot);
 
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();
+
+YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
+
+// Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
+// pg15). This will return true before any process has been upgraded to the new version, and will
+// return false after the upgrade has been finalized.
+// This will return false for regular YB upgrades (both major and minor).
+// DevNote: Finalize is a multi-step process involving YsqlMajorCatalog Finalize, AutoFlag Finalize,
+// and YsqlUpgrade. This will return false after the AutoFlag Finalize step.
+bool YBCPgYsqlMajorVersionUpgradeInProgress();
 
 #ifdef __cplusplus
 }  // extern "C"

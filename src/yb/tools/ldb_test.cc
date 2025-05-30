@@ -115,7 +115,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
   Result<string> GetTabletDbPath() {
     for (const auto& peer : cluster_->GetTabletPeers(0)) {
-      if (peer->TEST_table_type() == TableType::YQL_TABLE_TYPE) {
+      if (peer->tablet_metadata()->table_name() == kTableName) {
         return peer->tablet_metadata()->rocksdb_dir();
       }
     }

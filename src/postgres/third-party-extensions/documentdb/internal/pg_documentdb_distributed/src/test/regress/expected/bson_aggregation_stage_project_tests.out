@@ -1,0 +1,978 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 32000;
+SET documentdb.next_collection_id TO 3200;
+SET documentdb.next_collection_index_id TO 3200;
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"1", "a" : { "b" : 1 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"2", "a" : { "b" : [ 0, 1, 2]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"3", "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"4", "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"5", "a" : { "b" : [ { "1" : [ 1, 2, 3 ] } ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"6", "a" : [ { "c" : 0 }, 2 ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"8", "a" : { "c" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"9", "c" : { "d" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- fetch all rows
+SELECT shard_key_value, object_id, document FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ shard_key_value |  object_id   |                                                                                                                                           document                                                                                                                                           
+---------------------------------------------------------------------
+            3200 | { "" : "1" } | { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+            3200 | { "" : "2" } | { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+            3200 | { "" : "3" } | { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+            3200 | { "" : "4" } | { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+            3200 | { "" : "5" } | { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+            3200 | { "" : "6" } | { "_id" : "6", "a" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+            3200 | { "" : "7" } | { "_id" : "7", "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+            3200 | { "" : "8" } | { "_id" : "8", "a" : { "c" : { "$numberInt" : "1" } } }
+            3200 | { "" : "9" } | { "_id" : "9", "c" : { "d" : { "$numberInt" : "1" } } }
+(9 rows)
+
+-- basic a.b query with id excluded and included
+SELECT bson_dollar_project(document, '{ "a.b" : 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                               bson_dollar_project                                                                                                                               
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ {  } ] }
+ { "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : {  } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "a.b" : 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                     bson_dollar_project                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "_id" : "6", "a" : [ {  } ] }
+ { "_id" : "7", "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : "8", "a" : {  } }
+ { "_id" : "9" }
+(9 rows)
+
+-- basic a.b expressed as nested object
+SELECT bson_dollar_project(document, '{ "a" : { "b": 1 }, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                               bson_dollar_project                                                                                                                               
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ {  } ] }
+ { "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : {  } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "a" : { "b": 1 } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                     bson_dollar_project                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "_id" : "6", "a" : [ {  } ] }
+ { "_id" : "7", "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : "8", "a" : {  } }
+ { "_id" : "9" }
+(9 rows)
+
+-- basic a.b.1 query with id excluded and included
+SELECT bson_dollar_project(document, '{ "a.b.1": 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                             bson_dollar_project                                              
+---------------------------------------------------------------------
+ { "a" : {  } }
+ { "a" : { "b" : [  ] } }
+ { "a" : [ {  }, {  }, {  } ] }
+ { "a" : [ { "b" : [  ] }, { "b" : [  ] }, { "b" : [  ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ {  } ] }
+ { "a" : [ {  }, {  }, {  } ] }
+ { "a" : {  } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "a.b.1": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                    bson_dollar_project                                                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+ { "_id" : "2", "a" : { "b" : [  ] } }
+ { "_id" : "3", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "4", "a" : [ { "b" : [  ] }, { "b" : [  ] }, { "b" : [  ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "_id" : "6", "a" : [ {  } ] }
+ { "_id" : "7", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "8", "a" : {  } }
+ { "_id" : "9" }
+(9 rows)
+
+-- basic a.b.1 expressed as nested object
+SELECT bson_dollar_project(document, '{ "a" : { "b": { "1" : 1 } }, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                             bson_dollar_project                                              
+---------------------------------------------------------------------
+ { "a" : {  } }
+ { "a" : { "b" : [  ] } }
+ { "a" : [ {  }, {  }, {  } ] }
+ { "a" : [ { "b" : [  ] }, { "b" : [  ] }, { "b" : [  ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ {  } ] }
+ { "a" : [ {  }, {  }, {  } ] }
+ { "a" : {  } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "a" : { "b": { "1" : 1 } } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                    bson_dollar_project                                                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+ { "_id" : "2", "a" : { "b" : [  ] } }
+ { "_id" : "3", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "4", "a" : [ { "b" : [  ] }, { "b" : [  ] }, { "b" : [  ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "_id" : "6", "a" : [ {  } ] }
+ { "_id" : "7", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "8", "a" : {  } }
+ { "_id" : "9" }
+(9 rows)
+
+-- path collsion due to conflicting paths
+SELECT bson_dollar_project(document, '{ "a.b.1": 1, "a.b": 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at a.b
+SELECT bson_dollar_project(document, '{ "a.b.1": 1, "a.b": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at a.b
+-- path collsion due to conflicting paths
+SELECT bson_dollar_project(document, '{ "a.b": 1, "a.b.1": 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at a.b.1 remaining portion b.1
+SELECT bson_dollar_project(document, '{ "a.b": 1, "a.b.1": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at a.b.1 remaining portion b.1
+-- basic a.b, and a.c query with id excluded and included - should be both a.b and a.c
+SELECT bson_dollar_project(document, '{ "a.b": 1, "a.c": 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                               bson_dollar_project                                                                                                                               
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ { "c" : { "$numberInt" : "0" } } ] }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "a.b": 1, "a.c": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                     bson_dollar_project                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "_id" : "6", "a" : [ { "c" : { "$numberInt" : "0" } } ] }
+ { "_id" : "7", "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : "8", "a" : { "c" : { "$numberInt" : "1" } } }
+ { "_id" : "9" }
+(9 rows)
+
+-- basic a.b and a.c expressed as nested object
+SELECT bson_dollar_project(document, '{ "a" : { "b": 1, "c": 1 }, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                               bson_dollar_project                                                                                                                               
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ { "c" : { "$numberInt" : "0" } } ] }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "a" : { "b": 1, "c": 1 } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                     bson_dollar_project                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "_id" : "6", "a" : [ { "c" : { "$numberInt" : "0" } } ] }
+ { "_id" : "7", "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : "8", "a" : { "c" : { "$numberInt" : "1" } } }
+ { "_id" : "9" }
+(9 rows)
+
+-- Hybrid: a.c and a.b as object and dotted.
+SELECT bson_dollar_project(document, '{ "a" : { "b": 1 }, "a.c": 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                               bson_dollar_project                                                                                                                               
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ { "c" : { "$numberInt" : "0" } } ] }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "a" : { "c": 1 }, "a.b": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                     bson_dollar_project                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "_id" : "6", "a" : [ { "c" : { "$numberInt" : "0" } } ] }
+ { "_id" : "7", "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : "8", "a" : { "c" : { "$numberInt" : "1" } } }
+ { "_id" : "9" }
+(9 rows)
+
+-- basic a.b excluded query with id excluded and included
+SELECT bson_dollar_project(document, '{ "a.b" : 0, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                  bson_dollar_project                                   
+---------------------------------------------------------------------
+ { "a" : {  } }
+ { "a" : {  } }
+ { "a" : [ {  }, {  }, {  } ] }
+ { "a" : [ {  }, {  }, {  } ] }
+ { "a" : {  } }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, {  } ] }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { "c" : { "d" : { "$numberInt" : "1" } } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "a.b" : 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                         bson_dollar_project                                         
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+ { "_id" : "2", "a" : {  } }
+ { "_id" : "3", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "4", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "5", "a" : {  } }
+ { "_id" : "6", "a" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+ { "_id" : "7", "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, {  } ] }
+ { "_id" : "8", "a" : { "c" : { "$numberInt" : "1" } } }
+ { "_id" : "9", "c" : { "d" : { "$numberInt" : "1" } } }
+(9 rows)
+
+-- basic a.b and a.c with mixed inclusion (error path) query with id excluded and included
+SELECT bson_dollar_project(document, '{ "a.b" : 1, "a.c": 0, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Cannot do exclusion on field a.c in inclusion projection.
+SELECT bson_dollar_project(document, '{ "a.b" : 1, "a.c": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Cannot do exclusion on field a.c in inclusion projection.
+-- special case projections
+SELECT bson_dollar_project(document, '{ "_id" : 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "_id" : "1" }
+ { "_id" : "2" }
+ { "_id" : "3" }
+ { "_id" : "4" }
+ { "_id" : "5" }
+ { "_id" : "6" }
+ { "_id" : "7" }
+ { "_id" : "8" }
+ { "_id" : "9" }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                               bson_dollar_project                                                                                                                               
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { "c" : { "d" : { "$numberInt" : "1" } } }
+(9 rows)
+
+-- field 'const' projections - this just projects a const value for all rows.
+SELECT bson_dollar_project(document, '{ "_id" : 1, "c": "someString", "a": [ 1, 2, 3] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                  bson_dollar_project                                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "_id" : "2", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "_id" : "3", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "_id" : "4", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "_id" : "5", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "_id" : "6", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "_id" : "7", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "_id" : "8", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "_id" : "9", "c" : "someString", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "c": "someString", "a": [ 1, 2, 3] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                           bson_dollar_project                                            
+---------------------------------------------------------------------
+ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : "someString" }
+ { "c" : "someString", "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(9 rows)
+
+-- mix and match field path projection and const value projection.
+SELECT bson_dollar_project(document, '{ "_id" : 1, "c": [ "1" ], "a.b": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                             bson_dollar_project                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } }, "c" : [ "1" ] }
+ { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, "c" : [ "1" ] }
+ { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], "c" : [ "1" ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], "c" : [ "1" ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, "c" : [ "1" ] }
+ { "_id" : "6", "a" : [ {  } ], "c" : [ "1" ] }
+ { "_id" : "7", "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ], "c" : [ "1" ] }
+ { "_id" : "8", "a" : {  }, "c" : [ "1" ] }
+ { "_id" : "9", "c" : [ "1" ] }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "c": [ "1" ], "a.b": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                      bson_dollar_project                                                                                                                                       
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } }, "c" : [ "1" ] }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, "c" : [ "1" ] }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], "c" : [ "1" ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], "c" : [ "1" ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, "c" : [ "1" ] }
+ { "a" : [ {  } ], "c" : [ "1" ] }
+ { "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ], "c" : [ "1" ] }
+ { "a" : {  }, "c" : [ "1" ] }
+ { "c" : [ "1" ] }
+(9 rows)
+
+-- const field and path projection with the same field name - see which one wins - it's the one on the right.
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a": [ "1" ], "a": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                               bson_dollar_project                                                                                                                               
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a": 1, "a": [ "1" ] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "a" : [ "1" ] }
+ { "a" : [ "1" ] }
+ { "a" : [ "1" ] }
+ { "a" : [ "1" ] }
+ { "a" : [ "1" ] }
+ { "a" : [ "1" ] }
+ { "a" : [ "1" ] }
+ { "a" : [ "1" ] }
+ { "a" : [ "1" ] }
+(9 rows)
+
+-- mix and match field path projection and const value projection.
+SELECT bson_dollar_project(document, '{ "_id" : 1, "a.g": [ "1" ], "a.b": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                            bson_dollar_project                                                                                                                                                            
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" }, "g" : [ "1" ] } }
+ { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] } }
+ { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" }, "g" : [ "1" ] }, { "b" : { "$numberInt" : "1" }, "g" : [ "1" ] }, { "b" : { "$numberInt" : "3" }, "g" : [ "1" ] } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "g" : [ "1" ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "g" : [ "1" ] } }
+ { "_id" : "6", "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] } ] }
+ { "_id" : "7", "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] }, { "b" : { "$numberInt" : "2" }, "g" : [ "1" ] } ] }
+ { "_id" : "8", "a" : { "g" : [ "1" ] } }
+ { "_id" : "9", "a" : { "g" : [ "1" ] } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.g": [ "1" ], "a.b": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                     bson_dollar_project                                                                                                                                                      
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "g" : [ "1" ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "g" : [ "1" ] }, { "b" : { "$numberInt" : "1" }, "g" : [ "1" ] }, { "b" : { "$numberInt" : "3" }, "g" : [ "1" ] } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "g" : [ "1" ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "g" : [ "1" ] } }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] } ] }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] }, { "b" : { "$numberInt" : "2" }, "g" : [ "1" ] } ] }
+ { "a" : { "g" : [ "1" ] } }
+ { "a" : { "g" : [ "1" ] } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.g": [ "1" ] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                          bson_dollar_project                          
+---------------------------------------------------------------------
+ { "a" : { "g" : [ "1" ] } }
+ { "a" : { "g" : [ "1" ] } }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] }, { "g" : [ "1" ] } ] }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] }, { "g" : [ "1" ] } ] }
+ { "a" : { "g" : [ "1" ] } }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] } ] }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] }, { "g" : [ "1" ] } ] }
+ { "a" : { "g" : [ "1" ] } }
+ { "a" : { "g" : [ "1" ] } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a": { "g": [ "1" ] }, "a.b": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                     bson_dollar_project                                                                                                                                                      
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "g" : [ "1" ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "g" : [ "1" ] }, { "b" : { "$numberInt" : "1" }, "g" : [ "1" ] }, { "b" : { "$numberInt" : "3" }, "g" : [ "1" ] } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "g" : [ "1" ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "g" : [ "1" ] } }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] } ] }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] }, { "b" : { "$numberInt" : "2" }, "g" : [ "1" ] } ] }
+ { "a" : { "g" : [ "1" ] } }
+ { "a" : { "g" : [ "1" ] } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a": { "g": [ "1" ], "b": 1 } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                     bson_dollar_project                                                                                                                                                      
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "g" : [ "1" ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "g" : [ "1" ] }, { "b" : { "$numberInt" : "1" }, "g" : [ "1" ] }, { "b" : { "$numberInt" : "3" }, "g" : [ "1" ] } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "g" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "g" : [ "1" ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "g" : [ "1" ] } }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] } ] }
+ { "a" : [ { "g" : [ "1" ] }, { "g" : [ "1" ] }, { "b" : { "$numberInt" : "2" }, "g" : [ "1" ] } ] }
+ { "a" : { "g" : [ "1" ] } }
+ { "a" : { "g" : [ "1" ] } }
+(9 rows)
+
+-- mix and match field path projection and const values on different roots.
+SELECT bson_dollar_project(document, '{ "_id" : 0, "e.f": [ "1" ] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+     bson_dollar_project     
+---------------------------------------------------------------------
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": 1, "e.f": [ "1" ] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                           bson_dollar_project                                                                                                                                            
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } }, "e" : { "f" : [ "1" ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, "e" : { "f" : [ "1" ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], "e" : { "f" : [ "1" ] } }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], "e" : { "f" : [ "1" ] } }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, "e" : { "f" : [ "1" ] } }
+ { "a" : [ {  } ], "e" : { "f" : [ "1" ] } }
+ { "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ], "e" : { "f" : [ "1" ] } }
+ { "a" : {  }, "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "c": 1, "e.f": [ "1" ] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                         bson_dollar_project                         
+---------------------------------------------------------------------
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "e" : { "f" : [ "1" ] } }
+ { "c" : { "d" : { "$numberInt" : "1" } }, "e" : { "f" : [ "1" ] } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": 1, "a.c.d": [ "1" ] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                                    bson_dollar_project                                                                                                                                                                     
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "d" : [ "1" ] } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "d" : [ "1" ] } } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "c" : { "d" : [ "1" ] } }, { "b" : { "$numberInt" : "1" }, "c" : { "d" : [ "1" ] } }, { "b" : { "$numberInt" : "3" }, "c" : { "d" : [ "1" ] } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "d" : [ "1" ] } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "d" : [ "1" ] } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "c" : { "d" : [ "1" ] } } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "c" : { "d" : [ "1" ] } } }
+ { "a" : [ { "c" : { "d" : [ "1" ] } }, { "c" : { "d" : [ "1" ] } } ] }
+ { "a" : [ { "c" : { "d" : [ "1" ] } }, { "c" : { "d" : [ "1" ] } }, { "b" : { "$numberInt" : "2" }, "c" : { "d" : [ "1" ] } } ] }
+ { "a" : { "c" : { "d" : [ "1" ] } } }
+ { "a" : { "c" : { "d" : [ "1" ] } } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": 1, "a.c": [ "1" ] }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                     bson_dollar_project                                                                                                                                                      
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : [ "1" ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : [ "1" ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "c" : [ "1" ] }, { "b" : { "$numberInt" : "1" }, "c" : [ "1" ] }, { "b" : { "$numberInt" : "3" }, "c" : [ "1" ] } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : [ "1" ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "c" : [ "1" ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "c" : [ "1" ] } }
+ { "a" : [ { "c" : [ "1" ] }, { "c" : [ "1" ] } ] }
+ { "a" : [ { "c" : [ "1" ] }, { "c" : [ "1" ] }, { "b" : { "$numberInt" : "2" }, "c" : [ "1" ] } ] }
+ { "a" : { "c" : [ "1" ] } }
+ { "a" : { "c" : [ "1" ] } }
+(9 rows)
+
+-- field selector that is an object
+-- TODO - actual expression support
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": 1, "a.c": { "$literal" : 1.0 } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                                                   bson_dollar_project                                                                                                                                                                                    
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberDouble" : "1.0" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "$numberDouble" : "1.0" } } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "c" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberInt" : "1" }, "c" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberInt" : "3" }, "c" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "$numberDouble" : "1.0" } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "$numberDouble" : "1.0" } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "c" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "c" : { "$numberDouble" : "1.0" } } }
+ { "a" : [ { "c" : { "$numberDouble" : "1.0" } }, { "c" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : [ { "c" : { "$numberDouble" : "1.0" } }, { "c" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberInt" : "2" }, "c" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : { "c" : { "$numberDouble" : "1.0" } } }
+ { "a" : { "c" : { "$numberDouble" : "1.0" } } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": 1, "a": { "c": { "$literal" : 1.0 } } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                                                   bson_dollar_project                                                                                                                                                                                    
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberDouble" : "1.0" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "$numberDouble" : "1.0" } } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "c" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberInt" : "1" }, "c" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberInt" : "3" }, "c" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "$numberDouble" : "1.0" } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "$numberDouble" : "1.0" } }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "c" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "c" : { "$numberDouble" : "1.0" } } }
+ { "a" : [ { "c" : { "$numberDouble" : "1.0" } }, { "c" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : [ { "c" : { "$numberDouble" : "1.0" } }, { "c" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberInt" : "2" }, "c" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : { "c" : { "$numberDouble" : "1.0" } } }
+ { "a" : { "c" : { "$numberDouble" : "1.0" } } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": 1, "c": "$a.b" }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                                                                                                                      bson_dollar_project                                                                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } }, "c" : { "$numberInt" : "1" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, "c" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], "c" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], "c" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, "c" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a" : [ {  } ], "c" : [  ] }
+ { "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ], "c" : [ { "$numberInt" : "2" } ] }
+ { "a" : {  } }
+ { }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": 1, "a": { "c": "$a.b" } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     bson_dollar_project                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "c" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }, { "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }, { "b" : { "$numberInt" : "3" }, "c" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "c" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "c" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ { "c" : [  ] }, { "c" : [  ] } ] }
+ { "a" : [ { "c" : [ { "$numberInt" : "2" } ] }, { "c" : [ { "$numberInt" : "2" } ] }, { "b" : { "$numberInt" : "2" }, "c" : [ { "$numberInt" : "2" } ] } ] }
+ { "a" : {  } }
+ { "a" : {  } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": 1, "a": { "c": "$a" } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  bson_dollar_project                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "b" : { "$numberInt" : "1" } } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } } }
+ { "a" : [ { "b" : { "$numberInt" : "0" }, "c" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }, { "b" : { "$numberInt" : "1" }, "c" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }, { "b" : { "$numberInt" : "3" }, "c" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "c" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ], "c" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ], "c" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } } }
+ { "a" : [ { "c" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }, { "c" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] } ] }
+ { "a" : [ { "c" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }, { "c" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }, { "b" : { "$numberInt" : "2" }, "c" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] } ] }
+ { "a" : { "c" : { "c" : { "$numberInt" : "1" } } } }
+ { "a" : {  } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "a.b": { "$literal": 1.0 } }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                        bson_dollar_project                                                        
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberDouble" : "1.0" } } }
+ { "a" : { "b" : { "$numberDouble" : "1.0" } } }
+ { "a" : [ { "b" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : [ { "b" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : { "b" : { "$numberDouble" : "1.0" } } }
+ { "a" : [ { "b" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : [ { "b" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberDouble" : "1.0" } }, { "b" : { "$numberDouble" : "1.0" } } ] }
+ { "a" : { "b" : { "$numberDouble" : "1.0" } } }
+ { "a" : { "b" : { "$numberDouble" : "1.0" } } }
+(9 rows)
+
+-- Fields selector, intermediate node having hasField set tests 
+SELECT bson_dollar_project(document, '{ "_id" : 0, "c": { "b" : "1"} , "x" : "1"}') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "c" : { "b" : "1" }, "x" : "1" }
+ { "c" : { "b" : "1" }, "x" : "1" }
+ { "c" : { "b" : "1" }, "x" : "1" }
+ { "c" : { "b" : "1" }, "x" : "1" }
+ { "c" : { "b" : "1" }, "x" : "1" }
+ { "c" : { "b" : "1" }, "x" : "1" }
+ { "c" : { "b" : "1" }, "x" : "1" }
+ { "c" : { "b" : "1" }, "x" : "1" }
+ { "c" : { "b" : "1" }, "x" : "1" }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{ "_id" : 0, "x" : "1", "c": { "b" : "1" }}') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "x" : "1", "c" : { "b" : "1" } }
+ { "x" : "1", "c" : { "b" : "1" } }
+ { "x" : "1", "c" : { "b" : "1" } }
+ { "x" : "1", "c" : { "b" : "1" } }
+ { "x" : "1", "c" : { "b" : "1" } }
+ { "x" : "1", "c" : { "b" : "1" } }
+ { "x" : "1", "c" : { "b" : "1" } }
+ { "x" : "1", "c" : { "b" : "1" } }
+ { "c" : { "b" : "1" }, "x" : "1" }
+(9 rows)
+
+-- Add multiple function calls
+SELECT bson_dollar_project(document, '{ "a.b" : 1, "_id": 0 }'), bson_dollar_project(document, '{"a.c": 0, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                               bson_dollar_project                                                                                                                               |                                                                                                                               bson_dollar_project                                                                                                                               
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" } } }                                                                                                                                                                                                                                      | { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }                                                                                                                                                                                  | { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }                                                                                                                                                              | { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] } | { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }                                                                                                                                                                    | { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a" : [ {  } ] }                                                                                                                                                                                                                                                              | { "a" : [ {  }, { "$numberInt" : "2" } ] }
+ { "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ] }                                                                                                                                                                                                                      | { "a" : [ {  }, {  }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : {  } }                                                                                                                                                                                                                                                                  | { "a" : {  } }
+ { }                                                                                                                                                                                                                                                                             | { "c" : { "d" : { "$numberInt" : "1" } } }
+(9 rows)
+
+SELECT bson_dollar_unset('{ "_id": 1, "x": 1, "y": [{ "z": 1, "foo": 1 }] }', '{ "": ["x", "y.z"] }');
+                                bson_dollar_unset                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "y" : [ { "foo" : { "$numberInt" : "1" } } ] }
+(1 row)
+
+SELECT bson_dollar_unset('{ "_id": 2, "title": "Bees Babble", "isbn": "999999999333", "author": { "last": "Bumble", "first": "Bee" }, "copies": [{ "warehouse": "A", "qty": 2 }, { "warehouse": "B", "qty": 5 }] }', 
+                                               '{ "": "copies" }');
+                                                            bson_dollar_unset                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "title" : "Bees Babble", "isbn" : "999999999333", "author" : { "last" : "Bumble", "first" : "Bee" } }
+(1 row)
+
+SELECT bson_dollar_unset('{ "_id": 2, "title": "Bees Babble", "isbn": "999999999333", "author": { "last": "Bumble", "first": "Bee" }, "copies": [{ "warehouse": "A", "qty": 2 }, { "warehouse": "B", "qty": 5 }] }', 
+                                               '{ "": ["isbn", "author.first", "copies.warehouse"] }');
+                                                                                  bson_dollar_unset                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "title" : "Bees Babble", "author" : { "last" : "Bumble" }, "copies" : [ { "qty" : { "$numberInt" : "2" } }, { "qty" : { "$numberInt" : "5" } } ] }
+(1 row)
+
+-- in aggregation you can unset or project the _id away.
+SELECT bson_dollar_unset('{"_id": 1, "a": 1, "b": 2 }', '{ "": "_id" }');
+                       bson_dollar_unset                        
+---------------------------------------------------------------------
+ { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+(1 row)
+
+SELECT bson_dollar_project('{"_id": 1, "a": 1, "b": 2 }', '{ "_id": 0 }');
+                      bson_dollar_project                       
+---------------------------------------------------------------------
+ { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+(1 row)
+
+-- Spec tree equivalency tests
+SELECT bson_dollar_project(document, '{"a.b.c" :  "1"}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                            bson_dollar_project                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "c" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] }, { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] }, { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "c" : "1" } ] } }
+ { "_id" : "6", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "7", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "8", "a" : { "b" : { "c" : "1" } } }
+ { "_id" : "9", "a" : { "b" : { "c" : "1" } } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{"a.b" : { "c": "1"}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                            bson_dollar_project                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "c" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] }, { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] }, { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "c" : "1" } ] } }
+ { "_id" : "6", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "7", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "8", "a" : { "b" : { "c" : "1" } } }
+ { "_id" : "9", "a" : { "b" : { "c" : "1" } } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{"a" : { "b.c": "1"}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                            bson_dollar_project                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "c" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] }, { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] }, { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "c" : "1" } ] } }
+ { "_id" : "6", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "7", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "8", "a" : { "b" : { "c" : "1" } } }
+ { "_id" : "9", "a" : { "b" : { "c" : "1" } } }
+(9 rows)
+
+SELECT bson_dollar_project(document, '{"a" : { "b" : { "c": "1"}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                            bson_dollar_project                                                                                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "c" : "1" } } }
+ { "_id" : "2", "a" : { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] }, { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] }, { "b" : [ { "c" : "1" }, { "c" : "1" }, { "c" : "1" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "c" : "1" } ] } }
+ { "_id" : "6", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "7", "a" : [ { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } }, { "b" : { "c" : "1" } } ] }
+ { "_id" : "8", "a" : { "b" : { "c" : "1" } } }
+ { "_id" : "9", "a" : { "b" : { "c" : "1" } } }
+(9 rows)
+
+-- path collision tests
+SELECT bson_dollar_project(document, '{"a.b": 1, "a.b.c": 1}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at a.b.c remaining portion b.c
+SELECT bson_dollar_project(document, '{"a.b": 1, "a" : { "b" : { "c": "1"}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at b
+SELECT bson_dollar_project(document, '{"a.b": 1, "a" : { "b" : { "c": "$_id"}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at b
+SELECT bson_dollar_project(document, '{"a.b": 1, "a" : { "b" : { "c": "$_id"}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at b
+SELECT bson_dollar_project(document, '{"a.b": {"c" : 1.0}, "a" : { "b" : { "c": { "d": "$_id"}}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at c
+SELECT bson_dollar_project(document, '{"a.b": {"c" : "$a.b"}, "a" : { "b" : { "c": { "d": "$_id"}}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at c
+SELECT bson_dollar_project(document, '{"a.b.c": "$_id", "a.b": "1.0"}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at a.b
+SELECT bson_dollar_project(document, '{"a" : { "b" : { "c": { "d": "$_id"}}}, "a.b": {"c" : 1.0}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Path collision at c
+-- Invalid key format tests
+SELECT bson_dollar_project(document, '{"$a.b": 1, "a.b.c": 1}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+SELECT bson_dollar_project(document, '{"$isArray": 1}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+SELECT bson_dollar_project(document, '{"$keyName": "newVal"}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"10", "a" : { "b" : { "c" : "abc" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Spec tree equivalency tests
+SELECT bson_dollar_project(document, '{"a.b.c" :  1}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                            bson_dollar_project                            
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+ { "_id" : "10", "a" : { "b" : { "c" : "abc" } } }
+ { "_id" : "2", "a" : { "b" : [  ] } }
+ { "_id" : "3", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "4", "a" : [ { "b" : [  ] }, { "b" : [  ] }, { "b" : [  ] } ] }
+ { "_id" : "5", "a" : { "b" : [ {  } ] } }
+ { "_id" : "6", "a" : [ {  } ] }
+ { "_id" : "7", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "8", "a" : {  } }
+ { "_id" : "9" }
+(10 rows)
+
+SELECT bson_dollar_project(document, '{"a.b" : { "c": 1}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                            bson_dollar_project                            
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+ { "_id" : "10", "a" : { "b" : { "c" : "abc" } } }
+ { "_id" : "2", "a" : { "b" : [  ] } }
+ { "_id" : "3", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "4", "a" : [ { "b" : [  ] }, { "b" : [  ] }, { "b" : [  ] } ] }
+ { "_id" : "5", "a" : { "b" : [ {  } ] } }
+ { "_id" : "6", "a" : [ {  } ] }
+ { "_id" : "7", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "8", "a" : {  } }
+ { "_id" : "9" }
+(10 rows)
+
+SELECT bson_dollar_project(document, '{"a" : { "b.c": 1}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                            bson_dollar_project                            
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+ { "_id" : "10", "a" : { "b" : { "c" : "abc" } } }
+ { "_id" : "2", "a" : { "b" : [  ] } }
+ { "_id" : "3", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "4", "a" : [ { "b" : [  ] }, { "b" : [  ] }, { "b" : [  ] } ] }
+ { "_id" : "5", "a" : { "b" : [ {  } ] } }
+ { "_id" : "6", "a" : [ {  } ] }
+ { "_id" : "7", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "8", "a" : {  } }
+ { "_id" : "9" }
+(10 rows)
+
+SELECT bson_dollar_project(document, '{"a" : { "b" : { "c": 1}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                            bson_dollar_project                            
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+ { "_id" : "10", "a" : { "b" : { "c" : "abc" } } }
+ { "_id" : "2", "a" : { "b" : [  ] } }
+ { "_id" : "3", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "4", "a" : [ { "b" : [  ] }, { "b" : [  ] }, { "b" : [  ] } ] }
+ { "_id" : "5", "a" : { "b" : [ {  } ] } }
+ { "_id" : "6", "a" : [ {  } ] }
+ { "_id" : "7", "a" : [ {  }, {  }, {  } ] }
+ { "_id" : "8", "a" : {  } }
+ { "_id" : "9" }
+(10 rows)
+
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"11", "a" : { "b_" : { "c" : { "d" : 100 } }, "c" : { "d" : { "e" : "_e"}}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Spec tree test to check if a node is incorrectly marked with Intermediate_WithField
+SELECT bson_dollar_project(document, '{"a.b.c" : { "d" : 1 }, "a.c.d" : {"e" : "1"}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                          bson_dollar_project                                                                           
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "c" : { "d" : { "e" : "1" } } } }
+ { "_id" : "10", "a" : { "b" : {  }, "c" : { "d" : { "e" : "1" } } } }
+ { "_id" : "11", "a" : { "c" : { "d" : { "e" : "1" } } } }
+ { "_id" : "2", "a" : { "b" : [  ], "c" : { "d" : { "e" : "1" } } } }
+ { "_id" : "3", "a" : [ { "c" : { "d" : { "e" : "1" } } }, { "c" : { "d" : { "e" : "1" } } }, { "c" : { "d" : { "e" : "1" } } } ] }
+ { "_id" : "4", "a" : [ { "b" : [  ], "c" : { "d" : { "e" : "1" } } }, { "b" : [  ], "c" : { "d" : { "e" : "1" } } }, { "b" : [  ], "c" : { "d" : { "e" : "1" } } } ] }
+ { "_id" : "5", "a" : { "b" : [ {  } ], "c" : { "d" : { "e" : "1" } } } }
+ { "_id" : "6", "a" : [ { "c" : { "d" : { "e" : "1" } } }, { "c" : { "d" : { "e" : "1" } } } ] }
+ { "_id" : "7", "a" : [ { "c" : { "d" : { "e" : "1" } } }, { "c" : { "d" : { "e" : "1" } } }, { "c" : { "d" : { "e" : "1" } } } ] }
+ { "_id" : "8", "a" : { "c" : { "d" : { "e" : "1" } } } }
+ { "_id" : "9", "a" : { "c" : { "d" : { "e" : "1" } } } }
+(11 rows)
+
+-- test to check if internal "_id" respects the inclusion/exclusion
+SELECT documentdb_api.insert_one('db','projectops','{"_id":"12", "a" : { "_id" : { "idVal" : 100 }, "b" : { "c" : { "_id" : "idVal"}}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT bson_dollar_project(document, '{"_id" : 1, "a" : {"_id" : 1}, "a.b" : { "c" : {"_id" : 0}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+ERROR:  Cannot do exclusion on field _id in inclusion projection.
+-- Test nested array projections 
+SELECT bson_dollar_project('{"_id":"1", "a" : [1, {"d":1}, [3, 4], "x"] }', '{"a" : { "c" : { "d": "1"}}}');
+                                                                    bson_dollar_project                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "c" : { "d" : "1" } }, { "c" : { "d" : "1" } }, [ { "c" : { "d" : "1" } }, { "c" : { "d" : "1" } } ], { "c" : { "d" : "1" } } ] }
+(1 row)
+
+SELECT bson_dollar_project('{"_id":"1", "a" : [1, {"d":1}, [ { "c" : { "b" : 1 } },4], "x"] }', '{"a" : { "c" : { "d": "1"}}}');
+                                                                    bson_dollar_project                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : [ { "c" : { "d" : "1" } }, { "c" : { "d" : "1" } }, [ { "c" : { "d" : "1" } }, { "c" : { "d" : "1" } } ], { "c" : { "d" : "1" } } ] }
+(1 row)
+
+-- a.b.0 excluded with _id included should still write out non-intermediate paths
+SELECT bson_dollar_project('{ "_id": 3, "x": { "y": 1 } }', '{ "_id" : 1, "x.y": 0 }');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "x" : {  } }
+(1 row)
+
+SELECT bson_dollar_project('{ "_id": 5, "x": { "y": [ 1, 2, 3]}, "v": { "w": [ 4, 5, 6 ]}}', '{ "_id" : 1, "x.y": 0 }');
+                                                            bson_dollar_project                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "x" : {  }, "v" : { "w" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ] } }
+(1 row)
+
+SELECT bson_dollar_project('{ "_id": 6, "x": { "y": 4}, "v": { "w": 4}}', '{ "_id" : 1, "x.y": 0 }');
+                                  bson_dollar_project                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "x" : {  }, "v" : { "w" : { "$numberInt" : "4" } } }
+(1 row)
+
+SELECT bson_dollar_project('{ "_id": 10, "a": 10, "x": 1 }', '{ "_id" : 1, "x.y": 0 }');
+                                       bson_dollar_project                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "x" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Empty spec is a no-op
+SELECT bson_dollar_project(document, '{}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
+                                                                                                                                     bson_dollar_project                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "10", "a" : { "b" : { "c" : "abc" } } }
+ { "_id" : "11", "a" : { "b_" : { "c" : { "d" : { "$numberInt" : "100" } } }, "c" : { "d" : { "e" : "_e" } } } }
+ { "_id" : "12", "a" : { "_id" : { "idVal" : { "$numberInt" : "100" } }, "b" : { "c" : { "_id" : "idVal" } } } }
+ { "_id" : "2", "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "3", "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "_id" : "4", "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "_id" : "5", "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "_id" : "6", "a" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+ { "_id" : "7", "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "_id" : "8", "a" : { "c" : { "$numberInt" : "1" } } }
+ { "_id" : "9", "c" : { "d" : { "$numberInt" : "1" } } }
+(12 rows)
+

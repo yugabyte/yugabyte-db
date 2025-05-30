@@ -93,7 +93,7 @@ get_subscription_list(void)
 	MemoryContext resultcxt;
 
 	/* This is the context that we will allocate our output data in */
-	resultcxt = GetCurrentMemoryContext();
+	resultcxt = CurrentMemoryContext;
 
 	/*
 	 * Start a transaction so we can access pg_database, and get a snapshot.

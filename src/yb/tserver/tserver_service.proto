@@ -98,8 +98,6 @@ service TabletServerService {
 
   rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
 
-  rpc GetSharedData(GetSharedDataRequestPB) returns (GetSharedDataResponsePB);
-
   rpc GetTserverCatalogVersionInfo(GetTserverCatalogVersionInfoRequestPB)
       returns (GetTserverCatalogVersionInfoResponsePB);
 
@@ -108,6 +106,9 @@ service TabletServerService {
   // Returns all lock information requested, based on persisted intents and any requests waiting on
   // a persisted intent. These intents may correspond to explicit or implicit locks.
   rpc GetLockStatus(GetLockStatusRequestPB) returns (GetLockStatusResponsePB);
+
+  rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
+      returns (GetObjectLockStatusResponsePB);
 
   rpc CancelTransaction(CancelTransactionRequestPB) returns (CancelTransactionResponsePB);
 
@@ -137,6 +138,9 @@ service TabletServerService {
       returns (AcquireObjectLockResponsePB);
   rpc ReleaseObjectLocks(ReleaseObjectLockRequestPB)
       returns (ReleaseObjectLockResponsePB);
+  rpc GetYSQLLeaseInfo(GetYSQLLeaseInfoRequestPB) returns (GetYSQLLeaseInfoResponsePB) {
+    option (yb.rpc.trivial) = true;
+  };
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
 
@@ -145,6 +149,13 @@ service TabletServerService {
 
   rpc GetLocalPgTxnSnapshot(GetLocalPgTxnSnapshotRequestPB)
       returns (GetLocalPgTxnSnapshotResponsePB);
+
+  rpc VerifyVectorIndexes(VerifyVectorIndexesRequestPB) returns (VerifyVectorIndexesResponsePB) {
+    option (yb.rpc.trivial) = true;
+  }
+
+  rpc GetTserverCatalogMessageLists(GetTserverCatalogMessageListsRequestPB)
+      returns (GetTserverCatalogMessageListsResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -189,6 +200,26 @@ message GetLockStatusResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 
   repeated TabletLockInfoPB tablet_lock_infos = 4;
+}
+
+
+message GetObjectLockStatusRequestPB {
+}
+
+message GetObjectLockStatusResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  repeated ObjectLockInfoPB object_lock_infos = 2;
+}
+
+message GetYSQLLeaseInfoRequestPB {
+}
+
+message GetYSQLLeaseInfoResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  optional bool is_live = 2;
+  optional uint64 lease_epoch = 3;
 }
 
 message GetMetricsRequestPB {
@@ -263,6 +294,8 @@ message UpdateTransactionRequestPB {
   // Reserved for xcluster deprecated field is_external.
   reserved 4;
   optional fixed64 start_time = 5;
+
+  optional AshMetadataPB ash_metadata = 6;
 }
 
 message UpdateTransactionResponsePB {
@@ -466,6 +499,8 @@ message AbortTransactionRequestPB {
 
   // Status containing deadlock info if the transaction is being aborted due to deadlock.
   optional AppStatusPB deadlock_reason = 4;
+
+  optional AshMetadataPB ash_metadata = 5;
 }
 
 message AbortTransactionResponsePB {
@@ -508,13 +543,6 @@ message GetSplitKeyResponsePB {
   optional fixed64 propagated_hybrid_time = 4;
 }
 
-message GetSharedDataRequestPB {
-}
-
-message GetSharedDataResponsePB {
-  optional bytes data = 1;
-}
-
 message GetTserverCatalogVersionInfoRequestPB {
   // If true, we only ask for the size of the catalog version map in tserver. Otherwise,
   // we ask for database catalog version info from the tserver.
@@ -530,6 +558,18 @@ message GetTserverCatalogVersionInfoResponsePB {
   optional TabletServerErrorPB error = 1;
   repeated TServerDBCatalogVersionInfo entries = 2;
   optional uint32 num_entries = 3;
+}
+
+message GetTserverCatalogMessageListsRequestPB {
+  optional uint32 db_oid = 1;
+  optional uint64 ysql_catalog_version = 2;
+  optional uint32 num_catalog_versions = 3;
+}
+
+message GetTserverCatalogMessageListsResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+  repeated TServerDBCatalogMessageListInfo entries = 2;
 }
 
 message CancelTransactionRequestPB {
@@ -588,4 +628,11 @@ message GetLocalPgTxnSnapshotResponsePB {
   optional TabletServerErrorPB error = 1;
   optional PgTxnSnapshotPB snapshot = 2;
   optional ReadHybridTimePB snapshot_read_time = 3;
+}
+
+message VerifyVectorIndexesRequestPB {
+}
+
+message VerifyVectorIndexesResponsePB {
+  optional TabletServerErrorPB error = 1;
 }

@@ -36,6 +36,8 @@
 using std::string;
 using namespace std::chrono_literals;
 
+DECLARE_bool(import_snapshot_using_table_name);
+
 namespace yb {
 using OK = Status::OK;
 
@@ -44,8 +46,6 @@ const int kTServerCount = 3;
 const int kTabletCount = 3;
 const string kTableName = "test_table";
 constexpr auto kNumRecordsPerBatch = 10;
-
-YB_DEFINE_ENUM(ReplicationDirection, (ProducerToConsumer)(ConsumerToProducer))
 
 class XClusterDRTest : public XClusterYsqlTestBase {
   typedef XClusterYsqlTestBase super;
@@ -72,14 +72,19 @@ class XClusterDRTest : public XClusterYsqlTestBase {
 
     consumer_snapshot_util_.SetProxy(&consumer_client()->proxy_cache());
     consumer_snapshot_util_.SetCluster(consumer_cluster());
-
+    // Use table name at import snapshot phase instead of relfilenode. This is because the DR tests
+    // are restoring over an existing database by dropping and recreating the table. This gives a
+    // different relfilenode in backup and restore side which break import snapshot.
+    // These tests should be fixed to drop the target database and follow the typical backup/restore
+    // flow.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_import_snapshot_using_table_name) = true;
     // Setup PITR on both clusters. This is required to restore the clusters to the xCluster safe
     // time on failover. Even though only target needs PITR, we setup on both clusters to keep them
     // consistent.
     ASSERT_OK(producer_snapshot_util_.CreateSchedule(namespace_name, client::WaitSnapshot::kTrue));
     ASSERT_OK(consumer_snapshot_util_.CreateSchedule(namespace_name, client::WaitSnapshot::kTrue));
 
-    SetReplicationDirection(ReplicationDirection::ProducerToConsumer);
+    SetReplicationDirection(ReplicationDirection::AToB);
   }
 
   Result<client::YBTableName> CreateYsqlTable(Cluster* cluster, const std::string& namespace_name) {
@@ -119,7 +124,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
   }
 
   void SetReplicationDirection(ReplicationDirection replication_direction) {
-    if (replication_direction == ReplicationDirection::ProducerToConsumer) {
+    if (replication_direction == ReplicationDirection::AToB) {
       source_tables_for_bootstrap_ = {producer_table_};
       source_table_ = &producer_table_;
       source_cluster_ = &producer_cluster_;
@@ -209,8 +214,8 @@ class XClusterDRTest : public XClusterYsqlTestBase {
         LOG(INFO) << "Copying snapshot from " << source_path << " to " << target_path;
 
         RETURN_NOT_OK(CopyDirectory(
-            target_tservers->fs_manager().env(), source_path, target_path, UseHardLinks::kFalse,
-            CreateIfMissing::kTrue, RecursiveCopy::kTrue));
+            target_tservers->fs_manager().env(), source_path, target_path,
+            CopyOption::kCreateIfMissing, CopyOption::kRecursive));
       }
     }
 
@@ -270,7 +275,7 @@ TEST_F(XClusterDRTest, Failover) {
   ASSERT_OK(DeleteUniverseReplication(
       kReplicationGroupId, target_client_, target_cluster_->mini_cluster_.get()));
 
-  SetReplicationDirection(ReplicationDirection::ConsumerToProducer);
+  SetReplicationDirection(ReplicationDirection::BToA);
 
   ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
       (*source_table_)->name().namespace_id(), /*is_read_only=*/false, source_cluster_));
@@ -302,7 +307,7 @@ TEST_F(XClusterDRTest, Switchover) {
   ASSERT_OK(WaitForTargetRowsToMatchSource());
 
   // Swap the source and target clusters.
-  SetReplicationDirection(ReplicationDirection::ConsumerToProducer);
+  SetReplicationDirection(ReplicationDirection::BToA);
 
   // Bootstrap the new source cluster.
   auto new_bootstrap_ids =

@@ -1,0 +1,2277 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 370000;
+SET documentdb.next_collection_id TO 3700;
+SET documentdb.next_collection_index_id TO 3700;
+SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
+-- now get terms for a simple document ( { a: { b : 1 }})
+-- test root, 'a', 'a.b', 'a.b.1' with wildcard/non-wildcard
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '', true);
+                 gin_bson_get_single_path_generated_terms                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" } }
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.c" : { "$numberInt" : "2" } }
+ { "d" : { "$numberInt" : "1" } }
+ { "" : true }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', 'a', true);
+                 gin_bson_get_single_path_generated_terms                 
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.c" : { "$numberInt" : "2" } }
+ { "" : true }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', 'a', false);
+                 gin_bson_get_single_path_generated_terms                 
+---------------------------------------------------------------------
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', 'a.b', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b" : { "$numberInt" : "1" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', 'a.b', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b" : { "$numberInt" : "1" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', 'a.b.1', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', 'a.b.1', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', '', true);
+                       gin_bson_get_single_path_generated_terms                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" } }
+ { "a" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0" : { "$numberInt" : "0" } }
+ { "a.1" : { "$numberInt" : "1" } }
+ { "a.2" : { "$numberInt" : "2" } }
+ { "a" : { "$numberInt" : "0" } }
+ { "a" : { "$numberInt" : "1" } }
+ { "a" : { "$numberInt" : "2" } }
+ { "" : true }
+(9 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', '', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', 'a', true);
+                       gin_bson_get_single_path_generated_terms                       
+---------------------------------------------------------------------
+ { "a" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0" : { "$numberInt" : "0" } }
+ { "a.1" : { "$numberInt" : "1" } }
+ { "a.2" : { "$numberInt" : "2" } }
+ { "a" : { "$numberInt" : "0" } }
+ { "a" : { "$numberInt" : "1" } }
+ { "a" : { "$numberInt" : "2" } }
+ { "" : true }
+(8 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', 'a', false);
+                       gin_bson_get_single_path_generated_terms                       
+---------------------------------------------------------------------
+ { "a" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "$numberInt" : "0" } }
+ { "a" : { "$numberInt" : "1" } }
+ { "a" : { "$numberInt" : "2" } }
+ { "" : true }
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', 'a.b', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', 'a.b', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', 'a.b.1', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', 'a.b.1', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', '', true);
+                            gin_bson_get_single_path_generated_terms                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+(10 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', '', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', 'a', true);
+                            gin_bson_get_single_path_generated_terms                            
+---------------------------------------------------------------------
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+(9 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', 'a', false);
+                            gin_bson_get_single_path_generated_terms                            
+---------------------------------------------------------------------
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', 'a.b', true);
+                        gin_bson_get_single_path_generated_terms                        
+---------------------------------------------------------------------
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+(8 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', 'a.b', false);
+                        gin_bson_get_single_path_generated_terms                        
+---------------------------------------------------------------------
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', 'a.b.1', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "" : true }
+ { "" : [  ] }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', 'a.b.1', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "" : true }
+ { "" : [  ] }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', '', true);
+                                        gin_bson_get_single_path_generated_terms                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
+ { "a.0" : { "b" : { "$numberInt" : "0" } } }
+ { "a.0.b" : { "$numberInt" : "0" } }
+ { "a.1" : { "b" : { "$numberInt" : "1" } } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.2.b" : { "$numberDouble" : "3.0" } }
+ { "a" : { "b" : { "$numberInt" : "0" } } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.b" : { "$numberDouble" : "3.0" } }
+ { "" : true }
+ { "" : [  ] }
+(16 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', '', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', 'a', true);
+                                        gin_bson_get_single_path_generated_terms                                         
+---------------------------------------------------------------------
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
+ { "a.0" : { "b" : { "$numberInt" : "0" } } }
+ { "a.0.b" : { "$numberInt" : "0" } }
+ { "a.1" : { "b" : { "$numberInt" : "1" } } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.2.b" : { "$numberDouble" : "3.0" } }
+ { "a" : { "b" : { "$numberInt" : "0" } } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.b" : { "$numberDouble" : "3.0" } }
+ { "" : true }
+ { "" : [  ] }
+(15 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', 'a', false);
+                                        gin_bson_get_single_path_generated_terms                                         
+---------------------------------------------------------------------
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
+ { "a" : { "b" : { "$numberInt" : "0" } } }
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "" : true }
+ { "" : [  ] }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', 'a.b', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberDouble" : "3.0" } }
+ { "" : true }
+ { "" : [  ] }
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', 'a.b', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberDouble" : "3.0" } }
+ { "" : true }
+ { "" : [  ] }
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', 'a.b.1', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', 'a.b.1', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '', true);
+                                                                                                                    gin_bson_get_single_path_generated_terms                                                                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" } }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(52 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', 'a', true);
+                                                                                                                    gin_bson_get_single_path_generated_terms                                                                                                                     
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(51 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', 'a', false);
+                                                                                                                    gin_bson_get_single_path_generated_terms                                                                                                                     
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "" : true }
+ { "" : [  ] }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', 'a.b', true);
+                        gin_bson_get_single_path_generated_terms                         
+---------------------------------------------------------------------
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(23 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', 'a.b', false);
+                        gin_bson_get_single_path_generated_terms                         
+---------------------------------------------------------------------
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(14 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', 'a.b.1', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "" : true }
+ { "" : [  ] }
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', 'a.b.1', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "" : true }
+ { "" : [  ] }
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '', true);
+                                                                                                                          gin_bson_get_single_path_generated_terms                                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : [ { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a.0" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.0.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.0.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.0.1" : { "$numberInt" : "1" } }
+ { "a.0.b.0.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "7" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "" : true }
+ { "" : [  ] }
+(46 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', 'a', true);
+                                                                                                                          gin_bson_get_single_path_generated_terms                                                                                                                           
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a.0" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.0.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.0.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.0.1" : { "$numberInt" : "1" } }
+ { "a.0.b.0.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "7" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "" : true }
+ { "" : [  ] }
+(45 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', 'a', false);
+                                                                                                                          gin_bson_get_single_path_generated_terms                                                                                                                           
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "" : true }
+ { "" : [  ] }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', 'a.b', true);
+                          gin_bson_get_single_path_generated_terms                           
+---------------------------------------------------------------------
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "7" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "" : true }
+ { "" : [  ] }
+(20 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', 'a.b', false);
+                          gin_bson_get_single_path_generated_terms                           
+---------------------------------------------------------------------
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "" : true }
+ { "" : [  ] }
+(8 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', 'a.b.1', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', 'a.b.1', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '', true);
+                                   gin_bson_get_single_path_generated_terms                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" } }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a.b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.0.1.0" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1" : { "$numberInt" : "3" } }
+ { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.1.0" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1" : { "$numberInt" : "3" } }
+ { "" : true }
+ { "" : [  ] }
+(21 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', 'a', true);
+                                   gin_bson_get_single_path_generated_terms                                   
+---------------------------------------------------------------------
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a.b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.0.1.0" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1" : { "$numberInt" : "3" } }
+ { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.1.0" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1" : { "$numberInt" : "3" } }
+ { "" : true }
+ { "" : [  ] }
+(20 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', 'a', false);
+                                   gin_bson_get_single_path_generated_terms                                   
+---------------------------------------------------------------------
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', 'a.b', true);
+                               gin_bson_get_single_path_generated_terms                               
+---------------------------------------------------------------------
+ { "a.b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.0.1.0" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1" : { "$numberInt" : "3" } }
+ { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.1.0" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1" : { "$numberInt" : "3" } }
+ { "" : true }
+ { "" : [  ] }
+(19 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', 'a.b', false);
+                               gin_bson_get_single_path_generated_terms                               
+---------------------------------------------------------------------
+ { "a.b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "" : true }
+ { "" : [  ] }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', 'a.b.1', true);
+                         gin_bson_get_single_path_generated_terms                         
+---------------------------------------------------------------------
+ { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.1.0" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1" : { "$numberInt" : "3" } }
+ { "" : true }
+ { "" : [  ] }
+(9 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', 'a.b.1', false);
+                         gin_bson_get_single_path_generated_terms                         
+---------------------------------------------------------------------
+ { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1" : { "$numberInt" : "3" } }
+ { "" : true }
+ { "" : [  ] }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '', true);
+                                      gin_bson_get_single_path_generated_terms                                      
+---------------------------------------------------------------------
+ { "_id" : "7" }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a.0" : { "c" : { "$numberInt" : "0" } } }
+ { "a.0.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
+ { "a" : { "c" : { "$numberInt" : "0" } } }
+ { "a.c" : { "$numberInt" : "0" } }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { "a.c" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberInt" : "2" } } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+ { "" : [  ] }
+(16 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', 'a', true);
+                                      gin_bson_get_single_path_generated_terms                                      
+---------------------------------------------------------------------
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a.0" : { "c" : { "$numberInt" : "0" } } }
+ { "a.0.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
+ { "a" : { "c" : { "$numberInt" : "0" } } }
+ { "a.c" : { "$numberInt" : "0" } }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { "a.c" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberInt" : "2" } } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+ { "" : [  ] }
+(15 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', 'a', false);
+                                      gin_bson_get_single_path_generated_terms                                      
+---------------------------------------------------------------------
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a" : { "c" : { "$numberInt" : "0" } } }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : { "$numberInt" : "2" } } }
+ { "" : true }
+ { "" : [  ] }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', 'a.b', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+ { "" : [  ] }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', 'a.b', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+ { "" : [  ] }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', 'a.b.1', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', 'a.b.1', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '[ "a" ]', false, true);
+              gin_bson_get_wildcard_project_generated_terms               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" } }
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.c" : { "$numberInt" : "2" } }
+ { "" : true }
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '[ "a" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" } }
+ { "d" : { "$numberInt" : "1" } }
+ { "" : true }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '[ "a" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "d" : { "$numberInt" : "1" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '[ "a", "d" ]', false, true);
+              gin_bson_get_wildcard_project_generated_terms               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" } }
+ { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.c" : { "$numberInt" : "2" } }
+ { "d" : { "$numberInt" : "1" } }
+ { "" : true }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '[ "a", "d" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '[ "a", "d" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', '[ "a" ]', false, true);
+                    gin_bson_get_wildcard_project_generated_terms                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" } }
+ { "a" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0" : { "$numberInt" : "0" } }
+ { "a.1" : { "$numberInt" : "1" } }
+ { "a.2" : { "$numberInt" : "2" } }
+ { "a" : { "$numberInt" : "0" } }
+ { "a" : { "$numberInt" : "1" } }
+ { "a" : { "$numberInt" : "2" } }
+ { "" : true }
+(9 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', '[ "a" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 8, "a" : [0, 1, 2]}', '[ "a" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', '[ "a" ]', false, true);
+                         gin_bson_get_wildcard_project_generated_terms                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+(10 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', '[ "a" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', '[ "a" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', '[ "a.b" ]', false, true);
+                     gin_bson_get_wildcard_project_generated_terms                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+(9 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', '[ "a.b" ]', true, true);
+                         gin_bson_get_wildcard_project_generated_terms                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "" : true }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', '[ "a.b" ]', true, false);
+                         gin_bson_get_wildcard_project_generated_terms                          
+---------------------------------------------------------------------
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', '[ "a" ]', false, true);
+                                      gin_bson_get_wildcard_project_generated_terms                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
+ { "a.0" : { "b" : { "$numberInt" : "0" } } }
+ { "a.0.b" : { "$numberInt" : "0" } }
+ { "a.1" : { "b" : { "$numberInt" : "1" } } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.2.b" : { "$numberDouble" : "3.0" } }
+ { "a" : { "b" : { "$numberInt" : "0" } } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.b" : { "$numberDouble" : "3.0" } }
+ { "" : true }
+ { "" : [  ] }
+(16 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', '[ "a" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', '[ "a" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', '[ "a.b" ]', false, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberDouble" : "3.0" } }
+ { "" : true }
+ { "" : [  ] }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', '[ "a.b" ]', true, true);
+                                      gin_bson_get_wildcard_project_generated_terms                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" } }
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
+ { "a.0" : { "b" : { "$numberInt" : "0" } } }
+ { "a.0.b" : { "$numberInt" : "0" } }
+ { "a.1" : { "b" : { "$numberInt" : "1" } } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.2.b" : { "$numberDouble" : "3.0" } }
+ { "a" : { "b" : { "$numberInt" : "0" } } }
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "" : true }
+ { "" : [  ] }
+(13 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', '[ "a.b" ]', true, false);
+                                      gin_bson_get_wildcard_project_generated_terms                                      
+---------------------------------------------------------------------
+ { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
+ { "a.0" : { "b" : { "$numberInt" : "0" } } }
+ { "a.0.b" : { "$numberInt" : "0" } }
+ { "a.1" : { "b" : { "$numberInt" : "1" } } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.2.b" : { "$numberDouble" : "3.0" } }
+ { "a" : { "b" : { "$numberInt" : "0" } } }
+ { "a" : { "b" : { "$numberInt" : "1" } } }
+ { "a" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "" : true }
+ { "" : [  ] }
+(12 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a" ]', false, true);
+                                                                                                                  gin_bson_get_wildcard_project_generated_terms                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" } }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(52 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a.b" ]', false, true);
+                      gin_bson_get_wildcard_project_generated_terms                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(24 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a.b" ]', true, true);
+                                                                                                                  gin_bson_get_wildcard_project_generated_terms                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" } }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "" : true }
+ { "" : [  ] }
+(31 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a.b" ]', true, false);
+                                                                                                                  gin_bson_get_wildcard_project_generated_terms                                                                                                                  
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "" : true }
+ { "" : [  ] }
+(30 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a.b.0", "a.b.1" ]', false, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" } }
+ { "a.b.0" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.0" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "" : true }
+ { "" : [  ] }
+(9 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a.b.0", "a.b.1" ]', true, true);
+                                                                                                                  gin_bson_get_wildcard_project_generated_terms                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" } }
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.2" : { "$numberInt" : "7" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(46 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', '[ "a.b.0", "a.b.1" ]', true, false);
+                                                                                                                  gin_bson_get_wildcard_project_generated_terms                                                                                                                  
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.2" : { "$numberInt" : "7" } }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(45 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a" ]', false, true);
+                                                                                                                        gin_bson_get_wildcard_project_generated_terms                                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : [ { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a.0" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.0.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.0.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.0.1" : { "$numberInt" : "1" } }
+ { "a.0.b.0.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "7" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "" : true }
+ { "" : [  ] }
+(46 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a.b" ]', false, true);
+                        gin_bson_get_wildcard_project_generated_terms                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "7" } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "" : true }
+ { "" : [  ] }
+(21 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a.b" ]', true, true);
+                                                                                                                        gin_bson_get_wildcard_project_generated_terms                                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : [ { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a.0" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.0.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.0.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.0.1" : { "$numberInt" : "1" } }
+ { "a.0.b.0.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "" : true }
+ { "" : [  ] }
+(28 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a.b" ]', true, false);
+                                                                                                                        gin_bson_get_wildcard_project_generated_terms                                                                                                                        
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a.0" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.0.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.0.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.0.1" : { "$numberInt" : "1" } }
+ { "a.0.b.0.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "" : true }
+ { "" : [  ] }
+(27 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a.b.0", "a.b.1" ]', false, true);
+                       gin_bson_get_wildcard_project_generated_terms                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "2" } }
+ { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.b.0.0" : { "$numberInt" : "0" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.2" : { "$numberInt" : "7" } }
+ { "" : true }
+ { "" : [  ] }
+(15 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a.b.0", "a.b.1" ]', true, true);
+                                                                                                                        gin_bson_get_wildcard_project_generated_terms                                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : [ { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a.0" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.0.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.0.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.0.1" : { "$numberInt" : "1" } }
+ { "a.0.b.0.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "" : true }
+ { "" : [  ] }
+(34 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', '[ "a.b.0", "a.b.1" ]', true, false);
+                                                                                                                        gin_bson_get_wildcard_project_generated_terms                                                                                                                        
+---------------------------------------------------------------------
+ { "a" : [ { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }, { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } ] }
+ { "a.0" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.0.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.0.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.0.b.0.0" : { "$numberInt" : "-1" } }
+ { "a.0.b.0.1" : { "$numberInt" : "1" } }
+ { "a.0.b.0.2" : { "$numberInt" : "2" } }
+ { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "" : true }
+ { "" : [  ] }
+(33 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a" ]', false, true);
+                                gin_bson_get_wildcard_project_generated_terms                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" } }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a.b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.0.1.0" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1" : { "$numberInt" : "3" } }
+ { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.1.0" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1" : { "$numberInt" : "3" } }
+ { "" : true }
+ { "" : [  ] }
+(21 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a.b" ]', false, true);
+                            gin_bson_get_wildcard_project_generated_terms                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" } }
+ { "a.b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.0.1.0" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1" : { "$numberInt" : "3" } }
+ { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.1.0" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1" : { "$numberInt" : "3" } }
+ { "" : true }
+ { "" : [  ] }
+(20 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a.b" ]', true, true);
+                                gin_bson_get_wildcard_project_generated_terms                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" } }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "" : true }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a.b" ]', true, false);
+                                gin_bson_get_wildcard_project_generated_terms                                 
+---------------------------------------------------------------------
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a.b.0", "a.b.1" ]', false, true);
+                           gin_bson_get_wildcard_project_generated_terms                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" } }
+ { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.0.1.0" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
+ { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1" : { "$numberInt" : "3" } }
+ { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "a.b.1.0" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1" : { "$numberInt" : "3" } }
+ { "" : true }
+ { "" : [  ] }
+(18 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a.b.0", "a.b.1" ]', true, true);
+                                gin_bson_get_wildcard_project_generated_terms                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" } }
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a.b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "" : true }
+ { "" : [  ] }
+(6 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', '[ "a.b.0", "a.b.1" ]', true, false);
+                                gin_bson_get_wildcard_project_generated_terms                                 
+---------------------------------------------------------------------
+ { "a" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "a.b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "" : true }
+ { "" : [  ] }
+(5 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '[ "a" ]', false, true);
+                                   gin_bson_get_wildcard_project_generated_terms                                    
+---------------------------------------------------------------------
+ { "_id" : "7" }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a.0" : { "c" : { "$numberInt" : "0" } } }
+ { "a.0.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
+ { "a" : { "c" : { "$numberInt" : "0" } } }
+ { "a.c" : { "$numberInt" : "0" } }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { "a.c" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberInt" : "2" } } }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+ { "" : [  ] }
+(16 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '[ "a" ]', true, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : "7" }
+ { "" : true }
+(2 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '[ "a" ]', true, false);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$undefined" : true } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '[ "a.b" ]', false, true);
+ gin_bson_get_wildcard_project_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : "7" }
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+ { "" : [  ] }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '[ "a.b" ]', true, true);
+                                   gin_bson_get_wildcard_project_generated_terms                                    
+---------------------------------------------------------------------
+ { "_id" : "7" }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a.0" : { "c" : { "$numberInt" : "0" } } }
+ { "a.0.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
+ { "a" : { "c" : { "$numberInt" : "0" } } }
+ { "a.c" : { "$numberInt" : "0" } }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { "a.c" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberInt" : "2" } } }
+ { "" : true }
+ { "" : [  ] }
+(15 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '[ "a.b" ]', true, false);
+                                   gin_bson_get_wildcard_project_generated_terms                                    
+---------------------------------------------------------------------
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "a.0" : { "c" : { "$numberInt" : "0" } } }
+ { "a.0.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
+ { "a" : { "c" : { "$numberInt" : "0" } } }
+ { "a.c" : { "$numberInt" : "0" } }
+ { "a" : { "c" : { "$numberInt" : "1" } } }
+ { "a.c" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberInt" : "2" } } }
+ { "" : true }
+ { "" : [  ] }
+(14 rows)
+
+--Nested Array or Array has document
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : [{"b" : "old"}]  }', '', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" } }
+ { "a" : [ { "b" : "old" } ] }
+ { "a.0" : { "b" : "old" } }
+ { "a.0.b" : "old" }
+ { "a" : { "b" : "old" } }
+ { "a.b" : "old" }
+ { "" : true }
+ { "" : [  ] }
+(8 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : [[{"b" : "old"}]]  }', '', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" } }
+ { "a" : [ [ { "b" : "old" } ] ] }
+ { "a.0" : [ { "b" : "old" } ] }
+ { "a.0.0" : { "b" : "old" } }
+ { "a.0.0.b" : "old" }
+ { "a.0.b" : "old" }
+ { "a" : [ { "b" : "old" } ] }
+ { "" : true }
+ { "" : [  ] }
+(9 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 10, "a" : [[1,{"b" : "old"},3]]  }', '', true);
+                     gin_bson_get_single_path_generated_terms                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" } }
+ { "a" : [ [ { "$numberInt" : "1" }, { "b" : "old" }, { "$numberInt" : "3" } ] ] }
+ { "a.0" : [ { "$numberInt" : "1" }, { "b" : "old" }, { "$numberInt" : "3" } ] }
+ { "a.0.0" : { "$numberInt" : "1" } }
+ { "a.0.1" : { "b" : "old" } }
+ { "a.0.1.b" : "old" }
+ { "a.0.2" : { "$numberInt" : "3" } }
+ { "a.0.b" : "old" }
+ { "a" : [ { "$numberInt" : "1" }, { "b" : "old" }, { "$numberInt" : "3" } ] }
+ { "" : true }
+ { "" : [  ] }
+(11 rows)
+
+-- generate terms with and without truncation
+-- string
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : "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"}', '', true);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           gin_bson_get_single_path_generated_terms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : "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" }
+ { "" : true }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : "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"}', '', true, true, false, 500);
+                                                                                                                                                                                                                                      gin_bson_get_single_path_generated_terms                                                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : "p86PXqGpykgF4prF9X0ouGVG7mkRGg9ZyXZwt25L49trG5IQXgrHdkR01ZKSBlZv8SH04XUych6c0HNvS6Dn17Rx3JgKYMFqxSTyhRZLdlmMgxCMBE7wYDrvtfCPRgeDPGOR4FTVP0521ulBAnAdoxub6WndMqLhGZKymTmmjdCJ28ka0fnN47BeMPy9jqllCfuWh6MUg4bSRrvkopOHgkXx0Jdg7KwLsvfozsoVzKVI1BYlV6ruz1QipKZTRgAJVUYEzG9qA28ZBFu6ZLN0vzeXpPlxNbPu4pwLcPISxCNmgIeDm397Bs9krq0OCqhqhVJzYaLLmcTipuqi0mmPYNBF5RYfiEWeLmarJzW4oirL1s6d8EMGqvlRW5M6GY5OCUo5BfvADGpa8VQ3dGF1GKs05U7IWax6am9TOuq6hXWuhw3r8pmv0OvhqNmh0Wm9rAoK2zEHnuwoUqh57McwWx5gvouiZQdgDrRlU0I" }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : "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"}', '', true, true, false, 1000);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                gin_bson_get_single_path_generated_terms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : "p86PXqGpykgF4prF9X0ouGVG7mkRGg9ZyXZwt25L49trG5IQXgrHdkR01ZKSBlZv8SH04XUych6c0HNvS6Dn17Rx3JgKYMFqxSTyhRZLdlmMgxCMBE7wYDrvtfCPRgeDPGOR4FTVP0521ulBAnAdoxub6WndMqLhGZKymTmmjdCJ28ka0fnN47BeMPy9jqllCfuWh6MUg4bSRrvkopOHgkXx0Jdg7KwLsvfozsoVzKVI1BYlV6ruz1QipKZTRgAJVUYEzG9qA28ZBFu6ZLN0vzeXpPlxNbPu4pwLcPISxCNmgIeDm397Bs9krq0OCqhqhVJzYaLLmcTipuqi0mmPYNBF5RYfiEWeLmarJzW4oirL1s6d8EMGqvlRW5M6GY5OCUo5BfvADGpa8VQ3dGF1GKs05U7IWax6am9TOuq6hXWuhw3r8pmv0OvhqNmh0Wm9rAoK2zEHnuwoUqh57McwWx5gvouiZQdgDrRlU0IAvv4wpPwtgoAZpNje9ZPNywbrdYkKdy3CPGDf4bhreNvnOVx2aIfY3ZlQCL8RWXjIN1HWhb8nRTZuaqJVDh8lnB8kessHCrS0tTLEcnjZIRVPXge5F3AD2x4PYrP1jthursnY6XqqzZVvN2PEia9AXyqvAi8447AONDn27AqUEDRCVBg8l4DzbZ7O2OUOyG3nBE78xDdQMbpkhmPF0MPiihgZtcPLxB4E36I5Kr1g0ecmX6XsFN2FFDDHg0R8oi120fnm33UWWwpfM13czkJKzkGucSDv0NO0nrmd0yxlTwLCwYg3IOP62pyUFfZNj755sbXigEajKcypSgNdCcVJ8fak9xhe575FmcA1LSr8qOKKCyy3bZdyFKuwDtAtCOrlp2Ay5qtqIJhovZp3ek6U1ZKlLAXPf5Xk661XHOLuFNExn7vyMxeFKb9v2EWmdrO622ylfc0xnGnOc2yT7lAE7w1x4AGxBdgjI3q052o4gWfALRDjbhE" }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : "p86PXqGpykgF4prF9X0ouGVG7mkRGg9ZyXZwt25L49trG5IQXgrHdkR01ZKSBlZv8SH04XUych6c0HNvS6Dn17Rx3JgKYMFqxSTyhRZLdlmMgxCMBE7wYDrvtfCPRgeDPGOR4FTVP0521ulBAnAdoxub6WndMqLhGZKymTmmjdCJ28ka0fnN47BeMPy9jqllCfuWh6MUg4bSRrvkopOHgkXx0Jdg7KwLsvfozsoVzKVI1BYlV6ruz1QipKZTRgAJVUYEzG9qA28ZBFu6ZLN0vzeXpPlxNbPu4pwLcPISxCNmgIeDm397Bs9krq0OCqhqhVJzYaLLmcTipuqi0mmPYNBF5RYfiEWeLmarJzW4oirL1s6d8EMGqvlRW5M6GY5OCUo5BfvADGpa8VQ3dGF1GKs05U7IWax6am9TOuq6hXWuhw3r8pmv0OvhqNmh0Wm9rAoK2zEHnuwoUqh57McwWx5gvouiZQdgDrRlU0IAvv4wpPwtgoAZpNje9ZPNywbrdYkKdy3CPGDf4bhreNvnOVx2aIfY3ZlQCL8RWXjIN1HWhb8nRTZuaqJVDh8lnB8kessHCrS0tTLEcnjZIRVPXge5F3AD2x4PYrP1jthursnY6XqqzZVvN2PEia9AXyqvAi8447AONDn27AqUEDRCVBg8l4DzbZ7O2OUOyG3nBE78xDdQMbpkhmPF0MPiihgZtcPLxB4E36I5Kr1g0ecmX6XsFN2FFDDHg0R8oi120fnm33UWWwpfM13czkJKzkGucSDv0NO0nrmd0yxlTwLCwYg3IOP62pyUFfZNj755sbXigEajKcypSgNdCcVJ8fak9xhe575FmcA1LSr8qOKKCyy3bZdyFKuwDtAtCOrlp2Ay5qtqIJhovZp3ek6U1ZKlLAXPf5Xk661XHOLuFNExn7vyMxeFKb9v2EWmdrO622ylfc0xnGnOc2yT7lAE7w1x4AGxBdgjI3q052o4gWfALRDjbhEK39sM2rpTIwMrvsSo35rsv5p9mQ2zQCL1OUBHQHmDFEzfH7zanSgISWGYjdbpGoyo3JxhcypqUxx7jB4DIe20i3fGbdpFOKVirFjZ4LyfaDgGWGaW6eD7XyAigTuajLe5NpXBJOAQr31C8YYl1XlWZSBv8jdOjpLE8BixgHsXTldxzh7QxPQH2eKO74FeDySOZCNlsHENbQHbwfQJRxz33oHpr0dsNRn2AYCP6mOFJ8G9AASMx6jSP5j2ZRZGFb6GKhG2FyiIklRTPvtu14aMPTgD0tPBlXEWwi6IuynzrXXzOY3BodDRk2EwkruuuuEwCuSd82HJDuChSWf2A9duqv9J0UrbYuXN9NWOVypBq4tlY6joGUPe509Z4EQEKAmFIUV0GBQixzt1tPVgBs9esNvNFSftzKgYBS4FJe489UWwaX3njm5uQYW7wFJuqcI4A0MrfOYJSgJwzvtfaKwu95yAtjW7QgLPG355RkKsjZDLZdjuNvjN17yYC0xchIaBGaK6cIGDjRV2mnmKHaaLRrEwjKqS1F1FCH19JnXSB1OoDdcoEYAbQwK2Kd0KWKh6tslohWoPWvFlOXBzZOEnPNENpU8xxD8mHxYDr8siiaknwRMvqf4yP2Oe4v7GFwOrMmR6UJknUu7xp2HvsjqceO5g7nkuUyiec4lk1sPraMygpBAboLCB3S4qSfNqtfJj0vwZVXmmK3lJyrh2dgJ7botypjDE1ENq6vovXKtZ7OYfE81V2ic5qnSKakbwmsiS3uywVjuvFtDBwgZQBhEMqcG6txa9qNINGA5Xbt1xnhJbFuxaykJpBTGtYAem00AX5ZRTVPy57WRue1aIvopDx92yL2Lw3eWSebATumO91PYlVDUhHzaQ232MS2hrHbKZYWguCb9UU3Wrsu9f5dybJDhJhE7jOnDb4hYJvdxQH8Ni7cELn4bf0AxXTQ74RJM2ZiPCAG8CYtpDcaHnU4BEfs5stjBOX1rWgQihsz5fbCEZOcDYJ5om5Gwk3R12Q49Ly3IARzsVTZnswxfpOfq6bIY9oKLpYanNDaf9ZhZEaa2MwOA9Ruiy4RmquYoJ92gBxS1l1FC8jYlCEfvSAkylhSA54TsWVVIwsOZd6Hj3RQQZtQcJEIMIHPxdTNUx1sSMCItVbTikTw8gviNtI1UM6VOJxiqBsdOmfy8WbfP7djRbRUBwCnCFoaEIFrAQfebevG6hxQ6MbeVP17ythvVUlDSJL2Bn7KmwNBj7Aido8RmBUPXuTxZzMpuLjn1q0Wm4FMz232XddybeBnELMMDkEWUqPL94xo1AdfhtXQ2WhpIJKHsSqj6vv51PnmfzmHZaqXkWIY6WhCf7SsBMojqBUEEI3VYKxcQ5IBzvX284CrH5x2M6AoGpANFp036l6cor9VBVYHyXODCBO1ACMDe9YENwatNgWhpiu2W6Ao1jE5vs00Vk9j4gY9NFPNrjpw5gFgRdinELZAyd2akBSoYdXxBt9NtfVJEYl2OiblplIOgB7fi4HEho4JtNhmyS3P3BdlQkRAciVHfHKAOdi2dBZxxVFJjqBuVW4Svv6XJuYYLPMJiPGrgV3rvlzlUdUAn0LKsga4BEn4cPoRnRPPYgj7L5bkqMxonzRiCBkMU4HTYBTrVfNqu7zHLcMQwc9lIEHYHDN2JyqEr0emG5B8NMqDJFwUHIILvA5pUuZQT5PV87QpLs8n24vV5YHqFDFm7KlGxan3Hdy5Zw4PaQsROlwIxFGFuHUXi6B4nn8KYZlULfAQ7stk4DDukrPmOXlbbDOhNHu2pXqejS12MTOYZ33"}', '', true, true, false, 2500);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              gin_bson_get_single_path_generated_terms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : "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" }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : "p86PXqGpykgF4prF9X0ouGVG7mkRGg9ZyXZwt25L49trG5IQXgrHdkR01ZKSBlZv8SH04XUych6c0HNvS6Dn17Rx3JgKYMFqxSTyhRZLdlmMgxCMBE7wYDrvtfCPRgeDPGOR4FTVP0521ulBAnAdLdlmMgxCMBE7wYDrvtfhGZymTmmjdCJ28ka0fnN47BeKymTmmjdCJ28ka0CPRgeDPGOR4FTVP0521ulBAnAdoxuboxub63"}', '', true, true, false, 45);
+   gin_bson_get_single_path_generated_terms   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : "p86PXqGpykgF4prF9X0ouGVG7mkRGg9Z" }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+-- binary
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$binary": { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType": "00" } } }', '', true, true, false, 45);
+                                 gin_bson_get_single_path_generated_terms                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$binary" : { "base64" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVo=", "subType" : "00" } } }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$binary": { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType": "00" } } }', '', true, true, false, 100);
+                                                                     gin_bson_get_single_path_generated_terms                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$binary" : { "base64" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdS", "subType" : "00" } } }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$binary": { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType": "00" } } }', '', true, true, false, 20);
+                 gin_bson_get_single_path_generated_terms                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$binary" : { "base64" : "cDg2UFhxRw==", "subType" : "00" } } }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$binary": { "base64": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType": "00" } } }', '', true, true, false, 500);
+                                                                                                                                                                             gin_bson_get_single_path_generated_terms                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$binary" : { "base64" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "subType" : "00" } } }
+ { "" : true }
+(3 rows)
+
+-- code
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$code": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=" } }', '', true, true, false, 500);
+                                                                                                                                                            gin_bson_get_single_path_generated_terms                                                                                                                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$code" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=" } }
+ { "" : true }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$code": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=" } }', '', true, true, false, 40);
+       gin_bson_get_single_path_generated_terms        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$code" : "cDg2UFhxR3B5a2dGNHByRjlYMG9" } }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$code": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=" } }', '', true, true, false, 20);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$code" : "cDg2UFh" } }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+-- symbol
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$symbol": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=" } }', '', true, true, false, 500);
+                                                                                                                                                             gin_bson_get_single_path_generated_terms                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$symbol" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=" } }
+ { "" : true }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$symbol": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=" } }', '', true, true, false, 40);
+        gin_bson_get_single_path_generated_terms         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$symbol" : "cDg2UFhxR3B5a2dGNHByRjlYMG9" } }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$symbol": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=" } }', '', true, true, false, 20);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$symbol" : "cDg2UFh" } }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(4 rows)
+
+-- regex
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$regularExpression": { "pattern": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "options": "" } } }', '', true, true, false, 500);
+                                                                                                                                                                                  gin_bson_get_single_path_generated_terms                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$regularExpression" : { "pattern" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "options" : "" } } }
+ { "" : true }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$regularExpression": { "pattern": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "options": "" } } }', '', true, true, false, 50);
+ERROR:  Truncation size limit specified 50, but index term with type regex was larger 334 - isTruncated 0
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$regularExpression": { "pattern": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "options": "" } } }', '', true, true, false, 20);
+ERROR:  Truncation size limit specified 20, but index term with type regex was larger 334 - isTruncated 0
+-- regex with options
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$regularExpression": { "pattern": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "options": "imxs" } } }', '', true, true, false, 500);
+                                                                                                                                                                                    gin_bson_get_single_path_generated_terms                                                                                                                                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$regularExpression" : { "pattern" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "options" : "imsx" } } }
+ { "" : true }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$regularExpression": { "pattern": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "options": "imxs" } } }', '', true, true, false, 50);
+ERROR:  Truncation size limit specified 50, but index term with type regex was larger 338 - isTruncated 0
+-- codewscope
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$code": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "$scope": { "a": "b" } } }', '', true, true, false, 50);
+ERROR:  Truncation size limit specified 50, but index term with type javascriptWithScope was larger 355 - isTruncated 0
+-- dbref
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "$ref": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "$id": { "a": "b" } } }', '', true, true, false, 50);
+     gin_bson_get_single_path_generated_terms      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "$ref" : "cDg2UFhxR3B5a2dGNHByRjl" } }
+ { "a.$ref" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZH" }
+ { "a.$id" : { "a" : "b" } }
+ { "a.$id.a" : "b" }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(7 rows)
+
+-- object
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : { "field": { "pattern": "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "field2": "short field" } } }', '', true, true, false, 50);
+         gin_bson_get_single_path_generated_terms          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : { "field" : { "pattern" : { "$maxKey" : 1 } } } }
+ { "a.field" : { "pattern" : "cDg2UFhxR3B5a2" } }
+ { "a.field.pattern" : "cDg2UFhxR3B5a2dGNHByRjl" }
+ { "a.field.field2" : "short field" }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(7 rows)
+
+-- array
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 13, "a" : [ "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rUkdnOVp5WFp3dDI1TDQ5dHJHNUlRWGdySGRrUjAxWktTQmxadjhTSDA0WFV5Y2g2YzBITnZTNkRuMTdSeDNKZ0tZTUZxeFNUeWhSWkxkbG1NZ3hDTUJFN3dZRHJ2dGZDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZExkbG1NZ3hDTUJFN3dZRHJ2dGZoR1p5bVRtbWpkQ0oyOGthMGZuTjQ3QmVLeW1UbW1qZENKMjhrYTBDUFJnZURQR09SNEZUVlAwNTIxdWxCQW5BZG94dWJveHViNjM=", "short field" ] }', '', true, true, false, 50);
+     gin_bson_get_single_path_generated_terms      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" } }
+ { "a" : [ "cDg2UFhxR3B5a2dGNHByRjlYMG9" ] }
+ { "a.0" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21" }
+ { "a.1" : "short field" }
+ { "a" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rU" }
+ { "a" : "short field" }
+ { "" : true }
+ { "" : { "$maxKey" : 1 } }
+(8 rows)
+
+-- Section for unique index terms
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', 'a.b', false, true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b" : { "$numberInt" : "2" } }
+ { "" : true }
+ { "" : [  ] }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "c" : 2 } ] }', 'a.b', false, true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : null }
+ { "" : { "$undefined" : true } }
+ { "" : [  ] }
+(3 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : null } ] }', 'a.b', false, true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "a.b" : null }
+ { "" : null }
+ { "" : true }
+ { "" : [  ] }
+(4 rows)
+
+-- addMetadata true
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '', true, false, true);
+                                            gin_bson_get_single_path_generated_terms                                             
+---------------------------------------------------------------------
+ { "_id" : "7", "t" : false }
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], "t" : false }
+ { "a.0" : { "c" : { "$numberInt" : "0" } }, "t" : false }
+ { "a.0.c" : { "$numberInt" : "0" }, "t" : false }
+ { "a.1" : { "c" : { "$numberInt" : "1" } }, "t" : false }
+ { "a.1.c" : { "$numberInt" : "1" }, "t" : false }
+ { "a.2" : { "b" : { "$numberInt" : "2" } }, "t" : false }
+ { "a.2.b" : { "$numberInt" : "2" }, "t" : false }
+ { "a" : { "c" : { "$numberInt" : "0" } }, "t" : false }
+ { "a.c" : { "$numberInt" : "0" }, "t" : false }
+ { "a" : { "c" : { "$numberInt" : "1" } }, "t" : false }
+ { "a.c" : { "$numberInt" : "1" }, "t" : false }
+ { "a" : { "b" : { "$numberInt" : "2" } }, "t" : false }
+ { "a.b" : { "$numberInt" : "2" }, "t" : false }
+ { "" : true, "t" : false }
+ { "" : [  ], "t" : false }
+(16 rows)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generated_terms('{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', '[ "a.b" ]', true, false, true);
+                                          gin_bson_get_wildcard_project_generated_terms                                          
+---------------------------------------------------------------------
+ { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], "t" : false }
+ { "a.0" : { "c" : { "$numberInt" : "0" } }, "t" : false }
+ { "a.0.c" : { "$numberInt" : "0" }, "t" : false }
+ { "a.1" : { "c" : { "$numberInt" : "1" } }, "t" : false }
+ { "a.1.c" : { "$numberInt" : "1" }, "t" : false }
+ { "a.2" : { "b" : { "$numberInt" : "2" } }, "t" : false }
+ { "a.2.b" : { "$numberInt" : "2" }, "t" : false }
+ { "a" : { "c" : { "$numberInt" : "0" } }, "t" : false }
+ { "a.c" : { "$numberInt" : "0" }, "t" : false }
+ { "a" : { "c" : { "$numberInt" : "1" } }, "t" : false }
+ { "a.c" : { "$numberInt" : "1" }, "t" : false }
+ { "a" : { "b" : { "$numberInt" : "2" } }, "t" : false }
+ { "" : true, "t" : false }
+ { "" : [  ], "t" : false }
+(14 rows)
+
+-- add array ancestor for wildcard
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id":"7", "a" : [ { "b": { "c": 1 } } ] }', 'a', true);
+         gin_bson_get_single_path_generated_terms         
+---------------------------------------------------------------------
+ { "a" : [ { "b" : { "c" : { "$numberInt" : "1" } } } ] }
+ { "a.0" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "a.0.b" : { "c" : { "$numberInt" : "1" } } }
+ { "a.0.b.c" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "a.b" : { "c" : { "$numberInt" : "1" } } }
+ { "a.b.c" : { "$numberInt" : "1" } }
+ { "" : true }
+ { "" : [  ] }
+(9 rows)
+
+-- test when non exists term generation is off should generate min key root term
+BEGIN;
+set local documentdb.enableGenerateNonExistsTerm to off;
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "a" : 1 }', 'b', true);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$minKey" : 1 } }
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 1, "a" : 1 }', 'b', false);
+ gin_bson_get_single_path_generated_terms 
+---------------------------------------------------------------------
+ { "" : { "$minKey" : 1 } }
+(1 row)
+
+COMMIT;
+SELECT documentdb_api.create_collection('db', 'indextermgeneration');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- create all of these indexes
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indextermgeneration', 'indexgen_path_1', '{"$**": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indextermgeneration', 'indexgen_path_2', '{"a.b.$**": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indextermgeneration', 'indexgen_path_3', '{"a.b": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create a compound index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('indextermgeneration', 'indexgen_comp_path_1', '{"a.b": 1, "a.c": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indextermgeneration", "indexes": [ { "key": { "$**": 1 }, "name": "indexgen_wildcard_1", "wildcardProjection": { "a.b": 1 } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "indextermgeneration", "indexes": [ { "key": { "$**": 1 }, "name": "indexgen_wildcard_2", "wildcardProjection": { "a.b": 0, "a.c": 0 }  }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_3700
+                      Table "documentdb_data.documents_3700"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_3700" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_3701" documentdb_rum (document bson_rum_single_path_ops (path='', iswildcard='true', tl='2699', wkl='200'))
+    "documents_rum_index_3702" documentdb_rum (document bson_rum_single_path_ops (path='a.b', iswildcard='true', tl='2699'))
+    "documents_rum_index_3703" documentdb_rum (document bson_rum_single_path_ops (path='a.b', tl='2699'))
+    "documents_rum_index_3704" documentdb_rum (document bson_rum_single_path_ops (path='a.b', tl='2691'), document bson_rum_single_path_ops (path='a.c', tl='2691'))
+    "documents_rum_index_3705" documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
+    "documents_rum_index_3706" documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b", "a.c" ]', isexclusion='true'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '3700'::bigint)
+
+-- now insert some documents - we still can't query it at this point but this is a sanity validation.
+SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SET documentdb.enableIndexTermTruncationOnNestedObjects TO off;

@@ -14,7 +14,7 @@ region_cidr_format: '{}.0.0/16'
 regions:
   africa-south1:
     cidr_prefix: '10.231'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -22,7 +22,7 @@ regions:
     - c
   asia-east1:
     cidr_prefix: '10.203'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -30,7 +30,7 @@ regions:
     - c
   asia-east2:
     cidr_prefix: '10.218'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -38,7 +38,7 @@ regions:
     - c
   asia-northeast1:
     cidr_prefix: '10.205'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -46,7 +46,7 @@ regions:
     - c
   asia-northeast2:
     cidr_prefix: '10.219'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -54,7 +54,7 @@ regions:
     - c
   asia-northeast3:
     cidr_prefix: '10.221'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -62,7 +62,7 @@ regions:
     - c
   asia-south1:
     cidr_prefix: '10.212'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -70,7 +70,7 @@ regions:
     - c
   asia-south2:
     cidr_prefix: '10.228'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -78,7 +78,7 @@ regions:
     - c
   asia-southeast1:
     cidr_prefix: '10.206'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -86,7 +86,7 @@ regions:
     - c
   asia-southeast2:
     cidr_prefix: '10.220'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -94,7 +94,7 @@ regions:
     - c
   australia-southeast1:
     cidr_prefix: '10.208'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -102,7 +102,7 @@ regions:
     - c
   australia-southeast2:
     cidr_prefix: '10.222'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -110,7 +110,7 @@ regions:
     - c
   europe-central2:
     cidr_prefix: '10.223'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -118,7 +118,7 @@ regions:
     - c
   europe-north1:
     cidr_prefix: '10.227'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -126,7 +126,7 @@ regions:
     - c
   europe-southwest1:
     cidr_prefix: '10.232'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -134,7 +134,7 @@ regions:
     - c
   europe-west1:
     cidr_prefix: '10.201'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - b
@@ -142,7 +142,7 @@ regions:
     - d
   europe-west10:
     cidr_prefix: '10.233'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -150,7 +150,7 @@ regions:
     - c
   europe-west12:
     cidr_prefix: '10.234'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -158,7 +158,7 @@ regions:
     - c
   europe-west2:
     cidr_prefix: '10.209'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -166,7 +166,7 @@ regions:
     - c
   europe-west3:
     cidr_prefix: '10.210'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -174,7 +174,7 @@ regions:
     - c
   europe-west4:
     cidr_prefix: '10.214'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -182,7 +182,7 @@ regions:
     - c
   europe-west6:
     cidr_prefix: '10.226'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -190,7 +190,7 @@ regions:
     - c
   europe-west8:
     cidr_prefix: '10.235'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -198,7 +198,7 @@ regions:
     - c
   europe-west9:
     cidr_prefix: '10.236'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -206,7 +206,7 @@ regions:
     - c
   me-central1:
     cidr_prefix: '10.237'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -214,7 +214,7 @@ regions:
     - c
   me-central2:
     cidr_prefix: '10.238'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -222,7 +222,7 @@ regions:
     - c
   me-west1:
     cidr_prefix: '10.239'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -230,7 +230,7 @@ regions:
     - c
   northamerica-northeast1:
     cidr_prefix: '10.213'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -238,7 +238,7 @@ regions:
     - c
   northamerica-northeast2:
     cidr_prefix: '10.225'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -246,7 +246,7 @@ regions:
     - c
   southamerica-east1:
     cidr_prefix: '10.211'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -254,7 +254,7 @@ regions:
     - c
   southamerica-west1:
     cidr_prefix: '10.240'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -262,7 +262,7 @@ regions:
     - c
   us-central1:
     cidr_prefix: '10.200'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -271,7 +271,7 @@ regions:
     - f
   us-east1:
     cidr_prefix: '10.204'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - b
@@ -279,7 +279,7 @@ regions:
     - d
   us-east4:
     cidr_prefix: '10.207'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -287,7 +287,7 @@ regions:
     - c
   us-east5:
     cidr_prefix: '10.229'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -295,7 +295,7 @@ regions:
     - c
   us-south1:
     cidr_prefix: '10.230'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -303,7 +303,7 @@ regions:
     - c
   us-west1:
     cidr_prefix: '10.202'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -311,7 +311,7 @@ regions:
     - c
   us-west2:
     cidr_prefix: '10.215'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -319,7 +319,7 @@ regions:
     - c
   us-west3:
     cidr_prefix: '10.216'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a
@@ -327,7 +327,7 @@ regions:
     - c
   us-west4:
     cidr_prefix: '10.217'
-    image: almalinux-8-v20240515
+    image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:
     - a

@@ -26,7 +26,10 @@ import { ReactComponent as SelectedIcon } from '../../../../redesign/assets/circ
 import { ReactComponent as UnselectedIcon } from '../../../../redesign/assets/circle-empty.svg';
 import { getXClusterConfig } from '../utils';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
@@ -39,11 +42,17 @@ interface RepairDrConfigModalProps {
   modalProps: YBModalProps;
 }
 
+interface TargetUniverseOption {
+  value: Universe;
+  label: string;
+  isDisabled: boolean;
+  disabledReason: string;
+}
 interface RepairDrConfigModalFormValues {
   storageConfig: StorageConfigOption;
 
   repairType?: RepairType;
-  targetUniverse?: { value: Universe; label: string };
+  targetUniverse?: TargetUniverseOption;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -109,7 +118,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const RepairType = {
-  USE_EXISITING_TARGET_UNIVERSE: 'useExistingTargetUniverse',
+  USE_EXISTING_TARGET_UNIVERSE: 'useExistingTargetUniverse',
   USE_NEW_TARGET_UNIVERSE: 'useNewTargetUniverse'
 } as const;
 type RepairType = typeof RepairType[keyof typeof RepairType];
@@ -349,7 +358,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
 
     const storageConfigUuid = drConfig.bootstrapParams.backupRequestParams.storageConfigUUID;
     switch (formValues.repairType) {
-      case RepairType.USE_EXISITING_TARGET_UNIVERSE:
+      case RepairType.USE_EXISTING_TARGET_UNIVERSE:
         return restartConfigMutation.mutateAsync(storageConfigUuid);
       case RepairType.USE_NEW_TARGET_UNIVERSE:
         if (formValues.targetUniverse) {
@@ -364,7 +373,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
     }
   };
 
-  const universeOptions = universeList
+  const universeOptions: TargetUniverseOption[] = universeList
     .filter(
       (universe) =>
         universe.universeUUID !== sourceUniverseUuid &&
@@ -372,9 +381,17 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
         !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
     )
     .map((universe) => {
+      const isDisabled = !hasNecessaryPerm({
+        ...ApiPermissionMap.CREATE_DR_CONFIG,
+        onResource: universe.universeUUID
+      });
       return {
         label: universe.name,
-        value: universe
+        value: universe,
+        isDisabled,
+        disabledReason: isDisabled
+          ? t('option.useNewTargetUniverse.missingPermissionOnUniverse')
+          : ''
       };
     });
 
@@ -383,8 +400,8 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
     onChange: (repairType: RepairType) => void
   ) => {
     switch (repairType) {
-      case RepairType.USE_EXISITING_TARGET_UNIVERSE:
-        onChange(RepairType.USE_EXISITING_TARGET_UNIVERSE);
+      case RepairType.USE_EXISTING_TARGET_UNIVERSE:
+        onChange(RepairType.USE_EXISTING_TARGET_UNIVERSE);
         return;
       case RepairType.USE_NEW_TARGET_UNIVERSE:
         if (universeOptions.length) {
@@ -427,17 +444,28 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
           <Box display="flex" gridGap={theme.spacing(1)}>
             <Box width="50%">
               <RbacValidator
-                accessRequiredOn={ApiPermissionMap.DR_CONFIG_RESTART}
+                customValidateFunction={() => {
+                  return (
+                    hasNecessaryPerm({
+                      ...ApiPermissionMap.DR_CONFIG_RESTART,
+                      onResource: xClusterConfig.sourceUniverseUUID
+                    }) &&
+                    hasNecessaryPerm({
+                      ...ApiPermissionMap.DR_CONFIG_RESTART,
+                      onResource: xClusterConfig.targetUniverseUUID
+                    })
+                  );
+                }}
                 isControl
                 overrideStyle={{ display: 'unset' }}
               >
                 <div
                   className={clsx(
                     classes.optionCard,
-                    repairType === RepairType.USE_EXISITING_TARGET_UNIVERSE && classes.selected
+                    repairType === RepairType.USE_EXISTING_TARGET_UNIVERSE && classes.selected
                   )}
                   onClick={() =>
-                    handleOptionCardClick(RepairType.USE_EXISITING_TARGET_UNIVERSE, onChange)
+                    handleOptionCardClick(RepairType.USE_EXISTING_TARGET_UNIVERSE, onChange)
                   }
                 >
                   <div className={classes.optionCardHeader}>
@@ -445,7 +473,7 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
                       {t('option.useExistingTargetUniverse.optionName')}
                     </Typography>
                     <Box display="flex" alignItems="center" marginLeft="auto">
-                      {repairType === RepairType.USE_EXISITING_TARGET_UNIVERSE ? (
+                      {repairType === RepairType.USE_EXISTING_TARGET_UNIVERSE ? (
                         <SelectedIcon />
                       ) : (
                         <UnselectedIcon />
@@ -467,7 +495,18 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
             </Box>
             <Box width="50%">
               <RbacValidator
-                accessRequiredOn={ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA}
+                customValidateFunction={() => {
+                  return (
+                    hasNecessaryPerm({
+                      ...ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA,
+                      onResource: xClusterConfig.sourceUniverseUUID
+                    }) &&
+                    hasNecessaryPerm({
+                      ...ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA,
+                      onResource: xClusterConfig.targetUniverseUUID
+                    })
+                  );
+                }}
                 isControl
                 overrideStyle={{ display: 'unset' }}
               >

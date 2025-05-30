@@ -15,8 +15,13 @@
 // This file contains flag definitions that should be known to master, tserver, and pggate
 // (linked into postgres).
 
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/size_literals.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
+
+using namespace yb::size_literals;
 
 DEPRECATE_FLAG(int32, pgsql_rpc_keepalive_time_ms, "02_2024");
 
@@ -30,8 +35,10 @@ DEFINE_UNKNOWN_int32(pggate_ybclient_reactor_threads, 2,
 DEFINE_UNKNOWN_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
-DEFINE_UNKNOWN_int32(pggate_tserver_shm_fd, -1,
-              "File descriptor of the local tablet server's shared memory.");
+DEFINE_NON_RUNTIME_string(pggate_tserver_shared_memory_uuid, "",
+                          "UUID for shared memory allocator files. This is used by tserver when "
+                          "starting postmaster and should never be set explicitly.");
+TAG_FLAG(pggate_tserver_shared_memory_uuid, hidden);
 
 DEPRECATE_FLAG(bool, TEST_pggate_ignore_tserver_shm, "02_2024");
 
@@ -62,10 +69,22 @@ DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid
 DEFINE_test_flag(bool, index_read_multiple_partitions, false,
       "Test flag used to simulate tablet spliting by joining tables' partitions.");
 
-DEFINE_UNKNOWN_int32(ysql_output_buffer_size, 262144,
+#if defined(__APPLE__)
+constexpr int32_t kDefaultYsqlOutputBufferSize = 256_KB;
+#else
+constexpr int32_t kDefaultYsqlOutputBufferSize = 1_MB;
+#endif
+
+DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, kDefaultYsqlOutputBufferSize,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
+
+DEFINE_NON_RUNTIME_int32(ysql_output_flush_size, 8192,
+    "Size of a single flush in YSQL output buffer, in bytes. "
+    "This is different from ysql_output_buffer_size to decouple the amount of data sent in a "
+    "single flush. This is done to match postgres behavior of flushing 8192 bytes.");
+TAG_FLAG(ysql_output_flush_size, advanced);
 
 DEPRECATE_FLAG(bool, ysql_enable_update_batching, "10_2022");
 
@@ -114,9 +133,10 @@ DEFINE_UNKNOWN_bool(ysql_serializable_isolation_for_ddl_txn, false,
             "By default, repeatable read isolation is used. "
             "This flag should go away once full transactional DDL is implemented.");
 
-DEFINE_UNKNOWN_int32(ysql_select_parallelism, -1,
-            "Number of read requests to issue in parallel to tablets of a table "
-            "for SELECT.");
+DEFINE_RUNTIME_int32(ysql_select_parallelism, -1,
+    "Number of read requests to issue in parallel to tablets of a table for SELECT."
+    "Positive values will be used as is. -1 will use max(16, tserver_count * 2).");
+DEFINE_validator(ysql_select_parallelism, FLAG_NE_VALUE_VALIDATOR(0));
 
 DEFINE_UNKNOWN_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
@@ -161,3 +181,6 @@ DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");
 
 DEFINE_NON_RUNTIME_bool(ysql_use_optimized_relcache_update, true,
     "Use optimized relcache update during connection startup and cache refresh.");
+
+DEFINE_RUNTIME_double(max_buffer_size_to_rpc_limit_ratio, 0.9, "the max buffer size is set to "
+                      "max_buffer_size_to_rpc_limit_ratio*FLAGS_rpc_max_message_size.");

@@ -157,6 +157,9 @@ void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix);
 // Gets the configured size of the node-global RocksDB priority thread pool.
 int32_t GetGlobalRocksDBPriorityThreadPoolSize();
 
+// Gets the configured priority thread pool instance.
+PriorityThreadPool* GetGlobalPriorityThreadPool();
+
 // Class to edit RocksDB manifest w/o fully loading DB into memory.
 class RocksDBPatcher {
  public:

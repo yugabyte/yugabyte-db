@@ -1,0 +1,681 @@
+set search_path to documentdb_core,documentdb_api,documentdb_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 7980000;
+SET documentdb.next_collection_id TO 7980;
+SET documentdb.next_collection_index_id TO 7980;
+-- insert some docs
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 1, "a": "this is a cat" }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 2, "a": "this is a dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 3, "a": "these are dogs" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 4, "a": "these are cats" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 5, "a": "these are catatonic" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- do a $text query. Should fail (there's no index)
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "cat" } }';
+ERROR:  text index required for $text query
+-- create a text index.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "a": "text" }, "name": "a_text" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- now do a $text query. Should succeed.
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "cat" } }';
+                          document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "this is a cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "these are cats" }
+(2 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "dog" } }';
+                          document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "this is a dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "these are dogs" }
+(2 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "cat | dog" } }';
+                          document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "this is a cat" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "this is a dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "these are dogs" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "these are cats" }
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "cat" } }';
+                                                                                                                                   QUERY PLAN                                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiQueryScan)
+               ->  Bitmap Heap Scan on documents_7980_7980005 collection
+                     Filter: documentdb_api_internal.bson_text_meta_qual(document, '''cat'''::tsquery, '\x0400000000000000ffffffff000000000000000000000000000000002800000000000000010000000000803f000000000000803f000000000000803f000000000000803f00000000010000006100'::bytea, true)
+                     ->  Bitmap Index Scan on a_text
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@#%) '''cat'''::tsquery)
+(10 rows)
+
+-- invalid queries
+-- $text on subsequent stages should fail.
+WITH r1 AS (SELECT bson_dollar_project(document, '{ "a": 1 }') AS document FROM documentdb_api.collection('db', 'text_search'))
+SELECT document FROM r1 WHERE document @@ '{ "$text": { "$search": "cat" } }';
+ERROR:  text index required for $text query
+-- no more than 1 $text:
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$and": [ { "$text": { "$search": "cat" } }, { "$text": { "$search": "dogs" } }] }';
+ERROR:  Too many text expressions
+-- now let's try Mongo's text search example
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "a_text" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 11, "subject": "coffee", "author": "xyz", "views": 50 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 12, "subject": "Coffee Shopping", "author": "efg", "views": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 13, "subject": "Baking a cake", "author": "abc", "views": 90  }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 14, "subject": "baking", "author": "xyz", "views": 100 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 15, "subject": "Café Con Leche", "author": "abc", "views": 200 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 16, "subject": "Сырники", "author": "jkl", "views": 80 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 17, "subject": "coffee and cream", "author": "efg", "views": 10 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 18, "subject": "Cafe con Leche", "author": "xyz", "views": 10 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "subject": "text" }, "name": "subject_text" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "coffee" } }' ORDER BY object_id;
+                                                         document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "subject" : "coffee", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "17" }, "subject" : "coffee and cream", "author" : "efg", "views" : { "$numberInt" : "10" } }
+(3 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "bake coffee cake" } }' ORDER BY object_id;
+                                                         document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "subject" : "coffee", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "13" }, "subject" : "Baking a cake", "author" : "abc", "views" : { "$numberInt" : "90" } }
+ { "_id" : { "$numberInt" : "14" }, "subject" : "baking", "author" : "xyz", "views" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "17" }, "subject" : "coffee and cream", "author" : "efg", "views" : { "$numberInt" : "10" } }
+(5 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "\"coffee shop\"" } }' ORDER BY object_id;
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "coffee -shop" } }' ORDER BY object_id;
+                                                         document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "subject" : "coffee", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "17" }, "subject" : "coffee and cream", "author" : "efg", "views" : { "$numberInt" : "10" } }
+(2 rows)
+
+-- TODO: this is incorrect, we aren’t diacritic insensitive by default like Native Mongo, it should return more documents.
+-- See: https://www.postgresql.org/docs/current/unaccent.html
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "сы́рники CAFÉS" } }';
+                                                        document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "15" }, "subject" : "Café Con Leche", "author" : "abc", "views" : { "$numberInt" : "200" } }
+(1 row)
+
+-- this partially works:
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "leche", "$language": "es" } }';
+                                                        document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "15" }, "subject" : "Café Con Leche", "author" : "abc", "views" : { "$numberInt" : "200" } }
+ { "_id" : { "$numberInt" : "18" }, "subject" : "Cafe con Leche", "author" : "xyz", "views" : { "$numberInt" : "10" } }
+(2 rows)
+
+-- invalid language
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "leche", "$language": "ok" } }';
+ERROR:  unsupported language: "ok" for text index version 3
+-- try these with the function.
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE documentdb_api_internal.bson_dollar_text(document, '{ "": { "$search": "coffee" } }') ORDER BY object_id;
+                                                         document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "subject" : "coffee", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "17" }, "subject" : "coffee and cream", "author" : "efg", "views" : { "$numberInt" : "10" } }
+(3 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE documentdb_api_internal.bson_dollar_text(document, '{ "": { "$search": "bake coffee cake" } }') ORDER BY object_id;
+                                                         document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "subject" : "coffee", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "13" }, "subject" : "Baking a cake", "author" : "abc", "views" : { "$numberInt" : "90" } }
+ { "_id" : { "$numberInt" : "14" }, "subject" : "baking", "author" : "xyz", "views" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "17" }, "subject" : "coffee and cream", "author" : "efg", "views" : { "$numberInt" : "10" } }
+(5 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE documentdb_api_internal.bson_dollar_text(document, '{ "": { "$search": "\"coffee shop\"" } }') ORDER BY object_id;
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+(1 row)
+
+-- shard collection & try the query again
+SELECT documentdb_api.shard_collection('db', 'text_search', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "coffee" } }' ORDER BY object_id;
+                                                         document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "subject" : "coffee", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "17" }, "subject" : "coffee and cream", "author" : "efg", "views" : { "$numberInt" : "10" } }
+(3 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "bake coffee cake" } }' ORDER BY object_id;
+                                                         document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "subject" : "coffee", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "13" }, "subject" : "Baking a cake", "author" : "abc", "views" : { "$numberInt" : "90" } }
+ { "_id" : { "$numberInt" : "14" }, "subject" : "baking", "author" : "xyz", "views" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "17" }, "subject" : "coffee and cream", "author" : "efg", "views" : { "$numberInt" : "10" } }
+(5 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "\"coffee shop\"" } }' ORDER BY object_id;
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" }, "subject" : "Coffee Shopping", "author" : "efg", "views" : { "$numberInt" : "5" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "coffee -shop" } }' ORDER BY object_id;
+                                                         document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "subject" : "coffee", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "17" }, "subject" : "coffee and cream", "author" : "efg", "views" : { "$numberInt" : "10" } }
+(2 rows)
+
+-- now repeat the above with default_languages.
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "subject_text" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 21, "sujeito": "Café", "author": "xyz", "views": 50 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 22, "sujeito": "Comprar Café", "author": "efg", "views": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 23, "sujeito": "Cozinhando um bolo", "author": "abc", "views": 90  }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 24, "sujeito": "Cozinhar", "author": "xyz", "views": 100 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 25, "sujeito": "Café com leite", "author": "abc", "views": 200 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 27, "sujeito": "Café com azeite", "author": "efg", "views": 10 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 28, "sujeito": "Cafe com azeite e leite", "author": "xyz", "views": 10 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "sujeito": "text" }, "name": "sujeito_text", "default_language": "pt" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café" } }' ORDER BY object_id;
+                                                            document                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "author" : "abc", "views" : { "$numberInt" : "200" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "author" : "efg", "views" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "author" : "xyz", "views" : { "$numberInt" : "10" } }
+(5 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Cozinhar" } }' ORDER BY object_id;
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "author" : "abc", "views" : { "$numberInt" : "90" } }
+ { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "author" : "xyz", "views" : { "$numberInt" : "100" } }
+(2 rows)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Comprando Café" } }' ORDER BY object_id;
+                                                            document                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "author" : "abc", "views" : { "$numberInt" : "200" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "author" : "efg", "views" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "author" : "xyz", "views" : { "$numberInt" : "10" } }
+(5 rows)
+
+-- now add projection.
+SELECT bson_dollar_project(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café bolo cozinhar" } }';
+                                               bson_dollar_project                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "rank" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "rank" : { "$numberDouble" : "1.0" } }
+(7 rows)
+
+SELECT bson_dollar_add_fields(document, '{ "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café bolo cozinhar" } }';
+                                                                        bson_dollar_add_fields                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "author" : "xyz", "views" : { "$numberInt" : "50" }, "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "author" : "efg", "views" : { "$numberInt" : "5" }, "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "author" : "xyz", "views" : { "$numberInt" : "10" }, "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "author" : "abc", "views" : { "$numberInt" : "90" }, "rank" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "author" : "abc", "views" : { "$numberInt" : "200" }, "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "author" : "efg", "views" : { "$numberInt" : "10" }, "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "author" : "xyz", "views" : { "$numberInt" : "100" }, "rank" : { "$numberDouble" : "1.0" } }
+(7 rows)
+
+SELECT bson_dollar_project_find(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café bolo cozinhar" } }';
+                                             bson_dollar_project_find                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "rank" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "rank" : { "$numberDouble" : "1.0" } }
+(7 rows)
+
+SELECT cursorPage, continuation, persistConnection FROM documentdb_api.find_cursor_first_page('db', '{ "find": "text_search", "filter": { "$text": { "$search": "Café bolo cozinhar" } }, "projection": { "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                          cursorpage                                                                                                                                                                                                                                                                                                                                                                                                                                          | continuation | persistconnection 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.text_search", "firstBatch" : [ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "rank" : { "$numberDouble" : "2.0" } }, { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "rank" : { "$numberDouble" : "1.0" } }, { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "rank" : { "$numberDouble" : "1.0" } } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f
+(1 row)
+
+-- pipeline cases
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "text_search", "cursor": {}, "pipeline": [ { "$project": { "_id": 1 } }, { "$match": { "$text": { "$search": "Café bolo cozinhar" } } } ] }');
+ERROR:  text index required for $text query
+CONTEXT:  while executing command on localhost:58070
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "text_search", "cursor": {}, "pipeline": [ { "$match": { "$text": { "$search": "Café bolo cozinhar" } } }, { "$sort": { "_id": 1 } } ] }');
+                                                            document                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "author" : "abc", "views" : { "$numberInt" : "90" } }
+ { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "author" : "xyz", "views" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "author" : "abc", "views" : { "$numberInt" : "200" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "author" : "efg", "views" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "author" : "xyz", "views" : { "$numberInt" : "10" } }
+(7 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "text_search", "cursor": {}, "pipeline": [ { "$match": { "$text": { "$search": "Café bolo cozinhar" } } }, { "$project": { "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" } } } ] }');
+                                                     document                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "rank" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "rank" : { "$numberDouble" : "1.0" } }
+(7 rows)
+
+-- now add sort
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café Cozinhando" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+                                                            document                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "author" : "xyz", "views" : { "$numberInt" : "50" } }
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "author" : "efg", "views" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "author" : "xyz", "views" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "23" }, "sujeito" : "Cozinhando um bolo", "author" : "abc", "views" : { "$numberInt" : "90" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "author" : "abc", "views" : { "$numberInt" : "200" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "author" : "efg", "views" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "24" }, "sujeito" : "Cozinhar", "author" : "xyz", "views" : { "$numberInt" : "100" } }
+(7 rows)
+
+-- now add project & sort 
+SELECT bson_dollar_project(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café Comprando leite" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+                                               bson_dollar_project                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "22" }, "sujeito" : "Comprar Café", "rank" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "28" }, "sujeito" : "Cafe com azeite e leite", "rank" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "25" }, "sujeito" : "Café com leite", "rank" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "21" }, "sujeito" : "Café", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "27" }, "sujeito" : "Café com azeite", "rank" : { "$numberDouble" : "1.0" } }
+(5 rows)
+
+-- now do group
+WITH r1 AS (SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café" } }' )
+SELECT BSONMAX(bson_expression_get(document, '{ "": "$views" }')), bson_expression_get(document, '{ "": { "$meta": "textScore" } }') FROM r1 GROUP BY bson_expression_get(document, '{ "": { "$meta": "textScore" } }');
+              bsonmax              |         bson_expression_get          
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "200" } } | { "" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- scenarios without $text should return 'query requires text score metadata, but it is not available'
+SELECT bson_dollar_project(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }';
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+SELECT bson_dollar_add_fields(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }';
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+SELECT bson_dollar_project_find(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }';
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+WITH r1 AS (SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }' )
+SELECT BSONMAX(bson_expression_get(document, '{ "": "$views" }')) FROM r1 GROUP BY bson_expression_get(document, '{ "": { "$meta": "textScore" } }');
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+-- test with custom weights.
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "sujeito_text" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 31, "x": "az b x", "y": "c d m" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 32, "x": "c d y", "y": "az b n" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "x": "text" }, "name": "x_1", "weights": { "x": 10, "y": 1 } } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- returns 31, 32
+SELECT bson_dollar_add_fields(document, '{ "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "az" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+                                                   bson_dollar_add_fields                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "31" }, "x" : "az b x", "y" : "c d m", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "32" }, "x" : "c d y", "y" : "az b n", "rank" : { "$numberDouble" : "0.10000000149011611938" } }
+(2 rows)
+
+-- Returns 32, 31
+SELECT bson_dollar_add_fields(document, '{ "rank": { "$meta": "textScore" }}') FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "d" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+                                                   bson_dollar_add_fields                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "32" }, "x" : "c d y", "y" : "az b n", "rank" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "31" }, "x" : "az b x", "y" : "c d m", "rank" : { "$numberDouble" : "0.10000000149011611938" } }
+(2 rows)
+
+-- test wildcard handling
+-- this is a variant of the JS test: blog_textwild.js
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "x_1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 33, "title": "my blog post", "text": "this is a new blog i am writing. yay eliot" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 34, "title": "my 2nd post", "text": "this is a new blog i am writing. yay" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'text_search', '{ "_id": 35, "title": "knives are Fun for writing eliot", "text": "this is a new blog i am writing. yay" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "dummy": "text", "$**": "text" }, "name": "x_1" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "blog" } }' ORDER BY object_id;
+                                                              document                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "33" }, "title" : "my blog post", "text" : "this is a new blog i am writing. yay eliot" }
+ { "_id" : { "$numberInt" : "34" }, "title" : "my 2nd post", "text" : "this is a new blog i am writing. yay" }
+ { "_id" : { "$numberInt" : "35" }, "title" : "knives are Fun for writing eliot", "text" : "this is a new blog i am writing. yay" }
+(3 rows)
+
+CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "x_1" }');
+                          retval                          
+---------------------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+-- recreate this so that test output for further tests does not change
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "x": "text" }, "name": "x_1", "weights": { "x": 10, "y": 1 } } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Test TSQuery generation.
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"ssl certificate\"" }'::documentdb_core.bson);
+ bson_query_to_tsquery 
+---------------------------------------------------------------------
+ 'ssl' <-> 'certif'
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"ssl certificate\" authority key" }'::documentdb_core.bson);
+           bson_query_to_tsquery           
+---------------------------------------------------------------------
+ ( 'author' | 'key' ) & 'ssl' <-> 'certif'
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "bake coffee cake" }'::documentdb_core.bson);
+   bson_query_to_tsquery   
+---------------------------------------------------------------------
+ 'bake' | 'coffe' | 'cake'
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\"" }'::documentdb_core.bson);
+ bson_query_to_tsquery 
+---------------------------------------------------------------------
+ 'coffe' <-> 'shop'
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "coffee -shop" }'::documentdb_core.bson);
+ bson_query_to_tsquery 
+---------------------------------------------------------------------
+ 'coffe' & !'shop'
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "coffee -shop -nightmare" }'::documentdb_core.bson);
+      bson_query_to_tsquery      
+---------------------------------------------------------------------
+ 'coffe' & !'shop' & !'nightmar'
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" -track -nightmare" }'::documentdb_core.bson);
+            bson_query_to_tsquery            
+---------------------------------------------------------------------
+ 'coffe' <-> 'shop' & !'track' & !'nightmar'
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare" }'::documentdb_core.bson);
+                bson_query_to_tsquery                
+---------------------------------------------------------------------
+ 'coffe' <-> 'shop' & 'cow' & !'track' & !'nightmar'
+(1 row)
+
+SELECT documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::documentdb_core.bson);
+                       bson_query_to_tsquery                        
+---------------------------------------------------------------------
+ 'coffe' <-> 'shop' & ( 'cow' | 'search' ) & !'track' & !'nightmar'
+(1 row)
+
+-- this matches
+SELECT to_tsvector('the coffee shop cows searches the barn') @@ documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::documentdb_core.bson);
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- this shouldn't match
+SELECT to_tsvector('the coffee shop cows track me') @@ documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::documentdb_core.bson);
+ ?column? 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT to_tsvector('the coffee shop cows searches the track') @@ documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::documentdb_core.bson);
+ ?column? 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT to_tsvector('coffee shop searches my nightmares') @@ documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::documentdb_core.bson);
+ ?column? 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Phrase: First one doesn't match, second one does.
+SELECT to_tsvector('google is the paragon of search') @@ documentdb_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::documentdb_core.bson);
+ ?column? 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT to_tsvector('google is the paragon of search') @@ documentdb_api_internal.bson_query_to_tsquery('{ "$search": "cow -track -nightmare search" }'::documentdb_core.bson);
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Use language check
+-- synonyms within a language work.
+SELECT to_tsvector('portuguese', 'Em atualidade, Sempre e possivel') @@ documentdb_api_internal.bson_query_to_tsquery('{ "$search": "atualmente", "$language": "pt" }'::documentdb_core.bson);
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Only one text index allowed
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search2", "indexes": [ { "key": { "c": "text" }, "name": "c_text" } ] }', TRUE);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search2", "indexes": [ { "key": { "c": "text" }, "name": "c_text" } ] }', TRUE);
+                                                                                                                      create_indexes_non_concurrently                                                                                                                       
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "note" : "all indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "a": "text", "b": "text" }, "name": "a_text" } ] }', TRUE);
+ERROR:  Expected exactly one text index. Requested index: { "v" : 2, "key" : { "a" : "text", "b" : "text" }, "name" : "a_text" }, existing index: { "v" : 2, "key" : { "x" : "text" }, "name" : "x_1", "weights" : { "x" : 10, "y" : 1 } }

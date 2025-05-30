@@ -36,18 +36,17 @@
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
-#include "libpq/hba.h"
-#include "miscadmin.h"
-#include "utils/builtins.h"
-#include "utils/fmgroids.h"
-#include "utils/rel.h"
-
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/yb_profile.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "executor/ybModifyTable.h"
+#include "libpq/hba.h"
+#include "miscadmin.h"
 #include "pg_yb_utils.h"
+#include "utils/builtins.h"
+#include "utils/fmgroids.h"
+#include "utils/rel.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 static void
 CheckProfileCatalogsExist()

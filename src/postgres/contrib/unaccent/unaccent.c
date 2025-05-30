@@ -96,7 +96,7 @@ static TrieChar *
 initTrie(const char *filename)
 {
 	TrieChar   *volatile rootTrie = NULL;
-	MemoryContext ccxt = GetCurrentMemoryContext();
+	MemoryContext ccxt = CurrentMemoryContext;
 	tsearch_readline_state trst;
 	volatile bool skip;
 

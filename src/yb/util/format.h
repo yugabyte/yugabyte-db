@@ -77,7 +77,8 @@ class FormatValue<T,
 };
 
 template <class T>
-class FormatValue<T, std::enable_if_t<std::is_convertible<T, const char*>::value>> {
+class FormatValue<T, std::enable_if_t<std::is_convertible<T, const char*>::value &&
+                                      !std::is_same<T, nullptr_t>::value>> {
  public:
   template<class U>
   explicit FormatValue(const U& value) : value_(value), len_(strlen(value_)) {}

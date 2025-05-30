@@ -263,7 +263,7 @@ public class TestYbRoleProfile extends BasePgSQLTest {
     /*
     * Test that profiles work on the oldest available pg15 snapshot.
     */
-    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_ALPHA);
+    recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
 
     try (Connection conn = getConnectionBuilder().withDatabase("template1")
                                                  .withTServer(0)

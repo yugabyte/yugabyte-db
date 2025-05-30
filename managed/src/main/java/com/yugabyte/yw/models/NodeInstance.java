@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.gdata.util.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
@@ -413,6 +414,10 @@ public class NodeInstance extends Model {
    * Commit the reserved nodes in memory to the database. The reserved nodes are cleared when this
    * method returns. It is the responsibility of the caller to call this method in transaction.
    *
+   * <p>Note: The caller must ensure that {@link #releaseReservedNodes(UUID)} is called after the
+   * commit is successful. Reserved instances are not released because the transaction can be rolled
+   * back and retried after the method returns successfully.
+   *
    * @param clusterUuid the cluster UUID.
    * @return the previously reserved node instances.
    */
@@ -422,38 +427,32 @@ public class NodeInstance extends Model {
         !CollectionUtils.isEmpty(instanceInfos),
         "No nodes are reserved for cluster " + clusterUuid);
     Map<String, NodeInstance> outputMap = new HashMap<>();
-    try {
-      Map<UUID, List<InflightNodeInstanceInfo>> azInstanceInfos =
-          instanceInfos.stream()
-              .collect(Collectors.groupingBy(InflightNodeInstanceInfo::getZoneUuid));
-      for (Map.Entry<UUID, List<InflightNodeInstanceInfo>> entry : azInstanceInfos.entrySet()) {
-        UUID zoneUuid = entry.getKey();
-        Map<UUID, InflightNodeInstanceInfo> nodeUuidInstanceInfoMap =
-            entry.getValue().stream()
-                .collect(
-                    Collectors.toMap(InflightNodeInstanceInfo::getNodeUuid, Function.identity()));
-        List<NodeInstance> nodes = listByZone(zoneUuid, null, nodeUuidInstanceInfoMap.keySet());
-        // Ensure that the nodes are still available.
-        Preconditions.checkState(
-            nodes.size() == nodeUuidInstanceInfoMap.keySet().size(),
-            "Unexpected error in verifying the count for node instance for cluster " + clusterUuid);
-        for (NodeInstance node : nodes) {
-          InflightNodeInstanceInfo instanceInfo = nodeUuidInstanceInfoMap.get(node.getNodeUuid());
-          node.setState(State.USED);
-          node.setNodeName(instanceInfo.getNodeName());
-          outputMap.put(instanceInfo.getNodeName(), node);
-          LOG.info(
-              "Marking node {} (ip {}) as in-use.",
-              instanceInfo.getNodeName(),
-              node.getDetails().ip);
-        }
+    Map<UUID, List<InflightNodeInstanceInfo>> azInstanceInfos =
+        instanceInfos.stream()
+            .collect(Collectors.groupingBy(InflightNodeInstanceInfo::getZoneUuid));
+    for (Map.Entry<UUID, List<InflightNodeInstanceInfo>> entry : azInstanceInfos.entrySet()) {
+      UUID zoneUuid = entry.getKey();
+      Map<UUID, InflightNodeInstanceInfo> nodeUuidInstanceInfoMap =
+          entry.getValue().stream()
+              .collect(
+                  Collectors.toMap(InflightNodeInstanceInfo::getNodeUuid, Function.identity()));
+      List<NodeInstance> nodes = listByZone(zoneUuid, null, nodeUuidInstanceInfoMap.keySet());
+      // Ensure that the nodes are still available.
+      Preconditions.checkState(
+          nodes.size() == nodeUuidInstanceInfoMap.keySet().size(),
+          "Unexpected error in verifying the count for node instance for cluster " + clusterUuid);
+      for (NodeInstance node : nodes) {
+        InflightNodeInstanceInfo instanceInfo = nodeUuidInstanceInfoMap.get(node.getNodeUuid());
+        node.setState(State.USED);
+        node.setNodeName(instanceInfo.getNodeName());
+        outputMap.put(instanceInfo.getNodeName(), node);
+        LOG.info(
+            "Marking node {} (ip {}) as in-use.", instanceInfo.getNodeName(), node.getDetails().ip);
       }
-      // All good, save to DB.
-      for (NodeInstance node : outputMap.values()) {
-        node.save();
-      }
-    } finally {
-      CLUSTER_INFLIGHT_NODE_INSTANCES.remove(clusterUuid);
+    }
+    // All good, save to DB.
+    for (NodeInstance node : outputMap.values()) {
+      node.save();
     }
     return outputMap;
   }
@@ -462,10 +461,15 @@ public class NodeInstance extends Model {
    * Pick available nodes in zones specified by onpremAzToNodes with with the instance type
    * specified
    */
+  @VisibleForTesting
   public static synchronized Map<String, NodeInstance> pickNodes(
       UUID clusterUuid, Map<UUID, Set<String>> onpremAzToNodes, String instanceTypeCode) {
     reserveNodes(clusterUuid, onpremAzToNodes, instanceTypeCode);
-    return commitReservedNodes(clusterUuid);
+    try {
+      return commitReservedNodes(clusterUuid);
+    } finally {
+      releaseReservedNodes(clusterUuid);
+    }
   }
 
   @Deprecated

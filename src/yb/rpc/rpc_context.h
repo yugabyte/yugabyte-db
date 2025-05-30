@@ -324,6 +324,50 @@ class RpcContext {
   bool responded_ = false;
 };
 
+template <class Req, class Resp>
+class TypedPBRpcContextHolder {
+ public:
+  using Params = RpcCallPBParamsImpl<Req, Resp>;
+
+  Req& req() {
+    return down_cast<Params&>(context_.params()).request();
+  }
+
+  Resp& resp() {
+    return down_cast<Params&>(context_.params()).response();
+  }
+
+  RpcContext* operator->() {
+    return &context_;
+  }
+
+  RpcContext& operator*() {
+    return context_;
+  }
+
+  RpcContext& context() {
+    return context_;
+  }
+
+ private:
+  explicit TypedPBRpcContextHolder(RpcContext&& context) : context_(std::move(context)) {}
+
+  template <class TReq, class TResp>
+  friend TypedPBRpcContextHolder<TReq, TResp> MakeTypedPBRpcContextHolder(
+      const TReq& req, TResp* resp, RpcContext&& context);
+
+  RpcContext context_;
+};
+
+template <class TReq, class TResp>
+TypedPBRpcContextHolder<TReq, TResp> MakeTypedPBRpcContextHolder(
+    const TReq& req, TResp* resp, RpcContext&& context) {
+  auto result = TypedPBRpcContextHolder<TReq, TResp>(std::move(context));
+  DCHECK_EQ(&result.req(), &req);
+  DCHECK_EQ(&result.resp(), resp);
+  return result;
+}
+
 void PanicRpc(RpcContext* context, const char* file, int line_number, const std::string& message);
 
 #define PANIC_RPC(rpc_context, message) \

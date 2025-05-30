@@ -30,7 +30,7 @@
 #include "yb/yql/cql/ql/ptree/pt_expr_types.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/yql/cql/ql/ql_fwd.h"
 
 namespace yb {
 

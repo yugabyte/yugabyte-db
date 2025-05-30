@@ -18,12 +18,14 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/lock_batch.h"
 
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tserver/tserver.fwd.h"
 
 #include "yb/util/operation_counter.h"
@@ -73,7 +75,7 @@ class WriteQuery {
   void AdjustYsqlQueryTransactionality(size_t ysql_batch_size);
 
   HybridTime restart_read_ht() const {
-    return restart_read_ht_;
+    return read_restart_data_.restart_time;
   }
 
   CoarseTimePoint deadline() const {
@@ -118,6 +120,10 @@ class WriteQuery {
   void SetRequestStartUs(uint64_t request_start_us) { request_start_us_ = request_start_us; }
 
   uint64_t request_start_us() const { return request_start_us_; }
+
+  PgsqlResponsePB* GetPgsqlResponseForMetricsCapture() const;
+  ScopedTabletMetrics scoped_tablet_metrics() { return scoped_tablet_metrics_; }
+  docdb::DocDBStatistics scoped_statistics() { return scoped_statistics_; }
 
  private:
   friend struct UpdateQLIndexesTask;
@@ -224,7 +230,7 @@ class WriteQuery {
   // this transaction's start time
   MonoTime start_time_;
 
-  HybridTime restart_read_ht_;
+  ReadRestartData read_restart_data_;
 
   bool schema_version_mismatch_ = false;
 
@@ -243,6 +249,17 @@ class WriteQuery {
   // Stores the start time of the underlying rpc request that created this WriteQuery.
   // The field is consistent across failed ReadRpc/WriteRpc retries.
   uint64_t request_start_us_ = 0;
+
+  // Metrics that are stored for the lifetime of a WriteQuery object and returned
+  // with PgsqlResponsePB.
+  ScopedTabletMetrics scoped_tablet_metrics_;
+  TabletMetrics* global_tablet_metrics_ = nullptr;
+
+  // Stores either scoped_tablet_metrics_ or global_tablet_metrics_
+  // depending on the batch_tablet_metrics_update gflag. This points
+  // to global_tablet_metrics_ once the WriteQuery object is destroyed.
+  std::shared_ptr<TabletMetricsHolder> metrics_;
+  docdb::DocDBStatistics scoped_statistics_;
 };
 
 }  // namespace tablet

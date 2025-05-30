@@ -162,7 +162,6 @@ class YBSchemaBuilder::Data {
 
   vector<YBColumnSpec*> specs;
   TableProperties table_properties;
-  std::string schema_name;
 };
 
 YBSchemaBuilder::YBSchemaBuilder()
@@ -188,15 +187,6 @@ YBColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
 YBSchemaBuilder* YBSchemaBuilder::SetTableProperties(const TableProperties& table_properties) {
   data_->table_properties = table_properties;
   return this;
-}
-
-YBSchemaBuilder* YBSchemaBuilder::SetSchemaName(const std::string& pgschema_name) {
-  data_->schema_name = pgschema_name;
-  return this;
-}
-
-std::string YBSchemaBuilder::SchemaName() {
-  return data_->schema_name;
 }
 
 Status YBSchemaBuilder::Build(YBSchema* schema) {
@@ -245,7 +235,6 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
   }
 
   RETURN_NOT_OK(schema->Reset(cols, data_->table_properties));
-  internal::GetSchema(schema).SetSchemaName(data_->schema_name);
 
   return Status::OK();
 }
@@ -375,6 +364,8 @@ InternalType YBColumnSchema::ToInternalDataType(DataType type) {
     case DataType::VECTOR: FALLTHROUGH_INTENDED;
     case DataType::BINARY:
       return InternalType::kBinaryValue;
+    case DataType::BSON:
+      return InternalType::kBsonValue;
     case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
     case DataType::MAP:
       return InternalType::kMapValue;

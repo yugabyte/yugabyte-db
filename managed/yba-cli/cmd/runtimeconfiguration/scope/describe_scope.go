@@ -40,6 +40,8 @@ var describeScopeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
+		populateCustomerProviderAndUniverses(authAPI)
+
 		scopeName, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -86,6 +88,7 @@ var describeScopeCmd = &cobra.Command{
 func init() {
 	describeScopeCmd.Flags().SortFlags = false
 	describeScopeCmd.Flags().StringP("uuid", "u", "",
-		"[Required] The scope UUID to be described.")
+		"[Required] The scope UUID to be described. "+
+			"Run \"yba [customer|universe|provider] list\" to fetch UUID of the scope type.")
 	describeScopeCmd.MarkFlagRequired("uuid")
 }

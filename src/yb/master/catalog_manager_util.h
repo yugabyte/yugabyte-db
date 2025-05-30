@@ -37,6 +37,9 @@ class SetPreferredZonesRequestPB;
 static std::once_flag sequences_data_table_filter_once_flag_;
 static google::protobuf::RepeatedPtrField<TableIdentifierPB> sequences_data_table_filter_;
 
+const int kUseBackupRowEntryFormatVersion = 2;
+const int kUseRelfilenodeFormatVersion = 3;
+
 class CatalogManagerUtil {
  public:
   // For the given set of descriptors, checks if the load is considered balanced across AZs in
@@ -258,6 +261,8 @@ const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklis
 Status ExecutePgsqlStatements(
     const std::string& database_name, const std::vector<std::string>& statements,
     CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback);
+
+bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb);
 
 } // namespace master
 } // namespace yb

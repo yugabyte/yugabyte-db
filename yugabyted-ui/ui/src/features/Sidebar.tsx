@@ -16,6 +16,7 @@ import AlertsIcon from "@app/assets/bell.svg";
 import DatabaseIcon from "@app/assets/database.svg";
 import { themeVariables } from "@app/theme/variables";
 import { useAlerts } from "./clusters/details/alerts/alerts";
+import { linkClickCallhome, LINK_TSHIRT, POPUP_KEY_TSHIRT } from "@app/features/popups/popups";
 
 // Global state for setting and getting new alert flag that can be used on alerts list page
 // export const useAlertGlobalValue = createGlobalState<boolean>(() => false);
@@ -158,8 +159,6 @@ interface NavLinkWithDisableProps extends NavLinkProps {
   disabled?: boolean;
   className?: string;
 }
-
-const YB_WIN_TSHIRT_PAGE = "https://www.yugabyte.com/community-rewards/";
 
 const NavLinkWithDisable: FC<NavLinkWithDisableProps> = ({ disabled, ...rest }) => {
   return disabled ? <span className={rest.className}>{rest.children}</span> : <NavLink {...rest} />;
@@ -357,9 +356,11 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         <div className={clsx(classes.footer, isCollapsed && classes.footerSmall)}>
           <MUILink
             className={classes.linkRow}
-            href={YB_WIN_TSHIRT_PAGE}
+            href={LINK_TSHIRT}
             target="_blank"
             data-testid="systemStatus"
+            id={"sidebar_tshirt"}
+            onClick={() => linkClickCallhome(POPUP_KEY_TSHIRT, LINK_TSHIRT)}
           >
             {!isCollapsed && (
               <Typography

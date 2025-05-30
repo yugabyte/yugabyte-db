@@ -300,13 +300,13 @@ public class RoleBindingUtilTest extends FakeDBApplication {
 
     // Check that the role binding only contains universe2 UUID and not universe1 UUID.
     List<RoleBinding> roleBindingsForUser = RoleBinding.getAll(user.getUuid());
-    assertEquals(1, roleBindingsForUser.size());
+    assertEquals(2, roleBindingsForUser.size());
     assertEquals(
-        1, roleBindingsForUser.get(0).getResourceGroup().getResourceDefinitionSet().size());
+        1, roleBindingsForUser.get(1).getResourceGroup().getResourceDefinitionSet().size());
 
     Set<UUID> resourceUUIDs =
         roleBindingsForUser
-            .get(0)
+            .get(1)
             .getResourceGroup()
             .getResourceDefinitionSet()
             .iterator()
@@ -436,6 +436,8 @@ public class RoleBindingUtilTest extends FakeDBApplication {
 
   @Test
   public void testGetResourceUuids() {
+    user = ModelFactory.testUser(customer, "test2@yugabyte.com", Users.Role.ConnectOnly);
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     // Create custom test role.
     Role role1 =
         Role.create(

@@ -13,9 +13,10 @@ type: docs
 ## Synopsis
 
 Use the `CREATE POLICY` statement to create a row level security policy for a table.
+
 A policy grants the permission to select, insert, update, or delete rows that match the relevant policy expression.
-Row level security must be enabled on the table using [ALTER TABLE](../ddl_alter_table) for the
-policies to take effect.
+
+Row level security must be enabled on the table using [ALTER TABLE](../ddl_alter_table) for the policies to take effect.
 
 ## Syntax
 
@@ -45,26 +46,26 @@ reduce the number of records that can be accessed. Default is permissive.
 
 - Create a permissive policy.
 
-```plpgsql
-yugabyte=# CREATE POLICY p1 ON document
-  USING (dlevel <= (SELECT level FROM user_account WHERE ybuser = current_user));
-```
+  ```plpgsql
+  yugabyte=# CREATE POLICY p1 ON document
+    USING (dlevel <= (SELECT level FROM user_account WHERE ybuser = current_user));
+  ```
 
-- Create a restricive policy.
+- Create a restrictive policy.
 
-```plpgsql
-yugabyte=# CREATE POLICY p_restrictive ON document AS RESTRICTIVE TO user_bob
-    USING (cid <> 44);
-```
+  ```plpgsql
+  yugabyte=# CREATE POLICY p_restrictive ON document AS RESTRICTIVE TO user_bob
+      USING (cid <> 44);
+  ```
 
 - Create a policy with a `CHECK` condition for inserts.
 
-```plpgsql
-yugabyte=# CREATE POLICY p2 ON document FOR INSERT WITH CHECK (dauthor = current_user);
-```
+  ```plpgsql
+  yugabyte=# CREATE POLICY p2 ON document FOR INSERT WITH CHECK (dauthor = current_user);
+  ```
 
 ## See also
 
-- [`ALTER POLICY`](../dcl_alter_policy)
-- [`DROP POLICY`](../dcl_drop_policy)
-- [`ALTER TABLE`](../ddl_alter_table)
+- [ALTER POLICY](../dcl_alter_policy)
+- [DROP POLICY](../dcl_drop_policy)
+- [ALTER TABLE](../ddl_alter_table)

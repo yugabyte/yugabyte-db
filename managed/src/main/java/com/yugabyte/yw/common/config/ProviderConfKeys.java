@@ -471,4 +471,47 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
               + " service per Namespace",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> showHyperdiskStorageType =
+      new ConfKeyInfo<>(
+          "yb.gcp.show_hyperdisks_storage_type",
+          ScopeType.PROVIDER,
+          "Show Hyperdisk storage types",
+          "Show Hyperdisk storage types during create/edit universe flow.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> configureClockboundInCloudProvisioning =
+      new ConfKeyInfo<>(
+          "yb.provider.configure_clockbound_cloud_provisioning",
+          ScopeType.PROVIDER,
+          "Configure Clockbound when using cloud providers",
+          "Configure clockbound when creating cloud provider based Universes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> enableEarlyoomByDefaultForProvider =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_earlyoom_by_default",
+          ScopeType.PROVIDER,
+          "Enable earlyoom by default",
+          "Enable earlyoom during provisioning",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<String> earlyoomDefaultArgs =
+      new ConfKeyInfo<>(
+          "yb.node_agent.earlyoom_default_args",
+          ScopeType.PROVIDER,
+          "Default earlyoom arguments",
+          "Default earlyoom arguments",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> gcpConnectionDrainingTimeout =
+      new ConfKeyInfo<>(
+          "yb.gcp.operations.connection_draining_timeout",
+          ScopeType.PROVIDER,
+          "GCP Connection Draining Timeout",
+          "Set the connection draining timeout for the GCP load balancer.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

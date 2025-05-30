@@ -7,7 +7,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
@@ -46,6 +48,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -58,6 +61,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -68,6 +72,7 @@ import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -83,6 +88,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -91,12 +97,14 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -179,6 +187,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
   protected CloudUtilFactory mockCloudUtilFactory;
   protected ReleasesUtils mockReleasesUtils;
+  protected NodeAgentManager mockNodeAgentManager;
+  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
+  protected GFlagsAuditHandler mockGFlagsAuditHandler;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -226,6 +237,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     factory.globalRuntimeConf().setValue(ENABLE_CUSTOM_HOOKS_PATH, "true");
     factory.globalRuntimeConf().setValue(ENABLE_SUDO_PATH, "true");
     factory.globalRuntimeConf().setValue("yb.universe.consistency_check_enabled", "true");
+    // Disable this to check idempotency of the task.
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableTaskRuntimeInfoOnRetry.getKey(), "false");
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
@@ -256,6 +271,27 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
+    ShellResponse response = ShellResponse.create(0, "Command output: Linux x86_64");
+    lenient()
+        .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(response);
+    lenient().when(mockNodeAgentManager.getSoftwareVersion()).thenReturn("2.25.1.0-PRE_RELEASE");
+    NodeAgentManager.InstallerFiles.InstallerFilesBuilder builder =
+        NodeAgentManager.InstallerFiles.builder();
+    builder.packagePath(Paths.get("/opt/yugabyte"));
+    builder.certDir("/opt/yugabyte/certs");
+    lenient()
+        .when(mockNodeAgentManager.getInstallerFiles(any(), any(), anyBoolean()))
+        .thenReturn(builder.build());
+    lenient()
+        .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
+        .thenReturn(Paths.get("/opt/yugabyte"));
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setIp("127.0.0.1");
+    nodeAgent.setName("nodeAgent");
+    nodeAgent.setHome("/opt/yugabyte");
+    nodeAgent.setUuid(UUID.randomUUID());
+    lenient().when(mockNodeAgentManager.create(any(), anyBoolean())).thenReturn(nodeAgent);
   }
 
   @Override
@@ -295,6 +331,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
     mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
     mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
+    mockNodeAgentManager = mock(NodeAgentManager.class);
+    mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
+    mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -336,6 +375,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
+                .overrides(bind(NodeAgentManager.class).toInstance(mockNodeAgentManager))
+                .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
+                .overrides(bind(GFlagsAuditHandler.class).toInstance(mockGFlagsAuditHandler))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
@@ -484,7 +526,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             + TaskInfo.getOrBadRequest(taskUuid).getTaskState());
   }
 
-  private void setAbortPosition(int abortPosition) {
+  public void setAbortPosition(int abortPosition) {
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
     MDC.put(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY, String.valueOf(abortPosition));
   }
@@ -575,7 +617,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       boolean checkStrictOrdering,
       int abortStep) {
     try {
-
       // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
       // and it spams logs like crazy - which will cause OOMs in Jenkins
       // - as Jenkins caches stdout in memory until test finishes.
@@ -712,6 +753,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       throw new RuntimeException(e);
     } finally {
       clearAbortOrPausePositions();
+    }
+  }
+
+  protected void checkUniverseNodesStates(UUID universeUUID) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
+      if (nodeDetails.state != NodeDetails.NodeState.Live) {
+        throw new RuntimeException(
+            "Node " + nodeDetails.nodeName + " is left in non-Live state: " + nodeDetails.state);
+      }
     }
   }
 

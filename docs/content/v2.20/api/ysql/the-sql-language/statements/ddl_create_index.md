@@ -12,7 +12,9 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE INDEX` statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
+Use the CREATE INDEX statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
+
+In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed.
 
 ## Syntax
 
@@ -27,15 +29,15 @@ When an index is created on a populated table, YugabyteDB automatically backfill
 
 | Condition | Online | Not online |
 | :-------- | :----- | :--------- |
-| Safe to do other DMLs during `CREATE INDEX`? | yes | no |
-| Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
+| Safe to do other DMLs during CREATE INDEX? | yes | no |
+| Keeps other transactions alive during CREATE INDEX? | mostly | no |
 | Parallelizes index loading? | yes | no |
 
-`CREATE INDEX CONCURRENTLY` is supported, though online index backfill is enabled by default. Some restrictions apply (see [CONCURRENTLY](#concurrently)).
+CREATE INDEX CONCURRENTLY is supported, though online index backfill is enabled by default. Some restrictions apply (see [CONCURRENTLY](#concurrently)).
 
-To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** YB-Master and YB-TServer.
+To disable online schema migration for YSQL CREATE INDEX, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** YB-Master and YB-TServer.
 
-To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
+To disable online schema migration for one CREATE INDEX, use CREATE INDEX NONCONCURRENTLY.
 
 {{< note title="Note" >}}
 
@@ -43,7 +45,7 @@ For details on how online index backfill works, refer to [Online Index Backfill]
 
 {{< /note >}}
 
-Regarding colocation, indexes follow their table. If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
+If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
 
 ### Partitioned Indexes
 

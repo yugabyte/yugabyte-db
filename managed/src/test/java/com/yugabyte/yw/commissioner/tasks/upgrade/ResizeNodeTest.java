@@ -25,6 +25,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
@@ -58,6 +59,7 @@ import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.DateUtils;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -169,7 +171,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         expected);
   }
 
-  @Parameters({"aws, GP3, true", "aws, GP2, false", "gcp, null, false", "azu, null, false"})
+  @Parameters({
+    "aws, GP3, true",
+    "aws, GP2, false",
+    "gcp, Persistent, false",
+    "gcp, Hyperdisk_Balanced, true",
+    "azu, null, false"
+  })
   @Test
   public void testResizeNodeIopsThroughputAvailable(
       String cloudTypeStr, @Nullable String storageTypeStr, boolean expected) {
@@ -254,8 +262,32 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             mockBaseTaskDependencies.getConfGetter()));
   }
 
+  @Parameters({"aws, GP3", "gcp, Hyperdisk_Balanced", "gcp, Hyperdisk_Extreme"})
   @Test
-  public void testAwsBackToBackResizeNode() {
+  public void testBackToBackResizeNode(String providerType, String storageType) {
+    Common.CloudType cloudType = Common.CloudType.valueOf(providerType);
+    String cooldownParam;
+    if (cloudType == Common.CloudType.aws) {
+      cooldownParam = "yb.aws.disk_resize_cooldown_hours";
+    } else {
+      cooldownParam = "yb.gcp.hyperdisk_resize_cooldown_hours";
+      // changing provider
+      defaultUniverse =
+          Universe.saveDetails(
+              defaultUniverse.getUniverseUUID(),
+              universe -> {
+                UniverseDefinitionTaskParams.UserIntent userIntent =
+                    universe.getUniverseDetails().getPrimaryCluster().userIntent;
+                userIntent.provider = gcpProvider.getUuid().toString();
+                userIntent.providerType = cloudType;
+                userIntent.deviceInfo.storageType =
+                    PublicCloudConstants.StorageType.valueOf(storageType);
+              });
+      createInstanceType(
+          gcpProvider.getUuid(),
+          defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType);
+      createInstanceType(gcpProvider.getUuid(), NEW_INSTANCE_TYPE);
+    }
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         defaultUniverse.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent targetIntent = primaryCluster.userIntent.clone();
@@ -271,7 +303,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             targetIntent,
             defaultUniverse,
             mockBaseTaskDependencies.getConfGetter()));
-    RuntimeConfigEntry.upsertGlobal("yb.aws.disk_resize_cooldown_hours", "3");
+    RuntimeConfigEntry.upsertGlobal(cooldownParam, "3");
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -295,7 +327,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             defaultUniverse,
             mockBaseTaskDependencies.getConfGetter()));
     // Changing window size.
-    RuntimeConfigEntry.upsertGlobal("yb.aws.disk_resize_cooldown_hours", "1");
+    RuntimeConfigEntry.upsertGlobal(cooldownParam, "1");
     assertTrue(
         ResizeNodeParams.checkResizeIsPossible(
             primaryUUID,
@@ -519,9 +551,16 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, false);
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (subTask.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown
+          || subTask.getTaskType() == TaskType.CheckForClusterServers
+          || subTask.getTaskType() == TaskType.CheckUnderReplicatedTablets) {
+        Assert.fail();
+      }
+    }
 
     initMockUpgrade()
-        .precheckTasks(getPrecheckTasks(false))
+        .precheckTasks(new TaskType[0])
         .upgradeRound(UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE)
         .tserverTask(TaskType.InstanceActions, Json.newObject().put("type", "Disk_Update"))
         .applyToTservers()
@@ -1396,6 +1435,56 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         TaskType.ResizeNode,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  @Test
+  public void testResizeNodeRetryLastNodeState() throws InterruptedException {
+    ResizeNodeParams taskParams = new ResizeNodeParams();
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.instanceType = NEW_INSTANCE_TYPE;
+    TestUtils.setFakeHttpContext(defaultUser);
+    setPausePosition(5);
+    // Need not sleep for default 3min in tests.
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    UUID taskUUID = commissioner.submit(TaskType.ResizeNode, taskParams);
+    CustomerTask.create(
+        defaultCustomer,
+        defaultUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ResizeNode,
+        "fake-name");
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    CommissionerBaseTest.waitForTaskPaused(taskInfo.getUuid(), commissioner);
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    int i = 0;
+    int lastNodeUpdatePosition = 0;
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    for (TaskInfo subTask : subTasks) {
+      if (subTask.getTaskType() == TaskType.ChangeInstanceType) {
+        lastNodeUpdatePosition = i;
+      }
+      i++;
+    }
+    setAbortPosition(lastNodeUpdatePosition); // Aborting while resizing the last node.
+    commissioner.resumeTask(taskInfo.getUuid());
+    taskInfo = waitForTask(taskInfo.getUuid());
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    clearAbortOrPausePositions();
+    CustomerTask customerTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    taskUUID = customerTask.getTaskUUID();
+    taskInfo = waitForTask(taskUUID);
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      assertEquals(NodeDetails.NodeState.Live, nodeDetails.state);
+    }
   }
 
   private void assertUniverseData(boolean increaseVolume, boolean changeInstance) {
@@ -1486,7 +1575,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     return UpgradeTaskBase.UpgradeContext.builder()
         .postAction(
             node -> {
-              mockUpgrade.addTask(TaskType.UpdateNodeDetails, null);
+              mockUpgrade.addTask(TaskType.UpdateUniverseFields, null);
             })
         .build();
   }

@@ -1,10 +1,12 @@
 import React, { ReactElement } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import type { FieldValues } from 'react-hook-form';
 import { YBDaypicker, YBDaypickerProps } from './YBDaypicker';
 
-type YBInputFieldProps<T> = UseControllerProps<T> & YBDaypickerProps;
+type YBInputFieldProps<T extends FieldValues> = UseControllerProps<T> & YBDaypickerProps;
 
-export const YBDayPickerField = <T,>(props: YBInputFieldProps<T>): ReactElement => {
+export const YBDayPickerField =
+  <T extends FieldValues,>(props: YBInputFieldProps<T>): ReactElement => {
   const { name, rules, defaultValue, control, shouldUnregister } = props;
   const { field, fieldState } = useController({ name, rules, defaultValue, control, shouldUnregister });
 

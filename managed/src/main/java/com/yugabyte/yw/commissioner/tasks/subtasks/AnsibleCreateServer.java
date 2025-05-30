@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.Setter;
@@ -56,6 +57,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
     // instance profile instead of an access key id and secret
     public String ipArnString;
     @Getter @Setter private String machineImage;
+    public UUID imageBundleUUID;
   }
 
   @Override

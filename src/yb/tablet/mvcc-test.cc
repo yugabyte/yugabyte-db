@@ -180,7 +180,7 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
 
   std::atomic<bool> stopped { false };
 
-  const auto get_count = [&counts](OpType op) { return counts[to_underlying(op)]; };
+  const auto get_count = [&counts](OpType op) { return counts[std::to_underlying(op)]; };
   LogicalClock* const logical_clock = down_cast<LogicalClock*>(clock_.get());
 
   std::atomic<uint64_t> max_ht_lease{0};
@@ -270,7 +270,7 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
         queue[alive[idx].ht] = idx;
       }
     }
-    ++counts[to_underlying(ops.back().type)];
+    ++counts[std::to_underlying(ops.back().type)];
 
     HybridTime safe_time;
     if (alive.empty()) {

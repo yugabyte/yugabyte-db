@@ -245,3 +245,11 @@ After you have returned a standby instance to standalone mode, the information o
 - No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](#promote-a-standby-instance-to-active).
 - The last backup time updates regardless of successful synchronization. To validate that backups are running, check the YBA logs for errors during synchronization.
 - After promotion, you may be unable to sign in to the new active instance for under a minute. You can wait and then reload the page, or you can restart the newly active YBA.
+- If you have a reverse proxy in front of the standby or primary instance (such as a Kubernetes ingress or a load balancer), ensure that it does not limit large requests. For example, if you are using nginx ingress, you might need to set the following annotations in your ingress specification to raise the default limit to 100 MB:
+
+    ```yaml
+    annotations:
+        nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    ```
+
+    If you don't set this, you might see errors similar to "413 Request Entity Too Large".

@@ -85,6 +85,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
+import org.pac4j.oidc.profile.OidcProfile;
 import org.pac4j.oidc.profile.OidcProfileDefinition;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
@@ -483,7 +484,7 @@ public class SessionController extends AbstractPlatformController {
     Instant expirationTime = null;
     try {
       // Persist the JWT auth token in case of successful login.
-      CommonProfile profile = thirdPartyLoginHandler.getProfile(request);
+      OidcProfile profile = (OidcProfile) thirdPartyLoginHandler.getProfile(request);
       if (profile.containsAttribute(OidcProfileDefinition.ID_TOKEN)) {
         idToken = (String) profile.getAttribute(OidcProfileDefinition.ID_TOKEN);
       }
@@ -491,7 +492,7 @@ public class SessionController extends AbstractPlatformController {
         preferredUsername = (String) profile.getAttribute(OidcProfileDefinition.PREFERRED_USERNAME);
       }
       if (profile.containsAttribute(OIDC_TOKEN_EXPIRATION)) {
-        Date expTime = (Date) profile.getAttribute(OIDC_TOKEN_EXPIRATION);
+        Date expTime = profile.getExpiration();
         expirationTime = expTime.toInstant();
       }
     } catch (Exception e) {

@@ -55,7 +55,7 @@ Use the following steps to run change data capture (CDC) with Debezium on a loca
 1. Start a cluster using yugabyted. Note that you need to run yugabyted with the IP of your machine; otherwise, it would consider localhost (which would be mapped to the docker host instead of your machine).
 
     ```sh
-    ./bin/yugabyted start --listen $IP
+    ./bin/yugabyted start --advertise_address $IP
     ```
 
 1. Connect using ysqlsh and create a table:
@@ -104,7 +104,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
   -d '{
   "name": "ybconnector",
   "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
     "database.hostname":"'$IP'",
     "database.port":"5433",
     "database.master.addresses": "'$IP':7100",
@@ -139,7 +139,7 @@ Do the following:
       -d '{
       "name": "ybconnector",
       "config": {
-        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
         "database.hostname":"'$IP'",
         "database.port":"5433",
         "database.master.addresses": "'$IP':7100",

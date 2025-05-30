@@ -223,10 +223,16 @@ export default class NodeDetailsTable extends Component {
 
     const getStatusUptime = (cell, row) => {
       let uptime = '_';
-      const uptimeSeconds =
-        isDedicatedNodes && row.dedicatedTo === NodeType.Master.toUpperCase()
-          ? row.master_uptime_seconds
-          : row.uptime_seconds;
+      let uptimeSeconds = row.uptime_seconds;
+      if (isDedicatedNodes) {
+        uptimeSeconds =
+          row.dedicatedTo === NodeType.Master.toUpperCase()
+            ? row.master_uptime_seconds
+            : row.uptime_seconds;
+      }
+      if (isKubernetesCluster) {
+        uptimeSeconds = row.isMaster ? row.master_uptime_seconds : row.uptime_seconds;
+      }
       if (isDefinedNotNull(uptimeSeconds)) {
         // get the difference between the moments
         const difference = parseFloat(uptimeSeconds) * 1000;

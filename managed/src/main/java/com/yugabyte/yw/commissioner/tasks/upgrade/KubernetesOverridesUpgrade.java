@@ -59,8 +59,8 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
               universe,
               cluster.userIntent.ybSoftwareVersion,
               // We don't know which overrides can affect masters or tservers so set both to true.
-              /* isMasterChanged */ true,
-              /* isTServerChanged */ true,
+              /* upgradeMasters */ true,
+              /* upgradeTservers */ true,
               universe.isYbcEnabled(),
               stableYbcVersion);
           // Remove extra Namespaced scope services.

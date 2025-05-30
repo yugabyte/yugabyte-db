@@ -91,6 +91,10 @@ class KeyBytes {
 
   void AppendDescendingString(const std::string &raw_string);
 
+  void AppendBson(const std::string& raw_string);
+
+  void AppendDescendingBson(const std::string &raw_string);
+
   void AppendDecimal(const std::string& encoded_decimal_str) {
     data_.append(encoded_decimal_str);
   }

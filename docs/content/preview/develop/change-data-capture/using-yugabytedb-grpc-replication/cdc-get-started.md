@@ -17,11 +17,13 @@ type: docs
 
 ## Set up YugabyteDB for CDC
 
-The following steps are necessary to set up YugabyteDB for use with the YugabyteDB gRPC connector:
+To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the following:
 
-- Create a DB stream ID.
+- Create a database stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the yb-admin CLI command. Refer to the [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference documentation for more details.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the `create_change_data_stream` yb-admin CLI command. Refer to the [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference for more details.
+
+    Note that CDC currently only supports YSQL tables.
 
 - Make sure the YB-Master and YB-TServer ports are open.
 
@@ -31,13 +33,13 @@ The following steps are necessary to set up YugabyteDB for use with the Yugabyte
 
     The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoints internally for each DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
-    In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+    If CDC lags or is away for some time, the disk usage may grow and cause instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. For more information, see [Important configuration settings](#important-configuration-settings).
 
-## Deploying the YugabyteDB gRPC Connector
+## Deploy the YugabyteDB gRPC Connector
 
 To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
 
-- Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+- Download the Connector. You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases).
 - Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
 - Configure the Connector: Modify the connector configuration to suit your specific requirements.
 - Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
@@ -589,3 +591,7 @@ value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'
 This expression checks if the value of the row after the operation has the country set to `UK`. If _yes_, then the expression returns `uk_users`. If _no_, it returns _null_, and in case the row after the operation is _null_ (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns _null_, the event is sent to the default topic.
 
 For more advanced routing configuration, refer to the [Debezium documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.
+
+## CDC with point-in-time recovery
+
+[Point-in-time recovery](../../../../manage/backup-restore/point-in-time-recovery/) (PITR) provides the ability to restore the data to a specific point in time, reflecting the state of the database at an earlier time. For databases and tables with CDC configured, you need to create new streams after the restore is complete, and start streaming from that point. Creating new streams ensures that you start streaming from the correct checkpoints.

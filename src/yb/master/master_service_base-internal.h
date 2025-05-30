@@ -27,7 +27,7 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/strongly_typed_bool.h"
 
-DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_int32(TEST_timeout_non_leader_master_rpcs_ms);
 
 namespace yb {
 namespace master {
@@ -86,8 +86,8 @@ void MasterServiceBase::HandleOnLeader(
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
   ScopedLeaderSharedLock l(server_->catalog_manager_impl(), file_name, line_number, function_name);
-  if (FLAGS_TEST_timeout_non_leader_master_rpcs && !l.IsInitializedAndIsLeader()) {
-    std::this_thread::sleep_until(rpc->GetClientDeadline());
+  if (FLAGS_TEST_timeout_non_leader_master_rpcs_ms && !l.IsInitializedAndIsLeader()) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_timeout_non_leader_master_rpcs_ms));
   }
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;

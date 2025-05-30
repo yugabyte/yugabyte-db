@@ -35,6 +35,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 #include "utils/catcache.h"
 
@@ -914,7 +915,7 @@ get_relation_constraint_oid(Oid relid, const char *conname, bool missing_ok)
  * failure.
  */
 Bitmapset *
-get_relation_constraint_attnos(Relation rel, const char *conname,
+get_relation_constraint_attnos(Oid relid, const char *conname,
 							   bool missing_ok, Oid *constraintOid)
 {
 	Bitmapset  *conattnos = NULL;
@@ -922,7 +923,6 @@ get_relation_constraint_attnos(Relation rel, const char *conname,
 	HeapTuple	tuple;
 	SysScanDesc scan;
 	ScanKeyData skey[3];
-	Oid			relid = RelationGetRelid(rel);
 
 	/* Set *constraintOid, to avoid complaints about uninitialized vars */
 	*constraintOid = InvalidOid;
@@ -976,7 +976,7 @@ get_relation_constraint_attnos(Relation rel, const char *conname,
 			for (i = 0; i < numcols; i++)
 			{
 				conattnos = bms_add_member(conattnos,
-										   attnums[i] - YBGetFirstLowInvalidAttributeNumber(rel));
+										   attnums[i] - YBGetFirstLowInvalidAttributeNumberFromOid(relid));
 			}
 		}
 	}

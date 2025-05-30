@@ -399,7 +399,8 @@ func buildAWSImageBundles(
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
 		if err != nil {
-			errMessage := err.Error() + " Using SSH Port as 22\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -419,7 +420,7 @@ func buildAWSImageBundles(
 		useIMDSv2, err := strconv.ParseBool(bundle["imdsv2"])
 		if err != nil {
 			errMessage := err.Error() +
-				" Invalid or missing value provided for 'default'. Setting it to 'false'.\n"
+				" Invalid or missing value provided for 'imdsv2'. Setting it to 'false'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

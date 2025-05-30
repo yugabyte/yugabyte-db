@@ -4,6 +4,7 @@ package util
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -19,6 +20,8 @@ type Buffer interface {
 	String() string
 	// StringWithLen returns the string and size of the unread bytes.
 	StringWithLen() (string, int)
+	// WriteLine writes a string line to the buffer.
+	WriteLine(s string, v ...interface{}) error
 }
 
 // ResettableBuffer is a buffer which can be reset to the beginning of the buffer.
@@ -91,6 +94,17 @@ func (p *simpleBuffer) StringWithLen() (string, int) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	return p.buffer.String(), p.buffer.Len()
+}
+
+// WriteLine writes a string line to the buffer.
+func (p *simpleBuffer) WriteLine(s string, v ...interface{}) error {
+	line := s
+	if v != nil && len(v) > 0 {
+		line = fmt.Sprintf(line, v...)
+	}
+	line += "\n"
+	_, err := p.Write([]byte(line))
+	return err
 }
 
 // NewResettableBuffer returns a new instance of resettable buffer reader.

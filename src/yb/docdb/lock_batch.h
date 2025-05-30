@@ -18,7 +18,7 @@
 #include "yb/util/logging.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/lock_manager_traits.h"
+#include "yb/docdb/lock_util.h"
 
 #include "yb/dockv/intent.h"
 
@@ -31,28 +31,6 @@
 namespace yb {
 
 namespace docdb {
-
-// We don't care about actual content of this struct here, since it is an implementation detail
-// of LockManagerImpl.
-template <typename LockManager>
-struct LockedBatchEntry;
-
-template <typename LockManager>
-struct LockBatchEntry {
-  LockManagerTraits<LockManager>::KeyType key;
-  dockv::IntentTypeSet intent_types;
-
-  // Memory is owned by LockManagerImpl.
-  LockedBatchEntry<LockManager>* locked = nullptr;
-
-  // In context of object locking, we need to ignore conflicts with self when obtaining another
-  // mode of lock on an object. The field is set to the transaction's current lock state on the
-  // object and we subtract the same when checking conflicts with the exisitng lock state of the
-  // object.
-  LockState existing_state = 0;
-
-  std::string ToString() const;
-};
 
 class UnlockedBatch;
 

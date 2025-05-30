@@ -15,6 +15,7 @@
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 
+#include "yb/util/env.h"
 #include "yb/util/result.h"
 
 #include "yb/vector_index/vector_lsm.pb.h"
@@ -29,9 +30,9 @@ struct VectorLSMMetadataLoadResult {
 };
 
 Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
-    rocksdb::Env* env, const std::string& dir);
-Result<std::unique_ptr<rocksdb::WritableFile>> VectorLSMMetadataOpenFile(
-    rocksdb::Env* env, const std::string& dir, size_t file_index);
-Status VectorLSMMetadataAppendUpdate(rocksdb::WritableFile& file, const VectorLSMUpdatePB& update);
+    Env* env, const std::string& dir);
+Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
+    Env* env, const std::string& dir, size_t file_index);
+Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB& update);
 
 }  // namespace yb::vector_index

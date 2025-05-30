@@ -3,4 +3,4 @@
 ####################################################################################################
 # TABLEGROUP Testsuite: TABLEGROUP Deprecation Warning
 ####################################################################################################
-test: yb_tablegroup_deprecation
+test: yb.orig.tablegroup_deprecation

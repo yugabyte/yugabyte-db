@@ -23,7 +23,7 @@ const (
 	commonBackupInfoDetails2       = "table {{.CreateTime}}\t{{.UpdateTime}}\t{{.CompletionTime}}"
 
 	tableByTableBackupHeader     = "Is Table by Table"
-	totalBackupSizeInBytesHeader = "Total Backup Size In Bytes"
+	totalBackupSizeInBytesHeader = "Total Backup Size"
 	updateTimeHeader             = "Update Time"
 )
 
@@ -135,8 +135,9 @@ func (c *Context) TableByTableBackup() bool {
 }
 
 // TotalBackupSizeInBytes fetches whether Backup TotalBackupSizeInBytes
-func (c *Context) TotalBackupSizeInBytes() int64 {
-	return c.c.GetTotalBackupSizeInBytes()
+func (c *Context) TotalBackupSizeInBytes() string {
+	size, unit := util.HumanReadableSize(float64(c.c.GetTotalBackupSizeInBytes()))
+	return fmt.Sprintf("%0.2f %s", size, unit)
 }
 
 // CreateTime fetches whether Backup CreateTime

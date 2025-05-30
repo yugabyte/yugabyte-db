@@ -13,7 +13,6 @@
 #include "yb/util/logging_test_util.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/result.h"
 
 namespace yb {
 
@@ -41,17 +40,17 @@ void PatternWaiterLogSink<std::string>::send(
 }
 
 template<>
-void PatternWaiterLogSink<std::regex>::send(
+void PatternWaiterLogSink<boost::regex>::send(
     google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,
     const struct ::tm* tm_time, const char* message, size_t message_len) {
   auto log_message = ToString(severity, base_filename, line, tm_time, message, message_len);
-  if (std::regex_match(log_message, pattern_to_wait_for_) &&
+  if (boost::regex_match(log_message, pattern_to_wait_for_) &&
       log_message.find(kWaitingMessage) == std::string::npos) {
     event_occurred_ = true;
   }
 }
 
 template class PatternWaiterLogSink<std::string>;
-template class PatternWaiterLogSink<std::regex>;
+template class PatternWaiterLogSink<boost::regex>;
 
 }  // namespace yb

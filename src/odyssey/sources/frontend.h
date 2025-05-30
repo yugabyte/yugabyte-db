@@ -20,6 +20,8 @@ static inline machine_msg_t *od_frontend_error_msg(od_client_t *client,
 						   va_list args)
 {
 	char *msg = malloc(yb_max_query_size + 1);
+	if (msg == NULL)
+		return NULL;
 	msg[yb_max_query_size] = '\0';
 	int msg_len;
 	msg_len = od_snprintf(msg, yb_max_query_size,
@@ -38,6 +40,9 @@ static inline machine_msg_t *od_frontend_fatal_msg(od_client_t *client,
 						   va_list args)
 {
 	char *msg = malloc(yb_max_query_size + 1);
+	if (msg == NULL)
+		return NULL;
+
 	msg[yb_max_query_size] = '\0';
 	int msg_len;
 	msg_len = od_snprintf(msg, yb_max_query_size,
@@ -56,6 +61,8 @@ static inline machine_msg_t *od_frontend_fatal_msg_forward(od_client_t *client,
 						   va_list args)
 {
 	char *msg = malloc(yb_max_query_size + 1);
+	if (msg == NULL)
+		return NULL;
 	msg[yb_max_query_size] = '\0';
 	int msg_len;
 
@@ -85,6 +92,8 @@ static inline machine_msg_t *od_frontend_info_msg(od_client_t *client,
 						  char *fmt, va_list args)
 {
 	char *msg = malloc(yb_max_query_size + 1);
+	if (msg == NULL)
+		return NULL;
 	msg[yb_max_query_size] = '\0';
 	int msg_len;
 	msg_len = od_snprintf(msg, yb_max_query_size,

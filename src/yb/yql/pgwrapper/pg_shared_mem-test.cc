@@ -28,6 +28,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(TEST_pg_client_crash_on_shared_memory_send);
 DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
@@ -66,6 +67,10 @@ class PgSharedMemTest : public PgMiniTestBase {
       result.second += available_tracker->consumption();
     }
     return result;
+  }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->wait_for_pg = false;
   }
 };
 
@@ -170,6 +175,8 @@ TEST_F(PgSharedMemTest, Crash) {
   ASSERT_OK(conn.Execute("INSERT INTO t (key) VALUES (1)"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pg_client_crash_on_shared_memory_send) = true;
+  // We do not wait for pg because the wait logic uses a pg connection to verify the tserver is
+  // ready to accept connections.
   ASSERT_OK(RestartCluster());
 
   auto settings = MakeConnSettings();
@@ -198,6 +205,13 @@ class PgSharedMemBigTimeoutTest : public PgSharedMemTest {
 };
 
 TEST_F_EX(PgSharedMemTest, LongRead, PgSharedMemBigTimeoutTest) {
+  // Disable load balancing, as tablet leader move might happen during the long-running read
+  // by load balancer and causing test to fail, here is the steps:
+  // 1. Perform long read and start sleep FLAGS_TEST_transactional_read_delay_ms (65 seconds)
+  // 2. During this time, the tablet leader is moved by the load balancer
+  // 3. After the 65s sleep, it detects the leader change retries the read on the new leader
+  // 4. The retried read also sleeps for 65 seconds. Combined, the total read time exceeds the 120s
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
@@ -220,28 +234,33 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }
 
   auto threads_before = CountManagedThreads();
-  size_t threads_mid = 0;
+  auto threads_started_before = CountStartedThreads();
   constexpr size_t kNumIterations = 16;
 
   for (int i = 0; i != kNumIterations; ++i) {
     auto conn = ASSERT_RESULT(Connect());
     auto result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t"));
     ASSERT_EQ(result, "1");
-    if (i == kNumIterations / 2) {
-      threads_mid = CountManagedThreads();
-    }
+    std::this_thread::sleep_for(100ms * kTimeMultiplier);
   }
 
-  std::this_thread::sleep_for(1s * kTimeMultiplier);
-
   auto threads_after = CountManagedThreads();
+  auto threads_started_after = CountStartedThreads();
 
-  LOG(INFO) << "Threads: " << threads_before << ", " << threads_mid << ", " << threads_after;
+  LOG(INFO) << "Running threads: " << threads_before << ", " << threads_after
+            << ", started threads: " << threads_started_before << ", " << threads_started_after;
 
-  ASSERT_LE(threads_after, threads_mid);
+  // Expect that we reuse at least some threads;
+  ASSERT_LT(threads_started_after, threads_started_before + kNumIterations);
+
+  ASSERT_OK(WaitFor([threads_before] {
+    return CountManagedThreads() <= threads_before;
+  }, 5s * kTimeMultiplier, "Threads cleanup"));
 
   auto* client_service = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientService();
-  ASSERT_LE(client_service->TEST_SessionsCount(), 1);
+  ASSERT_OK(WaitFor([client_service] {
+    return client_service->TEST_SessionsCount() <= 1;
+  }, 5s * kTimeMultiplier, "Sessions cleanup"));
 }
 
 } // namespace yb::pgwrapper

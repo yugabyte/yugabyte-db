@@ -100,6 +100,7 @@
     width: 725px;
     position: fixed;
     z-index: 9999;
+    overflow-y: scroll;
     top: 0;
     right: 0;
     border-left: 1px solid color.adjust(colors.$YB_BACKGROUND, $lightness: -10%);

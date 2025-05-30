@@ -15,11 +15,11 @@ showRightNav: true
 
 Query tuning is the art and science of improving the performance of SQL queries. It involves understanding the database's architecture, query execution plans, and performance metrics. By identifying and addressing performance bottlenecks, you can significantly enhance the responsiveness of your applications and reduce the load on your database infrastructure.
 
-This guide provides a comprehensive overview of query tuning techniques for distributed SQL databases. We will explore various strategies, best practices, and tools to help you optimize your queries and achieve optimal performance.
+This guide provides a comprehensive overview of query tuning techniques for distributed SQL databases. This includes various strategies, best practices, and tools to help you optimize queries and achieve optimal performance.
 
 ## Identify slow queries
 
-The pg_stat_statements extension provides a comprehensive view of query performance, and is essential for database administrators and developers aiming to enhance database efficiency. You can use the pg_stat_statements extension to get statistics on past queries. It collects detailed statistics on query execution, including the number of executions, total execution time, and resource usage metrics like block hits and reads. This data can help ypu identify performance bottlenecks and optimize query performance.
+The pg_stat_statements extension provides a comprehensive view of query performance, and is essential for database administrators and developers aiming to enhance database efficiency. You can use the pg_stat_statements extension to get statistics on past queries. It collects detailed statistics on query execution, including the number of executions, total execution time, and resource usage metrics like block hits and reads. This data can help you identify performance bottlenecks and optimize query performance.
 
 {{<lead link="./pg-stat-statements/">}}
 Learn how to fetch query statistics and improve performance using [pg_stat_statements](./pg-stat-statements/).

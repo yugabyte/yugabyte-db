@@ -343,18 +343,18 @@ tablespace_list_append(const char *arg)
 
 	/*
 	 * All tablespaces are created with absolute directories, so specifying a
-	 * non-absolute path here would just never match, possibly confusing users.
-	 * Since we don't know whether the remote side is Windows or not, and it
-	 * might be different than the local side, permit any path that could be
-	 * absolute under either set of rules.
+	 * non-absolute path here would just never match, possibly confusing
+	 * users. Since we don't know whether the remote side is Windows or not,
+	 * and it might be different than the local side, permit any path that
+	 * could be absolute under either set of rules.
 	 *
 	 * (There is little practical risk of confusion here, because someone
 	 * running entirely on Linux isn't likely to have a relative path that
 	 * begins with a backslash or something that looks like a drive
-	 * specification. If they do, and they also incorrectly believe that
-	 * a relative path is acceptable here, we'll silently fail to warn them
-	 * of their mistake, and the -T option will just not get applied, same
-	 * as if they'd specified -T for a nonexistent tablespace.)
+	 * specification. If they do, and they also incorrectly believe that a
+	 * relative path is acceptable here, we'll silently fail to warn them of
+	 * their mistake, and the -T option will just not get applied, same as if
+	 * they'd specified -T for a nonexistent tablespace.)
 	 */
 	if (!is_nonwindows_absolute_path(cell->old_dir) &&
 		!is_windows_absolute_path(cell->old_dir))
@@ -661,7 +661,8 @@ StartLogStreamer(char *startpos, uint32 timeline, char *sysidentifier,
 	 * Create replication slot if requested
 	 */
 	if (temp_replication_slot && !replication_slot)
-		replication_slot = psprintf("pg_basebackup_%d", (int) PQbackendPID(param->bgconn));
+		replication_slot = psprintf("pg_basebackup_%u",
+									(unsigned int) PQbackendPID(param->bgconn));
 	if (temp_replication_slot || create_slot)
 	{
 		if (!CreateReplicationSlot(param->bgconn, replication_slot, NULL,

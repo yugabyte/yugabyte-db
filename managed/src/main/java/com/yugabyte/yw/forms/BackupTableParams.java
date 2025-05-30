@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
@@ -197,6 +198,30 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(hidden = true)
   public final Map<UUID, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
 
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
+
+  // When set, ybc backups will ignore all new flags that came with roles backup. Useful for taking
+  // backups on older universes.
+  // Default to True for backwards compatibility
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Boolean revertToPreRolesBehaviour = true;
+
+  // False until fully tested
+  @ApiModelProperty(value = "Add role exists checks for roles metadata", hidden = true)
+  @Getter
+  @Setter
+  private Boolean dumpRoleChecks = false;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Boolean enableBackupsDuringDDL = false;
+
   @ToString
   public static class ParallelBackupState {
     public String nodeIp;
@@ -217,7 +242,7 @@ public class BackupTableParams extends TableManagerParams {
 
   @JsonIgnore
   public void initializeBackupDBStates() {
-    this.backupList.parallelStream()
+    this.backupList.stream()
         .forEach(
             paramsEntry ->
                 this.backupDBStates.put(
@@ -252,6 +277,9 @@ public class BackupTableParams extends TableManagerParams {
     this.baseBackupUUID = backupRequestParams.baseBackupUUID;
     this.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
     this.setPointInTimeRestoreEnabled(backupRequestParams.enablePointInTimeRestore);
+    this.setKubernetesResourceDetails(backupRequestParams.getKubernetesResourceDetails());
+    // this.useRoles = backupRequestParams.getUseRoles();
+    this.dumpRoleChecks = backupRequestParams.getDumpRoleChecks();
   }
 
   @JsonIgnore
@@ -306,6 +334,9 @@ public class BackupTableParams extends TableManagerParams {
     this.backupParamsIdentifier = tableParams.backupParamsIdentifier;
     this.tableByTableBackup = tableParams.tableByTableBackup;
     this.setPointInTimeRestoreEnabled(tableParams.isPointInTimeRestoreEnabled());
+    // this.useRoles = tableParams.getUseRoles();
+    this.revertToPreRolesBehaviour = tableParams.getRevertToPreRolesBehaviour();
+    this.dumpRoleChecks = tableParams.getDumpRoleChecks();
   }
 
   @JsonIgnore

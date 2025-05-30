@@ -132,7 +132,9 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update PDB policy for the universe.
-      createPodDisruptionBudgetPolicyTask(false /* deletePDB */, true /* reCreatePDB */);
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(false /* deletePDB */, true /* reCreatePDB */);
+      }
 
       createSwamperTargetUpdateTask(false);
 

@@ -128,6 +128,7 @@ extern PartitionPruneState *ExecInitPartitionPruning(PlanState *planstate,
 extern Bitmapset *ExecFindMatchingSubPlans(PartitionPruneState *prunestate,
 										   bool initial_prune);
 
+/* YB */
 extern Oid	YbPartitionTupleRoutingRootRelid(PartitionTupleRouting *proute);
 
 #endif							/* EXECPARTITION_H */

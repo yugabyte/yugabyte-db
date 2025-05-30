@@ -26,7 +26,7 @@ The following example uses the name `yb_cdc_kafka_role`. The IAM roles and polic
 
 ```json
 {
-  "Version": "2012–10–17",
+  "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
@@ -49,7 +49,7 @@ Create a policy with access to the following AWS services:
 
 ```json
 {
-  "Version": "2012–10–17",
+  "Version": "2012-10-17",
   "Statement": [
     {
       "Sid": "VisualEditor0",

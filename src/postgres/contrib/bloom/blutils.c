@@ -169,7 +169,7 @@ initBloomState(BloomState *state, Relation index)
 	{
 		fmgr_info_copy(&(state->hashFn[i]),
 					   index_getprocinfo(index, i + 1, BLOOM_HASH_PROC),
-					   GetCurrentMemoryContext());
+					   CurrentMemoryContext);
 		state->collations[i] = index->rd_indcollation[i];
 	}
 

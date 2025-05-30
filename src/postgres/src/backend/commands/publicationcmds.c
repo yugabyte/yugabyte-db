@@ -53,9 +53,10 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/index.h"
 #include "pg_yb_utils.h"
+
 
 /*
  * Information used to validate the columns in the row filter expression. See
@@ -876,7 +877,7 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 		}
 	}
 
-	/* Log a NOTICE for unsupported relations. */
+	/* YB: Log a NOTICE for unsupported relations. */
 	if (IsYugaByteEnabled() && stmt->for_all_tables)
 		yb_log_unsupported_publication_relations();
 

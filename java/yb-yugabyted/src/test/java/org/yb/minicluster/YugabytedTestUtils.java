@@ -1,4 +1,7 @@
 package org.yb.minicluster;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -8,6 +11,7 @@ import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -438,6 +442,56 @@ public class YugabytedTestUtils {
         boolean isDirRemoved = !DirFile.exists();
         LOG.info("Directory removal status: " + isDirRemoved);
         return isDirRemoved;
+    }
+
+
+
+    public static void stopAndDestroyYugabytedTest(String baseDir) throws Exception {
+
+        LOG.info("Current cluster base dir :" + baseDir);
+        boolean expectedStopStatus = YugabytedCommands.stop(baseDir);
+        LOG.info("Yugabyted stop command success status: " + expectedStopStatus);
+
+        // Check the actual status in a loop with retries and timeout
+        boolean actualStopStatus = false;
+        long startTime = System.currentTimeMillis();
+
+        while (!actualStopStatus) {
+            LOG.info("Checking node stop status...");
+            actualStopStatus = YugabytedTestUtils.checkNodeStatus(baseDir, "Stopped");
+            if (actualStopStatus) {
+                break;
+            }
+            if (System.currentTimeMillis() - startTime > 30000) {
+                throw new Exception("Node did not stop within 30 seconds");
+            }
+            Thread.sleep(5000);
+        }
+        // At this point, we have checked and confirmed that the node has stopped successfully.
+        // We now combine the expected stop status (result from the stop command) with the
+        // actual stop status (result from checking the node's state) using the AND operator to
+        // reflect the overall stop status. This ensures both the command execution
+        // and the actual status match for the stop operation.
+        // Updating the expectedStopStatus based on destroy command
+        expectedStopStatus &= YugabytedCommands.destroy(baseDir);
+
+        LOG.info("Yugabyted node actual stop status: " + actualStopStatus);
+        LOG.info("Yugabyted node expected stop status: " + expectedStopStatus);
+        // Assert the stop status
+        assertEquals("Expected and actual stop statuses should match",
+                                            expectedStopStatus, actualStopStatus);
+
+        // Run the Yugabyted destroy command
+        boolean expectedDestroyStatus = YugabytedCommands.destroy(baseDir);
+        LOG.info("Yugabyted destroy command success status: " + expectedDestroyStatus);
+
+        // Check if the base directory is removed
+        boolean isBaseDirRemoved = YugabytedTestUtils.isDirectoryRemoved(baseDir);
+        LOG.info("Base directory removal status: " + isBaseDirRemoved);
+
+        // Assert the base directory removal status
+        assertTrue("Base directory should be removed after destroy command",
+                                                                    isBaseDirRemoved);
     }
 
 }

@@ -17,6 +17,7 @@ import { RestoreContextMethods, RestoreFormContext } from '../RestoreContext';
 import { restoreBackup, restoreBackupProps } from '../api';
 import { Keyspace_Table, RESTORE_ACTION_TYPE } from '../../../common/IBackup';
 import { createErrorMessage } from '../../../../../redesign/features/universe/universe-form/utils/helpers';
+import { useInterceptBackupTaskLinks } from '../../../../../redesign/features/tasks/TaskUtils';
 import { YBLoadingCircleIcon } from '../../../../common/indicators';
 import { TableType } from '../../../../../redesign/helpers/dtos';
 
@@ -27,6 +28,7 @@ const RestoreFinalStep = React.forwardRef(() => {
   const restoreContext = (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
   const [, , { hideModal }] = restoreContext;
   const { t } = useTranslation();
+  const interceptBackupLink = useInterceptBackupTaskLinks();
 
   const restoreBackupApi = useMutation((backup: restoreBackupProps) => restoreBackup(backup), {
     onSuccess: (resp) => {
@@ -36,9 +38,9 @@ const RestoreFinalStep = React.forwardRef(() => {
           <Trans
             i18nKey="newRestoreModal.restoreSuccess"
             components={[
-              <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+              interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
                 here
-              </a>
+              </a>)
             ]}
           ></Trans>
         </span>

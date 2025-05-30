@@ -20,7 +20,6 @@
 #define PG_YB_MIGRATION_H
 
 #include "catalog/genbki.h"
-
 #include "catalog/pg_yb_migration_d.h"
 
 /* ----------------

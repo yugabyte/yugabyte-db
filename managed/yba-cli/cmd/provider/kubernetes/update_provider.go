@@ -71,7 +71,11 @@ var updateK8sProviderCmd = &cobra.Command{
 		}
 
 		if len(strings.TrimSpace(provider.GetName())) == 0 {
-			errMessage := fmt.Sprintf("No provider %s in cloud type %s.", providerName, providerCode)
+			errMessage := fmt.Sprintf(
+				"No provider %s in cloud type %s.",
+				providerName,
+				providerCode,
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
 		}
 
@@ -199,7 +203,13 @@ var updateK8sProviderCmd = &cobra.Command{
 
 		providerRegions = removeK8sRegions(removeRegions, providerRegions)
 
-		providerRegions = editK8sRegions(editRegions, addZones, editZones, removeZones, providerRegions)
+		providerRegions = editK8sRegions(
+			editRegions,
+			addZones,
+			editZones,
+			removeZones,
+			providerRegions,
+		)
 
 		providerRegions = addK8sRegions(addRegions, addZones, providerRegions)
 
@@ -454,14 +464,20 @@ func addK8sRegions(
 			Details: &ybaclient.RegionDetails{
 				CloudInfo: &ybaclient.RegionCloudInfo{
 					Kubernetes: &ybaclient.KubernetesRegionInfo{
-						CertManagerClusterIssuer: util.GetStringPointer(region["cert-manager-cluster-issuer"]),
-						CertManagerIssuer:        util.GetStringPointer(region["cert-manager-issuer"]),
-						KubeConfigContent:        util.GetStringPointer(configContent),
-						KubeDomain:               util.GetStringPointer(region["domain"]),
-						KubeNamespace:            util.GetStringPointer(region["namespace"]),
-						KubePodAddressTemplate:   util.GetStringPointer(region["pod-address-template"]),
-						KubernetesStorageClass:   util.GetStringPointer(region["storage-class"]),
-						Overrides:                util.GetStringPointer(overrides),
+						CertManagerClusterIssuer: util.GetStringPointer(
+							region["cert-manager-cluster-issuer"],
+						),
+						CertManagerIssuer: util.GetStringPointer(
+							region["cert-manager-issuer"],
+						),
+						KubeConfigContent: util.GetStringPointer(configContent),
+						KubeDomain:        util.GetStringPointer(region["domain"]),
+						KubeNamespace:     util.GetStringPointer(region["namespace"]),
+						KubePodAddressTemplate: util.GetStringPointer(
+							region["pod-address-template"],
+						),
+						KubernetesStorageClass: util.GetStringPointer(region["storage-class"]),
+						Overrides:              util.GetStringPointer(overrides),
 					},
 				},
 			},
@@ -618,14 +634,20 @@ func addK8sZones(
 				Details: &ybaclient.AvailabilityZoneDetails{
 					CloudInfo: &ybaclient.AZCloudInfo{
 						Kubernetes: &ybaclient.KubernetesRegionInfo{
-							CertManagerClusterIssuer: util.GetStringPointer(zone["cert-manager-cluster-issuer"]),
-							CertManagerIssuer:        util.GetStringPointer(zone["cert-manager-issuer"]),
-							KubeConfigContent:        util.GetStringPointer(configContent),
-							KubeDomain:               util.GetStringPointer(zone["domain"]),
-							KubeNamespace:            util.GetStringPointer(zone["namespace"]),
-							KubePodAddressTemplate:   util.GetStringPointer(zone["pod-address-template"]),
-							KubernetesStorageClass:   util.GetStringPointer(zone["storage-class"]),
-							Overrides:                util.GetStringPointer(overrides),
+							CertManagerClusterIssuer: util.GetStringPointer(
+								zone["cert-manager-cluster-issuer"],
+							),
+							CertManagerIssuer: util.GetStringPointer(
+								zone["cert-manager-issuer"],
+							),
+							KubeConfigContent: util.GetStringPointer(configContent),
+							KubeDomain:        util.GetStringPointer(zone["domain"]),
+							KubeNamespace:     util.GetStringPointer(zone["namespace"]),
+							KubePodAddressTemplate: util.GetStringPointer(
+								zone["pod-address-template"],
+							),
+							KubernetesStorageClass: util.GetStringPointer(zone["storage-class"]),
+							Overrides:              util.GetStringPointer(overrides),
 						},
 					},
 				},

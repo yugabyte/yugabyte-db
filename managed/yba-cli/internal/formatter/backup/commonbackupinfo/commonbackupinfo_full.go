@@ -122,7 +122,7 @@ func (fcb *FullCommonBackupInfoContext) startSubsection(format string) (*templat
 }
 
 func (fcb *FullCommonBackupInfoContext) subSection(name string) {
-	fcb.Output.Write([]byte("\n\n"))
+	fcb.Output.Write([]byte("\n"))
 	fcb.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fcb.Output.Write([]byte("\n"))
 }

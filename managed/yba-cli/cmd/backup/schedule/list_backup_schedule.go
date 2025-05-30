@@ -73,7 +73,7 @@ var listBackupScheduleCmd = &cobra.Command{
 			backupScheduleAPIFilter.SetUniverseUUIDList(universeUUIDs)
 		}
 
-		backupScheduleAPIDirection := "DESC"
+		backupScheduleAPIDirection := util.DescSortDirection
 		backupScheduleAPISort := "scheduleUUID"
 
 		backupScheduleAPIQuery := ybaclient.SchedulePagedApiQuery{

@@ -119,7 +119,7 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "executor/nodeYbBatchedNestloop.h"
 #include "executor/nodeYbBitmapIndexscan.h"
 #include "executor/nodeYbBitmapTablescan.h"
@@ -491,6 +491,7 @@ ExecProcNodeFirst(PlanState *node)
 	return node->ExecProcNode(node);
 }
 
+
 /*
  * ExecProcNode wrapper that performs instrumentation calls.  By keeping
  * this a separate function, we avoid overhead in the normal case where
@@ -570,8 +571,8 @@ MultiExecProcNode(PlanState *node)
 	}
 
 	/*
-	 * Specifically this is required after the MultiExecBitmapIndexScan, but it
-	 * doesn't hurt to call it here after any of the above.
+	 * YB: Specifically this is required after the MultiExecBitmapIndexScan,
+	 * but it doesn't hurt to call it here after any of the above.
 	 */
 	if (IsYugaByteEnabled() && node->instrument)
 		YbUpdateSessionStats(&node->instrument->yb_instr);

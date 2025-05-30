@@ -83,5 +83,21 @@ struct YBTabletServerPlacementInfo {
   }
 };
 
+struct TabletServersInfo {
+  std::vector<YBTabletServerPlacementInfo> tablet_servers;
+  std::string universe_uuid;
+
+  template <class PB>
+  static TabletServersInfo FromPB(const PB& pb) {
+    TabletServersInfo info;
+    info.universe_uuid = pb.universe_uuid();
+    info.tablet_servers.reserve(pb.servers().size());
+    for (const auto& server : pb.servers()) {
+      info.tablet_servers.push_back(YBTabletServerPlacementInfo::FromPB(server));
+    }
+    return info;
+  }
+};
+
 } // namespace client
 } // namespace yb

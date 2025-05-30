@@ -12,7 +12,6 @@ const initialStateFeatureInTest = {
   enableHCVault: true,
   enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
-  enablePathStyleAccess: false,
   backupv2: false,
   enableOIDC: true,
   supportBundle: false,
@@ -37,7 +36,7 @@ const initialStateFeatureInTest = {
   enableCACertRotation: true,
   enableNewAdvancedRestoreModal: false,
   showReplicationSlots: true,
-  newTaskDetailsUI: false,
+  newTaskDetailsUI: true,
   enableNewAuthAndMappings: true
 };
 
@@ -52,7 +51,6 @@ const initialStateFeatureReleased = {
   enableHCVault: true,
   enableHCVaultEAT: true,
   enableNodeComparisonModal: false,
-  enablePathStyleAccess: false,
   backupv2: true,
   enableOIDC: true,
   supportBundle: true,

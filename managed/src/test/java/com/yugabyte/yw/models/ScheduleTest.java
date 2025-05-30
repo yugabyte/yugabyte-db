@@ -209,4 +209,119 @@ public class ScheduleTest extends FakeDBApplication {
     assertTrue(
         Math.abs(nextScheduleTime.getTime() - schedule.getNextScheduleTaskTime().getTime()) < 10);
   }
+
+  @Test
+  public void testUpdateBackupScheduleCron() {
+    BackupRequestParams params = new BackupRequestParams();
+    params.incrementalBackupFrequency = 900000L;
+    params.incrementalBackupFrequencyTimeUnit = TimeUnit.MILLISECONDS;
+    Schedule schedule =
+        Schedule.create(
+            defaultCustomer.getUuid(),
+            UUID.randomUUID(),
+            params,
+            TaskType.CreateBackup,
+            0L,
+            "0 0 * * *",
+            false /* useLocalTimezone */,
+            null,
+            null);
+
+    long initialNextExpectedScheduleTaskTime =
+        schedule.getNextIncrementScheduleTaskTime().getTime();
+    // Test only hits condition when nextIncrement is empty.
+    schedule.updateNextIncrementScheduleTaskTime(null);
+    params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    params.cronExpression = "0 1 * * *";
+    schedule =
+        Schedule.updateNewBackupScheduleTimeAndStatusAndSave(
+            defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Editing, params);
+    assertNotEquals(
+        initialNextExpectedScheduleTaskTime, schedule.getNextIncrementScheduleTaskTime().getTime());
+    assertTrue(
+        Math.abs(
+                schedule.getNextScheduleTaskTime().getTime()
+                    + params.incrementalBackupFrequency
+                    - schedule.getNextIncrementScheduleTaskTime().getTime())
+            < 10);
+  }
+
+  @Test
+  public void testNextExpectedTaskTimeFrequencyBasicUpdate() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            UUID.randomUUID(),
+            s3StorageConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    // Get the current time - 500 milliseconds
+    Date currentTime = new Date(System.currentTimeMillis() - 500);
+    Date nextSchedule = schedule.nextExpectedTaskTime(currentTime);
+    assertEquals(currentTime.getTime() + schedule.getFrequency(), nextSchedule.getTime());
+  }
+
+  @Test
+  public void testNextExpectedTaskTimeFrequencyMissedUpdate() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            UUID.randomUUID(),
+            s3StorageConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    // Get the current time - 1500 milliseconds - it should still update to a future time. with a
+    // Frequency of 1000, the next time should take into account the missed interval and schedule
+    // one
+    // 500 milliseconds from now.
+    Date currentTime = new Date(System.currentTimeMillis() - 1500);
+    Date nextSchedule = schedule.nextExpectedTaskTime(currentTime);
+    assertEquals(currentTime.getTime() + (2 * schedule.getFrequency()), nextSchedule.getTime());
+  }
+
+  @Test
+  public void testToggleOffOn() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            UUID.randomUUID(),
+            s3StorageConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    schedule.updateBacklogStatus(false);
+    assertEquals(State.Active, schedule.getStatus());
+    Schedule.toggleBackupSchedule(
+        defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Stopped, true);
+    schedule.refresh();
+    assertEquals(State.Stopped, schedule.getStatus());
+    assertNotEquals(true, schedule.isBacklogStatus());
+    schedule.updateNextScheduleTaskTime(
+        new Date(System.currentTimeMillis() + 10000)); // Some time in the future
+    Schedule.toggleBackupSchedule(
+        defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Active, true);
+    schedule.refresh();
+    assertEquals(State.Active, schedule.getStatus());
+    // Also validate that backlog is not set for non-expired schedules
+    // isBacklogStatus should either be false or null;
+    assertNotEquals(true, schedule.isBacklogStatus());
+  }
+
+  @Test
+  public void testToggleOffOnExpiredBackup() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            UUID.randomUUID(),
+            s3StorageConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    schedule.updateBacklogStatus(false);
+    schedule.setStatus(State.Stopped);
+    schedule.updateNextScheduleTaskTime(
+        new Date(System.currentTimeMillis() - 1000)); // Some time in the past
+    schedule.updateNextIncrementScheduleTaskTime(
+        new Date(System.currentTimeMillis() - 1000)); // Some time in the past
+    Schedule.toggleBackupSchedule(
+        defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Active, true);
+    schedule.refresh();
+    assertEquals(State.Active, schedule.getStatus());
+    assertTrue(schedule.isBacklogStatus());
+    assertTrue(schedule.isIncrementBacklogStatus());
+  }
 }

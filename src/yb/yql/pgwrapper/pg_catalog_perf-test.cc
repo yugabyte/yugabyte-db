@@ -19,6 +19,7 @@
 #include <unordered_map>
 
 #include "yb/common/json_util.h"
+#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
@@ -55,6 +56,7 @@ DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_use_relcache_file);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
@@ -151,10 +153,14 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
           *config.response_cache_size_bytes;
     }
     if (!config.preload_additional_catalog_list.empty()) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
-        std::string(config.preload_additional_catalog_list);
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
+          std::string(config.preload_additional_catalog_list);
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
+    // When invalidation messages are used, this test does not use the tserver response
+    // cache and the test will timeout if we wait for response cache counters to become
+    // greater than 0.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
     PgMiniTestBase::SetUp();
     metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());
@@ -162,6 +168,10 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
 
   size_t NumTabletServers() override {
     return 1;
+  }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->wait_for_pg = false;
   }
 
   Result<uint64_t> CacheRefreshRPCCount() {
@@ -710,9 +720,9 @@ TEST_F_EX(PgCatalogPerfTest,
 
 // The test checks that response cache for specific DB is invalidated in case of closure of
 // connection with temp tables. Response cache for other DBs is not affected.
-TEST_F_EX(PgCatalogPerfTest,
-          ResponseCacheInvalidationOnConnectionWithTempTableClosure,
-          PgCatalogWithUnlimitedCachePerfTest) {
+TEST_F_EX(
+    PgCatalogPerfTest, ResponseCacheInvalidationOnConnectionWithTempTableClosure,
+    PgCatalogWithUnlimitedCachePerfTest) {
   constexpr auto* kDBName = "aux_db";
 
   {

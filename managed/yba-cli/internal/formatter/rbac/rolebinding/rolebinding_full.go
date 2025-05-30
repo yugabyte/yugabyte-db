@@ -166,7 +166,7 @@ func (fr *FullRoleBindingContext) startSubsection(format string) (*template.Temp
 }
 
 func (fr *FullRoleBindingContext) subSection(name string) {
-	fr.Output.Write([]byte("\n\n"))
+	fr.Output.Write([]byte("\n"))
 	fr.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	fr.Output.Write([]byte("\n"))
 }

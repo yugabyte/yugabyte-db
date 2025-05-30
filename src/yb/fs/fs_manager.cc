@@ -59,6 +59,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/path_util.h"
@@ -920,7 +921,7 @@ void FsManager::DumpFileSystemTree(ostream& out) {
     std::vector<string> objects;
     Status s = env_->GetChildren(root, &objects);
     if (!s.ok()) {
-      LOG(ERROR) << "Unable to list the fs-tree: " << s.ToString();
+      LOG(DFATAL) << "Unable to list the fs-tree: " << s.ToString();
       return;
     }
 

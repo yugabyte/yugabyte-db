@@ -1,5 +1,6 @@
 import React, { useState, ReactElement, ReactNode } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import type { FieldValues } from 'react-hook-form';
 import { MuiPickersUtilsProvider, TimePicker } from 'material-ui-pickers-v4';
 import type { DateType } from '@date-io/type';
 import DateFnsUtils from '@date-io/date-fns';
@@ -21,9 +22,10 @@ export type YBTimePickerPropsInput = { tooltip?: ReactNode } & Omit<
   'variant' | 'color' | 'classes' | 'size' | 'select' | 'FormHelperTextProps' | 'SelectProps'
 >;
 
-type YBTimePickerProps<T> = UseControllerProps<T> & YBTimePickerPropsInput;
+type YBTimePickerProps<T extends FieldValues> = UseControllerProps<T> & YBTimePickerPropsInput;
 
-export const YBTimePicker = <T,>(props: YBTimePickerProps<T>): ReactElement => {
+export const YBTimePicker =
+  <T extends FieldValues,>(props: YBTimePickerProps<T>): ReactElement => {
   const { name, rules, defaultValue, control, label, shouldUnregister } = props;
   const classes = useStyles();
   const {

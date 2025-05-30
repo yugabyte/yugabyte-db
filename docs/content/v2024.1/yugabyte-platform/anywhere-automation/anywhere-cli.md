@@ -20,11 +20,17 @@ The [YugabyteDB Anywhere (YBA) Command Line Interface](https://github.com/yugaby
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is in [Tech Preview](/preview/releases/versioning/#feature-availability). Commands and options may change before {{<tags/feature/ga>}}.
+The CLI is {{<tags/feature/tp idea="1879">}}. Commands and options may change before {{<tags/feature/ga>}}.
 
 ## Install CLI
 
-Your YugabyteDB Anywhere installation includes the CLI binary, located in `/opt/yugabyte/yugaware/yba-cli`. The CLI is available for following architectures:
+Your YugabyteDB Anywhere installation includes the CLI binary, in the following location:
+
+```sh
+/opt/ybanywhere/software/active/yb-platform/yugaware/yba-cli
+```
+
+The CLI is available for following architectures:
 
 - Linux AMD64 and ARM64
 - Darwin AMD64 and ARM64

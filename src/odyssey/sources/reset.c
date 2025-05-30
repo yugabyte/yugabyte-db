@@ -146,7 +146,12 @@ int od_reset(od_server_t *server)
 			goto error;
 	}
 
-	if (!route->id.logical_rep)
+	/*
+	 * YB: Optimized support for session parameters combines the reset and
+	 * deploy phases to subsequently occur one after another. There is no
+	 * need for a separate reset phase when this flag is enabled.
+	 */
+	if (!instance->config.yb_optimized_session_parameters && !route->id.logical_rep)
 	{
 		char query_reset[] = "RESET ALL";
 		rc = od_backend_query(server, "reset-resetall", query_reset,

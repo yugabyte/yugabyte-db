@@ -256,6 +256,35 @@ size_t WriteBuffer::BytesAfterPosition(const WriteBufferPos& pos) const {
   return result;
 }
 
+Status WriteBuffer::Truncate(const WriteBufferPos& pos) {
+  RSTATUS_DCHECK_LT(
+    pos.index, blocks_.size(), InvalidArgument,
+    Format("Invalid buffer position: block number is $0, but buffer has $1 blocks",
+           pos.index, blocks_.size()));
+  RSTATUS_DCHECK(
+    pos.address >= blocks_[pos.index].data() && pos.address <= blocks_[pos.index].end(),
+    InvalidArgument, "Invalid buffer position: address is outside of the block boundaries");
+  RSTATUS_DCHECK(
+    pos.index < blocks_.size() - 1 || pos.address <= last_block_free_begin_,
+    InvalidArgument, "Invalid buffer position: address is in the block free space");
+  if (pos.index < blocks_.size() - 1) {
+    auto current_last_block = blocks_.end() - 1;
+    auto new_last_block = blocks_.begin() + pos.index;
+    for (auto it = new_last_block; it != blocks_.end(); ++it) {
+      if (consumption_ && *consumption_ && it != new_last_block) {
+        consumption_->Add(-it->size());
+      }
+      if (it != current_last_block) {
+        size_without_last_block_ -= it->size();
+      }
+    }
+    last_block_free_end_ = new_last_block->end();
+    blocks_.erase(new_last_block + 1, blocks_.end());
+  }
+  last_block_free_begin_ = pos.address;
+  return Status::OK();
+}
+
 Slice WriteBuffer::FirstBlockSlice() const {
   return blocks_.size() > 1 ? blocks_[0].AsSlice()
                             : Slice(blocks_[0].data(), last_block_free_begin_);

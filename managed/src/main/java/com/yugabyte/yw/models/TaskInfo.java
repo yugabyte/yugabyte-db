@@ -7,6 +7,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -17,8 +18,10 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.models.helpers.TaskDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.helpers.YBAError;
 import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
@@ -43,9 +46,12 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -61,6 +67,9 @@ public class TaskInfo extends Model {
 
   private static final FetchGroup<TaskInfo> GET_SUBTASKS_FG =
       FetchGroup.of(TaskInfo.class, "uuid, subTaskGroupType, taskState");
+
+  // This is a key lock for task info by UUID.
+  private static final KeyLock<UUID> TASK_INFO_KEY_LOCK = new KeyLock<UUID>();
 
   public static final Set<State> COMPLETED_STATES =
       Sets.immutableEnumSet(State.Success, State.Failure, State.Aborted);
@@ -113,10 +122,12 @@ public class TaskInfo extends Model {
   // The task UUID.
   @Id
   @ApiModelProperty(value = "Task UUID", accessMode = READ_ONLY)
+  @JsonProperty("uuid")
   private UUID uuid;
 
   // The UUID of the parent task (if any; CustomerTasks have no parent)
   @ApiModelProperty(value = "Parent task UUID", accessMode = READ_ONLY)
+  @JsonProperty("parentUuid")
   private UUID parentUuid;
 
   // The position within the parent task's taskQueue (-1 for a CustomerTask)
@@ -124,38 +135,45 @@ public class TaskInfo extends Model {
   @ApiModelProperty(
       value = "The task's position with its parent task's queue",
       accessMode = READ_ONLY)
+  @JsonProperty("position")
   private Integer position = -1;
 
   // The task type.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Task type", accessMode = READ_ONLY)
+  @JsonProperty("taskType")
   private final TaskType taskType;
 
   // The task state.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Task state", accessMode = READ_ONLY)
+  @JsonProperty("taskState")
   private State taskState = State.Created;
 
   // The subtask group type (if it is a subtask)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Subtask type", accessMode = READ_ONLY)
+  @JsonProperty("subTaskGroupType")
   private UserTaskDetails.SubTaskGroupType subTaskGroupType;
 
   // The task creation time.
   @WhenCreated
   @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY, example = "1624295239113")
+  @JsonProperty("createTime")
   private Date createTime;
 
   // The task update time. Time of the latest update (including heartbeat updates) on this task.
   @WhenModified
   @ApiModelProperty(value = "Updated time", accessMode = READ_ONLY, example = "1624295239113")
+  @JsonProperty("updateTime")
   private Date updateTime;
 
   // The percentage completeness of the task, which is a number from 0 to 100.
   @Column(columnDefinition = "integer default 0")
   @ApiModelProperty(value = "Percentage complete", accessMode = READ_ONLY)
+  @JsonProperty("percentDone")
   private Integer percentDone = 0;
 
   // Task input parameters.
@@ -163,6 +181,7 @@ public class TaskInfo extends Model {
   @Column(columnDefinition = "TEXT default '{}'", nullable = false)
   @DbJson
   @ApiModelProperty(value = "Task params", accessMode = READ_ONLY, required = true)
+  @JsonProperty("taskParams")
   private JsonNode taskParams;
 
   // Execution or runtime details of the task.
@@ -171,6 +190,7 @@ public class TaskInfo extends Model {
   @Column(columnDefinition = "TEXT")
   @DbJson
   @ApiModelProperty(value = "Task details", accessMode = READ_ONLY)
+  @JsonProperty("details")
   private TaskDetails details;
 
   // Identifier of the process owning the task.
@@ -180,11 +200,74 @@ public class TaskInfo extends Model {
       value = "ID of the process that owns this task",
       accessMode = READ_ONLY,
       required = true)
+  @JsonProperty("owner")
   private String owner;
 
   public TaskInfo(TaskType taskType, UUID taskUUID) {
     this.taskType = taskType;
     this.uuid = taskUUID;
+  }
+
+  @JsonCreator
+  public TaskInfo(
+      @JsonProperty("uuid") UUID uuid,
+      @JsonProperty("parentUuid") UUID parentUuid,
+      @JsonProperty("position") Integer position,
+      @JsonProperty("taskType") TaskType taskType,
+      @JsonProperty("taskState") State taskState,
+      @JsonProperty("subTaskGroupType") UserTaskDetails.SubTaskGroupType subTaskGroupType,
+      @JsonProperty("createTime") Date createTime,
+      @JsonProperty("updateTime") Date updateTime,
+      @JsonProperty("percentDone") Integer percentDone,
+      @JsonProperty("taskParams") JsonNode taskParams,
+      @JsonProperty("details") TaskDetails details,
+      @JsonProperty("owner") String owner) {
+    this.uuid = uuid;
+    this.parentUuid = parentUuid;
+    this.position = position != null ? position : -1;
+    this.taskType = taskType;
+    this.taskState = taskState != null ? taskState : State.Created;
+    this.subTaskGroupType = subTaskGroupType;
+    this.createTime = createTime;
+    this.updateTime = updateTime;
+    this.percentDone = percentDone != null ? percentDone : 0;
+    this.taskParams = taskParams;
+    this.details = details;
+    this.owner = owner;
+  }
+
+  /**
+   * Update the task info record in transaction. Use this for updates by tasks.
+   *
+   * @param taskUuid the task UUID.
+   * @param updater the updater to change the fields.
+   * @return the updated task info.
+   */
+  public static TaskInfo updateInTxn(UUID taskUuid, Consumer<TaskInfo> updater) {
+    TASK_INFO_KEY_LOCK.acquireLock(taskUuid);
+    try {
+      // Perform the below code block in transaction.
+      AtomicReference<TaskInfo> taskInfoRef = new AtomicReference<>();
+      TransactionUtil.doInTxn(
+          () -> {
+            TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
+            updater.accept(taskInfo);
+            taskInfo.save();
+          },
+          TransactionUtil.DEFAULT_RETRY_CONFIG);
+      return taskInfoRef.get();
+    } finally {
+      TASK_INFO_KEY_LOCK.releaseLock(taskUuid);
+    }
+  }
+
+  /**
+   * Inherit properties or fields from the previous task info on retry.
+   *
+   * @param previousTaskInfo the previous task info.
+   */
+  public void inherit(TaskInfo previousTaskInfo) {
+    setRuntimeInfo(previousTaskInfo.getRuntimeInfo());
   }
 
   @JsonIgnore
@@ -229,6 +312,22 @@ public class TaskInfo extends Model {
     details.setVersion(version);
   }
 
+  @JsonIgnore
+  public synchronized JsonNode getRuntimeInfo() {
+    if (details == null) {
+      return null;
+    }
+    return details.getRuntimeInfo();
+  }
+
+  @JsonIgnore
+  public synchronized void setRuntimeInfo(JsonNode taskRuntimeInfo) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setRuntimeInfo(taskRuntimeInfo);
+  }
+
   public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
   }
@@ -250,6 +349,9 @@ public class TaskInfo extends Model {
   }
 
   public static Optional<TaskInfo> maybeGet(UUID taskUUID) {
+    if (Objects.isNull(taskUUID)) {
+      return Optional.empty();
+    }
     return Optional.ofNullable(get(taskUUID));
   }
 

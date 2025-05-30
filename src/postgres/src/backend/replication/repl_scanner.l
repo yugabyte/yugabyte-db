@@ -127,8 +127,11 @@ NOEXPORT_SNAPSHOT	{ return K_NOEXPORT_SNAPSHOT; }
 USE_SNAPSHOT		{ return K_USE_SNAPSHOT; }
 WAIT				{ return K_WAIT; }
 
-SEQUENCE			{ return K_YB_SEQUENCE; }
+	/* YB */
 HYBRID_TIME			{ return K_YB_HYBRID_TIME; }
+ROW				{ return K_YB_ROW; }
+SEQUENCE			{ return K_YB_SEQUENCE; }
+TRANSACTION			{ return K_YB_TRANSACTION; }
 
 {space}+		{ /* do nothing */ }
 

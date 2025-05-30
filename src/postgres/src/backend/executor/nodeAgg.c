@@ -276,9 +276,9 @@
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "catalog/yb_type.h"
+#include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"
 #include "utils/rel.h"
@@ -454,8 +454,11 @@ static void build_pertrans_for_aggref(AggStatePerTrans pertrans,
 									  Oid aggdeserialfn, Datum initValue,
 									  bool initValueIsNull, Oid *inputTypes,
 									  int numArguments);
+
+/* YB declarations */
 static void yb_agg_pushdown_supported(AggState *aggstate);
 static void yb_agg_pushdown(AggState *aggstate);
+
 
 /*
  * Select the current grouping set; affects current_set and
@@ -582,7 +585,7 @@ fetch_input_tuple(AggState *aggstate)
  * This function handles only one grouping set, already set in
  * aggstate->current_set.
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 initialize_aggregate(AggState *aggstate, AggStatePerTrans pertrans,
@@ -669,7 +672,7 @@ initialize_aggregate(AggState *aggstate, AggStatePerTrans pertrans,
  * NB: This cannot be used for hash aggregates, as for those the grouping set
  * number has to be specified from further up.
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 initialize_aggregates(AggState *aggstate,
@@ -822,7 +825,7 @@ advance_transition_function(AggState *aggstate,
  * and one for hashed; we do them both here, to avoid multiple evaluation of
  * the inputs.
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 advance_aggregates(AggState *aggstate)
@@ -854,7 +857,7 @@ advance_aggregates(AggState *aggstate)
  * This function handles only one grouping set (already set in
  * aggstate->current_set).
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 process_ordered_aggregate_single(AggState *aggstate,
@@ -946,7 +949,7 @@ process_ordered_aggregate_single(AggState *aggstate,
  * This function handles only one grouping set (already set in
  * aggstate->current_set).
  *
- * When called, GetCurrentMemoryContext() should be the per-query context.
+ * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
 process_ordered_aggregate_multi(AggState *aggstate,
@@ -1036,7 +1039,7 @@ process_ordered_aggregate_multi(AggState *aggstate,
  * aggstate->current_set).
  *
  * The finalfn will be run, and the result delivered, in the
- * output-tuple context; caller's GetCurrentMemoryContext() does not matter.
+ * output-tuple context; caller's CurrentMemoryContext does not matter.
  *
  * The finalfn uses the state as set in the transno. This also might be
  * being used by another aggregate function, so it's important that we do
@@ -1130,7 +1133,7 @@ finalize_aggregate(AggState *aggstate,
 	 * If result is pass-by-ref, make sure it is in the right context.
 	 */
 	if (!peragg->resulttypeByVal && !*resultIsNull &&
-		!MemoryContextContains(GetCurrentMemoryContext(),
+		!MemoryContextContains(CurrentMemoryContext,
 							   DatumGetPointer(*resultVal)))
 		*resultVal = datumCopy(*resultVal,
 							   peragg->resulttypeByVal,
@@ -1143,7 +1146,7 @@ finalize_aggregate(AggState *aggstate,
  * Compute the output value of one partial aggregate.
  *
  * The serialization function will be run, and the result delivered, in the
- * output-tuple context; caller's GetCurrentMemoryContext() does not matter.
+ * output-tuple context; caller's CurrentMemoryContext does not matter.
  */
 static void
 finalize_partialaggregate(AggState *aggstate,
@@ -1170,12 +1173,6 @@ finalize_partialaggregate(AggState *aggstate,
 		}
 		else
 		{
-#ifdef NEIL
-/* NEIL: Need to lookinto fcinfo->args[0]
- *    fcinfo->args[0].value vs fcinfo->arg[0]
- *    fcinfo->args[0].isnull vs fcinfo->argnull[0]
- */
-#endif
 			FunctionCallInfo fcinfo = pertrans->serialfn_fcinfo;
 
 			fcinfo->args[0].value =
@@ -1184,6 +1181,7 @@ finalize_partialaggregate(AggState *aggstate,
 										   pertrans->transtypeLen);
 			fcinfo->args[0].isnull = pergroupstate->transValueIsNull;
 			fcinfo->isnull = false;
+
 			*resultVal = FunctionCallInvoke(fcinfo);
 			*resultIsNull = fcinfo->isnull;
 		}
@@ -1197,7 +1195,7 @@ finalize_partialaggregate(AggState *aggstate,
 
 	/* If result is pass-by-ref, make sure it is in the right context. */
 	if (!peragg->resulttypeByVal && !*resultIsNull &&
-		!MemoryContextContains(GetCurrentMemoryContext(),
+		!MemoryContextContains(CurrentMemoryContext,
 							   DatumGetPointer(*resultVal)))
 		*resultVal = datumCopy(*resultVal,
 							   peragg->resulttypeByVal,
@@ -2207,7 +2205,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		 * We can pushdown recheck conditions, so the only time we can't
 		 * pushdown the aggregate is if we have local recheck conditions
 		 */
-		if (btss->recheck_required && btss->recheck_local_quals)
+		if (btss->btss_might_recheck && btss->recheck_local_quals)
 			return;
 
 		/*
@@ -2442,7 +2440,7 @@ ExecAgg(PlanState *pstate)
 	if (!node->agg_done)
 	{
 		/*
-		 * Use default prefetch limit when AGGREGATE is present.
+		 * YB: Use default prefetch limit when AGGREGATE is present.
 		 * Aggregate functions combine multiple rows into one. The final LIMIT can be different from
 		 * the number of rows to be read. As a result, we have to use default prefetch limit.
 		 *
@@ -2459,7 +2457,8 @@ ExecAgg(PlanState *pstate)
 			case AGG_HASHED:
 				if (!node->table_filled)
 					agg_fill_hash_table(node);
-				switch_fallthrough();
+				/* FALLTHROUGH */
+				yb_switch_fallthrough();
 			case AGG_MIXED:
 				result = agg_retrieve_hash_table(node);
 				break;
@@ -3421,8 +3420,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, sizeof(uint32), nread)));
 	if (hashp != NULL)
 		*hashp = hash;
 
@@ -3430,8 +3429,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, sizeof(uint32), nread)));
 
 	tuple = (MinimalTuple) palloc(t_len);
 	tuple->t_len = t_len;
@@ -3442,8 +3441,8 @@ hashagg_batch_read(HashAggBatch *batch, uint32 *hashp)
 	if (nread != t_len - sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
-						tape, t_len - sizeof(uint32), nread)));
+				 errmsg_internal("unexpected EOF for tape %p: requested %zu bytes, read %zu bytes",
+								 tape, t_len - sizeof(uint32), nread)));
 
 	return tuple;
 }

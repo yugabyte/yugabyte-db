@@ -16,7 +16,7 @@ This document describes how to create, use, and manage views in YSQL.
 
 Regular views allow you to present data in YugabyteDB tables by using a different variety of named queries. In essence, a view is a proxy for a complex query to which you assign a name. In YSQL, views do not store data. However, YSQL also supports materialized views which _do_ store the results of the query.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Create views
 

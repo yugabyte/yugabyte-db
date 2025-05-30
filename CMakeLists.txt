@@ -30,7 +30,7 @@
 # under the License.
 #
 
-cmake_minimum_required(VERSION 3.17.3)
+cmake_minimum_required(VERSION 3.31.0)
 
 project(YugabyteDB)
 
@@ -56,6 +56,9 @@ include(YugabyteFunctions)
 ENFORCE_OUT_OF_SOURCE_BUILD()
 yb_initialize_constants()
 include(YugabyteTesting)
+
+# We don't use modules, so no need to scan.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -Wall")
@@ -288,6 +291,14 @@ else()
   message("CMake will not export the compilation database")
 endif()
 
+# DocumentDB extension is not available in aarch64 and arm64(#26954) builds.
+# (#26948): Builds like those on ubuntu22.04 do not have libpcre2, which this extension depends on.
+find_library(PCRE2_LIB libpcre2-posix.so)
+if(PCRE2_LIB AND NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$" )
+  set(YB_ENABLE_YSQL_DOCUMENTDB_EXT TRUE)
+  ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
+endif()
+
 # -------------------------------------------------------------------------------------------------
 # Build type (debug, release, fastdebug, etc.)
 # -------------------------------------------------------------------------------------------------
@@ -358,6 +369,7 @@ ADD_CXX_FLAGS("-Werror=return-type")
 ADD_CXX_FLAGS("-Werror=non-virtual-dtor")
 
 if(IS_CLANG)
+  ADD_CXX_FLAGS("-ftime-trace")
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
@@ -366,6 +378,13 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Wthread-safety-reference")
   ADD_CXX_FLAGS("-Wthread-safety-precise")
   ADD_CXX_FLAGS("-Wshorten-64-to-32")
+
+  # Allow variable length arrays in C++.
+
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "18.0.0" OR
+     (APPLE AND "${YB_COMPILER_TYPE}" STREQUAL "clang" AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "17.0.0"))
+     ADD_CXX_FLAGS("-Wno-vla-cxx-extension")
+  endif()
 endif()
 
 if(USING_LINUXBREW AND IS_CLANG)
@@ -380,7 +399,7 @@ if(IS_GCC)
   # TODO: Subtitute it with '-as-needed' instead to avoid linking with unused library (issue #1495)
   # for reducing pocess start time
   ADD_LINKER_FLAGS("-Wl,-no-as-needed")
-  if ("${COMPILER_VERSION}" MATCHES "^1[123][.].*$")
+  if ("${COMPILER_VERSION}" MATCHES "^1[1234][.].*$")
     # To silence these spurious warnings:
     # https://gist.githubusercontent.com/mbautin/60c7fb897a92b998a111ff38429a1158/raw
     # https://gist.githubusercontent.com/mbautin/56b95b7a6816ccdf77eaa60f53a7d3ef/raw
@@ -388,7 +407,7 @@ if(IS_GCC)
     ADD_CXX_FLAGS("-Wno-stringop-overflow")
     ADD_CXX_FLAGS("-Wno-stringop-overread")
   endif()
-  if ("${COMPILER_VERSION}" MATCHES "^1[23][.].*$")
+  if ("${COMPILER_VERSION}" MATCHES "^1[234][.].*$")
     if("${YB_BUILD_TYPE}" STREQUAL "release")
       # To avoid https://github.com/yugabyte/yugabyte-db/issues/16076
       ADD_CXX_FLAGS("-Wno-restrict")
@@ -398,20 +417,22 @@ if(IS_GCC)
       ADD_CXX_FLAGS("-Wno-maybe-uninitialized")
     endif()
   endif()
-  if ("${COMPILER_VERSION}" MATCHES "^13[.].*$" AND
+  if ("${COMPILER_VERSION}" MATCHES "^1[34][.].*$" AND
       "${YB_BUILD_TYPE}" STREQUAL "release")
     # GCC 13 wants us to e.g. initalize an array of void* values in the StackTrace class, which is
     # unnecessary. This does not happen in debug.
     # https://gist.githubusercontent.com/mbautin/02d955abbee29f58c0d0d9cf7ab3291d/raw
     ADD_CXX_FLAGS("-Wno-uninitialized")
   endif()
-  if ("${COMPILER_VERSION}" MATCHES "^1[23][.].*$" AND
-      "${YB_BUILD_TYPE}" STREQUAL "release")
-    # Also the use-after-free detector complains about Boost multi index container in both GCC 12
-    # and GCC 13.
+  if ("${COMPILER_VERSION}" MATCHES "^1[234][.].*$")
+    # Also the use-after-free detector complains about Boost multi index container in GCC 12+.
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
+
+  # This normally gets disabled automatically (with a warning) for some files due to size of code.
+  # Disable it explicitly to avoid the warning about it getting disabled automatically.
+  ADD_CXX_FLAGS("-Wno-misleading-indentation")
 endif()
 
 if(USING_LINUXBREW)
@@ -824,7 +845,7 @@ string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 yb_deduplicate_arguments(CMAKE_C_FLAGS)
 # -------------------------------------------------------------------------------------------------
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 yb_deduplicate_arguments(CMAKE_CXX_FLAGS)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -876,6 +897,7 @@ set(YB_SUBDIR_NAMES
     fs
     gen_yrpc
     gutil
+    hnsw
     integration-tests
     master
     qlexpr

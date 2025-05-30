@@ -20,9 +20,14 @@
 struct Plan;					/* avoid including plannodes.h here */
 struct PlannedStmt;
 
+/* Flags for pg_get_indexdef_columns_extended() */
+#define RULE_INDEXDEF_PRETTY		0x01
+#define RULE_INDEXDEF_KEYS_ONLY		0x02	/* ignore included attributes */
 
 extern char *pg_get_indexdef_string(Oid indexrelid);
 extern char *pg_get_indexdef_columns(Oid indexrelid, bool pretty);
+extern char *pg_get_indexdef_columns_extended(Oid indexrelid,
+											  bits16 flags);
 extern char *pg_get_querydef(Query *query, bool pretty);
 
 extern char *pg_get_partkeydef_columns(Oid relid, bool pretty);
@@ -44,6 +49,7 @@ extern char *get_range_partbound_string(List *bound_datums);
 
 extern char *pg_get_statisticsobjdef_string(Oid statextid);
 
+/* YB */
 extern char *yb_deparse_expression(Node *expr, List *dpcontext,
 								   bool forceprefix, bool showimplicit,
 								   bool verbose);

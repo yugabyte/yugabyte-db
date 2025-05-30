@@ -73,6 +73,7 @@ DataType InternalToDataType(InternalType internal_type) {
     case InternalType::kGinNullValue: // No such type in YCQL.
     case InternalType::VALUE_NOT_SET:
     case InternalType::kVirtualValue:
+    case InternalType::kBsonValue: // No such type in YCQL.
       break;
   }
   LOG(FATAL) << "Internal error: unsupported type " << internal_type;
@@ -109,6 +110,7 @@ std::string InternalTypeToCQLString(InternalType internal_type) {
     case InternalType::kVirtualValue: return "virtual";
     case InternalType::kGinNullValue: return "unknown"; // No such type in YCQL.
     case InternalType::kTupleValue: return "tuple";
+    case InternalType::kBsonValue: return "unknown"; // No such type in YCQL.
   }
   LOG (FATAL) << "Invalid datatype: " << internal_type;
   return "Undefined Type";

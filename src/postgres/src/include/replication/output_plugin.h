@@ -9,8 +9,10 @@
 #ifndef OUTPUT_PLUGIN_H
 #define OUTPUT_PLUGIN_H
 
-#include "postgres_ext.h"
 #include "replication/reorderbuffer.h"
+
+/* YB includes */
+#include "postgres_ext.h"
 
 struct LogicalDecodingContext;
 struct OutputPluginCallbacks;
@@ -29,6 +31,7 @@ typedef struct OutputPluginOptions
 	OutputPluginOutputType output_type;
 	bool		receive_rewrites;
 
+	/* YB */
 	List	   *yb_publication_names;
 } OutputPluginOptions;
 
@@ -212,13 +215,15 @@ typedef void (*LogicalDecodeStreamTruncateCB) (struct LogicalDecodingContext *ct
 											   ReorderBufferChange *change);
 
 /*
- * Called to let the output plugin know about the schema change of a Relation.
+ * YB: Called to let the output plugin know about the schema change of a
+ * Relation.
  */
 typedef void (*YBLogicalDecodeSchemaChangeCB) (struct LogicalDecodingContext *ctx,
 											   Oid relid);
 
 /*
- * Called to let the output plugin know about supporting yb specifc replica identity like CHANGE.
+ * YB: Called to let the output plugin know about supporting yb specifc replica
+ * identity like CHANGE.
  */
 typedef void (*YBLogicalDecodeEnableYBSpecficReplicaIdentityCB) (bool enable_support_for_yb_specific_replica_identity);
 
@@ -253,6 +258,7 @@ typedef struct OutputPluginCallbacks
 	LogicalDecodeStreamMessageCB stream_message_cb;
 	LogicalDecodeStreamTruncateCB stream_truncate_cb;
 
+	/* YB */
 	YBLogicalDecodeSchemaChangeCB yb_schema_change_cb;
 	YBLogicalDecodeEnableYBSpecficReplicaIdentityCB yb_support_yb_specifc_replica_identity_cb;
 } OutputPluginCallbacks;

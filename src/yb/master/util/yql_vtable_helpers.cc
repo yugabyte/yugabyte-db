@@ -133,7 +133,7 @@ QLValuePB GetValueHelper<std::string>::Apply(const std::string& strval, const Da
       value_pb.set_binary_value(strval);
       break;
     default:
-      LOG(ERROR) << "unexpected string type " << data_type;
+      LOG(DFATAL) << "unexpected string type " << data_type;
       break;
   }
   return value_pb;
@@ -150,7 +150,7 @@ QLValuePB GetValueHelper<std::string>::Apply(
       value_pb.set_binary_value(strval, len);
       break;
     default:
-      LOG(ERROR) << "unexpected string type " << data_type;
+      LOG(DFATAL) << "unexpected string type " << data_type;
       break;
   }
   return value_pb;
@@ -172,7 +172,7 @@ QLValuePB GetValueHelper<int32_t>::Apply(const int32_t intval, const DataType da
       value_pb.set_int8_value(intval);
       break;
     default:
-      LOG(ERROR) << "unexpected int type " << data_type;
+      LOG(DFATAL) << "unexpected int type " << data_type;
       break;
   }
   return value_pb;

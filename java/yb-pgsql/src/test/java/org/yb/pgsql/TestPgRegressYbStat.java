@@ -28,7 +28,6 @@ public class TestPgRegressYbStat extends BasePgRegressTest {
     return 1800;
   }
 
-  @Ignore("#24297 - skipping until yb_terminated_queries is enabled")
   @Test
   public void testYbStat() throws Exception {
     // (DB-13032) This test touches system tables, so enable stickiness for

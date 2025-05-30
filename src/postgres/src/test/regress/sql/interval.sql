@@ -129,6 +129,14 @@ SET IntervalStyle to postgres_verbose;
 
 SELECT * FROM INTERVAL_TBL;
 
+-- multiplication and division overflow test cases
+SELECT '3000000 months'::interval * 1000;
+SELECT '3000000 months'::interval / 0.001;
+SELECT '3000000 days'::interval * 1000;
+SELECT '3000000 days'::interval / 0.001;
+SELECT '1 month 2146410 days'::interval * 1000.5002;
+SELECT '4611686018427387904 usec'::interval / 0.1;
+
 -- test avg(interval), which is somewhat fragile since people have been
 -- known to change the allowed input syntax for type interval without
 -- updating pg_aggregate.agginitval
@@ -277,6 +285,9 @@ SELECT  interval '-23 hours 45 min 12.34 sec',
         interval '-1 year 2 months 1 day 23 hours 45 min 12.34 sec',
         interval '-1 year 2 months 1 day 23 hours 45 min +12.34 sec';
 
+-- edge case for sign-matching rules
+SELECT  interval '';  -- error
+
 -- test outputting iso8601 intervals
 SET IntervalStyle to iso_8601;
 select  interval '0'                                AS "zero",
@@ -318,6 +329,7 @@ select interval 'P1.0Y0M3DT4H5M6S';
 select interval 'P1.1Y0M3DT4H5M6S';
 select interval 'P1.Y0M3DT4H5M6S';
 select interval 'P.1Y0M3DT4H5M6S';
+select interval 'P10.5e4Y';  -- not per spec, but we've historically taken it
 select interval 'P.Y0M3DT4H5M6S';  -- error
 
 -- test a couple rounding cases that changed since 8.3 w/ HAVE_INT64_TIMESTAMP.

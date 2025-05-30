@@ -19,8 +19,6 @@
 #include <concepts>
 #include <thread>
 
-#include <cds/init.h>
-
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
@@ -48,12 +46,11 @@ class ThreadHolder {
  public:
   // verbose means we will log messages when joining threads, etc. It is useful in a unit test but
   // less useful in a command-line tool.
-  explicit ThreadHolder(bool verbose = true) : verbose_(verbose) { cds::Initialize(); }
+  explicit ThreadHolder(bool verbose = true) : verbose_(verbose) {}
 
   ~ThreadHolder() {
     stop_flag_.store(true, std::memory_order_release);
     JoinAll();
-    cds::Terminate();
   }
 
   template <class... Args>
@@ -68,7 +65,6 @@ class ThreadHolder {
   template <class Functor>
   void AddThreadFunctor(const Functor& functor) {
     AddThread([&stop = stop_flag_, functor] {
-      CDSAttacher attacher;
       SetFlagOnExit set_stop_on_exit(&stop);
       functor();
     });

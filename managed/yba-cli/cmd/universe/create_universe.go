@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -28,6 +30,7 @@ var v1 = viper.New()
 var createUniverseCmd = &cobra.Command{
 	Use:     "create",
 	Aliases: []string{"add"},
+	GroupID: "action",
 	Short:   "Create YugabyteDB Anywhere universe",
 	Long:    "Create an universe in YugabyteDB Anywhere",
 	Example: `yba universe create -n <universe-name> --provider-code <provider-code> \
@@ -55,9 +58,46 @@ var createUniverseCmd = &cobra.Command{
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to create\n", formatter.RedColor))
 		}
+
+		providerCode := v1.GetString("provider-code")
+		if len(strings.TrimSpace(providerCode)) == 0 {
+			cmd.Help()
+			logrus.Fatalln(
+				formatter.Colorize(
+					"No provider code found to create universe\n",
+					formatter.RedColor,
+				),
+			)
+		}
+
+		if strings.EqualFold(providerCode, util.GCPProviderType) ||
+			strings.EqualFold(providerCode, util.K8sProviderType) {
+
+			specialCharsRegex := regexp.MustCompile(`^[a-z0-9-]*$`)
+
+			if !specialCharsRegex.MatchString(universeName) {
+				cmd.Help()
+				logrus.Fatalln(
+					formatter.Colorize(
+						"Name can only contain lowercase letters, numbers and hyphens in GCP or Kubernetes universes\n",
+						formatter.RedColor,
+					),
+				)
+			}
+		}
+
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 		if enableVolumeEncryption {
-			cmd.MarkFlagRequired("kms-config")
+			kmsConfigName := v1.GetString("kms-config")
+			if len(strings.TrimSpace(kmsConfigName)) == 0 {
+				cmd.Help()
+				logrus.Fatalln(
+					formatter.Colorize(
+						"No kms config name found while enabling volume encryption\n",
+						formatter.RedColor,
+					),
+				)
+			}
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -108,6 +148,15 @@ var createUniverseCmd = &cobra.Command{
 							formatter.Colorize(clientRootCACertUUID, formatter.GreenColor)), "\n")
 				}
 			}
+			if len(clientRootCACertUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf(
+						"Client root certificate %s not found\n",
+						clientRootCA,
+					),
+					formatter.RedColor,
+				))
+			}
 		}
 
 		rootCACertUUID := ""
@@ -115,7 +164,6 @@ var createUniverseCmd = &cobra.Command{
 
 		// find the root certficate UUID from the name
 		if len(rootCA) != 0 {
-
 			for _, c := range certs {
 				if strings.Compare(c.GetLabel(), rootCA) == 0 {
 					rootCACertUUID = c.GetUuid()
@@ -125,6 +173,10 @@ var createUniverseCmd = &cobra.Command{
 							formatter.Colorize(rootCACertUUID, formatter.GreenColor)), "\n")
 				}
 			}
+			if len(rootCACertUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf("Root certificate %s not found\n", rootCA), formatter.RedColor))
+			}
 		}
 
 		kmsConfigUUID := ""
@@ -132,11 +184,8 @@ var createUniverseCmd = &cobra.Command{
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 
 		if enableVolumeEncryption {
-			opType = util.EnableKMSOpType
-			kmsConfigName, err := cmd.Flags().GetString("kms-config")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
+			opType = util.EnableOpType
+			kmsConfigName := v1.GetString("kms-config")
 			// find kmsConfigUUID from the name
 			kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
 			if err != nil {
@@ -160,6 +209,10 @@ var createUniverseCmd = &cobra.Command{
 						}
 					}
 				}
+			}
+			if len(kmsConfigUUID) == 0 {
+				logrus.Fatalf(formatter.Colorize(
+					fmt.Sprintf("KMS config %s not found\n", kmsConfigName), formatter.RedColor))
 			}
 		}
 
@@ -301,12 +354,13 @@ func init() {
 	createUniverseCmd.Flags().StringArray("preferred-region", []string{},
 		"[Optional] Preferred region to place the node of the cluster in. "+
 			"Provide preferred regions for each cluster as a separate flag. (default [])")
+	// Zones would be a []([]string) array
 
 	createUniverseCmd.Flags().String("master-gflags", "",
 		"[Optional] Master GFlags in map (JSON or YAML) format. "+
 			"Provide the gflags in the following formats: "+
-			"\"--master-gflags {\"master-gflag-key-1\":\"value-1\","+
-			"\"master-gflag-key-2\":\"value-2\" }\" or"+
+			"\"--master-gflags '{\"master-gflag-key-1\":\"value-1\","+
+			"\"master-gflag-key-2\":\"value-2\" }'\" or"+
 			"  \"--master-gflags \"master-gflag-key-1: value-1\nmaster-gflag-key-2"+
 			": value-2\nmaster-gflag-key-3: value-3\".")
 
@@ -357,6 +411,7 @@ func init() {
 	createUniverseCmd.Flags().StringArray("storage-type", []string{},
 		"[Optional] Storage type (EBS for AWS) used for this instance. Provide the storage type "+
 			" of volumes for each cluster as a separate flag. "+
+			"Run \"yba provider [aws/azure/gcp] instance-type supported-storage\" to check list of supported storage types. "+
 			"Defaults to \"GP3\" for aws, \"Premium_LRS\" for azure and \"Persistent\" for gcp.")
 	createUniverseCmd.Flags().StringArray("storage-class", []string{},
 		"[Optional] Name of the storage class, supported for Kubernetes. Provide "+
@@ -412,12 +467,10 @@ func init() {
 	createUniverseCmd.Flags().Int("dedicated-master-throughput", 125,
 		"[Optional] Desired throughput for the volumes mounted on this instance in MB/s, "+
 			"supported only for AWS.")
-	createUniverseCmd.Flags().Float64Slice("k8s-master-mem-size", []float64{4, 4},
-		"[Optional] Memory size of the kubernetes master node in GB. Provide k8s-tserver-mem-size "+
-			"for each cluster as a separate flag or as comma separated values.")
-	createUniverseCmd.Flags().Float64Slice("k8s-master-cpu-core-count", []float64{2, 2},
-		"[Optional] CPU core count of the kubernetes master node. Provide k8s-tserver-cpu-core-count "+
-			"for each cluster as a separate flag or as comma separated values.")
+	createUniverseCmd.Flags().Float64("k8s-master-mem-size", 4,
+		"[Optional] Memory size of the kubernetes master node in GB.")
+	createUniverseCmd.Flags().Float64("k8s-master-cpu-core-count", 2,
+		"[Optional] CPU core count of the kubernetes master node.")
 
 	createUniverseCmd.Flags().Bool("use-spot-instance", false,
 		"[Optional] Use spot instances for cloud provider based universe nodes. (default false)")
@@ -498,6 +551,7 @@ func init() {
 
 	// Inputs for communication ports
 
+	// communicationPortsFlags := pflag.NewFlagSet("Communication Ports", pflag.ContinueOnError)
 	createUniverseCmd.Flags().Int("master-http-port", 7000,
 		"[Optional] Master HTTP Port.")
 	createUniverseCmd.Flags().Int("master-rpc-port", 7100,
@@ -521,6 +575,18 @@ func init() {
 	createUniverseCmd.Flags().Int("ysql-server-rpc-port", 5433,
 		"[Optional] YSQL Server RPC Port.")
 
+	// createUniverseCmd.Flags().AddFlagSet(communicationPortsFlags)
+
+	previewFlags := pflag.FlagSet{}
+	previewFlags.String("connection-pooling", "disable",
+		"[Optional] Connection Pooling setting for the universe. "+
+			"Enable \"yb.universe.allow_connection_pooling\" runtime configuration"+
+			" to allow enabling connection pooling in universes. Allowed values: enable, disable.")
+	previewFlags.Int("internal-ysql-server-rpc-port", 6433,
+		"[Optional] Internal YSQL Server RPC Port used when connection pooling is enabled.")
+	util.PreviewFlag(createUniverseCmd, &previewFlags,
+		[]string{"connection-pooling", "internal-ysql-server-rpc-port"})
+
 	v1.BindPFlag("name", createUniverseCmd.Flags().Lookup("name"))
 	v1.BindPFlag("cpu-architecture", createUniverseCmd.Flags().Lookup("cpu-architecture"))
 	v1.BindPFlag("linux-version", createUniverseCmd.Flags().Lookup("linux-version"))
@@ -543,28 +609,67 @@ func init() {
 	v1.BindPFlag("disk-iops", createUniverseCmd.Flags().Lookup("disk-iops"))
 	v1.BindPFlag("throughput", createUniverseCmd.Flags().Lookup("throughput"))
 	v1.BindPFlag("k8s-tserver-mem-size", createUniverseCmd.Flags().Lookup("k8s-tserver-mem-size"))
-	v1.BindPFlag("k8s-tserver-cpu-core-count", createUniverseCmd.Flags().Lookup("k8s-tserver-cpu-core-count"))
-	v1.BindPFlag("dedicated-master-instance-type", createUniverseCmd.Flags().Lookup("dedicated-master-instance-type"))
-	v1.BindPFlag("dedicated-master-num-volumes", createUniverseCmd.Flags().Lookup("dedicated-master-num-volumes"))
-	v1.BindPFlag("dedicated-master-volume-size", createUniverseCmd.Flags().Lookup("dedicated-master-volume-size"))
-	v1.BindPFlag("dedicated-master-mount-points", createUniverseCmd.Flags().Lookup("dedicated-master-mount-points"))
-	v1.BindPFlag("dedicated-master-storage-type", createUniverseCmd.Flags().Lookup("dedicated-master-storage-type"))
-	v1.BindPFlag("dedicated-master-storage-class", createUniverseCmd.Flags().Lookup("dedicated-master-storage-class"))
-	v1.BindPFlag("dedicated-master-disk-iops", createUniverseCmd.Flags().Lookup("dedicated-master-disk-iops"))
-	v1.BindPFlag("dedicated-master-throughput", createUniverseCmd.Flags().Lookup("dedicated-master-throughput"))
+	v1.BindPFlag(
+		"k8s-tserver-cpu-core-count",
+		createUniverseCmd.Flags().Lookup("k8s-tserver-cpu-core-count"),
+	)
+	v1.BindPFlag(
+		"dedicated-master-instance-type",
+		createUniverseCmd.Flags().Lookup("dedicated-master-instance-type"),
+	)
+	v1.BindPFlag(
+		"dedicated-master-num-volumes",
+		createUniverseCmd.Flags().Lookup("dedicated-master-num-volumes"),
+	)
+	v1.BindPFlag(
+		"dedicated-master-volume-size",
+		createUniverseCmd.Flags().Lookup("dedicated-master-volume-size"),
+	)
+	v1.BindPFlag(
+		"dedicated-master-mount-points",
+		createUniverseCmd.Flags().Lookup("dedicated-master-mount-points"),
+	)
+	v1.BindPFlag(
+		"dedicated-master-storage-type",
+		createUniverseCmd.Flags().Lookup("dedicated-master-storage-type"),
+	)
+	v1.BindPFlag(
+		"dedicated-master-storage-class",
+		createUniverseCmd.Flags().Lookup("dedicated-master-storage-class"),
+	)
+	v1.BindPFlag(
+		"dedicated-master-disk-iops",
+		createUniverseCmd.Flags().Lookup("dedicated-master-disk-iops"),
+	)
+	v1.BindPFlag(
+		"dedicated-master-throughput",
+		createUniverseCmd.Flags().Lookup("dedicated-master-throughput"),
+	)
 	v1.BindPFlag("k8s-master-mem-size", createUniverseCmd.Flags().Lookup("k8s-master-mem-size"))
-	v1.BindPFlag("k8s-master-cpu-core-count", createUniverseCmd.Flags().Lookup("k8s-master-cpu-core-count"))
+	v1.BindPFlag(
+		"k8s-master-cpu-core-count",
+		createUniverseCmd.Flags().Lookup("k8s-master-cpu-core-count"),
+	)
 	v1.BindPFlag("assign-public-ip", createUniverseCmd.Flags().Lookup("assign-public-ip"))
 	v1.BindPFlag("enable-ysql", createUniverseCmd.Flags().Lookup("enable-ysql"))
 	v1.BindPFlag("ysql-password", createUniverseCmd.Flags().Lookup("ysql-password"))
 	v1.BindPFlag("enable-ycql", createUniverseCmd.Flags().Lookup("enable-ycql"))
 	v1.BindPFlag("ycql-password", createUniverseCmd.Flags().Lookup("ycql-password"))
 	v1.BindPFlag("enable-yedis", createUniverseCmd.Flags().Lookup("enable-yedis"))
-	v1.BindPFlag("enable-node-to-node-encrypt", createUniverseCmd.Flags().Lookup("enable-node-to-node-encrypt"))
-	v1.BindPFlag("enable-client-to-node-encrypt", createUniverseCmd.Flags().Lookup("enable-client-to-node-encrypt"))
+	v1.BindPFlag(
+		"enable-node-to-node-encrypt",
+		createUniverseCmd.Flags().Lookup("enable-node-to-node-encrypt"),
+	)
+	v1.BindPFlag(
+		"enable-client-to-node-encrypt",
+		createUniverseCmd.Flags().Lookup("enable-client-to-node-encrypt"),
+	)
 	v1.BindPFlag("root-ca", createUniverseCmd.Flags().Lookup("root-ca"))
 	v1.BindPFlag("client-root-ca", createUniverseCmd.Flags().Lookup("client-root-ca"))
-	v1.BindPFlag("enable-volume-encryption", createUniverseCmd.Flags().Lookup("enable-volume-encryption"))
+	v1.BindPFlag(
+		"enable-volume-encryption",
+		createUniverseCmd.Flags().Lookup("enable-volume-encryption"),
+	)
 	v1.BindPFlag("kms-config", createUniverseCmd.Flags().Lookup("kms-config"))
 	v1.BindPFlag("enable-ipv6", createUniverseCmd.Flags().Lookup("enable-ipv6"))
 	v1.BindPFlag("yb-db-version", createUniverseCmd.Flags().Lookup("yb-db-version"))
@@ -572,12 +677,21 @@ func init() {
 	v1.BindPFlag("access-key-code", createUniverseCmd.Flags().Lookup("access-key-code"))
 	v1.BindPFlag("aws-arn-string", createUniverseCmd.Flags().Lookup("aws-arn-string"))
 	v1.BindPFlag("user-tags", createUniverseCmd.Flags().Lookup("user-tags"))
-	v1.BindPFlag("kubernetes-universe-overrides-file-path", createUniverseCmd.Flags().Lookup("kubernetes-universe-overrides-file-path"))
-	v1.BindPFlag("kubernetes-az-overrides-file-path", createUniverseCmd.Flags().Lookup("kubernetes-az-overrides-file-path"))
+	v1.BindPFlag(
+		"kubernetes-universe-overrides-file-path",
+		createUniverseCmd.Flags().Lookup("kubernetes-universe-overrides-file-path"),
+	)
+	v1.BindPFlag(
+		"kubernetes-az-overrides-file-path",
+		createUniverseCmd.Flags().Lookup("kubernetes-az-overrides-file-path"),
+	)
 	v1.BindPFlag("master-http-port", createUniverseCmd.Flags().Lookup("master-http-port"))
 	v1.BindPFlag("master-rpc-port", createUniverseCmd.Flags().Lookup("master-rpc-port"))
 	v1.BindPFlag("node-exporter-port", createUniverseCmd.Flags().Lookup("node-exporter-port"))
-	v1.BindPFlag("redis-server-http-port", createUniverseCmd.Flags().Lookup("redis-server-http-port"))
+	v1.BindPFlag(
+		"redis-server-http-port",
+		createUniverseCmd.Flags().Lookup("redis-server-http-port"),
+	)
 	v1.BindPFlag("redis-server-rpc-port", createUniverseCmd.Flags().Lookup("redis-server-rpc-port"))
 	v1.BindPFlag("tserver-http-port", createUniverseCmd.Flags().Lookup("tserver-http-port"))
 	v1.BindPFlag("tserver-rpc-port", createUniverseCmd.Flags().Lookup("tserver-rpc-port"))
@@ -588,6 +702,9 @@ func init() {
 	v1.BindPFlag("use-spot-instance", createUniverseCmd.Flags().Lookup("use-spot-instance"))
 	v1.BindPFlag("spot-price", createUniverseCmd.Flags().Lookup("spot-price"))
 	v1.BindPFlag("exposing-service", createUniverseCmd.Flags().Lookup("exposing-service"))
+
+	util.PreviewFlagViperValue(v1, createUniverseCmd,
+		[]string{"connection-pooling", "internal-ysql-server-rpc-port"})
 
 }
 

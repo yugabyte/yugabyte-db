@@ -1,0 +1,296 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 2300000;
+SET documentdb.next_collection_id TO 23000;
+SET documentdb.next_collection_index_id TO 23000;
+--Test Set1 : array of document Tests
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "c" : 1, "d" : 2 }, { "c" : 5, "d" : 6 } ], "H" : { "c" : 10 } }},','{ "": { "$set": { "a.b.$[].c": 11 } } }', '{}');
+                                                                                                       bson_update_document                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "c" : { "$numberInt" : "11" }, "d" : { "$numberInt" : "2" } }, { "c" : { "$numberInt" : "11" }, "d" : { "$numberInt" : "6" } } ], "H" : { "c" : { "$numberInt" : "10" } } } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"c":5}] }', '{ "": { "$set": { "a.$[].c": 30 } } }', '{}');
+                              bson_update_document                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "c" : { "$numberInt" : "30" } } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "x":[1,2,3,4] }, { "y": [1,2,3,4] } ]  }}','{ "": { "$inc": { "a.b.0.x.$[]": 100 } } }', '{}');
+                                                                                                                                    bson_update_document                                                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "x" : [ { "$numberInt" : "101" }, { "$numberInt" : "102" }, { "$numberInt" : "103" }, { "$numberInt" : "104" } ] }, { "y" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "x":[1,2,3,4] }, { "x": [1,2,3,4] } ]  }}','{ "": { "$inc": { "a.b.$[].x.0": 100 } } }', '{}');
+                                                                                                                                  bson_update_document                                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "x" : [ { "$numberInt" : "101" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "x" : [ { "$numberInt" : "101" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] } }
+(1 row)
+
+-- Test Set2 : Elements in updatespec is not present in Document
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "c" : 1, "d" : 2 }, { "d" : 6 } ], "H" : { "c" : 10 } }},','{ "": { "$set": { "a.b.$[].c": 11 } } }', '{}');
+                                                                                                       bson_update_document                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "c" : { "$numberInt" : "11" }, "d" : { "$numberInt" : "2" } }, { "d" : { "$numberInt" : "6" }, "c" : { "$numberInt" : "11" } } ], "H" : { "c" : { "$numberInt" : "10" } } } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "d" : 2 }, { "d" : 6 } ] }},','{ "": { "$set": { "a.b.$[].c": 11 } } }', '{}');
+                                                                                   bson_update_document                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "d" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "11" } }, { "d" : { "$numberInt" : "6" }, "c" : { "$numberInt" : "11" } } ] } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "x":[1,2,3,4] }, { "y": [1,2,3,4] } ]  }}','{ "": { "$set": { "a.b.$[].c": 11 } } }', '{}');
+                                                                                                                                                               bson_update_document                                                                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ], "c" : { "$numberInt" : "11" } }, { "y" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ], "c" : { "$numberInt" : "11" } } ] } }
+(1 row)
+
+--Test Set3 : $set Operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$set": { "a.$[]": 30 } } }', '{}');
+                                                               bson_update_document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "30" }, { "$numberInt" : "30" }, { "$numberInt" : "30" }, { "$numberInt" : "30" } ] }
+(1 row)
+
+--Test Set4 : $inc Operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$inc": { "a.$[]": 30 } } }', '{}');
+                                                               bson_update_document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "31" }, { "$numberInt" : "32" }, { "$numberInt" : "33" }, { "$numberInt" : "34" } ] }
+(1 row)
+
+--Test Set5 : $min Operator 
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$min": { "a.$[]": 3 } } }', '{}');
+                                                             bson_update_document                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "3" } ] }
+(1 row)
+
+--Test Set6 : $max Operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$max": { "a.$[]": 3 } } }', '{}');
+                                                             bson_update_document                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "3" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+(1 row)
+
+--Test Set7 : $mul Operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$mul": { "a.$[]": 3 } } }', '{}');
+                                                             bson_update_document                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "6" }, { "$numberInt" : "9" }, { "$numberInt" : "12" } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1.0,2.2,3.2,4.3] }', '{ "": { "$mul": { "a.$[]": 3 } } }', '{}');
+                                                                                                  bson_update_document                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberDouble" : "3.0" }, { "$numberDouble" : "6.6000000000000005329" }, { "$numberDouble" : "9.6000000000000014211" }, { "$numberDouble" : "12.899999999999998579" } ] }
+(1 row)
+
+--Test Set8 : $bit Operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [14,6] }', '{ "": { "$bit":  { "a.$[]": {"or" : 1 } } } }', '{}');
+                                     bson_update_document                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "15" }, { "$numberInt" : "7" } ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [14,6] }', '{ "": { "$bit":  { "a.$[]": {"and" : 1 } } } }', '{}');
+                                     bson_update_document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }
+(1 row)
+
+--Test Set9 : $unset Operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$unset": { "a.$[]": 1 } } }', '{}');
+                         bson_update_document                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ null, null, null, null ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4],[5,6]] }', '{ "": { "$unset": { "a.$[].$[]": 10} } }', '{}');
+                                     bson_update_document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ null, null ], [ null, null ], [ null, null ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"c":5}] }', '{ "": { "$unset": { "a.$[].c": 1 } } }', '{}');
+                bson_update_document                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ {  } ] }
+(1 row)
+
+--Test Set10 $addToSet
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[14],[6]] }', '{ "": { "$addToSet":  { "a.$[]": "new" } } }', '{}');
+                                                bson_update_document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "$numberInt" : "14" }, "new" ], [ { "$numberInt" : "6" }, "new" ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "x": {"myArray": [{"a": [[1],[1]],"b": [[1],[2]]},{"a": [[1],[2]],"b": [[1],[2]]}]} }', '{ "": { "$addToSet": {"x.myArray.$[].a.$[]": "new","x.myArray.$[].b.$[]": "new2" } } }', '{}');
+                                                                                                                                                                                           bson_update_document                                                                                                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "x" : { "myArray" : [ { "a" : [ [ { "$numberInt" : "1" }, "new" ], [ { "$numberInt" : "1" }, "new" ] ], "b" : [ [ { "$numberInt" : "1" }, "new2" ], [ { "$numberInt" : "2" }, "new2" ] ] }, { "a" : [ [ { "$numberInt" : "1" }, "new" ], [ { "$numberInt" : "2" }, "new" ] ], "b" : [ [ { "$numberInt" : "1" }, "new2" ], [ { "$numberInt" : "2" }, "new2" ] ] } ] } }
+(1 row)
+
+--Test Set11 $push
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1],[2],[3],[4]] }', '{ "": { "$push": { "a.$[]": 30 } } }', '{}');
+                                                                                                                       bson_update_document                                                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "2" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "3" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "4" }, { "$numberInt" : "30" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[40,8,5],[42,7,15],[55,42,0],[41,0]] }', '{ "": { "$push": { "a.$[]": { "$sort":-1, "$each" : [10,20,30], "$position":2, "$slice":2} } } }', '{}');
+                                                                                                                         bson_update_document                                                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "$numberInt" : "40" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "42" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "55" }, { "$numberInt" : "42" } ], [ { "$numberInt" : "41" }, { "$numberInt" : "30" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "c" : 1, "d" : 2 } ] }},','{ "": { "$set": { "a.$[]abc.c": 11 } } }', '{}');
+                                                                         bson_update_document                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "c" : { "$numberInt" : "1" }, "d" : { "$numberInt" : "2" } } ], "$[]abc" : { "c" : { "$numberInt" : "11" } } } }
+(1 row)
+
+--Test Set12 : Update path not exist or cannot be created
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ 1 , 2 ], "H" : { "c" : 11 } }},','{ "": { "$set": { "a.b.$[].c": 11 } } }', '{}');
+ERROR:  Cannot create field '0' in element {0 : 1}
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "c" : 1, "d" : 2 }, 2 ], "H" : { "c" : 11 } }},','{ "": { "$set": { "a.b.$[].c": 11 } } }', '{}');
+ERROR:  Cannot create field '1' in element {1 : 2}
+--Test Set 13 : Positional all operator on non array element
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "c" : 1, "d" : 2 } ] }},','{ "": { "$set": { "a.$[].c": 11 } } }', '{}');
+ERROR:  Cannot apply array updates to non-array element a: { b: [ { "c" : 1, "d" : 2 } ] }
+--Test Set 14 : Try with $ and $[<identifier>] and Typo with $[] 
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "c" : 1, "d" : 2 } ] }},','{ "": { "$set": { "a.$.c": 11 } } }', '{}');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "c" : 1, "d" : 2 } ] }},','{ "": { "$set": { "a.$[element].c": 11 } } }', '{}');
+ERROR:  No array filter found for identifier element
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1.0,2.2,3.2,4.3] }', '{ "": { "$mul": { "a.$[x]": 3 } } }', '{}');
+ERROR:  No array filter found for identifier x
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$mul": { "a.$[]abc": 3 } } }', '{}');
+ERROR:  Invalid array index path $[]abc
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$set": {"$[]":10} } }', '{}');
+ERROR:  Cannot have array filter identifier (i.e. '$[<id>]') element in the first position in path '$[]'
+--Test Set 15 : Complex One
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4],[5,6]] }', '{ "": { "$inc": { "a.$[].$[]": 10 } } }', '{}');
+                                                                                              bson_update_document                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "$numberInt" : "11" }, { "$numberInt" : "12" } ], [ { "$numberInt" : "13" }, { "$numberInt" : "14" } ], [ { "$numberInt" : "15" }, { "$numberInt" : "16" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1,"a" : { "b" : [ { "x":[1,2,3,4] }, { "x": [100,2,3,4] } ]  }}','{ "": { "$inc": { "a.b.$[].x.0": 100 } } }', '{}');
+                                                                                                                                  bson_update_document                                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "x" : [ { "$numberInt" : "101" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "x" : [ { "$numberInt" : "200" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] } }
+(1 row)
+
+--Test set 16: Large field
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":5},{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":6}] }', '{ "": { "$set": { "a.$[].aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 10 } } }', '{}');
+                                                                                                    bson_update_document                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" : { "$numberInt" : "10" } }, { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" : { "$numberInt" : "10" } } ] }
+(1 row)
+
+--Test set 17: Multiple Operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4], "b":10 }', '{ "": { "$set": { "a.$[]": 30 }, "$inc": {"b" : 1} } }', '{}');
+                                                                              bson_update_document                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "30" }, { "$numberInt" : "30" }, { "$numberInt" : "30" }, { "$numberInt" : "30" } ], "b" : { "$numberInt" : "11" } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4], "b":{"x":10} }', '{ "": { "$set": { "b.x": 30 }, "$inc": {"a.$[]" : 1} } }', '{}');
+                                                                                 bson_update_document                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ], "b" : { "x" : { "$numberInt" : "30" } } }
+(1 row)
+
+--Test Set 18 : Path Conflicts 
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4]] }', '{ "": { "$inc": { "a.$[].$[]": 10, "a.0": 11 } } }', '{}');
+ERROR:  Updating the path 'a.0' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4]] }', '{ "": { "$inc": { "a.0": 10, "a.$[].$[]": 11 } } }', '{}');
+ERROR:  Updating the path 'a.$[].$[]' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4]] }', '{ "": { "$inc": { "a.0.1": 10, "a.$[].$[]": 11 } } }', '{}');
+ERROR:  Updating the path 'a.$[].$[]' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4]] }', '{ "": { "$inc": { "a.$[].$[]": 11, "a.1.0": 10 } } }', '{}');
+ERROR:  Updating the path 'a.1.0' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4]] }', '{ "": { "$inc": { "a.b.$[]": 10, "a.b.0": 11 } } }', '{}');
+ERROR:  Updating the path 'a.b.0' would create a conflict at 'a.b'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$inc": { "a.$[]": 11, "a.0": 10 } } }', '{}');
+ERROR:  Updating the path 'a.0' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$inc": { "a.0": 11, "a.$[]": 10 } } }', '{}');
+ERROR:  Updating the path 'a.$[]' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$inc": { "a.0": 11 }, "$set":{"a.$[]": 11} } }', '{}');
+ERROR:  Updating the path 'a.$[]' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$inc": { "a.$[]": 11 }, "$set":{"a.0": 11} } }', '{}');
+ERROR:  Updating the path 'a.0' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{ "x": 10 }, {"x": 11}] }', '{ "": { "$inc": { "a.$[].x": 11 }, "$set":{"a.0": 11} } }', '{}');
+ERROR:  Updating the path 'a.0' would create a conflict at 'a'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"x":10},{"y":11}] }', '{ "": { "$set": { "a.$[]": 30 }, "$inc": {"a.1.y" : 1} } }', '{}');
+ERROR:  Updating the path 'a.1.y' would create a conflict at 'a'
+--Test Set 19 : Multiple Spec One Operator
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4]] }', '{ "": { "$inc": { "a.$[].0": 30 , "a.$[].1" : 10} } }', '{}');
+                                                                   bson_update_document                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "$numberInt" : "31" }, { "$numberInt" : "12" } ], [ { "$numberInt" : "33" }, { "$numberInt" : "14" } ] ] }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"b":1,"c":2,"x":{"y":3}}] }', '{ "": { "$inc": { "a.$[].b": 10 , "a.$[].c" : 20, "a.$[].x.y":30} } }', '{}');
+                                                                  bson_update_document                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "b" : { "$numberInt" : "11" }, "c" : { "$numberInt" : "22" }, "x" : { "y" : { "$numberInt" : "33" } } } ] }
+(1 row)
+
+---Test Set 20 : $ Operator---
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2],[3,4]] }', '{ "": { "$inc": { "a.0.$": 30 } } }', '{}');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$set": { "a.$": 30 } } }', '{}');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$mul": { "a.$": 30 } } }', '{}');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$inc": { "a.$": 30 } } }', '{}');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$min": { "a.$": 30 } } }', '{}');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"x": 5},{"y":10}] }', '{ "": { "$inc": { "a.$.c": 30 } } }', '{}');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$set": {"$":10} } }', '{}');
+ERROR:  Cannot have positional (i.e. '$') element in the first position in path '$'
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a":[{"x":5},{"y":10}] }', '{ "": { "$inc": {"a.$[].x": 10,"a.$.y": 12 } } }', '{}');
+                                                                               bson_update_document                                                                               
+---------------------------------------------------------------------
+ ("{ ""_id"" : { ""$numberInt"" : ""1"" }, ""a"" : [ { ""x"" : { ""$numberInt"" : ""15"" } }, { ""y"" : { ""$numberInt"" : ""10"" }, ""x"" : { ""$numberInt"" : ""10"" } } ] }",)
+(1 row)
+
+---Test Set 21 : $[<identifier>] Operator---
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$set": { "a.$[ele]": 30 } } }', '{}');
+ERROR:  No array filter found for identifier ele
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$mul": { "a.$[ele]": 30 } } }', '{}');
+ERROR:  No array filter found for identifier ele
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$inc": { "a.$[ele]": 30 } } }', '{}');
+ERROR:  No array filter found for identifier ele
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$min": { "a.$[ele]": 30 } } }', '{}');
+ERROR:  No array filter found for identifier ele
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"x": 5,"c" :11},{"y":10},{"x":10}] }', '{ "": { "$inc": { "a.$[ele].c": 30 } } }', '{}');
+ERROR:  No array filter found for identifier ele
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$set": {"$[]":10} } }', '{}');
+ERROR:  Cannot have array filter identifier (i.e. '$[<id>]') element in the first position in path '$[]'
+---Test Set 22 : Multiple positional operator on same level---
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a":[{"a":[1,2,3],"b":[4,5,6]}] }', '{ "": { "$inc": {"a.$[].a.$[]": 10,"a.$[].b.$[x]": 11 } } }', '{}');
+ERROR:  No array filter found for identifier x
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a":[{"x":5},{"y":10}] }', '{ "": { "$inc": {"a.$[].x": 10,"a.$[x].y": 12 } } }', '{}');
+ERROR:  No array filter found for identifier x
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a":[{"y":5},{"x":10}] }', '{ "": { "$inc": {"a.$[].x": 10,"a.$[x].y": 12 } } }', '{}');
+ERROR:  No array filter found for identifier x
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1,2,3],[4,5,6]] }', '{ "": { "$inc": { "a.$.$[]": 10} } }', '{}');
+ERROR:  The positional operator did not find the match needed from the query.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [ {"a":[ {"x":1},{"y":2} ] ,"b": [ {"x":5},{"y":10} ] } ] }', '{ "": { "$inc": { "a.$[].b.$[].x": 10, "a.$[].b.$[x].y":12} } }', '{}');
+ERROR:  No array filter found for identifier x
+-- Test Set 23: Rename with positional should not work.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$rename": {"a.$[]": "b.$[]" } } }', '{}');
+ERROR:  The source field for $rename may not be dynamic: a.$[]
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$rename": {"a.0": "b.$[]" } } }', '{}');
+ERROR:  The destination field for $rename may not be dynamic: b.$[]
+-- Test Set 24: $positional with adding new fields
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$set": {"a.c.$[]": 1 } } }', '{}');
+ERROR:  The path 'c' must exist in the document in order to apply array updates.
+SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$set": {"c.$[]": 1 } } }', '{}');
+ERROR:  The path 'c' must exist in the document in order to apply array updates.

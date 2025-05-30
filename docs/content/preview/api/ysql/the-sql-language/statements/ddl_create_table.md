@@ -197,7 +197,7 @@ To create a colocated table, use the following command:
 CREATE TABLE <name> (columns) WITH (COLOCATION = true);
 ```
 
-In a colocated database, all tables are colocated by default. To opt a specific table out of colocation, use the following command:
+In a colocated database, all tables (and their indexes) are colocated by default. To opt a specific table out of colocation, use the following command:
 
 ```sql
 CREATE TABLE <name> (columns) WITH (COLOCATION = false);

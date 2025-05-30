@@ -258,7 +258,7 @@ OutboundCall::~OutboundCall() {
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
-              << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us."
+              << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString() << "."
               << (trace_ ? " Trace:" : "");
     if (trace_) {
       trace_->DumpToLogInfo(true);
@@ -621,7 +621,7 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
         CHECK(!err_pb);
       }
     } else {
-      LOG_WITH_PREFIX(ERROR)
+      LOG_WITH_PREFIX(DFATAL)
           << "SetFailed failed to set call state. Existing status_: " << status_
           << ", attempting to set status to: " << status;
       if (status_.ok()) {

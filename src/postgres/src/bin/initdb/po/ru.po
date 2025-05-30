@@ -6,21 +6,21 @@
 # Sergey Burladyan <eshkinkot@gmail.com>, 2009.
 # Andrey Sudnik <sudnikand@yandex.ru>, 2010.
 # Dmitriy Olshevskiy <olshevskiy87@bk.ru>, 2014.
-# Alexander Lakhin <exclusion@gmail.com>, 2012-2017, 2018, 2019, 2020, 2021, 2022.
+# Alexander Lakhin <exclusion@gmail.com>, 2012-2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024.
 msgid ""
 msgstr ""
 "Project-Id-Version: initdb (PostgreSQL current)\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-09-29 10:17+0300\n"
-"PO-Revision-Date: 2022-09-29 11:39+0300\n"
+"POT-Creation-Date: 2024-11-09 07:47+0300\n"
+"PO-Revision-Date: 2024-09-07 06:49+0300\n"
 "Last-Translator: Alexander Lakhin <exclusion@gmail.com>\n"
 "Language-Team: Russian <pgsql-ru-general@postgresql.org>\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
-"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: ../../../src/common/logging.c:276
 #, c-format
@@ -94,33 +94,33 @@ msgstr "нехватка памяти\n"
 msgid "cannot duplicate null pointer (internal error)\n"
 msgstr "попытка дублирования нулевого указателя (внутренняя ошибка)\n"
 
-#: ../../common/file_utils.c:87 ../../common/file_utils.c:451
+#: ../../common/file_utils.c:86 ../../common/file_utils.c:446
 #, c-format
 msgid "could not stat file \"%s\": %m"
 msgstr "не удалось получить информацию о файле \"%s\": %m"
 
-#: ../../common/file_utils.c:166 ../../common/pgfnames.c:48
+#: ../../common/file_utils.c:161 ../../common/pgfnames.c:48
 #, c-format
 msgid "could not open directory \"%s\": %m"
 msgstr "не удалось открыть каталог \"%s\": %m"
 
-#: ../../common/file_utils.c:200 ../../common/pgfnames.c:69
+#: ../../common/file_utils.c:195 ../../common/pgfnames.c:69
 #, c-format
 msgid "could not read directory \"%s\": %m"
 msgstr "не удалось прочитать каталог \"%s\": %m"
 
-#: ../../common/file_utils.c:232 ../../common/file_utils.c:291
-#: ../../common/file_utils.c:365
+#: ../../common/file_utils.c:227 ../../common/file_utils.c:286
+#: ../../common/file_utils.c:360
 #, c-format
 msgid "could not open file \"%s\": %m"
 msgstr "не удалось открыть файл \"%s\": %m"
 
-#: ../../common/file_utils.c:303 ../../common/file_utils.c:373
+#: ../../common/file_utils.c:298 ../../common/file_utils.c:368
 #, c-format
 msgid "could not fsync file \"%s\": %m"
 msgstr "не удалось синхронизировать с ФС файл \"%s\": %m"
 
-#: ../../common/file_utils.c:383
+#: ../../common/file_utils.c:378
 #, c-format
 msgid "could not rename file \"%s\" to \"%s\": %m"
 msgstr "не удалось переименовать файл \"%s\" в \"%s\": %m"
@@ -222,14 +222,14 @@ msgstr "дочерний процесс завершён по сигналу %d:
 #: ../../common/wait_error.c:72
 #, c-format
 msgid "child process exited with unrecognized status %d"
-msgstr "дочерний процесс завершился с нераспознанным состоянием %d"
+msgstr "дочерний процесс завершился с нераспознанным кодом состояния %d"
 
-#: ../../port/dirmod.c:221
+#: ../../port/dirmod.c:247
 #, c-format
 msgid "could not set junction for \"%s\": %s\n"
 msgstr "не удалось создать связь для каталога \"%s\": %s\n"
 
-#: ../../port/dirmod.c:298
+#: ../../port/dirmod.c:324
 #, c-format
 msgid "could not get junction for \"%s\": %s\n"
 msgstr "не удалось получить связь для каталога \"%s\": %s\n"
@@ -345,7 +345,7 @@ msgstr ""
 #: initdb.c:780
 #, c-format
 msgid "could not access file \"%s\": %m"
-msgstr "нет доступа к файлу \"%s\": %m"
+msgstr "ошибка при обращении к файлу \"%s\": %m"
 
 #: initdb.c:787
 #, c-format
@@ -785,8 +785,8 @@ msgstr "не удалось задать переменную окружения
 #: initdb.c:2326
 #, c-format
 msgid ""
-"program \"%s\" is needed by %s but was not found in the same directory as \""
-"%s\""
+"program \"%s\" is needed by %s but was not found in the same directory as "
+"\"%s\""
 msgstr "программа \"%s\" нужна для %s, но она не найдена в каталоге \"%s\""
 
 #: initdb.c:2329
@@ -952,7 +952,7 @@ msgstr ""
 #: initdb.c:2605 initdb.c:2675 initdb.c:3058
 #, c-format
 msgid "could not access directory \"%s\": %m"
-msgstr "ошибка доступа к каталогу \"%s\": %m"
+msgstr "ошибка при обращении к каталогу \"%s\": %m"
 
 #: initdb.c:2626
 #, c-format
@@ -962,8 +962,8 @@ msgstr "расположение каталога WAL должно опреде�
 #: initdb.c:2669
 #, c-format
 msgid ""
-"If you want to store the WAL there, either remove or empty the directory \""
-"%s\"."
+"If you want to store the WAL there, either remove or empty the directory "
+"\"%s\"."
 msgstr "Если вы хотите хранить WAL здесь, удалите или очистите каталог \"%s\"."
 
 #: initdb.c:2680
@@ -996,8 +996,8 @@ msgid ""
 "Using a mount point directly as the data directory is not recommended.\n"
 "Create a subdirectory under the mount point."
 msgstr ""
-"Использовать в качестве каталога данных точку монтирования не рекомендуется."
-"\n"
+"Использовать в качестве каталога данных точку монтирования не "
+"рекомендуется.\n"
 "Создайте в монтируемом ресурсе подкаталог и используйте его."
 
 #: initdb.c:2732

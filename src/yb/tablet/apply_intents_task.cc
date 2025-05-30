@@ -47,6 +47,7 @@ bool ApplyIntentsTask::Prepare(RunningTransactionPtr transaction, ScopedRWOperat
   if (!used_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
     return false;
   }
+  CHECK(!apply_data_.op_id.empty());
 
   transaction_ = std::move(transaction);
   operation_ = std::move(*DCHECK_NOTNULL(operation));

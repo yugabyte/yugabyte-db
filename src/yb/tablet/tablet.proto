@@ -37,6 +37,7 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/tablet/tablet_types.proto";
 
 message TabletStatusPB {
@@ -65,6 +66,7 @@ message TabletStatusPB {
   repeated bytes colocated_table_ids = 19;
   optional string pgschema_name = 20;
   repeated bytes vector_index_finished_backfills = 21;
+  optional OpIdPB last_op_id = 22;
 }
 
 // Used to present the maintenance manager's internal state.

@@ -30,6 +30,7 @@
 // in fact, we could use that one
 #define ROCKSDB_PRIszt "zu"
 
+#undef  __declspec
 #define __declspec(S)
 
 #define ROCKSDB_NOEXCEPT noexcept
@@ -103,7 +104,7 @@ class CondVar;
 
 class Mutex {
  public:
-  /* implicit */ Mutex(bool adaptive = false);
+  /* implicit */ Mutex(bool adaptive = false); // NOLINT
   ~Mutex();
 
   void Lock();

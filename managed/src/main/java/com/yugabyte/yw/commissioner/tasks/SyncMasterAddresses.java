@@ -46,12 +46,11 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
         // Disable this on local provider as the check cannot be done properly as there are multiple
         // master processes.
         createCheckProcessStateTask(
-                universe,
-                nonMasterNodes,
-                ServerType.MASTER,
-                false /* ensureRunning */,
-                n -> nodesToStop.add(n.nodeName))
-            .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+            universe,
+            nonMasterNodes,
+            ServerType.MASTER,
+            false /* ensureRunning */,
+            n -> nodesToStop.add(n.nodeName));
       }
     }
   }

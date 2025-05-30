@@ -129,7 +129,7 @@ class SubstituteArg {
   // -V:scratch_:730
   inline SubstituteArg(unsigned long value)  // NOLINT
     : text_(scratch_),
-      size_((sizeof(value) == 4 ? FastUInt32ToBufferLeft(value, scratch_)
+      size_((sizeof(value) == 4 ? FastUInt32ToBufferLeft(static_cast<int32_t>(value), scratch_)
                                 : FastUInt64ToBufferLeft(value, scratch_))
             - scratch_) {}
   // -V:scratch_:730

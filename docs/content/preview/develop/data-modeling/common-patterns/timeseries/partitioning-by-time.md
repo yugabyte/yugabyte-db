@@ -26,7 +26,7 @@ Partitioning is only available in [YSQL](/{{<version>}}/api/ysql/).
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 Consider a scenario where you have a lot of data points from cars and you care about only the last month's data. Although you can execute a statement to delete data that is older than 30 days, because data is not immediately removed from the underlying storage (LSM-based DocDB), it could affect the performance of scans.
 

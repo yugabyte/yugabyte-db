@@ -94,13 +94,7 @@ static inline od_route_t *od_route_pool_new(od_route_pool_t *pool,
 		}
 	}
 
-	route->yb_database_entry = yb_get_oid_obj_entry(YB_DATABASE, id->yb_db_oid);
-	if (route->yb_database_entry == NULL)
-		return NULL;
-
-	route->yb_user_entry = yb_get_oid_obj_entry(YB_USER, id->yb_user_oid);
-	if (route->yb_user_entry == NULL)
-		return NULL;
+	route->status = YB_ROUTE_ACTIVE;
 
 	od_route_lock(route);
 	od_list_append(&pool->list, &route->link);
@@ -247,7 +241,7 @@ od_route_pool_stat_database(od_route_pool_t *pool,
 		od_stat_init(&prev);
 
 		char database[64];
-		strcpy(database, (char *)route->yb_database_entry->name);
+		strcpy(database, (char *)route->yb_database_name);
 		od_route_pool_stat_database_mark(pool, route->id.yb_db_oid,
 						 &current, &prev);
 

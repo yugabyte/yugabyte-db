@@ -106,7 +106,7 @@ func (rg *ResourceGroupContext) startSubsection(format string) (*template.Templa
 }
 
 func (rg *ResourceGroupContext) subSection(name string) {
-	rg.Output.Write([]byte("\n\n"))
+	rg.Output.Write([]byte("\n"))
 	rg.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	rg.Output.Write([]byte("\n"))
 }

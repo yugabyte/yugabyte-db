@@ -30,7 +30,7 @@ YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Sign up to create a Sandbox cluster"
-    description="Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required."
+    description="Sign up, log in, and follow the built-in tutorial to create your first cluster, and build a sample application. No credit card required."
     buttonText="Sign up"
     buttonTarget="_blank"
     buttonUrl="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"

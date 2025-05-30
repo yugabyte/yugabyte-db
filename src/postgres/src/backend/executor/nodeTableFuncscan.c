@@ -165,7 +165,7 @@ ExecInitTableFuncScan(TableFuncScan *node, EState *estate, int eflags)
 	scanstate->routine = &XmlTableRoutine;
 
 	scanstate->perTableCxt =
-		AllocSetContextCreate(GetCurrentMemoryContext(),
+		AllocSetContextCreate(CurrentMemoryContext,
 							  "TableFunc per value context",
 							  ALLOCSET_DEFAULT_SIZES);
 	scanstate->opaque = NULL;	/* initialized at runtime */
@@ -352,7 +352,7 @@ tfuncInitialize(TableFuncScanState *tstate, ExprContext *econtext, Datum doc)
 	int			colno;
 	Datum		value;
 	int			ordinalitycol =
-	((TableFuncScan *) (tstate->ss.ps.plan))->tablefunc->ordinalitycol;
+		((TableFuncScan *) (tstate->ss.ps.plan))->tablefunc->ordinalitycol;
 
 	/*
 	 * Install the document as a possibly-toasted Datum into the tablefunc

@@ -9,63 +9,64 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 #
 
-# set -euo pipefail
+set -euo pipefail
 
-# print_help() {
-#   cat <<-EOT
-# Generates the yba-cli go binary executable (yba) in destination.
-# Binary necessary for a complete automated install.
-# Usage: ${0##*/} <options>
-# Options:
-#   -h, --help
-#     Show usage.
-#   -d, --destination
-#     Directory into which the yba-cli package should be copied.
-# EOT
-# }
+print_help() {
+  cat <<-EOT
+Generates the yba-cli go binary executable (yba) in destination.
+Binary necessary for a complete automated install.
+Usage: ${0##*/} <options>
+Options:
+  -h, --help
+    Show usage.
+  -d, --destination
+    Directory into which the yba-cli package should be copied.
+EOT
+}
 
-# export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
-# export YB_MANAGED_DEVOPS_USE_PYTHON3=1
+export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
 
-# . "$DEVOPS_HOME/bin/"/common.sh
+. "$DEVOPS_HOME/bin/"/common.sh
 
-# destination=""
+destination=""
 
-# while [ $# -gt 0 ]; do
-#   case "$1" in
-#     -h|--help)
-#       print_help
-#       exit 0
-#     ;;
-#     -d|--destination)
-#       destination="$2"
-#       shift
-#   esac
-#   shift
-# done
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    -d|--destination)
+      destination="$2"
+      shift
+  esac
+  shift
+done
 
 
-# echo Starting yb_release for yba-cli > /dev/stderr
+echo Starting yb_release for yba-cli > /dev/stderr
 
-# # verify that the destination directory exists
-# if [[ ! -d $destination ]]; then
-#   fatal "No destination directory found ('$destination')"
-# fi
-# VERSION_FULL=$(<version.txt)
-# BUILD_NUMBER=${YB_RELEASE_BUILD_NUMBER:-0}
-# # IFS splits input according to delimiter.
-# IFS='-' read -ra VERSION_NUMBER <<< "$VERSION_FULL"
-# VERSION="${VERSION_NUMBER[0]}-b${BUILD_NUMBER}"
-# GOOS="linux"
-# GOARCH="amd64"
-# PACKAGE_NAME="yba_cli-$VERSION-$GOOS-$GOARCH.tar.gz"
+# verify that the destination directory exists
+if [[ ! -d $destination ]]; then
+  fatal "No destination directory found ('$destination')"
+fi
+VERSION="$(../../build-support/get_version.sh)"
+GOOS=$(uname -s | tr A-Z a-z)
+GOARCH=$([[ "$(uname -m)" == "x86_64" ]] && echo 'amd64' || echo 'arm64')
+PACKAGE_NAME="yba_cli-$VERSION-$GOOS-$GOARCH.tar.gz"
 
-# echo "Starting make"  > /dev/stderr
-# make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME}" GOOS="${GOOS}" GOARCH="${GOARCH}"
-# echo "Completed make"  > /dev/stderr
+echo "Starting make"  > /dev/stderr
+make VERSION="${VERSION}" PACKAGE_NAME="${PACKAGE_NAME}" GOOS="${GOOS}" GOARCH="${GOARCH}"
+echo "Completed make"  > /dev/stderr
 
-# activate_virtualenv
-# echo "Invoking yb_release.py" > /dev/stderr
-# "$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py --package "${PACKAGE_NAME}" \
-#                                                  --destination "${destination}"
-# echo "Completed yb_release.py" > /dev/stderr
+echo "Copy ${PACKAGE_NAME} to ${destination}" > /dev/stderr
+make \
+  VERSION="${VERSION}" \
+  PACKAGE_NAME="${PACKAGE_NAME}" \
+  GOOS="${GOOS}" \
+  GOARCH="${GOARCH}" \
+  DESTINATION="${destination}" \
+  release
+
+
+echo "Completed yb_release.py" > /dev/stderr

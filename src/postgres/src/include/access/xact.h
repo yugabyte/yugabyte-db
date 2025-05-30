@@ -22,6 +22,7 @@
 #include "storage/relfilenode.h"
 #include "storage/sinval.h"
 
+/* YB includes */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
@@ -455,17 +456,9 @@ extern TimestampTz GetCurrentStatementStartTimestamp(void);
 extern TimestampTz GetCurrentTransactionStopTimestamp(void);
 extern void SetCurrentStatementStartTimestamp(void);
 extern int	GetCurrentTransactionNestLevel(void);
-extern const char *GetCurrentTransactionName(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
 extern void ForceSyncCommit(void);
-extern int	YBGetEffectivePggateIsolationLevel();
-extern void YBInitializeTransaction(void);
-extern void YBResetTransactionReadPoint(void);
-extern void YBRestartReadPoint(void);
-extern void YBCRestartWriteTransaction(void);
-extern void SetTxnWithPGRel(void);
-extern bool IsCurrentTxnWithPGRel(void);
 extern void StartTransactionCommand(void);
 extern void SaveTransactionCharacteristics(SavedTransactionCharacteristics *s);
 extern void RestoreTransactionCharacteristics(const SavedTransactionCharacteristics *s);
@@ -539,7 +532,22 @@ extern void EnterParallelMode(void);
 extern void ExitParallelMode(void);
 extern bool IsInParallelMode(void);
 
+/* YB */
+extern const char *GetCurrentTransactionName(void);
+extern int	YBGetEffectivePggateIsolationLevel();
+extern void YBInitializeTransaction(void);
+extern void YBResetTransactionReadPoint(void);
+extern void YBRestartReadPoint(void);
+extern void YBCRestartWriteTransaction(void);
+extern void YbSetTxnWithPgOps(uint8 pg_op_type);
+extern uint8 YbGetPgOpsInCurrentTxn(void);
 extern void YbBeginInternalSubTransactionForReadCommittedStatement();
+
+/*
+ * Determine if the transaction block contains a savepoint other than the
+ * internal ones created for READ COMMITTED isolation level.
+ */
+extern bool YBTransactionContainsNonReadCommittedSavepoint(void);
 extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
 extern void YBMarkDataSent(void);
 extern void YBMarkDataNotSent(void);
@@ -548,7 +556,7 @@ extern bool YBIsDataSent(void);
 extern bool YBIsDataSentForCurrQuery(void);
 
 /*
- * Utilities for postponed pggate DDL statement handles, that can be
+ * YB: Utilities for postponed pggate DDL statement handles, that can be
  * executed after the YSQL DDL transaction has commited. To qualify for this
  * the DDL must have the following properties:
  *   1. It cannot be rolled back by abort (so we wait for commit to succeed).
@@ -566,8 +574,11 @@ extern List *YBGetDdlHandles(void);
 extern void YBClearDdlHandles(void);
 
 /*
- * Utility for clearing transaction ID.
+ * YB: Utility for clearing transaction ID.
 */
-extern void YbClearCurrentTransactionId(void);
 extern void YbClearParallelContexts(void);
+
+#define YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY	0x0001
+#define YB_TXN_USES_TEMPORARY_RELATIONS				0x0002
+
 #endif							/* XACT_H */

@@ -68,7 +68,9 @@ var describeRoleBindingCmd = &cobra.Command{
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullRoleBindingContext := *rolebinding.NewFullRoleBindingContext()
 			fullRoleBindingContext.Output = os.Stdout
-			fullRoleBindingContext.Format = rolebinding.NewFullRoleBindingFormat(viper.GetString("output"))
+			fullRoleBindingContext.Format = rolebinding.NewFullRoleBindingFormat(
+				viper.GetString("output"),
+			)
 			fullRoleBindingContext.SetFullRoleBinding(r[0])
 			fullRoleBindingContext.Write()
 			return

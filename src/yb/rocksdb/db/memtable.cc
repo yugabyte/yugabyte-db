@@ -327,38 +327,6 @@ class MemTableIterator : public InternalIterator {
     return true;
   }
 
-  ScanForwardResult ScanForward(
-      const Comparator* user_key_comparator, const Slice& upperbound,
-      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
-    LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
-
-    ScanForwardResult result;
-    do {
-      const auto user_key = ExtractUserKey(key());
-      if (!upperbound.empty() && user_key_comparator->Compare(user_key, upperbound) >= 0) {
-        break;
-      }
-
-      bool skip = false;
-      if (key_filter_callback) {
-        auto kf_result =
-            (*key_filter_callback)(/*prefixed_key=*/ Slice(), /*shared_bytes=*/ 0, user_key);
-        skip = kf_result.skip_key;
-      }
-
-      if (!skip && !(*scan_callback)(user_key, value())) {
-        result.reached_upperbound = false;
-        return result;
-      }
-
-      result.number_of_keys_visited++;
-      Next();
-    } while (Valid());
-
-    result.reached_upperbound = true;
-    return result;
-  }
-
  private:
   DynamicBloom* bloom_;
   const SliceTransform* const prefix_extractor_;

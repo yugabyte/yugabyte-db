@@ -456,7 +456,7 @@ load_tzoffsets(const char *filename)
 	 * Create a temp memory context to work in.  This makes it easy to clean
 	 * up afterwards.
 	 */
-	tmpContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	tmpContext = AllocSetContextCreate(CurrentMemoryContext,
 									   "TZParserMemory",
 									   ALLOCSET_SMALL_SIZES);
 	oldContext = MemoryContextSwitchTo(tmpContext);

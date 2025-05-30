@@ -21,9 +21,10 @@ from google.protobuf.json_format import MessageToJson
 from google.protobuf.message import Message
 from grpc import secure_channel, ssl_channel_credentials, metadata_call_credentials, \
     composite_channel_credentials, AuthMetadataPlugin, RpcError, StatusCode
+from ybops.node_agent.common_pb2 import Error
 from ybops.node_agent.server_pb2 import DownloadFileRequest, ExecuteCommandRequest, FileInfo, \
     PingRequest, UploadFileRequest, SubmitTaskRequest, DescribeTaskRequest, AbortTaskRequest, \
-    CommandInput, Error
+    CommandInput
 from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 from ybops.common.exceptions import YBOpsRuntimeError
 

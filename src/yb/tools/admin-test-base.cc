@@ -25,12 +25,16 @@ namespace yb::tools {
 namespace {
 
 const char* const kAdminToolName = "yb-admin";
-
+const char* const kTSCliToolName = "yb-ts-cli";
 }
 
 // Figure out where the admin tool is.
 std::string AdminTestBase::GetAdminToolPath() const {
   return GetToolPath(kAdminToolName);
+}
+
+std::string AdminTestBase::GetTSCliToolPath() const {
+  return GetToolPath(kTSCliToolName);
 }
 
 std::string AdminTestBase::GetMasterAddresses() const {
@@ -42,6 +46,10 @@ std::string AdminTestBase::GetMasterAddresses() const {
     result += AsString(master->bound_rpc_addr());
   }
   return result;
+}
+
+std::string AdminTestBase::GetTServerAddress(int idx) const {
+  return AsString(cluster_->tablet_server(idx)->bound_rpc_addr());
 }
 
 Result<std::string> AdminTestBase::CallAdminVec(const std::vector<std::string>& args) {

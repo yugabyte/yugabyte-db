@@ -46,15 +46,14 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
-    // Cannot pause a paused replication or resume an enabled replication.
+    // If the config is already in the requested status, then return.
     if (xClusterConfig.isPaused() == taskParams().pause) {
       if (xClusterConfig.isPaused()) {
-        throw new RuntimeException(
-            String.format("XClusterConfig %s is already paused", xClusterConfig));
+        log.warn("XClusterConfig {} is already paused", xClusterConfig);
       } else {
-        throw new RuntimeException(
-            String.format("XClusterConfig %s is already enabled", xClusterConfig));
+        log.warn("XClusterConfig {} is already enabled", xClusterConfig);
       }
+      return;
     }
 
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());

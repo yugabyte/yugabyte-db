@@ -166,6 +166,9 @@ Status DeleteIfExists(const std::string& path, Env* env) {
   if (env->FileExists(path)) {
     return env->DeleteFile(path);
   }
+
+  RETURN_NOT_OK(env->DeleteSymlinkIfExists(path));
+
   return Status::OK();
 }
 
@@ -326,6 +329,10 @@ Status EnvWrapper::LinkFile(const std::string& s, const std::string& t) {
 
 Status EnvWrapper::SymlinkPath(const std::string& pointed_to, const std::string& new_symlink) {
   return target_->SymlinkPath(pointed_to, new_symlink);
+}
+
+Status EnvWrapper::DeleteSymlinkIfExists(const std::string& path) {
+  return target_->DeleteSymlinkIfExists(path);
 }
 
 Result<std::string> EnvWrapper::ReadLink(const std::string& s) {

@@ -19,13 +19,12 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
-#include "yb/client/client.h"
-
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/wait_queue.h"
+
+#include "yb/tserver/tserver_service.pb.h"
 
 namespace yb {
 namespace tablet {
@@ -226,7 +225,7 @@ class TransactionStatusController {
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
   struct TransactionInfo {
     MicrosTime start_us;
-    boost::optional<PgSessionRequestVersion> pg_session_req_version = boost::none;
+    std::optional<PgSessionRequestVersion> pg_session_req_version;
 
     std::string ToString() const {
       return YB_STRUCT_TO_STRING(start_us, pg_session_req_version);

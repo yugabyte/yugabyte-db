@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
@@ -67,6 +68,15 @@ public class UpdatePitrConfig extends UniverseTaskBase {
             String.format("Snapshot schedule with ID: %s was not found", pitrConfig.getUuid()));
       }
 
+      // If retention period is being increased, freeze the current ERT till we have sufficient
+      // number of snapshots to cater to the increased retention.
+      long minRecoverTimeInMillisBeforeUpdate =
+          pitrConfig.getRetentionPeriod() < taskParams().retentionPeriodInSeconds
+              ? BackupUtil.getMinRecoveryTimeForSchedule(
+                  scheduleListResp.getSnapshotScheduleInfoList().get(0).getSnapshotInfoList(),
+                  pitrConfig)
+              : 0L;
+
       EditSnapshotScheduleResponse resp =
           client.editSnapshotSchedule(
               pitrConfig.getUuid(),
@@ -94,6 +104,7 @@ public class UpdatePitrConfig extends UniverseTaskBase {
 
       pitrConfig.setRetentionPeriod(taskParams().retentionPeriodInSeconds);
       pitrConfig.setScheduleInterval(taskParams().intervalInSeconds);
+      pitrConfig.setIntermittentMinRecoverTimeInMillis(minRecoverTimeInMillisBeforeUpdate);
       pitrConfig.setUpdateTime(new Date());
       pitrConfig.update();
 

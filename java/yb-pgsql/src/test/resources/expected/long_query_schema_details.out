@@ -1,4 +1,5 @@
-Table name: test_table1
+- Table name: test_table1
+- Database name: yugabyte
 - Table information:
 |Table Name         |Table Groupname |Colocated |
 +-------------------+----------------+----------+

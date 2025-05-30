@@ -15,6 +15,8 @@
 
 #include <mutex>
 
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -54,9 +56,13 @@ class TabletComponent {
 
   std::string LogPrefix() const;
 
+  Status Flush(FlushMode mode, FlushFlags flags = FlushFlags::kAllDbs);
+
   RaftGroupMetadata& metadata() const;
 
   RWOperationCounter& pending_op_counter_blocking_rocksdb_shutdown_start() const;
+
+  const TabletId& tablet_id() const;
 
   rocksdb::DB& regular_db() const;
 
@@ -66,13 +72,15 @@ class TabletComponent {
 
   bool has_intents_db() const;
 
+  docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const;
+
   std::mutex& create_checkpoint_lock() const;
 
   rocksdb::Env& rocksdb_env() const;
 
   void RefreshYBMetaDataCache();
 
-  docdb::VectorIndexesPtr VectorIndexesList() const;
+  docdb::DocVectorIndexesPtr VectorIndexesList() const;
 
  private:
   Tablet& tablet_;

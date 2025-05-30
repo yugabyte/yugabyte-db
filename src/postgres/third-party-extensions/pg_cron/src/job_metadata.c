@@ -124,7 +124,7 @@ bool EnableSuperuserJobs = true;
 void
 InitializeJobMetadataCache(void)
 {
-	CronJobContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+	CronJobContext = AllocSetContextCreate(CurrentMemoryContext,
 											 "pg_cron job context",
 											 ALLOCSET_DEFAULT_MINSIZE,
 											 ALLOCSET_DEFAULT_INITSIZE,
@@ -541,7 +541,7 @@ NextRunId(void)
 	Datum runIdDatum = 0;
 	int64 runId = 0;
 	bool failOK = true;
-	MemoryContext originalContext = GetCurrentMemoryContext();
+	MemoryContext originalContext = CurrentMemoryContext;
 
 	StartTransactionCommand();
 	PushActiveSnapshot(GetTransactionSnapshot());
@@ -870,7 +870,7 @@ LoadCronJobList(void)
 	int scanKeyCount = 0;
 	HeapTuple heapTuple = NULL;
 	TupleDesc tupleDescriptor = NULL;
-	MemoryContext originalContext = GetCurrentMemoryContext();
+	MemoryContext originalContext = CurrentMemoryContext;
 
 	SetCurrentStatementStartTimestamp();
 	StartTransactionCommand();
@@ -1081,7 +1081,7 @@ InsertJobRunDetail(int64 runId, int64 *jobId, char *database, char *username, ch
 	const int argCount = 6;
 	Oid argTypes[6];
 	Datum argValues[6];
-	MemoryContext originalContext = GetCurrentMemoryContext();
+	MemoryContext originalContext = CurrentMemoryContext;
 
 	SetCurrentStatementStartTimestamp();
 	StartTransactionCommand();
@@ -1150,7 +1150,7 @@ UpdateJobRunDetail(int64 runId, int32 *job_pid, char *status, char *return_messa
 	Oid argTypes[6];
 	Datum argValues[6];
 	int i;
-	MemoryContext originalContext = GetCurrentMemoryContext();
+	MemoryContext originalContext = CurrentMemoryContext;
 
 	SetCurrentStatementStartTimestamp();
 	StartTransactionCommand();
@@ -1421,7 +1421,7 @@ void
 MarkPendingRunsAsFailed(void)
 {
 	StringInfoData querybuf;
-	MemoryContext originalContext = GetCurrentMemoryContext();
+	MemoryContext originalContext = CurrentMemoryContext;
 
 	SetCurrentStatementStartTimestamp();
 	StartTransactionCommand();

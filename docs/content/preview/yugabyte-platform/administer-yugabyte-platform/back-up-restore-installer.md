@@ -69,9 +69,9 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
 
 The following table describes optional flags you can include with the `createBackup` command.
 
-| Flag | Description | Default |
+| <div style="width:150px">Flag</div> | Description | Default |
 | :--- | :---------- | :------ |
-| &#8209;&#8209;disable_version_check | Exclude version metadata when creating backup. | false |
+| --disable_version_check | Exclude version metadata when creating backup. | false |
 | --exclude_prometheus | Exclude Prometheus metric data from backup. | false |
 | --exclude_releases | Exclude YugabyteDB releases from backup. | false |
 | -h, --help | Help for `createBackup`. | |

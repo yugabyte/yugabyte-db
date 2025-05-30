@@ -3,7 +3,8 @@ exporters:
   splunk_hec/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$SplunkExporter
     endpoint: endpoint
     index: index
-    retry_on_failure: {enabled: true, initial_interval: 1m, max_interval: 1800m}
+    retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m,
+      max_interval: 1800m}
     sending_queue: {enabled: true, storage: file_storage/queue}
     source: source
     sourcetype: some_type

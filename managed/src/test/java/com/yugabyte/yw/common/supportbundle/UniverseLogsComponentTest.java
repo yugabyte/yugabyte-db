@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -21,9 +22,12 @@ import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
@@ -74,6 +78,8 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
 
     // Add a fake node to the universe with a node name
     node.nodeName = "u-n1";
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.private_ip = "fake_ip";
     this.universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),
@@ -115,8 +121,6 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
         .thenCallRealMethod();
     when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(
@@ -156,6 +160,10 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     Date startDate = new Date(Long.MIN_VALUE);
     Date endDate = new Date(Long.MAX_VALUE);
 
+    SupportBundleTaskParams params =
+        new SupportBundleTaskParams(
+            new SupportBundle(), new SupportBundleFormData(), customer, universe);
+
     // Calling the download function
     UniverseLogsComponent universeLogsComponent =
         new UniverseLogsComponent(
@@ -165,7 +173,7 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
             mockSupportBundleUtil,
             MockConfGetter);
     universeLogsComponent.downloadComponentBetweenDates(
-        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+        params, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 
     // Check that the download function is called
     verify(mockUniverseInfoHandler, times(1))

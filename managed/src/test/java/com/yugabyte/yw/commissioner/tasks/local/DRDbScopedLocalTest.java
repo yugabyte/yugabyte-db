@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
@@ -53,6 +54,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
+import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 import play.mvc.Result;
@@ -455,8 +457,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     List<Db> dbs = createData.dbs;
     List<Table> tables = createData.tables;
 
-    // TODO: Simulate source universe down failure.
-
     Result safetimeResult = getSafeTime(drConfigUUID);
     JsonNode safeTimeJson = (ObjectNode) Json.parse(contentAsString(safetimeResult));
     DrConfigSafetimeResp safeTimeResp = Json.fromJson(safeTimeJson, DrConfigSafetimeResp.class);
@@ -487,6 +487,11 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     for (NodeDetails sourceNode : sourceUniverse.getNodes()) {
       killProcessOnNode(sourceUniverse.getUniverseUUID(), sourceNode.nodeName, ServerType.TSERVER);
     }
+
+    // Get xcluster config replication group name.
+    // Then check that the outbound replication group is deleted.
+    String oldReplicationGroupName =
+        DrConfig.getOrBadRequest(drConfigUUID).getActiveXClusterConfig().getReplicationGroupName();
 
     // Failover DR config.
     DrConfigFailoverForm drFailoverForm = new DrConfigFailoverForm();
@@ -564,6 +569,26 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     // Sleep to make sure roles are propogated properly after switchover.
     Thread.sleep(5000);
+
+    // Check outbound replication on old source universe is deleted.
+    try (YBClient client =
+        ybClientService.getClient(
+            newTargetUniverse.getMasterAddresses(), newTargetUniverse.getCertificateNodetoNode())) {
+      try {
+        GetXClusterOutboundReplicationGroupInfoResponse rgInfo =
+            client.getXClusterOutboundReplicationGroupInfo(oldReplicationGroupName);
+        throw new RuntimeException(
+            String.format(
+                "oldReplicationGroupName %s should not be found and should have been deleted",
+                oldReplicationGroupName));
+      } catch (Exception ignored) {
+        log.debug(
+            "The outbound replication group does not exist as expected {}", ignored.getMessage());
+        // The outbound replication group does not exist as expected.
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
 
     // Validate newSourceUniverse -> newTargetUniverse replication succeeds.
     insertRow(sourceUniverse, tables.get(0), Map.of("id", "3", "name", "'val3'"));

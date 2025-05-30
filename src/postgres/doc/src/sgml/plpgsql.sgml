@@ -1044,7 +1044,8 @@ INSERT INTO mytable VALUES (1,'one'), (2,'two');
      <application>PL/pgSQL</application> variable values can be
      automatically inserted into optimizable SQL commands, which
      are <command>SELECT</command>, <command>INSERT</command>,
-     <command>UPDATE</command>, <command>DELETE</command>, and certain
+     <command>UPDATE</command>, <command>DELETE</command>,
+     <command>MERGE</command>, and certain
      utility commands that incorporate one of these, such
      as <command>EXPLAIN</command> and <command>CREATE TABLE ... AS
      SELECT</command>.  In these commands,
@@ -1270,7 +1271,7 @@ $$ LANGUAGE plpgsql;
      On failure, this function might produce an error message such as
 <programlisting>
 ERROR:  query returned no rows
-DETAIL:  parameters: $1 = 'nosuchuser'
+DETAIL:  parameters: username = 'nosuchuser'
 CONTEXT:  PL/pgSQL function get_userid(text) line 6 at SQL statement
 </programlisting>
     </para>
@@ -3357,13 +3358,16 @@ FETCH <optional> <replaceable>direction</replaceable> { FROM | IN } </optional> 
 </synopsis>
 
     <para>
-     <command>FETCH</command> retrieves the next row from the
+     <command>FETCH</command> retrieves the next row (in the indicated
+     direction) from the
      cursor into a target, which might be a row variable, a record
      variable, or a comma-separated list of simple variables, just like
-     <command>SELECT INTO</command>.  If there is no next row, the
+     <command>SELECT INTO</command>.  If there is no suitable row, the
      target is set to NULL(s).  As with <command>SELECT
      INTO</command>, the special variable <literal>FOUND</literal> can
-     be checked to see whether a row was obtained or not.
+     be checked to see whether a row was obtained or not.  If no row is
+     obtained, the cursor is positioned after the last row or before the
+     first row, depending on the movement direction.
     </para>
 
     <para>
@@ -3415,11 +3419,25 @@ MOVE <optional> <replaceable>direction</replaceable> { FROM | IN } </optional> <
 
     <para>
      <command>MOVE</command> repositions a cursor without retrieving
-     any data. <command>MOVE</command> works exactly like the
+     any data. <command>MOVE</command> works like the
      <command>FETCH</command> command, except it only repositions the
-     cursor and does not return the row moved to. As with <command>SELECT
+     cursor and does not return the row moved to.
+     The <replaceable>direction</replaceable> clause can be any of the
+     variants allowed in the SQL <xref linkend="sql-fetch"/>
+     command, including those that can fetch more than one row;
+     the cursor is positioned to the last such row.
+     (However, the case in which the <replaceable>direction</replaceable>
+     clause is simply a <replaceable>count</replaceable> expression with
+     no key word is deprecated in <application>PL/pgSQL</application>.
+     That syntax is ambiguous with the case where
+     the <replaceable>direction</replaceable> clause is omitted
+     altogether, and hence it may fail if
+     the <replaceable>count</replaceable> is not a constant.)
+     As with <command>SELECT
      INTO</command>, the special variable <literal>FOUND</literal> can
-     be checked to see whether there was a next row to move to.
+     be checked to see whether there was a row to move to.  If there is no
+     such row, the cursor is positioned after the last row or before the
+     first row, depending on the movement direction.
     </para>
 
     <para>
@@ -3914,7 +3932,7 @@ RAISE unique_violation USING MESSAGE = 'Duplicate user ID: ' || user_id;
    <para>
     If no condition name nor SQLSTATE is specified in a
     <command>RAISE EXCEPTION</command> command, the default is to use
-    <literal>ERRCODE_RAISE_EXCEPTION</literal> (<literal>P0001</literal>).
+    <literal>raise_exception</literal> (<literal>P0001</literal>).
     If no message text is specified, the default is to use the condition
     name or SQLSTATE as message text.
    </para>
@@ -4311,11 +4329,11 @@ CREATE OR REPLACE FUNCTION process_emp_audit() RETURNS TRIGGER AS $emp_audit$
         -- making use of the special variable TG_OP to work out the operation.
         --
         IF (TG_OP = 'DELETE') THEN
-            INSERT INTO emp_audit SELECT 'D', now(), user, OLD.*;
+            INSERT INTO emp_audit SELECT 'D', now(), current_user, OLD.*;
         ELSIF (TG_OP = 'UPDATE') THEN
-            INSERT INTO emp_audit SELECT 'U', now(), user, NEW.*;
+            INSERT INTO emp_audit SELECT 'U', now(), current_user, NEW.*;
         ELSIF (TG_OP = 'INSERT') THEN
-            INSERT INTO emp_audit SELECT 'I', now(), user, NEW.*;
+            INSERT INTO emp_audit SELECT 'I', now(), current_user, NEW.*;
         END IF;
         RETURN NULL; -- result is ignored since this is an AFTER trigger
     END;
@@ -4381,20 +4399,20 @@ CREATE OR REPLACE FUNCTION update_emp_view() RETURNS TRIGGER AS $$
             IF NOT FOUND THEN RETURN NULL; END IF;
 
             OLD.last_updated = now();
-            INSERT INTO emp_audit VALUES('D', user, OLD.*);
+            INSERT INTO emp_audit VALUES('D', current_user, OLD.*);
             RETURN OLD;
         ELSIF (TG_OP = 'UPDATE') THEN
             UPDATE emp SET salary = NEW.salary WHERE empname = OLD.empname;
             IF NOT FOUND THEN RETURN NULL; END IF;
 
             NEW.last_updated = now();
-            INSERT INTO emp_audit VALUES('U', user, NEW.*);
+            INSERT INTO emp_audit VALUES('U', current_user, NEW.*);
             RETURN NEW;
         ELSIF (TG_OP = 'INSERT') THEN
             INSERT INTO emp VALUES(NEW.empname, NEW.salary);
 
             NEW.last_updated = now();
-            INSERT INTO emp_audit VALUES('I', user, NEW.*);
+            INSERT INTO emp_audit VALUES('I', current_user, NEW.*);
             RETURN NEW;
         END IF;
     END;
@@ -4609,13 +4627,13 @@ CREATE OR REPLACE FUNCTION process_emp_audit() RETURNS TRIGGER AS $emp_audit$
         --
         IF (TG_OP = 'DELETE') THEN
             INSERT INTO emp_audit
-                SELECT 'D', now(), user, o.* FROM old_table o;
+                SELECT 'D', now(), current_user, o.* FROM old_table o;
         ELSIF (TG_OP = 'UPDATE') THEN
             INSERT INTO emp_audit
-                SELECT 'U', now(), user, n.* FROM new_table n;
+                SELECT 'U', now(), current_user, n.* FROM new_table n;
         ELSIF (TG_OP = 'INSERT') THEN
             INSERT INTO emp_audit
-                SELECT 'I', now(), user, n.* FROM new_table n;
+                SELECT 'I', now(), current_user, n.* FROM new_table n;
         END IF;
         RETURN NULL; -- result is ignored since this is an AFTER trigger
     END;

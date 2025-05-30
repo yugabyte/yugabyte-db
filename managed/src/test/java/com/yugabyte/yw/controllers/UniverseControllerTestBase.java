@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -119,6 +120,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected CloudUtilFactory mockCloudUtilFactory;
   protected ReleasesUtils mockReleasesUtils;
   protected GFlagsValidation mockGFlagsValidation;
+  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
 
   protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
     return applicationBuilder;
@@ -148,6 +150,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
     mockReleasesUtils = mock(ReleasesUtils.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
+    mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
 
     when(mockRuntimeConfig.getString("yb.metrics.scrape_interval")).thenReturn("10s");
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
@@ -188,6 +191,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .overrides(bind(QueryHelper.class).toInstance(mockQueryHelper))
         .overrides(bind(KubernetesManagerFactory.class).toInstance(kubernetesManagerFactory))
+        .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))

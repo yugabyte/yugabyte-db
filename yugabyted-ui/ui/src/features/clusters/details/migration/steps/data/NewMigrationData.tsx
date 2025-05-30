@@ -21,6 +21,7 @@ import { MigrationPhase } from "../../migration";
 import { Trans } from "react-i18next";
 import RestartIcon from "@app/assets/restart2.svg";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
+import VoyagerVersionBox from "../../VoyagerVersionBox";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -97,6 +98,7 @@ interface MigrationDataProps {
   onRefetch: () => void;
   isFetching?: boolean;
   isNewMigration?: boolean;
+  voyagerVersion?: string;
 }
 
 export const MigrationData: FC<MigrationDataProps> = ({
@@ -105,6 +107,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
   onRefetch,
   isFetching = false,
   isNewMigration = false,
+  voyagerVersion
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -126,7 +129,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
     isFetching: isFetchingAPI,
     isError: isErrorMigrationMetrics,
   } = useGetVoyagerDataMigrationMetricsQuery({
-    uuid: migration?.migration_uuid || "migration_uuid_not_found",
+    uuid: migration?.migration_uuid || "00000000-0000-0000-0000-000000000000",
   });
 
   const dataAPI = { metrics: data?.metrics || [] };
@@ -187,6 +190,7 @@ export const MigrationData: FC<MigrationDataProps> = ({
     [dataAPI]
   );
 
+
   const phase = migration?.migration_phase || 0;
 
   const exportProgress = useMemo(() => {
@@ -233,9 +237,30 @@ export const MigrationData: FC<MigrationDataProps> = ({
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="start">
-        <Typography variant="h4" className={classes.heading}>
-          {heading}
-        </Typography>
+        <Box display="flex" alignItems="center" position="relative">
+          <Typography variant="h4" className={classes.heading}>
+            {heading}
+          </Typography>
+
+          {
+            !(isFetching && !isNewMigration && !!voyagerVersion) && !!voyagerVersion && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: -3,
+                  left: '100%',
+                  width: '150%'
+                }}
+              >
+                <VoyagerVersionBox voyagerVersion={voyagerVersion} />
+              </Box>
+            )
+          }
+
+        </Box>
+
+
+
         <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>

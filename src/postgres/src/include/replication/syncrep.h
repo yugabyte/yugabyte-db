@@ -14,8 +14,10 @@
 #define _SYNCREP_H
 
 #include "access/xlogdefs.h"
-#include "storage/proc.h"
 #include "utils/guc.h"
+
+/* YB includes */
+#include "storage/proc.h"
 
 #define SyncRepRequested() \
 	(max_wal_senders > 0 && synchronous_commit > SYNCHRONOUS_COMMIT_LOCAL_FLUSH)

@@ -61,10 +61,10 @@ bool IsAutomaticDdlMode(const SysUniverseReplicationEntryPB& replication_info);
 YB_DEFINE_ENUM(XClusterDDLReplicationRole, (kSource)(kTarget));
 
 Status SetupDDLReplicationExtension(
-    CatalogManagerIf& catalog_manager, const std::string& database_name,
-    XClusterDDLReplicationRole role, CoarseTimePoint deadline, StdStatusCallback callback);
+    CatalogManagerIf& catalog_manager, const NamespaceId& namespace_id,
+    XClusterDDLReplicationRole role, StdStatusCallback callback);
 
-Status DropDDLReplicationExtension(
+Status DropDDLReplicationExtensionIfExists(
     CatalogManagerIf& catalog_manager, const NamespaceId& namespace_id, StdStatusCallback callback);
 
 }  // namespace yb::master

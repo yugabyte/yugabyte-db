@@ -50,7 +50,7 @@ Also, the following yb-tserver configuration flag is a factor in the size of eac
 
 - [`--log_segment_size_mb`](../../reference/configuration/yb-tserver/#log-segment-size-mb) – default is `64`.
 
-## How do I determize the size of a YSQL database?
+## How do I determine the size of a YSQL database?
 
 YugabyteDB doesn't currently support the `pg_database_size` function. Instead, use a custom function based on `pg_table_size` to calculate the size of the database.
 
@@ -104,3 +104,36 @@ You should see output like the following:
 {{<lead link="https://yugabytedb.tips/display-ysql-database-size/">}}
 For more information, see [Display YSQL Database size](https://yugabytedb.tips/display-ysql-database-size/)
 {{</lead>}}
+
+## How can I create a user in YSQL with a password that expires after a specific time interval?
+
+You can create a user with a password that expires after a set time using the `VALID UNTIL` clause. The following example sets the expiration time 4 hours from the current time:
+
+```plpgsql
+DO $$
+DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';
+BEGIN 
+  EXECUTE format(
+    'CREATE USER "John" WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';', 
+    time
+  ); 
+END
+$$;
+```
+
+To verify the password expiration time, run the following query:
+
+```plpgsql
+SELECT now(), valuntil, valuntil - now() AS diff 
+FROM pg_user 
+WHERE usename = 'John';
+```
+
+```output
+             now              |        valuntil        |      diff       
+------------------------------+------------------------+----------------
+ 2025-01-23 17:16:22.82708+00 | 2025-01-23 21:16:21+00 | 03:59:58.17292
+(1 row)
+```
+
+This confirms that the password for `John` will expire in approximately 4 hours.

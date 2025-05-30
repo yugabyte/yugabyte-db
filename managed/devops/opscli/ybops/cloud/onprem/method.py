@@ -21,7 +21,7 @@ from ybops.utils import validate_instance, get_datafile_path, YB_HOME_DIR, \
                         DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
                         DEFAULT_TSERVER_RPC_PORT, DEFAULT_NODE_EXPORTER_HTTP_PORT
 from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, RemoteShell
-from ybops.node_agent.server_pb2 import PreflightCheckInput
+from ybops.node_agent.yb_pb2 import PreflightCheckInput
 from ybops.utils.ssh import SSH_RETRY_LIMIT_PRECHECK
 
 import json
@@ -604,15 +604,16 @@ class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
         super(OnPremVerifyCertificatesMethod, self).add_extra_args()
         # NodeToNode certificates
         self.parser.add_argument("--root_cert_path", type=str, required=False, default=None)
-        self.parser.add_argument("--yba_root_cert_checksum", type=str, required=False, default=None)
+        self.parser.add_argument("--yba_root_cert_fingerprint", type=str, required=False,
+                                 default=None)
         self.parser.add_argument("--node_server_cert_path", type=str, required=False, default=None)
         self.parser.add_argument("--node_server_key_path", type=str, required=False, default=None)
         # ClientToNode certificates
-        # client_rootCA and yba_client_root_cert_checksum are not required if
+        # client_rootCA and yba_client_root_cert_fingerprint are not required if
         # they are same as rootCA
         self.parser.add_argument("--client_root_cert_path", type=str, required=False,
                                  default=None)
-        self.parser.add_argument("--yba_client_root_cert_checksum", type=str, required=False,
+        self.parser.add_argument("--yba_client_root_cert_fingerprint", type=str, required=False,
                                  default=None)
         self.parser.add_argument("--client_server_cert_path", type=str, required=False,
                                  default=None)
@@ -620,22 +621,21 @@ class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
 
         self.parser.add_argument("--skip_hostname_check", action="store_true")
 
-    def verify_custom_certificate_checksum(self, root_cert_path, yba_cert_checksum,
-                                           connect_options):
-        remote_shell = RemoteShell(connect_options)
-        check_md5_present = remote_shell.run_command_raw("which md5sum")
-        if check_md5_present.exited != 0:
-            logging.warning("md5sum command not found on the node. Skipping checksum verification.")
-            return
-        root_ca_checksum_response = remote_shell.run_command_raw("md5sum {}".format(root_cert_path))
-        if root_ca_checksum_response.exited != 0:
-            raise YBOpsRuntimeError("Failed to get checksum for root CA certificate")
-        root_ca_checksum = root_ca_checksum_response.stdout.split()[0]
-        if root_ca_checksum != yba_cert_checksum:
+    def verify_custom_certificate_fingerprint(self, connect_options, root_cert_path,
+                                              yba_cert_fingerprint):
+        computed_cert_fingerprint = self.cloud.compute_certificate_fingerprint(
+            connect_options,
+            root_cert_path
+        )
+        if computed_cert_fingerprint != yba_cert_fingerprint:
             raise YBOpsRuntimeError(
-                "Root Certificate on the node doesn't match the certificate given to YBA.")
+                "Root CA fingerprint verification failed: expected fingerprint from YBA"
+                "'{}', but computed '{}' locally.".format(
+                    yba_cert_fingerprint, computed_cert_fingerprint
+                )
+            )
 
-    def verify_certificates(self, cert_type, root_cert_path, yba_cert_checksum, cert_path,
+    def verify_certificates(self, cert_type, root_cert_path, yba_cert_fingerprint, cert_path,
                             key_path, connect_options, verify_hostname, results):
         """
             This validation is only used for onprem + customCertHostPath certs.
@@ -647,9 +647,9 @@ class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
             # Do all the basic checks here
             self.cloud.verify_certs(root_cert_path, cert_path, key_path, connect_options,
                                     verify_hostname, perform_extended_validation=True)
-            # Do the CA checksum check here since its unique to onprem + customCertHostPath certs
-            self.verify_custom_certificate_checksum(root_cert_path, yba_cert_checksum,
-                                                    connect_options)
+            # Do the CA fingerprint check here since its unique to onprem + customCertHostPath certs
+            self.verify_custom_certificate_fingerprint(connect_options, root_cert_path,
+                                                       yba_cert_fingerprint)
         except YBOpsRuntimeError as e:
             result_var = False
             results["{} certificate".format(cert_type)] = str(e)
@@ -667,7 +667,7 @@ class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
         # Verify NodeToNode certificates
         if args.root_cert_path is not None:
             self.verify_certificates("RootCA", args.root_cert_path,
-                                     args.yba_root_cert_checksum,
+                                     args.yba_root_cert_fingerprint,
                                      args.node_server_cert_path,
                                      args.node_server_key_path,
                                      self.extra_vars,
@@ -677,7 +677,7 @@ class OnPremVerifyCertificatesMethod(AbstractInstancesMethod):
         # Verify ClientToNode certificates
         if args.client_root_cert_path is not None:
             self.verify_certificates("ClientRootCA", args.client_root_cert_path,
-                                     args.yba_client_root_cert_checksum,
+                                     args.yba_client_root_cert_fingerprint,
                                      args.client_server_cert_path,
                                      args.client_server_key_path,
                                      self.extra_vars,

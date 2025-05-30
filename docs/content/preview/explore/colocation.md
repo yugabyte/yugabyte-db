@@ -173,6 +173,7 @@ To view metrics such as table size, use the name of the parent colocation table.
 - Metrics for table metrics such as table size are available for the colocation tablet, not for individual colocated tables that are part of the colocation.
 - Tablet splitting is disabled for colocated tables.
 - You can't configure xCluster replication for colocated tables using the YugabyteDB Anywhere UI in the 2.18.0 release. This functionality will be available in a future release.
+- To avoid hotspots, do not colocate tables that receive disproportionately high loads.
 
 ### Semantic differences between colocated and non-colocated tables
 
@@ -466,7 +467,7 @@ You can back up and restore a database with colocated tables and tablespaces in 
        default          | postgres    | t2_default | table | yugabyte
        default          | postgres    | t1_default | table | yugabyte
        default          | postgres    | t2         | table | yugabyte
-       default          | postgres    | t1 	       | table | yugabyte
+       default          | postgres    | t1         | table | yugabyte
       (10 rows)
       ```
 

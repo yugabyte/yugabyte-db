@@ -91,6 +91,7 @@ typedef struct MemoryContextData
 	const char *ident;			/* context ID if any (just for debugging) */
 	MemoryContextCallback *reset_cbs;	/* list of reset/delete callbacks */
 
+	/* YB */
 	struct PgMemctx *yb_memctx; /* Memory context for objects in yugabyte */
 } MemoryContextData;
 

@@ -939,6 +939,17 @@ const constructProviderPayload = async (
     sshUser,
     ...unexposedProviderDetailFields
   } = providerConfig.details;
+  const {
+    azuClientId,
+    azuClientSecret,
+    azuHostedZoneId,
+    azuRG,
+    azuNetworkRG,
+    azuSubscriptionId,
+    azuNetworkSubscriptionId,
+    azuTenantId,
+    ...unexposedProviderCloudInfoFields
+  } = cloudInfo.azu;
   return {
     code: ProviderCode.AZU,
     name: formValues.providerName,
@@ -948,6 +959,7 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.AZU]: {
+          ...unexposedProviderCloudInfoFields,
           azuClientId: formValues.azuClientId,
           ...(formValues.providerCredentialType ===
             ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
@@ -977,6 +989,15 @@ const constructProviderPayload = async (
           providerConfig,
           regionFormValues.code
         );
+
+        const {
+          securityGroupId,
+          vnet,
+          ybImage,
+          azuNetworkRGOverride,
+          azuRGOverride,
+          ...unexposedRegionCloudInfoFields
+        } = existingRegion?.details.cloudInfo.azu ?? {};
         return {
           ...existingRegion,
           code: regionFormValues.code,
@@ -984,6 +1005,7 @@ const constructProviderPayload = async (
             ...existingRegion?.details,
             cloudInfo: {
               [ProviderCode.AZU]: {
+                ...unexposedRegionCloudInfoFields,
                 ...(regionFormValues.securityGroupId && {
                   securityGroupId: regionFormValues.securityGroupId
                 }),

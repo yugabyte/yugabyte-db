@@ -4,6 +4,8 @@ import { makeStyles } from '@material-ui/core';
 import Paper from '@material-ui/core/Paper';
 import { YBAutoComplete } from '../../../redesign/components';
 import { DEFAULT_TIMEZONE } from '../../../redesign/helpers/constants';
+import { isEmptyString } from '../../../utils/ObjectUtils';
+import { useSelector } from 'react-redux';
 
 interface GraphPanelHeaderTimezoneProps {
   selectedTimezone: string;
@@ -35,14 +37,41 @@ export const GraphPanelHeaderTimezone = ({
   handleTZChange
 }: GraphPanelHeaderTimezoneProps) => {
   const classes = useStyles();
+
+  // State variables
   const [inputValue, setInputValue] = useState<string>('');
   const [isTyping, setIsTyping] = useState(false);
+
+  // Refs
   const prevInputValueRef = useRef('');
+  const autoCompleteRef = useRef(null);
+
+  const { currentUser } = useSelector((state: any) => state.customer);
 
   const formatTimezoneLabel = (tz: string) => {
     const formattedTimezone = tz?.replace('_', ' ');
     return `(UTC${moment.tz(tz).format('ZZ')}) ${formattedTimezone} Time`;
   };
+
+  // If metricsTimezone is not set in sessionStorage, set it to the currentUser's timezone
+  // If currentUser's timezone is set to default, then set it to the default timezone
+  useEffect(() => {
+    if (
+      isEmptyString(sessionStorage.getItem('metricsTimezone')) ||
+      !sessionStorage.getItem('metricsTimezone')
+    ) {
+      setInputValue(
+        isEmptyString(currentUser.data.timezone)
+          ? DEFAULT_TIMEZONE.value
+          : currentUser.data.timezone
+      );
+      handleTZChange(
+        isEmptyString(currentUser.data.timezone)
+          ? DEFAULT_TIMEZONE.value
+          : currentUser.data.timezone
+      );
+    }
+  }, []);
 
   useEffect(() => {
     if (selectedTimezone) {
@@ -87,6 +116,16 @@ export const GraphPanelHeaderTimezone = ({
     );
   };
 
+  const handleBlur = () => {
+    if (!inputValue) {
+      const firstOption = timezoneOptions[0];
+      if (firstOption) {
+        setInputValue(DEFAULT_TIMEZONE.value);
+        handleTZChange(DEFAULT_TIMEZONE.value);
+      }
+    }
+  };
+
   return (
     <>
       <YBAutoComplete
@@ -106,6 +145,8 @@ export const GraphPanelHeaderTimezone = ({
           prevInputValueRef.current = newInputValue;
         }}
         PaperComponent={(props) => <Paper {...props} className={classes.paperMenu} />}
+        ref={autoCompleteRef}
+        onBlur={handleBlur}
         onChange={(e, newValue: any) => {
           if (newValue) {
             const changedTimezone = newValue.value;

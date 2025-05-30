@@ -22,6 +22,7 @@ import (
 var deleteUniverseCmd = &cobra.Command{
 	Use:     "delete",
 	Aliases: []string{"remove", "rm"},
+	GroupID: "action",
 	Short:   "Delete a YugabyteDB Anywhere universe",
 	Long:    "Delete a universe in YugabyteDB Anywhere",
 	Example: `yba universe delete --name <universe-name>`,

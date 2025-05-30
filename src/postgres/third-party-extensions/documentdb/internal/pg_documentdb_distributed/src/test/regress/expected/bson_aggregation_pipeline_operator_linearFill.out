@@ -1,0 +1,1458 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 466000;
+SET documentdb.next_collection_id TO 4660;
+SET documentdb.next_collection_index_id TO 4660;
+---------------------------------------------------------------------
+-- Prepare data
+---------------------------------------------------------------------
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 5, "a": "p2", "cost": 3, "date": { "$date": { "$numberLong": "1718841600011" } }, "quantity": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 6, "a": "p2", "cost": 8, "date": { "$date": { "$numberLong": "1718841600012" } }, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 7, "a": "p2", "cost": 8, "date": { "$date": { "$numberLong": "1718841600013" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 8, "a": "p2", "cost": 4, "date": { "$date": { "$numberLong": "1718841600014"} }, "quantity": 4  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 11, "a": "p3", "cost": 2, "date": { "$date": { "$numberLong": "1718841600021"} }, "quantity": 100  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 10, "a": "p3", "cost": 8, "date": { "$date": { "$numberLong": "1718841605022" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 9, "a": "p3", "cost": 8, "date": { "$date": { "$numberLong": "1718841606023" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+---------------------------------------------------------------------
+-- positive case
+---------------------------------------------------------------------
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null }
+(11 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null }
+(11 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "_id": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.5" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "252.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : { "$numberDouble" : "36.0" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : { "$numberDouble" : "68.0" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": -1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" } }
+(11 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": -1 },"output": {"quantity": { "$linearFill": "$quantity"}, "quantity2": { "$linearFill": "$quantity"}}}}]}');
+                                                                                                               document                                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" }, "quantity2" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" }, "quantity2" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" }, "quantity2" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" }, "quantity2" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "p2", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberInt" : "4" }, "quantity2" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDouble" : "3.0" }, "quantity2" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "p2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDouble" : "2.0" }, "quantity2" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "p2", "cost" : { "$numberInt" : "3" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberInt" : "1" }, "quantity2" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841606023" } }, "quantity" : null, "quantity2" : null }
+ { "_id" : { "$numberInt" : "10" }, "a" : "p3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841605022" } }, "quantity" : null, "quantity2" : null }
+ { "_id" : { "$numberInt" : "11" }, "a" : "p3", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600021" } }, "quantity" : { "$numberInt" : "100" }, "quantity2" : { "$numberInt" : "100" } }
+(11 rows)
+
+---------------------------------------------------------------------
+-- positive case with different sort key value
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 1, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 501  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 2, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 9, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 10, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 510 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "cost": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "1" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "501" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "9" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "509.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "510" } }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 1, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 501  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 2, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 9, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": -10, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 510 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "cost": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "-10" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "510" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "1" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "501" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "9" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 1, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberDecimal": "501" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 2, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 9, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 10, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 510 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "cost": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                        document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "1" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberDecimal" : "501" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDecimal" : "502" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "9" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDecimal" : "509" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "510" } }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 1, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberDecimal": "501" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 2, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 9, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 10, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 510 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 5, "a": "abc", "cost": 11, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": null  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 6, "a": "abc", "cost": 12, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 7, "a": "abc", "cost": 19, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 8, "a": "abc", "cost": 0, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 520 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "cost": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                        document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : "abc", "cost" : { "$numberInt" : "0" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "520" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "1" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberDecimal" : "501" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "2" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDecimal" : "502" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "9" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDecimal" : "509" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "510" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "abc", "cost" : { "$numberInt" : "11" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "6" }, "a" : "abc", "cost" : { "$numberInt" : "12" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "7" }, "a" : "abc", "cost" : { "$numberInt" : "19" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+(8 rows)
+
+---------------------------------------------------------------------
+-- positive corner case
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": null  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : null }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 1  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                     document                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : null }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 1  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 5, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600005"}}, "quantity": 1  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 6, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600006" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 7, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600007" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 8, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600008"}} , "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                        document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600005" } }, "quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600006" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "7" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600007" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "8" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600008" } }, "quantity" : null }
+(8 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc1", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc2", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc3", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc4", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                       document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc4", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+(4 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc3", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc4", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+(4 rows)
+
+---------------------------------------------------------------------
+-- positive case with Infinity and -Infinity
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": Infinity }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDouble" : "Infinity" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberDouble" : "Infinity" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": Infinity  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": 500 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberDouble" : "Infinity" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDouble" : "NaN" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberInt" : "500" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": Infinity  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": Infinity }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberDouble" : "Infinity" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDouble" : "NaN" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberDouble" : "Infinity" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": { "$numberDecimal": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": Infinity }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberDecimal" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDecimal" : "Infinity" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberDouble" : "Infinity" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": Infinity  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": { "$numberDecimal": "500" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberDouble" : "Infinity" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDecimal" : "NaN" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberDecimal" : "500" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": -Infinity  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": 500 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberDouble" : "-Infinity" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDouble" : "NaN" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberInt" : "500" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": -Infinity }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDouble" : "-Infinity" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberDouble" : "-Infinity" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": Infinity  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": -Infinity }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberDouble" : "Infinity" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDouble" : "NaN" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberDouble" : "-Infinity" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "a1", "b": "b1", "cost": 5, "date": { "$date": { "$numberLong": "1"}}, "quantity": -Infinity  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "a1", "b": "b2", "cost": 8, "date": { "$date": { "$numberLong": "2"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "a1", "b": "b1", "cost": 8, "date": { "$date": { "$numberLong": "3"}}, "quantity": -Infinity }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                          document                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1" } }, "quantity" : { "$numberDouble" : "-Infinity" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "a1", "b" : "b2", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "2" } }, "quantity" : { "$numberDouble" : "NaN" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "a1", "b" : "b1", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "3" } }, "quantity" : { "$numberDouble" : "-Infinity" } }
+(3 rows)
+
+---------------------------------------------------------------------
+-- positive case to test manual window trim
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": 500 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}, "quantity": 500 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 5, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600005"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 6, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600006"}}, "quantity": 600 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 7, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600007"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 8, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600008"}}, "quantity": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 9, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600009"}}, "quantity": 700 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                                 document                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "533.33333333333337123" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600005" } }, "quantity" : { "$numberDouble" : "566.66666666666662877" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600006" } }, "quantity" : { "$numberInt" : "600" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600007" } }, "quantity" : { "$numberDouble" : "633.33333333333337123" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600008" } }, "quantity" : { "$numberDouble" : "666.66666666666662877" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600009" } }, "quantity" : { "$numberInt" : "700" } }
+(9 rows)
+
+---------------------------------------------------------------------
+-- positive case with different numeric types
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberDecimal": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                        document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberDecimal" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDecimal" : "501" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDecimal" : "502" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberLong": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": { "$numberDouble": "503" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberLong" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "503.0" } }
+(4 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberLong": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": { "$numberDouble": "503" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 5, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600011"}}, "quantity": { "$numberDecimal": "500" }  }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 6, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600012" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 7, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600013" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 8, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600014"}} , "quantity": { "$numberDouble": "503" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 },"output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                               document                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberLong" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberDouble" : "501.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberDouble" : "503.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600011" } }, "quantity" : { "$numberDecimal" : "500" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600012" } }, "quantity" : { "$numberDecimal" : "501.000000000000" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600013" } }, "quantity" : { "$numberDecimal" : "502.000000000000" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600014" } }, "quantity" : { "$numberDouble" : "503.0" } }
+(8 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": { "$numberDecimal": "500" }  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": { "$numberInt": "501" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                         document                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberDecimal" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : { "$numberInt" : "501" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : { "$numberDouble" : "502.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+(4 rows)
+
+---------------------------------------------------------------------
+-- positive corner case with sortBy
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "def", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "def", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "cost": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+                                                                                      document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "date" : { "$date" : { "$numberLong" : "1718841600001" } }, "quantity" : { "$numberInt" : "500" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600002" } }, "quantity" : null }
+ { "_id" : { "$numberInt" : "3" }, "a" : "def", "cost" : { "$numberInt" : "4" }, "date" : { "$date" : { "$numberLong" : "1718841600004" } }, "quantity" : { "$numberInt" : "503" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "def", "cost" : { "$numberInt" : "8" }, "date" : { "$date" : { "$numberLong" : "1718841600003" } }, "quantity" : null }
+(4 rows)
+
+---------------------------------------------------------------------
+-- negative case
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- without sortBy field
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+ERROR:  $linearFill must be specified with a top level sortBy expression with exactly one element
+-- sortBy is not numeric or date
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "a": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+ERROR:  sortBy value must be numeric or a date, but found string
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "1", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "2", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "3", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "a": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+ERROR:  sortBy value must be numeric or a date, but found string
+-- mixed numeric and date type in sortBy
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "1", "cost": 5, "date": 1, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "2", "cost": 8, "date": 2, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "3", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+ERROR:  The sortBy field must be either numeric or a date, but not both
+-- sortBy with repeated value in one partition
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "test": 0, "val": 0}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "test": 1, "val": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "test": 9, "val": 9}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "test": 10, "val": 10}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 5, "test": 10, "val": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 6, "test": 11, "val": 11}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "test": 1 }, "output": {"val": { "$linearFill": "$val"}}}}]}');
+ERROR:  There can be no repeated values in the sort field
+-- fill non-numeric field
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": "503" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+ERROR:   Value to be filled must be numeric or nullish
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "a": "abc", "cost": 5, "date": { "$date": { "$numberLong": "1718841600001"}}, "quantity": 500  }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600002"}}, "quantity": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 4, "a": "abc", "cost": 8, "date": { "$date": { "$numberLong": "1718841600003"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600004"}} , "quantity": 503 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 5, "a": "abc", "cost": 4, "date": { "$date": { "$numberLong": "1718841600005"}} , "quantity": "503" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
+ERROR:   Value to be filled must be numeric or nullish
+-- window fields existed in the input document
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity", "window":{ "documents": ["unbounded", "unbounded"]}}}}}]}');
+ERROR:  'window' field is not allowed in $linearFill
+---------------------------------------------------------------------
+-- Infinity result test
+---------------------------------------------------------------------
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "test": 0, "val": { "$numberDecimal": "-9.999999999999999999999999999999999E+6144" }}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "test": 1, "val": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "test": 2, "val": { "$numberDecimal": "9.999999999999999999999999999999999E+6144" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "test": 1 }, "output": {"val": { "$linearFill": "$val"}}}}]}');
+                                                                     document                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "test" : { "$numberInt" : "0" }, "val" : { "$numberDecimal" : "-9.999999999999999999999999999999999E+6144" } }
+ { "_id" : { "$numberInt" : "2" }, "test" : { "$numberInt" : "1" }, "val" : { "$numberDecimal" : "Infinity" } }
+ { "_id" : { "$numberInt" : "3" }, "test" : { "$numberInt" : "2" }, "val" : { "$numberDecimal" : "9.999999999999999999999999999999999E+6144" } }
+(3 rows)
+
+SELECT documentdb_api.drop_collection('db','setWindowFields');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 1, "test": 0, "val": { "$numberDecimal": "9.999999999999999999999999999999999E+6144" }}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 2, "test": 1, "val": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "test": 2, "val": { "$numberDecimal": "-9.999999999999999999999999999999999E+6144" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "test": 1 }, "output": {"val": { "$linearFill": "$val"}}}}]}');
+                                                                     document                                                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "test" : { "$numberInt" : "0" }, "val" : { "$numberDecimal" : "9.999999999999999999999999999999999E+6144" } }
+ { "_id" : { "$numberInt" : "2" }, "test" : { "$numberInt" : "1" }, "val" : { "$numberDecimal" : "-Infinity" } }
+ { "_id" : { "$numberInt" : "3" }, "test" : { "$numberInt" : "2" }, "val" : { "$numberDecimal" : "-9.999999999999999999999999999999999E+6144" } }
+(3 rows)
+

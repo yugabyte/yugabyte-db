@@ -72,6 +72,7 @@ Status PgValueToDatum(const YbcPgTypeEntity *type_entity,
     }
 
     case YB_YQL_DATA_TYPE_VECTOR: FALLTHROUGH_INTENDED;
+    case YB_YQL_DATA_TYPE_BSON: FALLTHROUGH_INTENDED;
     case YB_YQL_DATA_TYPE_BINARY: {
       auto str = value.binary_value();
       *datum = type_entity->yb_to_datum(str.data(), str.size(), &type_attrs);
@@ -176,6 +177,11 @@ Status PBToDatum(const YbcPgTypeEntity *type_entity,
     case YB_YQL_DATA_TYPE_VECTOR: FALLTHROUGH_INTENDED;
     case YB_YQL_DATA_TYPE_BINARY: {
       auto str = value.binary_value();
+      *datum = type_entity->yb_to_datum(str.data(), str.size(), &type_attrs);
+      break;
+    }
+    case YB_YQL_DATA_TYPE_BSON: {
+      auto str = value.bson_value();
       *datum = type_entity->yb_to_datum(str.data(), str.size(), &type_attrs);
       break;
     }
@@ -292,6 +298,13 @@ Status PgValueToPB(const YbcPgTypeEntity *type_entity,
       int64_t bytes = type_entity->datum_fixed_size;
       type_entity->datum_to_yb(datum, &value, &bytes);
       ql_value->set_binary_value(value, bytes);
+      break;
+    }
+    case YB_YQL_DATA_TYPE_BSON: {
+      uint8_t* value;
+      int64_t bytes = type_entity->datum_fixed_size;
+      type_entity->datum_to_yb(datum, &value, &bytes);
+      ql_value->set_bson_value(value, bytes);
       break;
     }
     case YB_YQL_DATA_TYPE_TIMESTAMP: {

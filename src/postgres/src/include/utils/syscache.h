@@ -18,9 +18,10 @@
 
 #include "access/attnum.h"
 #include "access/htup.h"
-#include "relcache.h"
-
 /* we intentionally do not include utils/catcache.h here */
+
+/* YB includes */
+#include "relcache.h"
 
 /*
  *		SysCache identifiers.
@@ -29,6 +30,16 @@
  *		of the entries in the array cacheinfo[] in syscache.c.
  *		Keep them in alphabetical order (renumbering only costs a
  *		backend rebuild).
+ * YB Note:
+ * Starting from 2025-03-11, we try to keep existing ids to have same integer
+ * value. In other words, newly added ids should be appended at the end
+ * and the alphabetical order can no longer be maintained. The purpose is
+ * to allow interop between different releases during YSQL upgrade so that
+ * an id of the same integer value represents the same catalog cache across
+ * different releases. In this way a catalog cache invalidation message
+ * generated in release 123 can be applicable to release 456, or vice versa.
+ * The function YbCheckCatalogCacheIds() is used to detect any change in
+ * this enum list.
  */
 
 enum SysCacheIdentifier
@@ -173,21 +184,14 @@ typedef enum YbCatalogCacheTable
 	YbCatalogCacheTable_pg_ts_template,
 	YbCatalogCacheTable_pg_type,
 	YbCatalogCacheTable_pg_user_mapping,
-	YbCatalogCacheTable_pg_yb_tablegroup
+	YbCatalogCacheTable_pg_yb_tablegroup,
+	YbAdhocCacheTable_pg_inherits
 
-#define YbNumCatalogCacheTables (YbCatalogCacheTable_pg_yb_tablegroup + 1)
+#define YbNumCatalogCacheTables (YbAdhocCacheTable_pg_inherits + 1)
 } YbCatalogCacheTable;
 
-/* Used in IsYugaByteEnabled() mode only */
-extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
-extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
-#ifndef NDEBUG
-extern bool YbCheckCatalogCacheIndexNameTable();
-#endif
-extern const char *YbGetCatalogCacheIndexName(int cache_id);
-extern const char *YbGetCatalogCacheTableNameFromTableId(int table_id);
-extern const char *YbGetCatalogCacheTableNameFromCacheId(int cache_id);
-extern int	YbGetCatalogCacheTableIdFromCacheId(int cache_id);
+extern long YbNumCatalogCacheMisses;
+extern long YbNumCatalogCacheTableMisses[];
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);
@@ -210,9 +214,14 @@ extern HeapTuple SearchSysCache4(int cacheId,
 
 extern void ReleaseSysCache(HeapTuple tuple);
 
+extern HeapTuple SearchSysCacheLocked1(int cacheId,
+									   Datum key1);
+
 /* convenience routines */
 extern HeapTuple SearchSysCacheCopy(int cacheId,
 									Datum key1, Datum key2, Datum key3, Datum key4);
+extern HeapTuple SearchSysCacheLockedCopy1(int cacheId,
+										   Datum key1);
 extern bool SearchSysCacheExists(int cacheId,
 								 Datum key1, Datum key2, Datum key3, Datum key4);
 extern Oid	GetSysCacheOid(int cacheId, AttrNumber oidcol,
@@ -241,6 +250,21 @@ extern void SysCacheInvalidate(int cacheId, uint32 hashValue);
 extern bool RelationInvalidatesSnapshotsOnly(Oid relid);
 extern bool RelationHasSysCache(Oid relid);
 extern bool RelationSupportsSysCache(Oid relid);
+
+/* YB */
+extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
+extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
+#ifndef NDEBUG
+extern bool YbCheckCatalogCacheIndexNameTable();
+extern bool YbCheckSysCacheNames();
+#endif
+extern const char *YbGetCatalogCacheIndexName(int cache_id);
+extern const char *YbGetCatalogCacheTableNameFromTableId(int table_id);
+extern const char *YbGetCatalogCacheTableNameFromCacheId(int cache_id);
+extern int	YbGetCatalogCacheTableIdFromCacheId(int cache_id);
+extern uint32 YbSysCacheComputeHashValue(int cache_id, Datum v1, Datum v2, Datum v3, Datum v4);
+extern void YbCopyCacheInfoToValues(int cache_id, Datum *values);
+extern void YbSetAdditionalNegCacheIds(List *neg_cache_ids);
 
 /*
  * The use of the macros below rather than direct calls to the corresponding

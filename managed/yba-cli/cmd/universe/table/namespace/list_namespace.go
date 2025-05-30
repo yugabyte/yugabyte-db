@@ -69,7 +69,9 @@ var listNamespaceCmd = &cobra.Command{
 		}
 
 		r, response, err := authAPI.
-			GetAllNamespaces(universeUUID).IncludeSystemNamespaces(includeSystemNamespaceInfo).Execute()
+			GetAllNamespaces(
+				universeUUID,
+			).IncludeSystemNamespaces(includeSystemNamespaceInfo).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
 				response,

@@ -118,7 +118,7 @@ class ScheduledTaskTracker {
   ScheduledTaskTracker() = default;
   ~ScheduledTaskTracker();
 
-  explicit ScheduledTaskTracker(Scheduler* scheduler);
+  ScheduledTaskTracker(const std::string& name, Scheduler* scheduler);
 
   void Bind(Scheduler* scheduler) {
     scheduler_ = scheduler;
@@ -147,6 +147,7 @@ class ScheduledTaskTracker {
   void Abort();
 
   void StartShutdown();
+  bool ReadyToShutdown() const;
   void CompleteShutdown();
 
   void Shutdown() {
@@ -154,7 +155,12 @@ class ScheduledTaskTracker {
     CompleteShutdown();
   }
 
+  const std::string& LogPrefix() {
+    return log_prefix_;
+  }
+
  private:
+  std::string log_prefix_;
   Scheduler* scheduler_ = nullptr;
   std::atomic<int64_t> num_scheduled_{0};
   std::atomic<rpc::ScheduledTaskId> last_scheduled_task_id_{rpc::kInvalidTaskId};

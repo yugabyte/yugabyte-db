@@ -40,11 +40,13 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
 
   Status SendWriteBatch(
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime write_ht, HybridTime batch_ht) {
+    ConsensusFrontiers frontiers;
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
-        put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, nullptr);
+        put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers);
 
     rocksdb::WriteBatch regular_write_batch;
+    regular_write_batch.SetFrontiers(&frontiers);
     regular_write_batch.SetDirectWriter(&batcher);
     RETURN_NOT_OK(regular_db_->Write(write_options(), &regular_write_batch));
 

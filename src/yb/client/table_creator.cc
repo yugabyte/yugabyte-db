@@ -60,6 +60,11 @@ YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::internal_table_type(master::InternalTableType internal_type) {
+  internal_table_type_ = internal_type;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::creator_role_name(const RoleName& creator_role_name) {
   creator_role_name_ = creator_role_name;
   return *this;
@@ -142,6 +147,11 @@ YBTableCreator& YBTableCreator::is_truncate(bool is_truncate) {
 
 YBTableCreator& YBTableCreator::xcluster_source_table_id(const TableId& source_table_id) {
   xcluster_source_table_id_ = source_table_id;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::xcluster_backfill_hybrid_time(uint64_t backfill_hybrid_time) {
+  xcluster_backfill_hybrid_time_ = backfill_hybrid_time;
   return *this;
 }
 
@@ -277,6 +287,7 @@ Status YBTableCreator::Create() {
   req.set_name(table_name_.table_name());
   table_name_.SetIntoNamespaceIdentifierPB(req.mutable_namespace_());
   req.set_table_type(table_type_);
+  req.set_internal_table_type(internal_table_type_);
   req.set_is_colocated_via_database(is_colocated_via_database_);
 
   if (!creator_role_name_.empty()) {
@@ -321,7 +332,12 @@ Status YBTableCreator::Create() {
   }
 
   if (!xcluster_source_table_id_.empty()) {
-    req.set_xcluster_source_table_id(xcluster_source_table_id_);
+    req.mutable_xcluster_table_info()->set_xcluster_source_table_id(xcluster_source_table_id_);
+  }
+
+  if (xcluster_backfill_hybrid_time_) {
+    req.mutable_xcluster_table_info()->set_xcluster_backfill_hybrid_time(
+        xcluster_backfill_hybrid_time_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or

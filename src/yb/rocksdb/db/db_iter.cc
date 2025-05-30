@@ -310,15 +310,9 @@ class DBIter final : public Iterator {
   const KeyValueEntry& FastNext();
   const KeyValueEntry& Next() override;
   const KeyValueEntry& Prev() override;
-  const KeyValueEntry& Seek(Slice target) override {
-    return DoSeek(target, nullptr);
-  }
+  const KeyValueEntry& Seek(Slice target) override;
   const KeyValueEntry& SeekToFirst() override;
   const KeyValueEntry& SeekToLast() override;
-
-  bool ScanForward(
-      Slice upperbound, KeyFilterCallback* key_filter_callback,
-      ScanCallback* scan_callback) override;
 
   void RevalidateAfterUpperBoundChange() override {
     if (direction_ == kForward) {
@@ -338,8 +332,8 @@ class DBIter final : public Iterator {
     fast_next_ = value;
   }
 
-  const KeyValueEntry& DoSeekWithNewFilter(Slice target, Slice filter_user_key) override {
-    return DoSeek(target, filter_user_key);
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    iter_->UpdateFilterKey(user_key_for_filter);
   }
 
  private:
@@ -354,9 +348,6 @@ class DBIter final : public Iterator {
   void FindNextUserEntryInternal(bool skipping);
   bool ParseKey(ParsedInternalKey* key);
   void MergeValuesNewToOld();
-
-  template <class Filter>
-  const KeyValueEntry& DoSeek(Slice target, Filter filter_user_key);
 
   inline void ClearSavedValue() {
     if (saved_value_.capacity() > 1048576) {
@@ -964,16 +955,7 @@ void DBIter::FindParseableKey(ParsedInternalKey* ikey, Direction direction) {
   }
 }
 
-const KeyValueEntry& CallSeek(InternalIterator* iter, Slice target, std::nullptr_t) {
-  return iter->Seek(target);
-}
-
-const KeyValueEntry& CallSeek(InternalIterator* iter, Slice target, Slice filter_user_key) {
-  return iter->SeekWithNewFilter(target, filter_user_key);
-}
-
-template <class Filter>
-const KeyValueEntry& DBIter::DoSeek(Slice target, Filter filter_user_key) {
+const KeyValueEntry& DBIter::Seek(Slice target) {
   key_buffer_.Clear();
   auto target_size = target.size();
   char* out = key_buffer_.GrowByAtLeast(target_size + sizeof(uint64_t));
@@ -982,7 +964,7 @@ const KeyValueEntry& DBIter::DoSeek(Slice target, Filter filter_user_key) {
 
   {
     PERF_TIMER_GUARD(seek_internal_seek_time);
-    CallSeek(iter_, key_buffer_.AsSlice(), filter_user_key);
+    iter_->Seek(key_buffer_.AsSlice());
   }
 
   if (iter_->Valid()) {
@@ -1069,43 +1051,6 @@ const KeyValueEntry& DBIter::SeekToLast() {
   return entry_;
 }
 
-// PRE: iterator is valid and direction is kForward.
-// POST: saved_key_ should have the next user key if valid_,
-//       if the current entry is a result of merge
-//           current_entry_is_merged_ => true
-//           saved_value_             => the merged value
-bool DBIter::ScanForward(
-    Slice upperbound, KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
-  DCHECK(Valid());
-  LOG_IF(DFATAL, !iter_->Valid()) << "Iterator should be valid.";
-  LOG_IF(DFATAL, direction_ != kForward) << "Only forward direction scan is supported.";
-
-  if (iterate_upper_bound_ != nullptr && !upperbound.empty() &&
-      user_comparator_->Compare(upperbound, *iterate_upper_bound_) >= 0) {
-    upperbound = *iterate_upper_bound_;
-  }
-
-  auto result =
-      iter_->ScanForward(user_comparator_, upperbound, key_filter_callback, scan_callback);
-  RecordTick(statistics_, NUMBER_DB_NEXT, result.number_of_keys_visited);
-  RecordTick(statistics_, NUMBER_DB_NEXT_FOUND, result.number_of_keys_visited);
-  if (iter_->Valid()) {
-    FindNextUserEntry(/* skipping = */ false);
-  } else {
-    SetInvalid();
-    // Making not necessary for the caller to check Valid after ScanForward call (see
-    // ROCKSDB_CATCH_MISSING_VALID_CHECK).
-    DCHECK(!Valid());
-  }
-
-  VLOG_WITH_FUNC(4) << "ScanForward reached_upperbound: " << result.reached_upperbound
-                    << ", number of keys visited: " << result.number_of_keys_visited
-                    << ", IsValid: " << entry_.Valid()
-                    << ", Key: " << (entry_ ? entry_.key.ToDebugHexString() : "");
-
-  return result.reached_upperbound;
-}
-
 Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,
                         const Comparator* user_key_comparator,
                         InternalIterator* internal_iter,
@@ -1159,18 +1104,12 @@ void ArenaWrappedDBIter::RevalidateAfterUpperBoundChange() {
   db_iter_->RevalidateAfterUpperBoundChange();
 }
 
-bool ArenaWrappedDBIter::ScanForward(
-    Slice upperbound, KeyFilterCallback* key_filter_callback,
-    ScanCallback* scan_callback) {
-  return db_iter_->ScanForward(upperbound, key_filter_callback, scan_callback);
-}
-
 void ArenaWrappedDBIter::UseFastNext(bool value) {
   db_iter_->UseFastNext(value);
 }
 
-const KeyValueEntry& ArenaWrappedDBIter::DoSeekWithNewFilter(Slice target, Slice filter_user_key) {
-  return db_iter_->SeekWithNewFilter(target, filter_user_key);
+void ArenaWrappedDBIter::UpdateFilterKey(Slice user_key_for_filter) {
+  return db_iter_->UpdateFilterKey(user_key_for_filter);
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(

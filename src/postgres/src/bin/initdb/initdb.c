@@ -77,7 +77,9 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 
+/* YB includes */
 #include "common/pg_yb_common.h"
+
 
 /* Ideally this would be in a .h file, but it hardly seems worth the trouble */
 extern const char *select_default_timezone(const char *share_path);
@@ -167,7 +169,6 @@ static char *features_file;
 static char *system_constraints_file;
 static char *system_functions_file;
 static char *system_views_file;
-static char *yb_system_views_file;
 static bool success = false;
 static bool made_new_pgdata = false;
 static bool found_existing_pgdata = false;
@@ -178,6 +179,9 @@ static bool caught_signal = false;
 static bool output_failed = false;
 static int	output_errno = 0;
 static char *pgdata_native;
+
+static char *yb_system_views_file;
+static char *yb_system_functions_file;
 
 /* defaults */
 static int	n_connections = 10;
@@ -235,6 +239,7 @@ static const char *const subdirs[] = {
 	"pg_logical/snapshots",
 	"pg_logical/mappings"
 };
+
 
 /* path to 'initdb' binary directory */
 static char bin_path[MAXPGPATH];
@@ -1433,6 +1438,7 @@ setup_config(void)
 	check_ok();
 }
 
+
 /*
  * run the BKI script in bootstrap mode to create template1
  */
@@ -1466,7 +1472,7 @@ bootstrap_template1(void)
 	}
 
 	/*
-	 * Lines from BKI file are not actually used in initdb on local node.
+	 * YB: Lines from BKI file are not actually used in initdb on local node.
 	 * No need to substitute anything
 	 */
 	if (!IsYugaByteLocalNodeInitdb())
@@ -1872,7 +1878,6 @@ setup_privileges(FILE *cmdfd)
 
 	priv_lines = replace_token(privileges_setup, "$POSTGRES_SUPERUSERNAME",
 							   escape_quotes(username));
-
 	for (line = priv_lines; *line != NULL; line++)
 		PG_CMD_PUTS(*line);
 }
@@ -2394,17 +2399,13 @@ setlocales(void)
 	char	   *canonname;
 
 	/*
-	 * Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale
-	 * in YB mode.
+	 * Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale in
+	 * YB mode.
+	 * This is because as of 06/15/2019 we don't support collation-aware string
+	 * comparisons, but we still want to support storing UTF-8 strings.
+	 * This should be kept in line with TabletServerMain.
 	 */
-
-	/*
-	 * This is because as of 06/15/2019 we don't support collation-aware
-	 * string comparisons,
-	 */
-	/* but we still want to support storing UTF-8 strings. */
 	if (!locale &&
-		!kTestOnlyUseOSDefaultCollation &&
 		(IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb()))
 	{
 		const char *kYBDefaultLocaleForSortOrder = "C";
@@ -2756,8 +2757,9 @@ setup_data_file_paths(void)
 	set_input(&features_file, "sql_features.txt");
 	set_input(&system_constraints_file, "system_constraints.sql");
 	set_input(&system_functions_file, "system_functions.sql");
-
 	set_input(&system_views_file, "system_views.sql");
+
+	set_input(&yb_system_functions_file, "yb_system_functions.sql");
 	set_input(&yb_system_views_file, "yb_system_views.sql");
 
 	if (show_setting || debug)
@@ -2788,7 +2790,10 @@ setup_data_file_paths(void)
 	check_input(system_functions_file);
 	check_input(system_views_file);
 	if (IsYugaByteGlobalClusterInitdb())
+	{
+		check_input(yb_system_functions_file);
 		check_input(yb_system_views_file);
+	}
 }
 
 
@@ -3114,7 +3119,10 @@ initialize_data_directory(void)
 	setup_run_file(cmdfd, system_views_file);
 
 	if (IsYugaByteGlobalClusterInitdb())
+	{
+		setup_run_file(cmdfd, yb_system_functions_file);
 		setup_run_file(cmdfd, yb_system_views_file);
+	}
 
 	/* Do not support copy in YB yet */
 	if (!IsYugaByteGlobalClusterInitdb())
@@ -3130,7 +3138,6 @@ initialize_data_directory(void)
 
 	load_plpgsql(cmdfd);
 
-	/* Enable pg_stat_statements */
 	enable_pg_stat_statements(cmdfd);
 
 	/*
@@ -3378,11 +3385,11 @@ main(int argc, char *argv[])
 		}
 	}
 
-	const char *yb_log_dir = getenv("FLAGS_log_dir");
+	const char *yb_log_file_path = getenv("YB_INITDB_LOG_FILE_PATH");
 
-	if (yb_log_dir && yb_log_dir[0] != '\0')
+	if (yb_log_file_path && yb_log_file_path[0] != '\0')
 	{
-		const char *yb_log_option = psprintf("-r %s/initdb.log", yb_log_dir);
+		const char *yb_log_option = psprintf("-r %s", yb_log_file_path);
 
 		extra_options = psprintf("%s %s", extra_options, yb_log_option);
 	}

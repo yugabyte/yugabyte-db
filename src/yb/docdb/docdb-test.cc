@@ -53,25 +53,6 @@ std::set<std::pair<TableLockType, TableLockType>> MakeTableLockConflicts() {
 
 } // namespace
 
-Result<bool> DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(
-    const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& lhs,
-    const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& rhs) {
-  for (const auto& [lhs_type, lhs_intents] : lhs) {
-    bool found_entry_with_type = false;
-    for (const auto& [rhs_type, rhs_intents] : rhs) {
-      if (lhs_type != rhs_type) {
-        continue;
-      }
-      SCHECK(!found_entry_with_type, IllegalState, "Found $0 more than once in $1", rhs_type, rhs);
-      found_entry_with_type = true;
-      if (IntentTypeSetsConflict(lhs_intents, rhs_intents)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 // This test confirms that we return the appropriate value for doc_found in the case that the last
 // projection we look at is not present. Previously we had a bug where we would set doc_found to
 // true if the last projection was present, and false otherwise, reguardless of other projections
@@ -301,10 +282,10 @@ TEST_F(DocDBTableLocksConflictMatrixTest, TableConflictMatrix) {
 
   for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
     auto lock1 = TableLockType(l1);
-    const auto& entries1 = GetEntriesForLockType(lock1);
+    auto entries1 = GetEntriesForLockType(lock1);
     for (auto l2 = l1; l2 <= TableLockType_MAX; l2++) {
       auto lock2 = TableLockType(l2);
-      const auto& entries2 = GetEntriesForLockType(lock2);
+      auto entries2 = GetEntriesForLockType(lock2);
       auto has_conflict = ASSERT_RESULT(ObjectLocksConflict(entries1, entries2));
       ASSERT_EQ(has_conflict, conflicts.find({lock1, lock2}) != conflicts.end())
           << Format("Expected $0 to $1have conflicted with $2", TableLockType_Name(lock1),

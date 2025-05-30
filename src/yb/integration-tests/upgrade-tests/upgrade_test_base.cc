@@ -49,7 +49,10 @@ std::string GetRelevantUrl(const BuildInfo& info) {
   return kIsDebug ? info.darwin_debug_arm64_url : info.darwin_release_arm64_url;
 #elif defined(__linux__) && defined(__x86_64__)
   return kIsDebug ? info.linux_debug_x86_url : info.linux_release_x86_url;
+#elif defined(__linux__) && defined(__aarch64__)
+  return kIsDebug ? "" : info.linux_release_aarch64_url;
 #endif
+
   return "";
 }
 
@@ -84,6 +87,7 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
         build_info.build_number = GetXmlPathAsString(node, "build_number");
         build_info.linux_debug_x86_url = GetXmlPathAsString(node, "linux_debug_x86");
         build_info.linux_release_x86_url = GetXmlPathAsString(node, "linux_release_x86");
+        build_info.linux_release_aarch64_url = GetXmlPathAsString(node, "linux_release_aarch64");
         build_info.darwin_debug_arm64_url = GetXmlPathAsString(node, "darwin_debug_arm64");
         build_info.darwin_release_arm64_url = GetXmlPathAsString(node, "darwin_release_arm64");
         return build_info;
@@ -181,15 +185,6 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-// Add the flag_name to undefok list, so that it can be set on all versions even if the version does
-// not contain the flag. If the flag_list already contains an undefok flag, append to it, else
-// insert a new entry.
-void AddUnDefOkAndSetFlag(
-    std::vector<std::string>& flag_list, const std::string& flag_name,
-    const std::string& flag_value) {
-  AppendCsvFlagValue(flag_list, "undefok", flag_name);
-  flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
-}
 
 void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
 
@@ -264,6 +259,16 @@ Status UpgradeTestBase::StartClusterInOldVersion() {
   return StartClusterInOldVersion(default_opts);
 }
 
+// Add the flag_name to undefok list, so that it can be set on all versions even if the version does
+// not contain the flag. If the flag_list already contains an undefok flag, append to it, else
+// insert a new entry.
+void UpgradeTestBase::AddUnDefOkAndSetFlag(
+    std::vector<std::string>& flag_list, const std::string& flag_name,
+    const std::string& flag_value) {
+  AppendCsvFlagValue(flag_list, "undefok", flag_name);
+  flag_list.emplace_back(Format("--$0=$1", flag_name, flag_value));
+}
+
 void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   opts.enable_ysql = true;
   opts.daemon_bin_path = ASSERT_RESULT(DownloadAndGetBinPath(old_version_info_));
@@ -288,8 +293,26 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
       opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
+  AddUnDefOkAndSetFlag(opts.extra_master_flags, "enable_ysql_operation_lease", "false");
+  AddUnDefOkAndSetFlag(opts.extra_tserver_flags, "enable_ysql_operation_lease", "false");
 
   ExternalMiniClusterITestBase::SetUpOptions(opts);
+}
+
+uint32 UpgradeTestBase::UpgradeCompatibilityGucValue(MajorUpgradeCompatibilityType type) const {
+  return type == MajorUpgradeCompatibilityType::kBackwardsCompatible ? old_ysql_major_version_ : 0;
+}
+
+Status UpgradeTestBase::SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType type) {
+  if (!IsYsqlMajorVersionUpgrade()) {
+    return Status::OK();
+  }
+
+  auto version = UpgradeCompatibilityGucValue(type);
+
+  LOG(INFO) << "Setting ysql_yb_major_version_upgrade_compatibility to " << version;
+  return cluster_->AddAndSetExtraFlag(
+      "ysql_yb_major_version_upgrade_compatibility", ToString(version));
 }
 
 Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOptions& options) {
@@ -307,20 +330,18 @@ Status UpgradeTestBase::StartClusterInOldVersion(const ExternalMiniClusterOption
   current_version_tserver_bin_path_ = cluster_->GetTServerBinaryPath();
   cluster_->SetDaemonBinPath(old_version_bin_path_);
 
-  server::GetStatusRequestPB req;
-  server::GetStatusResponsePB resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(kRpcTimeout);
-  RETURN_NOT_OK(
-      cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
-  LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
-
-  is_ysql_major_version_upgrade_ = resp.status().version_info().ysql_major_version() !=
-                                   current_version_info_.ysql_major_version();
-
-  if (IsYsqlMajorVersionUpgrade()) {
+  if (cluster_->opts_.enable_ysql) {
+    server::GetStatusRequestPB req;
+    server::GetStatusResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(kRpcTimeout);
     RETURN_NOT_OK(
-        cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "11"));
+        cluster_->GetLeaderMasterProxy<server::GenericServiceProxy>().GetStatus(req, &resp, &rpc));
+    LOG(INFO) << "From version: " << resp.status().version_info().DebugString();
+
+    old_ysql_major_version_ = resp.status().version_info().ysql_major_version();
+    is_ysql_major_version_upgrade_ =
+        old_ysql_major_version_ != current_version_info_.ysql_major_version();
   }
 
   return Status::OK();
@@ -339,6 +360,8 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
   RETURN_NOT_OK_PREPEND(
       RestartAllTServersInCurrentVersion(delay_between_nodes), "Failed to restart tservers");
 
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
+
   RETURN_NOT_OK_PREPEND(
       PromoteAutoFlags(AutoFlagClass::kLocalVolatile), "Failed to promote volatile AutoFlags");
 
@@ -354,6 +377,9 @@ Status UpgradeTestBase::UpgradeClusterToCurrentVersion(
 
 Status UpgradeTestBase::RestartAllMastersInCurrentVersion(MonoDelta delay_between_nodes) {
   LOG(INFO) << "Restarting all yb-masters in current version";
+
+  RETURN_NOT_OK(
+      SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kBackwardsCompatible));
 
   for (auto* master : cluster_->master_daemons()) {
     RETURN_NOT_OK(RestartMasterInCurrentVersion(*master, /*wait_for_cluster_to_stabilize=*/false));
@@ -453,7 +479,8 @@ Status UpgradeTestBase::WaitForYsqlMajorCatalogUpgradeToFinish() {
   };
 
   return LoggedWaitFor(
-      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete");
+      is_upgrade_done, 10min, "Waiting for ysql major catalog upgrade to complete",
+      /*initial_delay*/ 1s);
 }
 
 Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
@@ -508,14 +535,14 @@ Status UpgradeTestBase::FinalizeYsqlMajorCatalogUpgrade() {
     return StatusFromPB(resp.error().status());
   }
 
-  if (IsYsqlMajorVersionUpgrade()) {
-    RETURN_NOT_OK(cluster_->AddAndSetExtraFlag("ysql_yb_major_version_upgrade_compatibility", "0"));
-  }
-
   return Status::OK();
 }
 
 Status UpgradeTestBase::PerformYsqlUpgrade() {
+  if (!cluster_->opts_.enable_ysql) {
+    return Status::OK();
+  }
+
   LOG(INFO) << "Running ysql upgrade";
 
   tserver::UpgradeYsqlRequestPB req;
@@ -535,6 +562,8 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
 
 Status UpgradeTestBase::FinalizeUpgrade() {
   LOG(INFO) << "Finalizing upgrade";
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
 
   RETURN_NOT_OK_PREPEND(
       FinalizeYsqlMajorCatalogUpgrade(), "Failed to run ysql major catalog upgrade");
@@ -601,6 +630,9 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
 Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_nodes) {
   LOG(INFO) << "Rolling back upgrade";
 
+  RETURN_NOT_OK(
+      SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kBackwardsCompatible));
+
   RETURN_NOT_OK_PREPEND(RollbackVolatileAutoFlags(), "Failed to rollback Volatile AutoFlags");
 
   RETURN_NOT_OK_PREPEND(
@@ -611,6 +643,8 @@ Status UpgradeTestBase::RollbackClusterToOldVersion(MonoDelta delay_between_node
 
   RETURN_NOT_OK_PREPEND(
       RestartAllMastersInOldVersion(delay_between_nodes), "Failed to restart masters");
+
+  RETURN_NOT_OK(SetMajorUpgradeCompatibilityIfNeeded(MajorUpgradeCompatibilityType::kNone));
 
   LOG(INFO) << "Cluster rolled back to old version";
   return Status::OK();

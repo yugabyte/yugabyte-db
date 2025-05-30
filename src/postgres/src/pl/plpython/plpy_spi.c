@@ -74,7 +74,7 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -175,8 +175,7 @@ PyObject *
 PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 {
 	volatile int nargs;
-	int			i,
-				rv;
+	int			rv;
 	PLyPlanObject *plan;
 	volatile MemoryContext oldcontext;
 	volatile ResourceOwner oldowner;
@@ -214,7 +213,7 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 		return NULL;
 	}
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -222,13 +221,30 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 	PG_TRY();
 	{
 		PLyExecutionContext *exec_ctx = PLy_current_execution_context();
+		MemoryContext tmpcontext;
+		Datum	   *volatile values;
 		char	   *volatile nulls;
 		volatile int j;
 
+		/*
+		 * Converted arguments and associated cruft will be in this context,
+		 * which is local to our subtransaction.
+		 */
+		tmpcontext = AllocSetContextCreate(CurTransactionContext,
+										   "PL/Python temporary context",
+										   ALLOCSET_SMALL_SIZES);
+		MemoryContextSwitchTo(tmpcontext);
+
 		if (nargs > 0)
-			nulls = palloc(nargs * sizeof(char));
+		{
+			values = (Datum *) palloc(nargs * sizeof(Datum));
+			nulls = (char *) palloc(nargs * sizeof(char));
+		}
 		else
+		{
+			values = NULL;
 			nulls = NULL;
+		}
 
 		for (j = 0; j < nargs; j++)
 		{
@@ -240,7 +256,7 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 			{
 				bool		isnull;
 
-				plan->values[j] = PLy_output_convert(arg, elem, &isnull);
+				values[j] = PLy_output_convert(arg, elem, &isnull);
 				nulls[j] = isnull ? 'n' : ' ';
 			}
 			PG_FINALLY();
@@ -250,46 +266,22 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 			PG_END_TRY();
 		}
 
-		rv = SPI_execute_plan(plan->plan, plan->values, nulls,
+		MemoryContextSwitchTo(oldcontext);
+
+		rv = SPI_execute_plan(plan->plan, values, nulls,
 							  exec_ctx->curr_proc->fn_readonly, limit);
 		ret = PLy_spi_execute_fetch_result(SPI_tuptable, SPI_processed, rv);
 
-		if (nargs > 0)
-			pfree(nulls);
-
+		MemoryContextDelete(tmpcontext);
 		PLy_spi_subtransaction_commit(oldcontext, oldowner);
 	}
 	PG_CATCH();
 	{
-		int			k;
-
-		/*
-		 * cleanup plan->values array
-		 */
-		for (k = 0; k < nargs; k++)
-		{
-			if (!plan->args[k].typbyval &&
-				(plan->values[k] != PointerGetDatum(NULL)))
-			{
-				pfree(DatumGetPointer(plan->values[k]));
-				plan->values[k] = PointerGetDatum(NULL);
-			}
-		}
-
+		/* Subtransaction abort will remove the tmpcontext */
 		PLy_spi_subtransaction_abort(oldcontext, oldowner);
 		return NULL;
 	}
 	PG_END_TRY();
-
-	for (i = 0; i < nargs; i++)
-	{
-		if (!plan->args[i].typbyval &&
-			(plan->values[i] != PointerGetDatum(NULL)))
-		{
-			pfree(DatumGetPointer(plan->values[i]));
-			plan->values[i] = PointerGetDatum(NULL);
-		}
-	}
 
 	if (rv < 0)
 	{
@@ -310,7 +302,7 @@ PLy_spi_execute_query(char *query, long limit)
 	volatile ResourceOwner oldowner;
 	PyObject   *ret = NULL;
 
-	oldcontext = GetCurrentMemoryContext();
+	oldcontext = CurrentMemoryContext;
 	oldowner = CurrentResourceOwner;
 
 	PLy_spi_subtransaction_begin(oldcontext, oldowner);
@@ -373,7 +365,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 		Py_DECREF(result->nrows);
 		result->nrows = PyLong_FromUnsignedLongLong(rows);
 
-		cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+		cxt = AllocSetContextCreate(CurrentMemoryContext,
 									"PL/Python temp context",
 									ALLOCSET_DEFAULT_SIZES);
 
@@ -381,7 +373,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 		PLy_input_setup_func(&ininfo, cxt, RECORDOID, -1,
 							 exec_ctx->curr_proc);
 
-		oldcontext = GetCurrentMemoryContext();
+		oldcontext = CurrentMemoryContext;
 		PG_TRY();
 		{
 			MemoryContext oldcontext2;
@@ -457,7 +449,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 PyObject *
 PLy_commit(PyObject *self, PyObject *args)
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
 
 	PG_TRY();
@@ -504,7 +496,7 @@ PLy_commit(PyObject *self, PyObject *args)
 PyObject *
 PLy_rollback(PyObject *self, PyObject *args)
 {
-	MemoryContext oldcontext = GetCurrentMemoryContext();
+	MemoryContext oldcontext = CurrentMemoryContext;
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
 
 	PG_TRY();
@@ -553,7 +545,7 @@ PLy_rollback(PyObject *self, PyObject *args)
  *
  * Usage:
  *
- *	MemoryContext oldcontext = GetCurrentMemoryContext();
+ *	MemoryContext oldcontext = CurrentMemoryContext;
  *	ResourceOwner oldowner = CurrentResourceOwner;
  *
  *	PLy_spi_subtransaction_begin(oldcontext, oldowner);

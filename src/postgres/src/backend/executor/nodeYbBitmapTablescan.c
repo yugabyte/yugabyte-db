@@ -34,6 +34,7 @@
 
 static TupleTableSlot *YbBitmapTableNext(YbBitmapTableScanState *node);
 static TableScanDesc CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate);
+static bool YbGetBitmapScanMightRecheck(struct PlanState *planstate);
 
 /* ----------------------------------------------------------------
  *		YbBitmapTableNext
@@ -45,7 +46,6 @@ static TupleTableSlot *
 YbBitmapTableNext(YbBitmapTableScanState *node)
 {
 	YbTIDBitmap *ybtbm;
-	TableScanDesc tsdesc;
 	TupleTableSlot *slot;
 	YbTBMIterateResult *ybtbmres;
 	ExprContext *econtext;
@@ -75,13 +75,14 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->ybtbmres = ybtbmres = NULL;
 		node->initialized = true;
 		node->work_mem_exceeded = ybtbm->work_mem_exceeded;
+		node->recheck_required = ybtbm->recheck_required;
+		Assert(!node->recheck_required || node->btss_might_recheck);
 		node->average_ybctid_bytes = yb_tbm_get_average_bytes(ybtbm);
 		node->skipped_tuples = 0;
-		node->recheck_required =
-			YbGetBitmapScanRecheckRequired(outerPlanState(node));
 
 		if (node->aggrefs)
 		{
+			Assert(!node->recheck_required || node->recheck_local_quals == NULL);
 			/*
 			 * For aggregate pushdown, we read just the aggregates from DocDB
 			 * and pass that up to the aggregate node (agg pushdown wouldn't be
@@ -102,8 +103,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	if (!node->ss.ss_currentScanDesc)
 		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(node);
 
-	tsdesc = node->ss.ss_currentScanDesc;
-	ybScan = (YbScanDesc) tsdesc;
+	ybScan = (YbScanDesc) node->ss.ss_currentScanDesc;
 
 	/*
 	 * If the bitmaps have exceeded work_mem just select everything from the
@@ -307,6 +307,37 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	return tsdesc;
 }
 
+static bool
+YbGetBitmapScanMightRecheck(PlanState *ps)
+{
+	switch (nodeTag(ps))
+	{
+		case T_BitmapOrState:
+			{
+				BitmapOrState *bos = castNode(BitmapOrState, ps);
+
+				for (int i = 0; i < bos->nplans; i++)
+					if (YbGetBitmapScanMightRecheck(bos->bitmapplans[i]))
+						return true;
+				return false;
+			}
+		case T_BitmapAndState:
+			{
+				BitmapAndState *bas = castNode(BitmapAndState, ps);
+
+				for (int i = 0; i < bas->nplans; i++)
+					if (!YbGetBitmapScanMightRecheck(bas->bitmapplans[i]))
+						return false;
+				return true;
+			}
+		case T_YbBitmapIndexScanState:
+			return castNode(YbBitmapIndexScanState, ps)->biss_might_recheck;
+		default:
+			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(ps));
+			break;
+	}
+}
+
 /* ----------------------------------------------------------------
  *		ExecReScanYbBitmapTableScan(node)
  * ----------------------------------------------------------------
@@ -346,6 +377,7 @@ ExecReScanYbBitmapTableScan(YbBitmapTableScanState *node)
 	node->ybtbmiterator = NULL;
 	node->ybtbmres = NULL;
 	node->initialized = false;
+	node->recheck_required = false;
 
 	ExecScanReScan(&node->ss);
 
@@ -489,10 +521,7 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 
 	scanstate->ss.ss_currentRelation = currentRelation;
 
-	/*
-	 * We can already tell if we need to recheck index qual conditions.
-	 */
-	scanstate->recheck_required = YbGetBitmapScanRecheckRequired(outerPlanState(scanstate));
+	scanstate->btss_might_recheck = YbGetBitmapScanMightRecheck(outerPlanState(scanstate));
 
 	/*
 	 * all done.

@@ -12,6 +12,7 @@ import { BACKUP_API_TYPES, ITable, IUniverse } from "../..";
 import { Page, RestoreContext } from "./RestoreContext";
 import { PreflightResponseParams } from "./api";
 import { isYbcEnabledUniverse } from "../../../../utils/UniverseUtils";
+import { IncrementalBackupProps } from "../BackupDetails";
 
 // gets the next page to show in the modal
 export const getNextPage = (restoreContext: RestoreContext): RestoreContext => {
@@ -115,13 +116,14 @@ export const getKeyspacesFromPreflighResponse = (preflight: PreflightResponsePar
     });
 };
 
-export const getTablesFromPreflighResponse = (preflight: PreflightResponseParams) => {
+export const getTablesFromPreflighResponse = (preflight: PreflightResponseParams, filterKeyspace?: string) => {
     return flatten(Object.keys(preflight.perLocationBackupInfoMap).map((k) => {
+        if(filterKeyspace && preflight.perLocationBackupInfoMap[k].perBackupLocationKeyspaceTables.originalKeyspace !== filterKeyspace) return [];
         return flatten(preflight.perLocationBackupInfoMap[k].perBackupLocationKeyspaceTables.tableNameList);
     }));
 };
 
-export const isDuplicateKeyspaceExistsinUniverse = (preflight: PreflightResponseParams | undefined, tablesInUniverse: ITable[]) => {
+export const isDuplicateKeyspaceExistsinUniverse = (preflight: PreflightResponseParams | undefined, tablesInUniverse: ITable[], incrementalBackupProps?: IncrementalBackupProps, selectedKeyspaceValue?: string) => {
 
     if (!preflight) return false;
 
@@ -130,8 +132,7 @@ export const isDuplicateKeyspaceExistsinUniverse = (preflight: PreflightResponse
         .filter((k) => k.tableType === BACKUP_API_TYPES.YSQL)
         .map((k) => k.keySpace);
 
-    const keyspacesInBackup = getKeyspacesFromPreflighResponse(preflight);
-
+    const keyspacesInBackup = (!incrementalBackupProps?.isRestoreEntireBackup && incrementalBackupProps?.singleKeyspaceRestore) ? [selectedKeyspaceValue] : getKeyspacesFromPreflighResponse(preflight);
     return intersection(keyspacesInTargetUniverse, keyspacesInBackup).length > 0;
 
 };

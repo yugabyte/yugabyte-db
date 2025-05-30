@@ -11,13 +11,17 @@ package com.yugabyte.yw.forms.filters;
 
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.filters.AlertTemplateFilter;
+import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
 public class AlertTemplateApiFilter {
+  @ApiModelProperty(value = "The name of the alert template.")
   private String name;
+
+  @ApiModelProperty(value = "The target type of the alert template.")
   private AlertConfiguration.TargetType targetType;
 
   public AlertTemplateFilter toFilter() {

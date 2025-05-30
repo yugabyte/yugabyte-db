@@ -2,6 +2,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
@@ -14,12 +16,16 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class EditDrConfig extends CreateXClusterConfig {
 
   @Inject
@@ -47,12 +53,22 @@ public class EditDrConfig extends CreateXClusterConfig {
     log.info("Running {}", getName());
 
     DrConfig drConfig = getDrConfigFromTaskParams();
-    XClusterConfig currentXClusterConfig = drConfig.getActiveXClusterConfig();
+    XClusterConfig currentXClusterConfig = taskParams().getOldXClusterConfig();
+    // Either the task is created which means the old xCluster config exists or the task is retry-ed
+    //  which means the old xCluster config can potentially be deleted.
+    if (isFirstTry() && Objects.isNull(currentXClusterConfig)) {
+      throw new IllegalStateException(
+          "The old xCluster config does not exist and cannot do a switchover");
+    } else if (!isFirstTry() && Objects.isNull(currentXClusterConfig)) {
+      log.warn("The old xCluster config got deleted in the previous run");
+    }
     XClusterConfig newXClusterConfig = getXClusterConfigFromTaskParams();
-    Universe sourceUniverse =
-        Universe.getOrBadRequest(currentXClusterConfig.getSourceUniverseUUID());
-    Universe targetUniverse =
-        Universe.getOrBadRequest(currentXClusterConfig.getTargetUniverseUUID());
+
+    Universe sourceUniverse = Universe.getOrBadRequest(newXClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = null;
+    if (Objects.nonNull(currentXClusterConfig)) {
+      targetUniverse = Universe.getOrBadRequest(currentXClusterConfig.getTargetUniverseUUID());
+    }
     Universe newTargetUniverse =
         Universe.getOrBadRequest(newXClusterConfig.getTargetUniverseUUID());
     try {
@@ -60,9 +76,13 @@ public class EditDrConfig extends CreateXClusterConfig {
       lockAndFreezeUniverseForUpdate(
           sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       try {
-        // Lock the target universe.
-        lockAndFreezeUniverseForUpdate(
-            targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
+        if (Objects.nonNull(targetUniverse)) {
+          // Lock the target universe.
+          lockAndFreezeUniverseForUpdate(
+              targetUniverse.getUniverseUUID(),
+              targetUniverse.getVersion(),
+              null /* Txn callback */);
+        }
         try {
           // Lock the new target universe.
           lockAndFreezeUniverseForUpdate(
@@ -78,8 +98,10 @@ public class EditDrConfig extends CreateXClusterConfig {
           createMarkUniverseUpdateSuccessTasks(newTargetUniverse.getUniverseUUID())
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-          createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          if (Objects.nonNull(targetUniverse)) {
+            createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          }
 
           createMarkUniverseUpdateSuccessTasks(sourceUniverse.getUniverseUUID())
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -90,18 +112,14 @@ public class EditDrConfig extends CreateXClusterConfig {
           unlockUniverseForUpdate(newTargetUniverse.getUniverseUUID());
         }
       } finally {
-        // Unlock the target universe.
-        unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
+        if (Objects.nonNull(targetUniverse)) {
+          // Unlock the target universe.
+          unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
+        }
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      // Load the xCluster from the DB again because it might be deleted.
-      Optional<XClusterConfig> currentXClusterConfigOptional =
-          XClusterConfig.maybeGet(currentXClusterConfig.getUuid());
-      if (currentXClusterConfigOptional.isPresent()
-          && !isInMustDeleteStatus(currentXClusterConfigOptional.get())) {
-        currentXClusterConfigOptional.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
-      }
+      newXClusterConfig.refresh();
       // Set xCluster config status to failed.
       newXClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
       // Set tables in updating status to failed.
@@ -111,6 +129,16 @@ public class EditDrConfig extends CreateXClusterConfig {
               X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
       newXClusterConfig.updateStatusForTables(
           tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+
+      if (Objects.nonNull(currentXClusterConfig)) {
+        // Load the xCluster from the DB again because it might be deleted.
+        Optional<XClusterConfig> currentXClusterConfigOptional =
+            XClusterConfig.maybeGet(currentXClusterConfig.getUuid());
+        if (currentXClusterConfigOptional.isPresent()
+            && !isInMustDeleteStatus(currentXClusterConfigOptional.get())) {
+          currentXClusterConfigOptional.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
+        }
+      }
 
       // Prevent all other DR tasks except delete from running.
       log.info(
@@ -147,17 +175,18 @@ public class EditDrConfig extends CreateXClusterConfig {
    * @param forceDeleteCurrentXClusterConfig Whether to force delete the current xCluster Config
    */
   protected void addSubtasksToUseNewXClusterConfig(
-      XClusterConfig currentXClusterConfig,
+      @Nullable XClusterConfig currentXClusterConfig,
       XClusterConfig newXClusterConfig,
       boolean forceDeleteCurrentXClusterConfig) {
-
-    // Delete the main replication config.
-    createDeleteXClusterConfigSubtasks(
-        currentXClusterConfig,
-        false /* keepEntry */,
-        forceDeleteCurrentXClusterConfig,
-        false /* deleteSourcePitrConfigs */,
-        true /* deleteTargetPitrConfigs */);
+    if (Objects.nonNull(currentXClusterConfig)) {
+      // Delete the main replication config.
+      createDeleteXClusterConfigSubtasks(
+          currentXClusterConfig,
+          false /* keepEntry */,
+          forceDeleteCurrentXClusterConfig,
+          false /* deleteSourcePitrConfigs */,
+          true /* deleteTargetPitrConfigs */);
+    }
 
     createPromoteSecondaryConfigToMainConfigTask(newXClusterConfig);
 
@@ -167,11 +196,6 @@ public class EditDrConfig extends CreateXClusterConfig {
       addSubtasksToCreateXClusterConfig(
           newXClusterConfig, taskParams().getDbs(), taskParams().getPitrParams());
     } else {
-      createXClusterConfigSetStatusForTablesTask(
-          newXClusterConfig,
-          getTableIds(taskParams().getTableInfoList()),
-          XClusterTableConfig.Status.Updating);
-
       addSubtasksToCreateXClusterConfig(
           newXClusterConfig,
           taskParams().getTableInfoList(),

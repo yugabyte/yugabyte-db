@@ -15,7 +15,6 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/intent_aware_iterator.h"

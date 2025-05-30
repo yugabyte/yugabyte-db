@@ -89,15 +89,18 @@ var createOnpremProviderCmd = &cobra.Command{
 				}
 				sshFileContent = string(sshFileContentByte)
 			} else {
-				sshFileContent, err = cmd.Flags().GetString("ssh-keypair-file-content")
+				sshFileContent, err = cmd.Flags().GetString("ssh-keypair-file-contents")
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
 			if len(sshFileContent) == 0 {
 				logrus.Fatalf(
-					formatter.Colorize("No ssh keypair file content found while using --ssh-keypair-name\n",
-						formatter.RedColor))
+					formatter.Colorize(
+						"No ssh keypair file content found while using --ssh-keypair-name\n",
+						formatter.RedColor,
+					),
+				)
 			}
 		}
 
@@ -218,7 +221,7 @@ func init() {
 			"\"region-name=<region-name>::latitude=<latitude>::longitude=<longitude>\". "+
 			formatter.Colorize("Region name is a required key-value.",
 				formatter.GreenColor)+
-			" Latitude and Longitude (Defaults to 0.0) are optional. "+
+			" Latitude and Longitude (Default values for both are 0.0) are optional. "+
 			"Each region needs to be added using a separate --region flag. "+
 			"Example: --region region-name=us-west-1 --region region-name=us-west-2")
 	createOnpremProviderCmd.Flags().StringArray("zone", []string{},
@@ -276,7 +279,8 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 
 		latitude, err := strconv.ParseFloat(region["latitude"], 64)
 		if err != nil {
-			errMessage := err.Error() + " Using latitude as 0.0\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'latitude'. Setting it to '0.0'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
@@ -284,7 +288,8 @@ func buildOnpremRegions(regionStrings, zoneStrings []string) (
 		}
 		longitude, err := strconv.ParseFloat(region["longitude"], 64)
 		if err != nil {
-			errMessage := err.Error() + " Using longitude as 0.0\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'longitude'. Setting it to '0.0'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

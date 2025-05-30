@@ -3,7 +3,7 @@ import algoliasearch from 'algoliasearch';
 /* eslint no-underscore-dangle: 0 */
 (function () {
   const algoliaAppId = 'UMBCUJCBE8';
-  const algoliaApiKey = 'b6c4bdb11b865250add6fecc38d8ebdf';
+  const algoliaApiKey = '7cd0659fb88c5d3f1abce809ad5f96f2';
   const algoliaIndexName = 'yugabytedb_docs';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');

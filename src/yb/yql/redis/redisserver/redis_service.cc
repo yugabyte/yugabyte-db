@@ -1219,7 +1219,7 @@ void RedisServiceImplData::ForwardToInterestedProxies(
     const string& channel, const string& message, const IntFunctor& f) {
   auto interested_servers = GetServerAddrsForChannel(channel);
   if (!interested_servers.ok()) {
-    LOG(ERROR) << "Could not get servers to forward to " << interested_servers.status();
+    LOG(DFATAL) << "Could not get servers to forward to " << interested_servers.status();
     return;
   }
   std::shared_ptr<PublishResponseHandler> resp_handler =
@@ -1413,7 +1413,7 @@ const RedisCommandInfo* RedisServiceImpl::Impl::FetchHandler(const RedisClientCo
   }
   auto iter = command_name_to_info_map_.find(Slice(lower_cmd, len));
   if (iter == command_name_to_info_map_.end()) {
-    YB_LOG_EVERY_N_SECS(ERROR, 60)
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
         << "Command " << cmd_name << " not yet supported. "
         << "Arguments: " << ToString(cmd_args) << ". "
         << "Raw: " << Slice(cmd_args[0].data(), cmd_args.back().end()).ToDebugString();
@@ -1498,13 +1498,13 @@ void RedisServiceImpl::Impl::Handle(rpc::InboundCallPtr call_ptr) {
     size_t passed_arguments = c.size() - 1;
     if (!exact_count && passed_arguments < arity) {
       // -X means that the command needs >= X arguments.
-      YB_LOG_EVERY_N_SECS(ERROR, 60)
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
           << "Requested command " << c[0] << " does not have enough arguments."
           << " At least " << arity << " expected, but " << passed_arguments << " found.";
       RespondWithFailure(call, idx, "Too few arguments.");
     } else if (exact_count && passed_arguments != arity) {
       // X (> 0) means that the command needs exactly X arguments.
-      YB_LOG_EVERY_N_SECS(ERROR, 60)
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
           << "Requested command " << c[0] << " has wrong number of arguments. "
           << arity << " expected, but " << passed_arguments << " found.";
       RespondWithFailure(call, idx, "Wrong number of arguments.");

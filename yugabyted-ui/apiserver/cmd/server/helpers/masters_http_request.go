@@ -3,7 +3,7 @@ package helpers
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
     "net"
     "net/http"
     "net/url"
@@ -136,7 +136,7 @@ func (h *HelperContainer) GetMastersFromTserverFuture(
         return
     }
     defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := io.ReadAll(resp.Body)
     if err != nil {
         masters.Error = err
         future <- masters

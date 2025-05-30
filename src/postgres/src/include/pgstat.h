@@ -19,6 +19,7 @@
 #include "utils/relcache.h"
 #include "utils/wait_event.h"	/* for backward compatibility */
 
+
 /* ----------
  * Paths for the statistics files (relative to installation's $PGDATA).
  * ----------
@@ -27,14 +28,8 @@
 #define PGSTAT_STAT_PERMANENT_FILENAME		"pg_stat/pgstat.stat"
 #define PGSTAT_STAT_PERMANENT_TMPFILE		"pg_stat/pgstat.tmp"
 
-#define PGSTAT_YBSTAT_PERMANENT_FILENAME    "pg_stat/yb_global.stat"
-#define PGSTAT_YBSTAT_PERMANENT_TMPFILE     "pg_stat/yb_global.tmp"
-
 /* Default directory to store temporary statistics data in */
 #define PG_STAT_TMP_DIR		"pg_stat_tmp"
-
-/* Caps the number of queries which can be stored in the array. */
-#define TERMINATED_QUERIES_SIZE 1000
 
 /* The types of statistics entries */
 typedef enum PgStat_Kind
@@ -48,6 +43,9 @@ typedef enum PgStat_Kind
 	PGSTAT_KIND_FUNCTION,		/* per-function statistics */
 	PGSTAT_KIND_REPLSLOT,		/* per-slot statistics */
 	PGSTAT_KIND_SUBSCRIPTION,	/* per-subscription statistics */
+
+	/* stats for variable-numered Yugabyte objects */
+	PGSTAT_KIND_YB_TERMINATED_QUERIES,
 
 	/* stats for fixed-numbered objects */
 	PGSTAT_KIND_ARCHIVER,
@@ -242,65 +240,6 @@ typedef struct PgStat_TableXactStatus
 	struct PgStat_TableXactStatus *next;	/* next of same subxact */
 } PgStat_TableXactStatus;
 
-
-/* YB_TODO(neil) This feature needs changes to match new implementation */
-#ifdef YB_TODO
-#define QUERY_TEXT_SIZE 		256
-#define QUERY_TERMINATION_SIZE	256
-typedef struct YbPgStat_MsgQueryTermination
-{
-	YbPgStat_MsgHdr m_hdr;
-
-	Oid			m_st_userid;
-	Oid			m_databaseoid;
-	int32		backend_pid;
-	TimestampTz activity_start_timestamp;
-	TimestampTz activity_end_timestamp;
-	char		query_string[QUERY_TEXT_SIZE];
-	char		termination_reason[QUERY_TERMINATION_SIZE];
-} YbPgStat_MsgQueryTermination;
-typedef union YbPgStat_Msg
-{
-	YbPgStat_MsgQueryTermination msg_querytermination;
-} YbPgStat_Msg;
-
-typedef struct PgStat_YBStatQueryEntry
-{
-	/*
-	 * query_oid is not an actual oid. It is an index that
-	 * represents its location in the array that stores the
-	 * terminated queries modulo TERMINATED_QUERIES_SIZE.
-	 */
-	Oid			query_oid;
-
-	/*
-	 * We need to store the owner ID of the database for
-	 * security validation when the queries are fetched by the user.
-	 */
-	Oid			st_userid;
-	Oid			database_oid;
-	int32		backend_pid;
-	TimestampTz activity_start_timestamp;
-	TimestampTz activity_end_timestamp;
-
-	/*
-	 * query_string_size: records the length of the string
-	 * so that when writing this string to file, we only write
-	 * that many characters.
-	 */
-	size_t		query_string_size;
-	char		query_string[QUERY_TEXT_SIZE];
-
-	/*
-	 * termination_reason_size: records the length of the string
-	 * so that when writing this string to file, we only write
-	 * that many characters.
-	 */
-	size_t		termination_reason_size;
-	char		termination_reason[QUERY_TERMINATION_SIZE];
-} PgStat_YBStatQueryEntry;
-
-#endif
 
 /* ------------------------------------------------------------
  * Data structures on disk and in shared memory follow
@@ -632,6 +571,7 @@ typedef struct PgStat_WalStats
 	TimestampTz stat_reset_timestamp;
 } PgStat_WalStats;
 
+
 /*
  * Functions in pgstat.c
  */
@@ -664,12 +604,16 @@ extern TimestampTz pgstat_get_stat_snapshot_timestamp(bool *have_snapshot);
 extern PgStat_Kind pgstat_get_kind_from_str(char *kind_str);
 extern bool pgstat_have_entry(PgStat_Kind kind, Oid dboid, Oid objoid);
 
+/* GUC hook for stats_fetch_consistency */
+extern void assign_stats_fetch_consistency(int newval, void *extra);
+
 /*
  * Functions in pgstat_archiver.c
  */
 
 extern void pgstat_report_archiver(const char *xlog, bool failed);
 extern PgStat_ArchiverStats *pgstat_fetch_stat_archiver(void);
+
 
 /*
  * Functions in pgstat_bgwriter.c
@@ -737,6 +681,7 @@ extern void pgstat_end_function_usage(PgStat_FunctionCallUsage *fcu,
 
 extern PgStat_StatFuncEntry *pgstat_fetch_stat_funcentry(Oid funcid);
 extern PgStat_BackendFunctionEntry *find_funcstat_entry(Oid func_id);
+
 
 /*
  * Functions in pgstat_relation.c
@@ -813,10 +758,12 @@ extern void pgstat_twophase_postcommit(TransactionId xid, uint16 info,
 									   void *recdata, uint32 len);
 extern void pgstat_twophase_postabort(TransactionId xid, uint16 info,
 									  void *recdata, uint32 len);
+
 extern PgStat_StatTabEntry *pgstat_fetch_stat_tabentry(Oid relid);
 extern PgStat_StatTabEntry *pgstat_fetch_stat_tabentry_ext(bool shared,
 														   Oid relid);
 extern PgStat_TableStatus *find_tabstat_entry(Oid rel_id);
+
 
 /*
  * Functions in pgstat_replslot.c
@@ -891,7 +838,7 @@ extern char *pgstat_ybstat_filename;
 extern char *pgstat_ybstat_tmpname;
 
 /*
- * Metric to track number of sql connections established since
+ * YB: Metric to track number of sql connections established since
  * postmaster started.
  */
 extern uint64_t *yb_new_conn;
@@ -948,10 +895,5 @@ extern PGDLLIMPORT PgStat_WalStats PendingWalStats;
 extern void yb_pgstat_report_allocated_mem_bytes(void);
 extern void yb_pgstat_set_catalog_version(uint64_t catalog_version);
 extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);
-
-#ifdef YB_TODO
-/* These functions need new implementation to match with Postgres 15. */
-extern PgStat_YBStatQueryEntry *pgstat_fetch_ybstat_queries(Oid db_oid, size_t *num_queries);
-#endif
 
 #endif							/* PGSTAT_H */

@@ -26,6 +26,8 @@ public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegres
 
   @Test
   public void schedule() throws Exception {
+    skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT,
+                isTestRunningWithConnectionManager());
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pg_stat_monitor"),
                      "yb_schedule");

@@ -4,12 +4,13 @@ import { useTranslation } from "react-i18next";
 import type { Migration } from "../../MigrationOverview";
 import SparkIcon from "@app/assets/spark.svg";
 import type {
+  AssessmentCategoryInfo,
   RefactoringCount,
-  UnsupportedSqlInfo,
 } from "@app/api/src";
 import { MigrationAssessmentRefactoring } from "./AssessmentRefactoring";
 import { RecommendedClusterSize } from "./AssessmentRecommendedClusterSize";
 import { RecommendedDataDistribution } from "./AssessmentRecommendedDataDistribution";
+import { RecommendedNotes } from "./AssessmentNotes";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -56,9 +57,10 @@ interface MigrationAssessmentRecommendationProps {
   colocatedTotalSize: string | number;
   shardedTotalSize: string | number;
   sqlObjects: RefactoringCount[] | undefined;
-  unsupportedDataTypes: UnsupportedSqlInfo[] | undefined;
-  unsupportedFeatures: UnsupportedSqlInfo[] | undefined;
-  unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
+  assessmentIssues: AssessmentCategoryInfo[] | undefined;
+  targetDBVersion: string | undefined;
+  migrationComplexityExplanation: string | undefined;
+  notes?: string[] | undefined;
 }
 
 export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommendationProps> = ({
@@ -73,9 +75,10 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
   colocatedTotalSize,
   shardedTotalSize,
   sqlObjects,
-  unsupportedDataTypes,
-  unsupportedFeatures,
-  unsupportedFunctions,
+  assessmentIssues,
+  targetDBVersion,
+  migrationComplexityExplanation,
+  notes
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -117,9 +120,14 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
 
           <MigrationAssessmentRefactoring
             sqlObjects={sqlObjects}
-            unsupportedDataTypes={unsupportedDataTypes}
-            unsupportedFeatures={unsupportedFeatures}
-            unsupportedFunctions={unsupportedFunctions}
+            assessmentCategoryInfo={assessmentIssues}
+            targetDBVersion={targetDBVersion}
+            migrationComplexityExplanation={migrationComplexityExplanation}
+          />
+
+
+          <RecommendedNotes
+            notes={notes}
           />
 
         </Box>

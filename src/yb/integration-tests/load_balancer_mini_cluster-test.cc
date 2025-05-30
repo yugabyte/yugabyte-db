@@ -25,6 +25,7 @@
 
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/util/multi_drive_test_env.h"
 
@@ -265,6 +266,43 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
   ASSERT_OK(WaitFor([&] {
     return stats->MeanValue() == 0;
   }, 10s, "load_balancer_duration value resets"));
+}
+
+TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
+  auto load_balancer = ASSERT_RESULT(
+      mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->load_balancer();
+  ASSERT_TRUE(load_balancer->GetLatestActivityInfo().IsIdle());
+
+  // Add a tablet server. The load balancer should start an add server task.
+  auto new_ts_index = mini_cluster()->num_tablet_servers();
+  ASSERT_OK(mini_cluster()->AddTabletServer());
+  ASSERT_OK(WaitFor([&] {
+    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
+    return tasks_summary.size() == 1 &&
+           tasks_summary.begin()->first.first == server::MonitoredTaskType::kAddServer;
+  }, 10s, "Wait for add server task to start"));
+  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
+      10s, "Wait for add server task to complete"));
+
+  // Leader blacklist the new tablet server. The load balancer should start a stepdown task.
+  ASSERT_OK(mini_cluster()->AddTServerToLeaderBlacklist(new_ts_index));
+  ASSERT_OK(WaitFor([&] {
+    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
+    return tasks_summary.size() == 1 &&
+           tasks_summary.begin()->first.first == server::MonitoredTaskType::kTryStepDown;
+  }, 10s, "Wait for stepdown task to start"));
+  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
+      10s, "Wait for stepdown task to complete"));
+
+  // Blacklist the new tablet server. The load balancer should start a remove server task.
+  ASSERT_OK(mini_cluster()->AddTServerToBlacklist(new_ts_index));
+  ASSERT_OK(WaitFor([&] {
+    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
+    return tasks_summary.size() == 1 &&
+           tasks_summary.begin()->first.first == server::MonitoredTaskType::kRemoveServer;
+  }, 10s, "Wait for remove server task to start"));
+  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
+      10s, "Wait for remove server task to complete"));
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {

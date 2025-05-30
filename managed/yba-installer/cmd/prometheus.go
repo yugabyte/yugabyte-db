@@ -191,7 +191,7 @@ func (prom Prometheus) Restart() error {
 func (prom Prometheus) Uninstall(removeData bool) error {
 	log.Info("Uninstalling prometheus")
 	if err := prom.Stop(); err != nil {
-		return err
+		log.Warn("failed to stop prometheus, continuing with uninstall: " + err.Error())
 	}
 
 	err := os.Remove(prom.SystemdFileLocation)
@@ -266,8 +266,12 @@ func (prom Prometheus) Status() (common.Status, error) {
 	status.ServiceFileLoc = prom.SystemdFileLocation
 
 	// Get the service status
-	props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
+	props, err := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
 		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if err != nil {
+		log.Error("Failed to get prometheus status: " + err.Error())
+		return status, err
+	}
 	if props["LoadState"] == "not-found" {
 		status.Status = common.StatusNotInstalled
 	} else if props["SubState"] == "running" {

@@ -16,13 +16,13 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
-#include "yb/dockv/vector_id.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"

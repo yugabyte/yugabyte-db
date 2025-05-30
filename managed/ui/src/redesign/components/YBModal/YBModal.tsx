@@ -186,7 +186,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
 
   let dialogClasses = classes.dialogMd;
   let dialogTitle = classes.dialogTitle;
-  const showDialogActions = cancelLabel ?? submitLabel;
+  const showDialogActions = cancelLabel ?? submitLabel ?? footerAccessory;
 
   switch (size) {
     case 'sm':

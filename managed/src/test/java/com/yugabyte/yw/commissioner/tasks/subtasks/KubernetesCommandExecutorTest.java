@@ -59,6 +59,7 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
@@ -640,15 +641,18 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithTLS() throws IOException {
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
     defaultUserIntent.masterGFlags = new HashMap<>(ImmutableMap.of("yb-master-flag", "demo-flag"));
     defaultUserIntent.tserverGFlags =
         new HashMap<>(ImmutableMap.of("yb-tserver-flag", "demo-flag"));
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    Universe.saveDetails(
-        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
+    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.rootCA = defaultCert.getUuid();
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -688,15 +692,17 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithTLSNodeToNode() throws IOException {
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
     defaultUserIntent.masterGFlags = new HashMap<>(ImmutableMap.of("yb-master-flag", "demo-flag"));
     defaultUserIntent.tserverGFlags =
         new HashMap<>(ImmutableMap.of("yb-tserver-flag", "demo-flag"));
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = false;
-    defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    Universe.saveDetails(
-        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
+    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.rootCA = defaultCert.getUuid();
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -736,15 +742,17 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testHelmInstallWithTLSClientToServer() throws IOException {
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
     defaultUserIntent.masterGFlags = new HashMap<>(ImmutableMap.of("yb-master-flag", "demo-flag"));
     defaultUserIntent.tserverGFlags =
         new HashMap<>(ImmutableMap.of("yb-tserver-flag", "demo-flag"));
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = false;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    defaultUniverse.getUniverseDetails().upsertPrimaryCluster(defaultUserIntent, null);
-    Universe.saveDetails(
-        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(defaultCert.getUuid()));
+    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.rootCA = defaultCert.getUuid();
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(
             KubernetesCommandExecutor.CommandType.HELM_INSTALL, /* set namespace */ true);
@@ -1401,7 +1409,14 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   private void testPodInfoMultiAZBase(boolean setNamespace) {
-    Region r1 = Region.create(defaultProvider, "region-1", "region-1", "yb-image-1");
+    Optional<Region> optional =
+        defaultProvider.getAllRegions().stream()
+            .filter(r -> r.getCode().equals("region-1"))
+            .findFirst();
+    Region r1 =
+        optional.isPresent()
+            ? optional.get()
+            : Region.create(defaultProvider, "region-1", "region-1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "region-2", "yb-image-1");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r1, "az-" + 1, "az-" + 1, "subnet-" + 1);
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r1, "az-" + 2, "az-" + 2, "subnet-" + 2);

@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -637,7 +638,6 @@ public class TlsToggleTest extends UpgradeTaskTest {
       fail();
     }
 
-    UniverseDefinitionTaskParams universeDetails = defaultUniverse.getUniverseDetails();
     // failure cases
     boolean clientToNodeTurnedOn = clientToNode && !currentClientToNode;
     boolean clientRootCAChanged =
@@ -707,5 +707,61 @@ public class TlsToggleTest extends UpgradeTaskTest {
         clientToNode,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
     assertEquals(rootAndClientRootCASame, universe.getUniverseDetails().rootAndClientRootCASame);
+  }
+
+  @Test
+  @Parameters({
+    "true, true, false, false, true, true",
+    "true, true, false, false, false, true",
+    "true, false, false, false, true, true",
+    "true, false, false, false, false, true",
+    "false, true, false, true, false, true",
+    "false, false, false, true, true, true",
+    "false, false, false, true, false, true"
+  })
+  @TestCaseName(
+      "testTlsNonRollingUpgradeWhen"
+          + "CurrNodeToNode:{0}_CurrClientToNode:{1}_CurrRootAndClientRootCASame:{2}"
+          + "_NodeToNode:{3}_ClientToNode:{4}_RootAndClientRootCASame:{5}")
+  public void testTlsNonRollingUpgradeRetries(
+      boolean currentNodeToNode,
+      boolean currentClientToNode,
+      boolean currRootAndClientRootCASame,
+      boolean nodeToNode,
+      boolean clientToNode,
+      boolean rootAndClientRootCASame)
+      throws IOException, NoSuchAlgorithmException {
+
+    if (rootAndClientRootCASame && (!clientToNode || !nodeToNode)) {
+      // when clientToNode is off, bothCASame flag cannot be true
+      rootAndClientRootCASame = false;
+    }
+
+    UUID rootCA = UUID.randomUUID();
+    UUID clientRootCA = currRootAndClientRootCASame ? rootCA : UUID.randomUUID();
+    prepareUniverse(
+        currentNodeToNode, currentClientToNode, currRootAndClientRootCASame, rootCA, clientRootCA);
+    TlsToggleParams taskParams =
+        getTaskParams(
+            nodeToNode,
+            clientToNode,
+            rootAndClientRootCASame,
+            rootCA,
+            clientRootCA,
+            UpgradeOption.NON_ROLLING_UPGRADE);
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    taskParams.creatingUser = defaultUser;
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.TlsToggle,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.TlsToggle,
+        taskParams,
+        false,
+        2 /* Abort every 2 steps */);
   }
 }

@@ -10,6 +10,7 @@
 #ifndef WAIT_EVENT_H
 #define WAIT_EVENT_H
 
+/* YB includes */
 #include "yb_ash.h"
 
 
@@ -244,6 +245,7 @@ typedef enum
 	WAIT_EVENT_WAL_SYNC,
 	WAIT_EVENT_WAL_SYNC_METHOD_ASSIGN,
 	WAIT_EVENT_WAL_WRITE,
+	WAIT_EVENT_VERSION_FILE_SYNC,
 	WAIT_EVENT_YB_COPY_COMMAND_STREAM_READ,
 	WAIT_EVENT_YB_COPY_COMMAND_STREAM_WRITE,
 
@@ -259,6 +261,8 @@ extern void pgstat_set_wait_event_storage(uint32 *wait_event_info);
 extern void pgstat_reset_wait_event_storage(void);
 extern void yb_pgstat_set_wait_event_storage(PGPROC *proc);
 extern void yb_pgstat_reset_wait_event_storage(void);
+
+extern bool YbIsIdleWaitEvent(uint32 wait_event_info);
 
 extern PGDLLIMPORT uint32 *my_wait_event_info;
 extern PGDLLIMPORT YbcWaitEventInfoPtr yb_my_wait_event_info;

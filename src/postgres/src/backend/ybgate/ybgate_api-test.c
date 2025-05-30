@@ -133,16 +133,16 @@ yb_test(YbGateTestCase case_no)
 			{
 				/* Test various formatting templates */
 				const char *format =
-				"1. %% - percent symbol, not a template\n"
-				"2. %d - simple integer\n"
-				"3. %f - simple float\n"
-				"4. %s - simple string\n"
-				"5. %x - simple hex integer\n"
-				"6. %4d - integer with explicit length\n"
-				"7. %ld - long integer\n"
-				"8. %6.2f%% - float with length and precision\n"
-				"9. %*.*f - float with dynamic length and precision\n"
-				"10. %+E - float in scientific notation with sign\n";
+					"1. %% - percent symbol, not a template\n"
+					"2. %d - simple integer\n"
+					"3. %f - simple float\n"
+					"4. %s - simple string\n"
+					"5. %x - simple hex integer\n"
+					"6. %4d - integer with explicit length\n"
+					"7. %ld - long integer\n"
+					"8. %6.2f%% - float with length and precision\n"
+					"9. %*.*f - float with dynamic length and precision\n"
+					"10. %+E - float in scientific notation with sign\n";
 
 				ereport(ERROR,
 						(errmsg(format,
@@ -161,16 +161,16 @@ yb_test(YbGateTestCase case_no)
 			{
 				/* Too long argument to render */
 				const char *format =
-				"1. %*d - too long argument\n"
-				"2. %d - simple integer\n"
-				"3. %ld - max long integer\n"
-				"4. %ld - min long integer\n"
-				"5. %lu - max unsigned long integer\n"
-				"6. %lld - max long long integer\n"
-				"7. %lld - min long long integer\n"
-				"8. %llu - max unsigned long long integer\n"
-				"9. %.1e - max double\n"
-				"10. %.1e - min double\n";
+					"1. %*d - too long argument\n"
+					"2. %d - simple integer\n"
+					"3. %ld - max long integer\n"
+					"4. %ld - min long integer\n"
+					"5. %lu - max unsigned long integer\n"
+					"6. %lld - max long long integer\n"
+					"7. %lld - min long long integer\n"
+					"8. %llu - max unsigned long long integer\n"
+					"9. %.1e - max double\n"
+					"10. %.1e - min double\n";
 
 				ereport(ERROR,
 						(errmsg(format, 17000, -1,	/* 1 */

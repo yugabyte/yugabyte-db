@@ -15,6 +15,12 @@ import i18next from 'i18next';
 import type { WeekDay } from '@app/components/YBDaypicker/YBDaypicker';
 import { capitalize } from 'lodash';
 
+type URLTextExtractionType = {
+  type: 'text' | 'url';
+  content: string;
+};
+
+
 export const convertMBtoGB = (value: string | number, round = true): number => {
   const result = Number(value) / 1024;
   return round ? Math.round(result) : result;
@@ -401,4 +407,52 @@ export const formatSnakeCase = (inputText: string): string => {
         : ""
     )
     .join(" ");
+};
+
+export const parseHTML = (htmlString: string) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlString, "text/html");
+  return doc.body.childNodes;
+};
+
+export const extractUrlsAndText = (text: string): URLTextExtractionType[] => {
+  const parts: URLTextExtractionType[] = [];
+  // Source:
+  // https://stackoverflow.com/questions/33211233/how-to-detect-and-get-url-on-string-javascript
+  const urlRegex = /\bhttps?:\/\/\S+/gi;
+
+  let lastIndex = 0;
+
+  const matches = [...text.matchAll(urlRegex)];
+
+  for (const match of matches) {
+    const url = match[0];
+    const index = match.index ?? 0;
+
+    // Add text before the URL
+    if (index > lastIndex) {
+      parts.push({
+        type: 'text',
+        content: text.slice(lastIndex, index)
+      });
+    }
+
+    // Add the URL
+    parts.push({
+      type: 'url',
+      content: url
+    });
+
+    lastIndex = index + url.length;
+  }
+
+  // Add any remaining text
+  if (lastIndex < text.length) {
+    parts.push({
+      type: 'text',
+      content: text.slice(lastIndex)
+    });
+  }
+
+  return parts;
 };

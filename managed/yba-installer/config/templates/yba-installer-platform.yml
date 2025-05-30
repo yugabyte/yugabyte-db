@@ -254,5 +254,9 @@ services:
       # Sigterm causes exit status 143 for java
       SuccessExitStatus=143
 
+      # Prevent logging to journalctl and only use log.override.path
+      StandardOutput=null
+      StandardError=null
+
       [Install]
       WantedBy=multi-user.target

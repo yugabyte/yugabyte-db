@@ -2,8 +2,10 @@ import React, { VFC, ReactElement } from 'react';
 import { Box, makeStyles, Theme, Tooltip, TooltipProps } from '@material-ui/core';
 import InfoSolidIcon from '@app/assets/info-solid.svg';
 
-// make children optional and add dark style
-export type YBTooltipProps = { children?: ReactElement; dark?: boolean } & Omit<TooltipProps, 'children'>;
+// changing type from ReactElement to ReactNode as ReactElement supports null, undefined
+// thus making children prop optional
+export type YBTooltipProps = { children?: ReactElement | undefined; dark?: boolean }
+& Omit<TooltipProps, 'children'>;
 
 const useStyles = makeStyles((theme: Theme) => ({
   icon: {
@@ -31,6 +33,7 @@ const useDarkStyle = makeStyles((theme: Theme) => ({
 export const YBTooltip: VFC<YBTooltipProps> = ({ children, dark, ...props }) => {
   const classes = useStyles();
   const darkClasses = useDarkStyle();
+
   return (
     <Tooltip
       arrow

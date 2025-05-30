@@ -8,6 +8,9 @@ import com.typesafe.config.Config;
 import play.mvc.Controller;
 import play.mvc.Result;
 import play.mvc.Http;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
@@ -103,6 +106,33 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
   {{/vendorExtensions.x-yba-api-authz}}
   {{#wrapCalls}}@ApiAction{{/wrapCalls}}
   public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}(Http.Request request{{#hasPathParams}}, {{/hasPathParams}}{{#pathParams}}{{>pathParams}}{{^-last}}, {{/-last}}{{/pathParams}}) {{^handleExceptions}}{{#bodyParams}}throws IOException{{/bodyParams}}{{/handleExceptions}}{{#handleExceptions}}throws Exception{{/handleExceptions}} {
+    {{#vendorExtensions.x-yba-api-multipart}}
+    {{#bodyParams}}
+    {{{dataType}}} {{paramName}};
+    Http.MultipartFormData<TemporaryFile> multipartBody = request.body().asMultipartFormData();
+    if (multipartBody != null) {
+      Http.MultipartFormData.FilePart<TemporaryFile> filePart = multipartBody.getFile("{{vendorExtensions.x-yba-file-name}}");
+      {{paramName}} = new {{{dataType}}}();
+      if (filePart != null) {
+        {{paramName}}.set{{vendorExtensions.x-yba-file-setter}}(filePart);
+      }
+    } else {
+      {{#required}}
+      throw new IllegalArgumentException("Multipart form data is required for '{{baseName}}'");
+      {{/required}}
+      {{^required}}
+      {{paramName}} = null;
+      {{/required}}
+    }
+    {{/bodyParams}}
+    {{#useInterfaces}}
+    return imp.{{operationId}}Http(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}});
+    {{/useInterfaces}}
+    {{^useInterfaces}}
+    {{>responseToResult}}
+    {{/useInterfaces}}
+    {{/vendorExtensions.x-yba-api-multipart}}
+    {{^vendorExtensions.x-yba-api-multipart}}
     {{#bodyParams}}
     {{^collectionFormat}}
     JsonNode node{{paramName}} = request.body().asJson();
@@ -259,6 +289,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     {{^useInterfaces}}
     {{>responseToResult}}
     {{/useInterfaces}}
+    {{/vendorExtensions.x-yba-api-multipart}}
   }
 
 {{/operation}}

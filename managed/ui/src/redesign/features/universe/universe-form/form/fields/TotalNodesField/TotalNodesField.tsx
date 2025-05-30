@@ -17,6 +17,8 @@ import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface TotalNodesFieldProps {
   disabled?: boolean;
+  isPrimary: boolean;
+  useK8CustomResources: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -25,7 +27,11 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const TotalNodesField = ({ disabled }: TotalNodesFieldProps): ReactElement => {
+export const TotalNodesField = ({
+  disabled,
+  isPrimary,
+  useK8CustomResources
+}: TotalNodesFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const classes = useFormFieldStyles();
   const helperClasses = useStyles();
@@ -40,11 +46,11 @@ export const TotalNodesField = ({ disabled }: TotalNodesFieldProps): ReactElemen
   const masterPlacement = getValues(MASTER_PLACEMENT_FIELD);
   const placements = useWatch({ name: PLACEMENTS_FIELD });
   const currentTotalNodes = getValues(TOTAL_NODES_FIELD);
+  const isKubernetes = provider?.code === CloudType.kubernetes;
 
-  const fieldLabel =
-    provider?.code === CloudType.kubernetes
-      ? t('universeForm.cloudConfig.totalPodsField')
-      : t('universeForm.cloudConfig.totalNodesField');
+  const fieldLabel = isKubernetes
+    ? t('universeForm.cloudConfig.totalPodsField')
+    : t('universeForm.cloudConfig.totalNodesField');
 
   const handleChange = (e: FocusEvent<HTMLInputElement>) => {
     //reset field value to replication factor if field is empty or less than RF
@@ -69,7 +75,9 @@ export const TotalNodesField = ({ disabled }: TotalNodesFieldProps): ReactElemen
       if (totalNodesinAz >= replicationFactor) setValue(TOTAL_NODES_FIELD, totalNodesinAz);
     }
   }, [placements]);
-  const isDedicatedNodes = masterPlacement === MasterPlacementMode.DEDICATED;
+  const isDedicatedNodes =
+    masterPlacement === MasterPlacementMode.DEDICATED ||
+    (isKubernetes && isPrimary && useK8CustomResources);
 
   const numNodesElement = (
     <Box display="flex" flexDirection="row">

@@ -1,0 +1,132 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 870000;
+SET documentdb.next_collection_id TO 8700;
+SET documentdb.next_collection_index_id TO 8700;
+SELECT documentdb_api.drop_collection('db', 'validatecoll');
+ drop_collection 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Empty collection name
+SELECT documentdb_api.validate('db','{}');
+ERROR:  Invalid namespace specified 'db.'
+SELECT documentdb_api.validate('db', '{"validate" : ""}');
+ERROR:  Invalid namespace specified 'db.'
+-- Collection does not exist
+SELECT documentdb_api.validate('db', '{"validate" : "missingcoll"}');
+ERROR:  Collection 'db.missingcoll' does not exist to validate.
+-- Create Collection
+SELECT documentdb_api.create_collection('db', 'validatecoll');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Collection without docs and with only id index/no user defined indexes
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll"}');
+                                                                                                             validate                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "1" }, "indexDetails" : { "_id_" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Collection with id index and an additional index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('validatecoll', 'index_1', '{"a": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll"}');
+                                                                                                                             validate                                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert few docs
+SELECT documentdb_api.insert_one('db','validatecoll','{"_id":"1", "a": 100 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','validatecoll','{"_id":"1", "a": 101, "b": 201 }');
+                                                                                                                       insert_one                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','validatecoll','{"_id":"1", "a": 102, "b": 202 }');
+                                                                                                                       insert_one                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] }
+(1 row)
+
+-- Collection with docs and user defined index
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll"}');
+                                                                                                                             validate                                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Valid input options --
+-- only validate
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll"}');
+                                                                                                                             validate                                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- validate with repair: true or repair: false remains same
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : null, "repair" : false}');
+                                                                                                                             validate                                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- validate with full: true or full: false remains same
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : false}');
+                                                                                                                             validate                                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : true}');
+                                                                                                                             validate                                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- validate with metadata: true or metadata: false remains same
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : null, "repair" : null, "metadata" : false}');
+                                                                                                                             validate                                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : null, "repair" : null, "metadata" : true}');
+                                                                                                                             validate                                                                                                                             
+---------------------------------------------------------------------
+ { "ns" : "db.validatecoll", "nIndexes" : { "$numberLong" : "2" }, "indexDetails" : { "_id_" : { "valid" : true }, "index_1" : { "valid" : true } }, "valid" : true, "repaired" : false, "warnings" : [  ], "errors" : [  ], "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Invalid input options --
+--validate with repair: true
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "repair" : true}');
+ERROR:  Running the validate command with { repair: true } is not supported yet.
+-- validate with repair and full
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : true, "repair" : true}');
+ERROR:  Running the validate command with { repair: true } is not supported yet.
+-- validate with repair and metadata
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "repair" : true, "metadata" : true}');
+ERROR:  Running the validate command with { metadata: true } is not supported with any other options
+-- validate with full and metadata
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : true,  "metadata" : true}');
+ERROR:  Running the validate command with { metadata: true } is not supported with any other options
+-- validate with repair, full and metadata
+SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : true, "metadata" : true, "repair" : true}');
+ERROR:  Running the validate command with { metadata: true } is not supported with any other options
+-- validate field is an object
+SELECT documentdb_api.validate('db','{"validate":{}}');
+ERROR:  collection name has invalid type object

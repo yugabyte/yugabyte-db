@@ -36,6 +36,7 @@ import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserP
 
 import './RollingUpgradeForm.scss';
 import { compareYBSoftwareVersions, isVersionStable } from '../../../../utils/universeUtilsTyped';
+import { transitToUniverse } from '../../../../redesign/features/universe/universe-form/utils/helpers';
 
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
@@ -78,7 +79,6 @@ export default class RollingUpgradeForm extends Component {
         }
       },
       overrideIntentParams,
-      resetLocation,
       featureFlags
     } = this.props;
     let systemdBoolean = false;
@@ -161,7 +161,7 @@ export default class RollingUpgradeForm extends Component {
         payload.universeOverrides = values.universeOverrides;
         payload.azOverrides = values.azOverrides;
         payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
-
+        payload.runOnlyPrechecks = values.runOnlyPrechecks;
         break;
       default:
         return;
@@ -210,6 +210,10 @@ export default class RollingUpgradeForm extends Component {
       }
     }
 
+    const shouldRedirectToTaskPage = visibleModal === 'helmOverridesModal';
+    const isNewTaskDetailsUiEnabled =
+      featureFlags?.test?.newTaskDetailsUI || featureFlags?.released?.newTaskDetailsUI;
+
     if (!isDefinedNotNull(primaryCluster.enableYbc) && payload.taskType === 'Software')
       payload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
 
@@ -219,10 +223,12 @@ export default class RollingUpgradeForm extends Component {
         this.props.fetchUniverseMetadata();
         this.props.fetchCustomerTasks();
         this.props.fetchUniverseTasks(universeUUID);
-        if (resetLocation) {
-          window.location.href = `/universes/${universeUUID}`;
-        } else {
-          this.resetAndClose();
+
+        this.resetAndClose();
+        if (shouldRedirectToTaskPage && isNewTaskDetailsUiEnabled) {
+          this.props.showTaskInDrawer(taskUUID);
+        } else if (shouldRedirectToTaskPage) {
+          transitToUniverse(universeUUID);
         }
       } else {
         toast.error(createErrorMessage(response.payload), { autoClose: 3000 });
@@ -434,15 +440,15 @@ export default class RollingUpgradeForm extends Component {
           <HelmOverridesModal
             visible={true}
             onHide={this.resetAndClose}
-            submitLabel="Upgrade"
             getConfiguretaskParams={() => {
               return universeDetails;
             }}
-            setHelmOverridesData={(helmYaml) => {
-              this.props.change('universeOverrides', helmYaml.universeOverrides);
-              this.props.change('azOverrides', helmYaml.azOverrides);
-              this.props.change('rollingUpgrade', helmYaml.rollingUpgrade);
-              this.props.change('timeDelay', helmYaml.timeDelay);
+            submitForm={(formValues) => {
+              this.props.change('universeOverrides', formValues.universeOverrides);
+              this.props.change('azOverrides', formValues.azOverrides);
+              this.props.change('rollingUpgrade', formValues.rollingUpgrade);
+              this.props.change('timeDelay', formValues.timeDelay);
+              this.props.change('runOnlyPrechecks', formValues.runOnlyPrechecks);
               submitAction();
             }}
             editValues={editValues}

@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -40,6 +41,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public boolean useTimeSync = false;
 
     public String machineImage;
+    public UUID imageBundleUUID;
 
     // To use custom image flow if it is a VM upgrade with custom images.
     public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;

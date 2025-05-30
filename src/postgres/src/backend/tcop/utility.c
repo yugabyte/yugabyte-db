@@ -54,13 +54,11 @@
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
-#include "commands/tablegroup.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "commands/view.h"
-#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
 #include "postmaster/bgwriter.h"
@@ -75,16 +73,17 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
+#include "commands/yb_tablegroup.h"
+#include "libpq/libpq-be.h"
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
-
-/* local function declarations */
 /*
- * Setting YBProcessUtilityDefaultHook directly guaranties it will be the first one.
- * It will be called after all plugins hooks.
+ * YB: Setting YBProcessUtilityDefaultHook directly guaranties it will be the
+ * first one. It will be called after all plugins hooks.
  */
 static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 										const char *queryString,
@@ -96,6 +95,7 @@ static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 										QueryCompletion *qc);
 ProcessUtility_hook_type ProcessUtility_hook = &YBProcessUtilityDefaultHook;
 
+/* local function declarations */
 static int	ClassifyUtilityCommandAsReadOnly(Node *parsetree);
 static void ProcessUtilitySlow(ParseState *pstate,
 							   PlannedStmt *pstmt,
@@ -705,6 +705,24 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 					case TRANS_STMT_SAVEPOINT:
 						RequireTransactionBlock(isTopLevel, "SAVEPOINT");
+
+						/*
+						 * Disallow savepoint if the user has executed a DDL
+						 * within the transaction block.
+						 *
+						 * TODO(#26734): Remove once savepoint for DDL is
+						 * supported.
+						 */
+						if (IsYugaByteEnabled() &&
+							YBGetDdlUseRegularTransactionBlock())
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("interleaving SAVEPOINT & DDL in "
+											"transaction block not supported by"
+											" YugaByte yet"),
+									 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
+											 " React with thumbs up to raise its priority.")));
+
 						DefineSavepoint(stmt->savepoint_name);
 						break;
 
@@ -774,7 +792,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_TruncateStmt:
-			ExecuteTruncate((TruncateStmt *) parsetree);
+			ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel);
 			break;
 
 		case T_CopyStmt:
@@ -1146,7 +1164,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 	}
 
-	/* Account for stats collected during the execution of utility command */
+	/*
+	 * YB: Account for stats collected during the execution of utility command
+	 */
 	YbRefreshSessionStatsDuringExecution();
 
 	free_parsestate(pstate);
@@ -1575,8 +1595,8 @@ ProcessUtilitySlow(ParseState *pstate,
 					 * eventually be needed here, so the lockmode calculation
 					 * needs to match what DefineIndex() does.
 					 */
-					lockmode = (stmt->concurrent != YB_CONCURRENCY_DISABLED)
-						? ShareUpdateExclusiveLock : ShareLock;
+					lockmode = (stmt->concurrent != YB_CONCURRENCY_DISABLED) ? ShareUpdateExclusiveLock
+						: ShareLock;
 					relid =
 						RangeVarGetRelidExtended(stmt->relation, lockmode,
 												 0,
@@ -1592,7 +1612,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					 * partitions are something we can put an index on, to
 					 * avoid building some indexes only to fail later.
 					 *
-					 * We also transparently make it nonconcurrent.
+					 * YB: We also transparently make it nonconcurrent.
 					 */
 					if (stmt->relation->inh &&
 						get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
@@ -1624,6 +1644,7 @@ ProcessUtilitySlow(ParseState *pstate,
 						list_free(inheritors);
 					}
 
+					/* YB: handle concurrent for partitioned tables */
 					if (get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
 					{
 						/*
@@ -2118,7 +2139,8 @@ ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 			if (stmt->concurrent)
 				PreventInTransactionBlock(isTopLevel,
 										  "DROP INDEX CONCURRENTLY");
-			switch_fallthrough();
+			/* fall through */
+			yb_switch_fallthrough();
 
 		case OBJECT_TABLE:
 		case OBJECT_SEQUENCE:

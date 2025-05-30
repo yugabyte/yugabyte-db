@@ -127,7 +127,4 @@ extern int32 type_maximum_size(Oid type_oid, int32 typemod);
 /* quote.c */
 extern char *quote_literal_cstr(const char *rawstr);
 
-/* Yugabyte still needs this function from pg11 */
-extern uint64 pg_strtouint64(const char *str, char **endptr, int base);
-
 #endif							/* BUILTINS_H */

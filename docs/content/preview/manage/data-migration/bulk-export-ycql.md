@@ -127,7 +127,7 @@ For additional options, refer to [cassandra-loader options](https://github.com/y
 You can install `cassandra-unloader` as follows:
 
 ```sh
-wget https://github.com/brianmhess/cassandra-loader/releases/download/<latest-version>/cassandra-unloader
+wget https://github.com/yugabyte/cassandra-loader/releases/download/<latest-version>/cassandra-unloader
 ```
 
 ```sh

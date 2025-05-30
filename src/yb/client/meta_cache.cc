@@ -45,6 +45,8 @@
 
 #include <boost/optional/optional_io.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/client_master_rpc.h"
@@ -573,7 +575,7 @@ void RemoteTablet::GetRemoteTabletServers(
               const Status status =
                   CHECK_NOTNULL(replica->ts->local_tserver())->GetTabletStatus(&req, &resp);
               if (!status.ok() || resp.has_error()) {
-                LOG_WITH_PREFIX(ERROR)
+                LOG_WITH_PREFIX(WARNING)
                     << "Received error from GetTabletStatus: "
                     << (!status.ok() ? status : StatusFromPB(resp.error().status()));
                 continue;
@@ -899,6 +901,7 @@ LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
       meta_cache_(meta_cache),
       table_(table) {
   DCHECK(deadline != CoarseTimePoint());
+  DCHECK(deadline != CoarseTimePoint::max());
 }
 
 LookupRpc::~LookupRpc() {
@@ -1465,6 +1468,7 @@ class LookupByIdRpc : public LookupRpc {
     req_.set_include_hidden(include_hidden_);
     req_.set_include_deleted(include_deleted_);
 
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     master_client_proxy()->GetTabletLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupByIdRpc::Finished, this, Status::OK()));
@@ -1557,6 +1561,7 @@ class LookupFullTableRpc : public LookupRpc {
     req_.set_max_returned_locations(std::numeric_limits<int32_t>::max());
     // The end partition key is left unset intentionally so that we'll prefetch
     // some additional tablets.
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     master_client_proxy()->GetTableLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupFullTableRpc::Finished, this, Status::OK()));
@@ -1667,6 +1672,7 @@ class LookupByKeyRpc : public LookupRpc {
 
     // The end partition key is left unset intentionally so that we'll prefetch
     // some additional tablets.
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     master_client_proxy()->GetTableLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupByKeyRpc::Finished, this, Status::OK()));
@@ -1862,6 +1868,8 @@ void MetaCache::LookupByKeyFailed(
   }
 
   if (max_deadline != CoarseTimePoint()) {
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     auto rpc = std::make_shared<LookupByKeyRpc>(
         this, table, partition_group_start, request_no, max_deadline);
     client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
@@ -1886,6 +1894,8 @@ void MetaCache::LookupFullTableFailed(const std::shared_ptr<const YBTable>& tabl
   }
 
   if (max_deadline != CoarseTimePoint()) {
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     auto rpc = std::make_shared<LookupFullTableRpc>(this, table, request_no, max_deadline);
     client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   }
@@ -1935,6 +1945,8 @@ void MetaCache::LookupByIdFailed(
   }
 
   if (max_deadline != CoarseTimePoint()) {
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     auto rpc = std::make_shared<LookupByIdRpc>(
         this, tablet_id, table, include_hidden, include_deleted, request_no, max_deadline, 0);
     client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
@@ -2104,6 +2116,8 @@ bool MetaCache::DoLookupTabletByKey(
     lookups_group->lookups.Push(new LookupData(*callback, deadline, partition_start));
     request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
     int64_t expected = 0;
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     if (!lookups_group->running_request_number.compare_exchange_strong(
             expected, request_no, std::memory_order_acq_rel)) {
       VLOG_WITH_PREFIX_AND_FUNC(5)
@@ -2156,6 +2170,8 @@ bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
     full_table_lookups.lookups.Push(new LookupData(*callback, deadline, nullptr));
     request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
     int64_t expected = 0;
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     if (!full_table_lookups.running_request_number.compare_exchange_strong(
         expected, request_no, std::memory_order_acq_rel)) {
       VLOG_WITH_PREFIX_AND_FUNC(5)
@@ -2339,6 +2355,8 @@ bool MetaCache::DoLookupTabletById(
     lookup->lookups.Push(new LookupData(*callback, deadline, nullptr));
     request_no = lookup_serial_.fetch_add(1, std::memory_order_acq_rel);
     int64_t expected = 0;
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(YBClient_LookingUpTablet);
     if (!lookup->running_request_number.compare_exchange_strong(
             expected, request_no, std::memory_order_acq_rel)) {
       VLOG_WITH_PREFIX_AND_FUNC(5) << "Lookup already running for tablet: " << tablet_id;

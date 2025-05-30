@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -27,9 +28,12 @@ import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -37,6 +41,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -243,6 +248,51 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
       String result = FileUtils.readFileToString(file, Charset.defaultCharset());
 
       String expected = TestUtils.readResource("audit/multi_config.yml");
+      assertThat(result, equalTo(expected));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Test
+  public void generateOtelHelmValuesYsqlPlusAWS() {
+    TelemetryProvider awsTelemetryProvider = new TelemetryProvider();
+    awsTelemetryProvider.setUuid(new UUID(0, 0));
+    awsTelemetryProvider.setCustomerUUID(customer.getUuid());
+    awsTelemetryProvider.setName("AWS");
+    awsTelemetryProvider.setTags(ImmutableMap.of("tag", "value"));
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setEndpoint("endpoint");
+    awsConfig.setAccessKey("access_key");
+    awsConfig.setSecretKey("secret_key");
+    awsConfig.setLogGroup("logGroup");
+    awsConfig.setLogStream("logStream");
+    awsConfig.setRegion("us-west2");
+    awsTelemetryProvider.setConfig(awsConfig);
+    mockTelemetryProviderService.save(awsTelemetryProvider);
+
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
+    ysqlAuditConfig.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysqlAuditConfig);
+    UniverseLogsExporterConfig logsExporterConfigAws = new UniverseLogsExporterConfig();
+    logsExporterConfigAws.setExporterUuid(awsTelemetryProvider.getUuid());
+    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfigAws));
+
+    String logLinePrefix = "%m [%p] ";
+
+    try {
+      Map<String, Object> overrides = generator.getOtelHelmValues(auditLogConfig, logLinePrefix);
+      Yaml yaml = new Yaml(new SkipNullRepresenter());
+      File file = new File(OTEL_COL_TMP_PATH + "k8_config.yml");
+      file.createNewFile();
+      try (BufferedWriter bw = new BufferedWriter(new FileWriter(file)); ) {
+        yaml.dump(overrides, bw);
+      }
+      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
+
+      String expected = TestUtils.readResource("audit/k8s_helm_values.yml");
       assertThat(result, equalTo(expected));
     } catch (IOException e) {
       throw new RuntimeException(e);

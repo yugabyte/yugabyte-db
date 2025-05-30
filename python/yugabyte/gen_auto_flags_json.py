@@ -49,7 +49,10 @@ def get_auto_flags(
 def is_json_subset(a: Dict[str, str], b: Dict[str, str]) -> bool:
     subset = {}
     for k, v in a.items():
-        if k in b:
+        # Ignore is_runtime since it is no longer in use.
+        if k == "is_runtime":
+            subset[k] = v
+        elif k in b:
             subset[k] = b[k]
     return subset == a
 

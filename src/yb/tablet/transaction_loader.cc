@@ -33,6 +33,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 
 using namespace std::literals;
@@ -108,6 +109,7 @@ class TransactionLoader::Executor {
     });
 
     LOG_WITH_PREFIX(INFO) << "Load transactions start";
+    DEBUG_ONLY_TEST_SYNC_POINT("TransactionLoader::Executor::Start");
 
     status = LoadPendingApplies();
     if (!status.ok()) {
@@ -214,7 +216,7 @@ class TransactionLoader::Executor {
           continue;
         }
 
-        auto state = docdb::ApplyTransactionState::FromPB(*pb);
+        auto state = docdb::ApplyStateWithCommitInfo::FromPB(*pb);
         if (!state.ok()) {
           LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state from stored pb "
               << state.status();
@@ -222,10 +224,7 @@ class TransactionLoader::Executor {
           continue;
         }
 
-        auto it = loader_.pending_applies_.emplace(*txn_id, ApplyStateWithCommitHt {
-          .state = state.get(),
-          .commit_ht = HybridTime(pb->commit_ht())
-        }).first;
+        auto it = loader_.pending_applies_.emplace(*txn_id, *state).first;
 
         VLOG_WITH_PREFIX(4) << "Loaded pending apply for " << *txn_id << ": "
                             << it->second.ToString();
@@ -435,6 +434,17 @@ Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_A
   return load_status_;
 }
 
+Status TransactionLoader::WaitLoaded(const TransactionIdApplyOpIdMap& txns) {
+  if (txns.empty() || RSTATUS_DCHECK_RESULT(Completed())) {
+    return Status::OK();
+  }
+  const auto& max_txn = std::max_element(
+      txns.begin(), txns.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.first < rhs.first;
+      });
+  return WaitLoaded(max_txn->first);
+}
+
 // Disable thread safety analysis because std::unique_lock is used.
 Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
   // WaitAllLoaded is only invoked when opening a tablet.
@@ -453,7 +463,7 @@ Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
   return load_status_;
 }
 
-std::optional<ApplyStateWithCommitHt> TransactionLoader::GetPendingApply(
+std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::GetPendingApply(
     const TransactionId& id) const {
   if (pending_applies_removed_.load(std::memory_order_acquire)) {
     return std::nullopt;

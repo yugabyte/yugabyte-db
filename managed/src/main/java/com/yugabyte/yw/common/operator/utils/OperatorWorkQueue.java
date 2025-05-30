@@ -3,6 +3,7 @@ package com.yugabyte.yw.common.operator.utils;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.utils.Pair;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,91 +43,96 @@ public class OperatorWorkQueue {
   private final ConcurrentHashMap<String, Integer> retryCountMap;
   // Stores boolean flag for whether resource is locked for requeues of Update or Create
   // Key added when resource has Create Action and removed when resource receives Delete.
-  private final ConcurrentHashMap<String, Boolean> universeLockedForRequeueMap;
+  private final ConcurrentHashMap<String, Boolean> resourceLockedForRequeueMap;
   private final ConcurrentHashMap<String, Boolean> noOpLockMap;
   private final int initialBackoffTimeSec;
   private final int randomRangeMin;
   private final int randomRangeMax;
+  private final String resourceType;
 
-  public OperatorWorkQueue() {
-    this(INITIAL_BACKOFF_TIME_SEC, RANDOM_RANGE_MIN, RANDOM_RANGE_MAX);
+  public OperatorWorkQueue(String resourceType) {
+    this(INITIAL_BACKOFF_TIME_SEC, RANDOM_RANGE_MIN, RANDOM_RANGE_MAX, resourceType);
   }
 
-  public OperatorWorkQueue(int initialBackoffTime, int randomRangeMin, int randomRangeMax) {
+  public OperatorWorkQueue(
+      int initialBackoffTime, int randomRangeMin, int randomRangeMax, String resourceType) {
     this.workQueue = new ArrayBlockingQueue<>(WORKQUEUE_CAPACITY);
     this.scheduledExecutorService =
         Executors.newScheduledThreadPool(
             SCHEDULED_THREAD_POOL_SIZE,
             new ThreadFactoryBuilder().setNameFormat("TaskPool-KubernetesOperator-%d").build());
     this.retryCountMap = new ConcurrentHashMap<>();
-    this.universeLockedForRequeueMap = new ConcurrentHashMap<>();
+    this.resourceLockedForRequeueMap = new ConcurrentHashMap<>();
     this.noOpLockMap = new ConcurrentHashMap<>();
     this.initialBackoffTimeSec = initialBackoffTime;
     this.randomRangeMin = randomRangeMin;
     this.randomRangeMax = randomRangeMax;
+    this.resourceType = resourceType;
   }
 
-  private boolean getUniverseLockedForActionRequeue(String resourceName, ResourceAction action) {
+  private boolean getResourceLockedForActionRequeue(String resourceName, ResourceAction action) {
     if (action.equals(ResourceAction.CREATE) || action.equals(ResourceAction.UPDATE)) {
-      return universeLockedForRequeueMap.getOrDefault(resourceName, false);
+      return resourceLockedForRequeueMap.getOrDefault(resourceName, false);
     } else if (action.equals(ResourceAction.NO_OP)) {
       return noOpLockMap.getOrDefault(resourceName, false);
     }
     return false;
   }
 
-  private void updateUniverseLockedRequeueAction(String resourceName, ResourceAction action) {
+  private void updateResourceLockedRequeueAction(String resourceName, ResourceAction action) {
     if ((action.equals(ResourceAction.CREATE) || action.equals(ResourceAction.UPDATE))
-        && universeLockedForRequeueMap.containsKey(resourceName)) {
-      log.debug("Locked Universe {} for Create/Update requeues", resourceName);
-      universeLockedForRequeueMap.put(resourceName, true);
+        && resourceLockedForRequeueMap.containsKey(resourceName)) {
+      log.debug("Locked {} {} for Create/Update requeues", resourceType, resourceName);
+      resourceLockedForRequeueMap.put(resourceName, true);
     } else if (action.equals(ResourceAction.NO_OP) && noOpLockMap.containsKey(resourceName)) {
-      log.debug("Locked Universe {} for No-Op requeues", resourceName);
+      log.debug("Locked {} {} for No-Op requeues", resourceType, resourceName);
       noOpLockMap.put(resourceName, true);
     }
   }
 
-  private synchronized boolean maybeGetAndLockUniverseForRequeue(
+  private synchronized boolean maybeGetAndLockResourceForRequeue(
       String resourceName, ResourceAction action) {
-    boolean universeLocked = getUniverseLockedForActionRequeue(resourceName, action);
-    if (!universeLocked) {
-      updateUniverseLockedRequeueAction(resourceName, action);
+    boolean resourceLocked = getResourceLockedForActionRequeue(resourceName, action);
+    if (!resourceLocked) {
+      updateResourceLockedRequeueAction(resourceName, action);
     }
-    return universeLocked;
+    return resourceLocked;
   }
 
   private void onRemove(String resourceName, ResourceAction action) {
     if ((action.equals(ResourceAction.CREATE) || action.equals(ResourceAction.UPDATE))
-        && universeLockedForRequeueMap.containsKey(resourceName)) {
-      log.debug("Unlocked Universe {} for Create/Update requeues", resourceName);
-      universeLockedForRequeueMap.put(resourceName, false);
+        && resourceLockedForRequeueMap.containsKey(resourceName)) {
+      log.debug("Unlocked {} {} for Create/Update requeues", resourceType, resourceName);
+      resourceLockedForRequeueMap.put(resourceName, false);
     } else if (action.equals(ResourceAction.NO_OP) && noOpLockMap.containsKey(resourceName)) {
-      log.debug("Unlocked Universe {} for No-Op requeues", resourceName);
+      log.debug("Unlocked {} {} for No-Op requeues", resourceType, resourceName);
       noOpLockMap.put(resourceName, false);
     }
   }
 
   private void onAdd(String resourceName, ResourceAction action) {
     if (action.equals(ResourceAction.CREATE)
-        && !universeLockedForRequeueMap.containsKey(resourceName)) {
-      log.debug("Locked Universe {} for Create/Update requeues with new entry", resourceName);
-      universeLockedForRequeueMap.put(resourceName, true);
-      log.debug("Added Universe {} to No-op lock map", resourceName);
+        && !resourceLockedForRequeueMap.containsKey(resourceName)) {
+      log.debug(
+          "Locked {} {} for Create/Update requeues with new entry", resourceType, resourceName);
+      resourceLockedForRequeueMap.put(resourceName, true);
+      log.debug("Added {} {} to No-op lock map", resourceType, resourceName);
       noOpLockMap.put(resourceName, false);
     } else if (action.equals(ResourceAction.DELETE)) {
-      log.debug("Removed Universe {} from requeue lock map", resourceName);
-      universeLockedForRequeueMap.remove(resourceName);
-      log.debug("Removed Universe {} from No-Op lock map", resourceName);
+      log.debug("Removed {} {} from requeue lock map", resourceType, resourceName);
+      resourceLockedForRequeueMap.remove(resourceName);
+      log.debug("Removed {} {} from No-Op lock map", resourceType, resourceName);
       noOpLockMap.remove(resourceName);
     } else if (action.equals(ResourceAction.NO_OP) && noOpLockMap.containsKey(resourceName)) {
-      log.debug("Locked Universe {} for No-Op requeues", resourceName);
+      log.debug("Locked {} {} for No-Op requeues", resourceType, resourceName);
       noOpLockMap.put(resourceName, true);
     }
   }
 
   public synchronized boolean add(Pair<String, ResourceAction> item) {
     try {
-      log.debug("Adding {} action for Universe {}", item.getSecond().name(), item.getFirst());
+      log.debug(
+          "Adding {} action for {} {}", item.getSecond().name(), resourceType, item.getFirst());
       onAdd(item.getFirst(), item.getSecond());
       workQueue.put(item);
       return true;
@@ -173,8 +179,8 @@ public class OperatorWorkQueue {
 
   public synchronized void requeue(
       String resourceName, ResourceAction action, boolean incrementRetry) {
-    if (maybeGetAndLockUniverseForRequeue(resourceName, action)) {
-      log.debug("Universe {} already has {} action requeued", resourceName, action);
+    if (maybeGetAndLockResourceForRequeue(resourceName, action)) {
+      log.debug("{} {} already has {} action requeued", resourceType, resourceName, action);
       return;
     }
     int retryCount = retryCountMap.getOrDefault(resourceName, 0);
@@ -188,7 +194,7 @@ public class OperatorWorkQueue {
     }
     scheduledExecutorService.schedule(
         () -> {
-          log.trace("Requeuing {} task for {}", action, resourceName);
+          log.trace("Requeuing {} task for {} {}", action, resourceType, resourceName);
           add(new Pair<String, ResourceAction>(resourceName, action));
           if (action.needsNoOpAction()) {
             try {
@@ -197,7 +203,8 @@ public class OperatorWorkQueue {
             } catch (InterruptedException e) {
               log.trace("Requeuing NO_OP action delay interrupted");
             }
-            log.trace("Requeuing {} task for {}", ResourceAction.NO_OP, resourceName);
+            log.trace(
+                "Requeuing {} task for {} {}", ResourceAction.NO_OP, resourceType, resourceName);
             add(new Pair<String, ResourceAction>(resourceName, ResourceAction.NO_OP));
           }
         },
@@ -218,7 +225,26 @@ public class OperatorWorkQueue {
 
   public void clearState(String resourceName) {
     retryCountMap.remove(resourceName);
-    universeLockedForRequeueMap.remove(resourceName);
+    resourceLockedForRequeueMap.remove(resourceName);
     noOpLockMap.remove(resourceName);
+  }
+
+  /*--- WorkQueue key methods ---*/
+  public static String getWorkQueueKey(ObjectMeta metadata) {
+    String name = metadata.getName();
+    String namespace = metadata.getNamespace();
+    String uid = metadata.getUid();
+    return String.format("%s/%s/%s", namespace, name, uid);
+  }
+
+  public static String getListerKeyFromWorkQueueKey(String workQueueKey) {
+    String[] splitValues = workQueueKey.split("/");
+    String namespace = splitValues[0];
+    String name = splitValues[1];
+    return String.format("%s/%s", namespace, name);
+  }
+
+  public static String getResourceUidFromWorkQueueKey(String workQueueKey) {
+    return workQueueKey.split("/")[2];
   }
 }

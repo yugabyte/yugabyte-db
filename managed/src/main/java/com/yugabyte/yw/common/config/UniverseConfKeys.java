@@ -47,6 +47,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Integer> nodeCheckTimeoutDdlSec =
+      new ConfKeyInfo<>(
+          "yb.health.nodeCheckTimeoutDdlSec",
+          ScopeType.UNIVERSE,
+          "Node Checkout Time for DDL check",
+          "The timeout (in seconds) for node check operation as part of universe health check in"
+              + " case DDL atomicity check is performed",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
       new ConfKeyInfo<>(
           "yb.health.ddl_atomicity_check_enabled",
@@ -389,6 +399,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Query character limit",
           "Query character limit in slow queries.",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> slowQueryRetentionDays =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.retention_period_days",
+          ScopeType.UNIVERSE,
+          "Slow queries retention period",
+          "Data retention period (in days) if slow query aggregation is enabled.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> slowQueryDisableAggregation =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.disable_aggregation",
+          ScopeType.UNIVERSE,
+          "Disable Slow queries aggregation",
+          "If enabled, slow queries data will be stored for universe, once per hour.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ansibleStrategy =
       new ConfKeyInfo<>(
@@ -1161,6 +1187,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration>
+      xclusterDbScopedDeleteReplicationOnSourceTimeoutDuringFailover =
+          new ConfKeyInfo<>(
+              "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout",
+              ScopeType.UNIVERSE,
+              "Maximum timeout for yb client RPC call to delete the outbound replication on the"
+                  + " source universe during failover task execution",
+              "If the source universe is down, this RPC call will time out during failover"
+                  + " operation, increasing the failover task execution time; The lower the value,"
+                  + " the less time the failover task will take to complete. If it is set to zero,"
+                  + " this subtask during failover will be skipped providing a faster failover"
+                  + " execution time.",
+              ConfDataType.DurationType,
+              ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> dbScopedXClusterCreationEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.creationEnabled",
@@ -1473,5 +1513,169 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Queue Wait Time for Tasks",
           "Wait time for a queued task before the running task can be evicted forcefully.",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> certManagerCommonNameRequired =
+      new ConfKeyInfo<>(
+          "yb.tls.cert_manager.common_name_required",
+          ScopeType.UNIVERSE,
+          "Common Name Required for Certificates",
+          "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipOpentelemetryOperatorCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_otel_operator_check",
+          ScopeType.UNIVERSE,
+          "Skip OpenTelemetry Operator Check",
+          "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
+          ScopeType.UNIVERSE,
+          "Wait Attempts for major catalog upgrade",
+          "Wait Attempts for major catalog upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pgUpgradeCheckTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.upgrade.pg_upgrade_check_timeout_secs",
+          ScopeType.UNIVERSE,
+          "PG Upgrade Check Timeout",
+          "Timeout for pg_upgrade check in seconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDisableDBApis =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.allow_disable",
+          ScopeType.UNIVERSE,
+          "Allow users to disable DB APIs",
+          "Allow users to disable DB APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> clockboundCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.enabled",
+          ScopeType.UNIVERSE,
+          "Enable Clockbound synchronization check",
+          "Enable Clock Sync check",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> clockboundCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.clockbound.timeout",
+          ScopeType.UNIVERSE,
+          "Clockbound synchronization check timeout",
+          "Clockbound synchronization check timeout",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryDelay =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_delay",
+          ScopeType.UNIVERSE,
+          "Delay between failed create tablespaces operation retry",
+          "Delay between failed create tablespaces operation retry",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> createTablespacesRetryTimeout =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.retry_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for create tablespaces task retries",
+          "Timeout for create tablespaces task retries",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> createTablespacesMinRetries =
+      new ConfKeyInfo<>(
+          "yb.task.create_tablespaces.min_retries",
+          ScopeType.UNIVERSE,
+          "Minimal number of retries for create tablespaces task",
+          "Minimal number of retries for create tablespaces task",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> unexpectedServersCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.health_checks.unexpected_servers_check_enabled",
+          ScopeType.UNIVERSE,
+          "Whether to alert for unexpected masters/tservers in universe",
+          "Whether to alert for unexpected masters/tservers in universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> verifyClusterUUIDOnStart =
+      new ConfKeyInfo<>(
+          "yb.checks.verify_cluster_uuid.enabled",
+          ScopeType.UNIVERSE,
+          "Check if process has correct gflag on start",
+          "Check if process has correct gflag on start",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableNfsBackupPrecheck =
+      new ConfKeyInfo<>(
+          "yb.backup.enable_nfs_precheck",
+          ScopeType.UNIVERSE,
+          "Enable NFS Backup precheck",
+          "Enable/disable check which verifies free space on NFS mount before backup.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> nfsPrecheckBufferSpace =
+      new ConfKeyInfo<>(
+          "yb.backup.nfs_precheck_buffer_kb",
+          ScopeType.UNIVERSE,
+          "NFS precheck buffer space",
+          "Amount of space (in KB) we want as buffer for NFS precheck",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> rollingOpsWaitAfterEachPodMs =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.rolling_ops_wait_after_each_pod_ms",
+          ScopeType.UNIVERSE,
+          "Wait after each pod restart in rolling operations",
+          "Time to wait after each pod restart before restarting the next pod in rolling"
+              + " operations",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> revertToPreRolesBehaviour =
+      new ConfKeyInfo<>(
+          "ybc.revert_to_pre_roles_behaviour",
+          ScopeType.UNIVERSE,
+          "Backup and restore to use pre roles behaviour",
+          "Have YBC use the pre roles backup and restore behaviour",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ignoreRestoreErrors =
+      new ConfKeyInfo<>(
+          "ybc.ignore_restore_errors",
+          ScopeType.UNIVERSE,
+          "Ignore errors during restore",
+          "Have YBC ignore errors during restore. When false, can be overwritten via API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> healthCollectTopKOtherProcessesCount =
+      new ConfKeyInfo<>(
+          "yb.health_checks.collect_other_processes_memory_count",
+          ScopeType.UNIVERSE,
+          "Number of non-yba managed processes to collect memory metrics for",
+          "Number of non-yba managed processes to collect memory metrics for",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> healthCollectTopKOtherProcessesMemThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.other_processes_memory_threshold_percent",
+          ScopeType.UNIVERSE,
+          "Threshold of memory percent for non-yba processes",
+          "Threshold of memory percent for non-yba processes",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableBackupsDuringDDL =
+      new ConfKeyInfo<>(
+          "yb.backup.enable_backups_during_ddl",
+          ScopeType.UNIVERSE,
+          "Enable backups during DDL",
+          "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -136,7 +136,11 @@ var certEncryptionInTransitCmd = &cobra.Command{
 			}
 			if requestBody.GetRootCA() == "" {
 				logrus.Fatalf(
-					formatter.Colorize("No root CA found with name: "+rootCAName+"\n", formatter.RedColor))
+					formatter.Colorize(
+						"No root CA found with name: "+rootCAName+"\n",
+						formatter.RedColor,
+					),
+				)
 			}
 		} else {
 			logrus.Debugf("Root CA is Universe's Root CA\n")

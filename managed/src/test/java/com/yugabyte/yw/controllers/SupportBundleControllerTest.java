@@ -64,7 +64,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     universe = ModelFactory.createUniverse("test-universe", customer.getId());
-    user = ModelFactory.testUser(customer);
+    user = ModelFactory.testSuperAdminUserNewRbac(customer);
   }
 
   @After

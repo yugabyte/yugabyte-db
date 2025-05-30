@@ -11,7 +11,6 @@ import (
 	"node-agent/model"
 	"node-agent/util"
 	"runtime"
-	"sort"
 	"strings"
 )
 
@@ -311,47 +310,6 @@ func (handler *GetProviderHandler) Handle(ctx context.Context) (any, error) {
 }
 
 func (handler *GetProviderHandler) Result() *model.Provider {
-	return handler.result
-}
-
-type GetAccessKeysHandler struct {
-	result *model.AccessKey
-}
-
-func NewGetAccessKeysHandler() *GetAccessKeysHandler {
-	return &GetAccessKeysHandler{}
-}
-
-func (handler *GetAccessKeysHandler) Handle(ctx context.Context) (any, error) {
-	config := util.CurrentConfig()
-	headers, err := platformHeadersWithJWT(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-	res, err := httpClient().Do(
-		ctx,
-		http.MethodGet,
-		util.PlatformGetAccessKeysEndpoint(config.String(util.CustomerIdKey), config.String(util.ProviderIdKey)),
-		headers,
-		nil,
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	accessKeys := []model.AccessKey{}
-	_, err = UnmarshalResponse(ctx, &accessKeys, res)
-	if err != nil {
-		return nil, err
-	}
-	// Sort to get the latest access key as done in platform.
-	sort.Sort(model.AccessKeys(accessKeys))
-	handler.result = &accessKeys[0]
-	return handler.result, nil
-}
-
-func (handler *GetAccessKeysHandler) Result() *model.AccessKey {
 	return handler.result
 }
 

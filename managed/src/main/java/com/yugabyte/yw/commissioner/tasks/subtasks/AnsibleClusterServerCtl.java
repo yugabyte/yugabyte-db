@@ -11,16 +11,24 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import com.yugabyte.yw.nodeagent.ServerControlInput;
+import com.yugabyte.yw.nodeagent.ServerControlType;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleClusterServerCtl extends NodeTaskBase {
@@ -45,6 +53,34 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
   @Override
   protected Params taskParams() {
     return (Params) taskParams;
+  }
+
+  private ServerControlInput getServerControlInput(Universe universe, NodeDetails nodeDetails) {
+    String serverName = "yb-" + taskParams().process;
+    String serverHome =
+        Paths.get(nodeUniverseManager.getYbHomeDir(nodeDetails, universe), taskParams().process)
+            .toString();
+    ServerControlType controlType =
+        taskParams().command.equals("start") ? ServerControlType.START : ServerControlType.STOP;
+    ServerControlInput.Builder serverControlInputBuilder =
+        ServerControlInput.newBuilder()
+            .setControlType(controlType)
+            .setServerName(serverName)
+            .setServerHome(serverHome)
+            .setDeconfigure(taskParams().deconfigure);
+    if (taskParams().checkVolumesAttached) {
+      UniverseDefinitionTaskParams.Cluster cluster =
+          universe.getCluster(taskParams().placementUuid);
+      NodeDetails node = universe.getNode(taskParams().nodeName);
+      if (node != null
+          && cluster != null
+          && cluster.userIntent.getDeviceInfoForNode(node) != null
+          && cluster.userIntent.providerType != CloudType.onprem) {
+        serverControlInputBuilder.setNumVolumes(
+            cluster.userIntent.getDeviceInfoForNode(node).numVolumes);
+      }
+    }
+    return serverControlInputBuilder.build();
   }
 
   @Override
@@ -72,6 +108,14 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
             taskParams().command);
         return;
       }
+      if (nodeDetails.cloudInfo == null || StringUtils.isEmpty(nodeDetails.cloudInfo.private_ip)) {
+        log.warn(
+            "Node {} has no IP in the universe {}. Skipping server control command - {}",
+            taskParams().nodeName,
+            universeOpt.get().getUniverseUUID(),
+            taskParams().command);
+        return;
+      }
       if (ServerType.MASTER.name().equalsIgnoreCase(taskParams().process)
           && "start".equalsIgnoreCase(taskParams().command)
           && nodeDetails.masterState != null) {
@@ -90,10 +134,16 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
             taskParams().command);
         return;
       }
-      // Execute the ansible command.
-      getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Control, taskParams())
-          .processErrors();
+      Optional<NodeAgent> optional =
+          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)
+              ? nodeUniverseManager.maybeGetNodeAgent(
+                  universeOpt.get(), nodeDetails, true /*check feature flag*/)
+              : Optional.empty();
+      if (optional.isPresent()) {
+        runWithNodeAgent(optional.get(), universeOpt.get(), nodeDetails);
+      } else {
+        runLegacy(universeOpt.get(), nodeDetails);
+      }
     } catch (Exception e) {
       if (!taskParams().isIgnoreError) {
         throw e;
@@ -104,6 +154,19 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
 
     if (taskParams().sleepAfterCmdMills > 0) {
       waitFor(Duration.ofMillis((long) getSleepMultiplier() * taskParams().sleepAfterCmdMills));
+    }
+  }
+
+  public void runLegacy(Universe universe, NodeDetails nodeDetails) {
+    // Execute the ansible command.
+    getNodeManager().nodeCommand(NodeManager.NodeCommandType.Control, taskParams()).processErrors();
+  }
+
+  public void runWithNodeAgent(NodeAgent nodeAgent, Universe universe, NodeDetails nodeDetails) {
+    // These conditional checks are in python layer for legacy path.
+    if (!taskParams().skipStopForPausedVM || isInstanceRunning(taskParams())) {
+      nodeAgentClient.runServerControl(
+          nodeAgent, getServerControlInput(universe, nodeDetails), "yugabyte");
     }
   }
 

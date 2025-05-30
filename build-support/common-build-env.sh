@@ -149,6 +149,10 @@ if [[ $YB_SRC_ROOT == */ ]]; then
   fatal "YB_SRC_ROOT ends with '/' (not allowed): '$YB_SRC_ROOT'"
 fi
 
+# Source our yb.env file to set expected defaults
+# shellcheck source=yb.env
+. "$YB_SRC_ROOT/yb.env"
+
 initialize_yugabyte_bash_common
 
 # shellcheck source=build/yugabyte-bash-common/src/yugabyte-bash-common.sh
@@ -230,6 +234,7 @@ readonly -a VALID_COMPILER_TYPES=(
   clang16
   clang17
   clang18
+  clang19
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -550,7 +555,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
-      YB_COMPILER_TYPE=clang17
+      YB_COMPILER_TYPE=clang19
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -2029,7 +2034,7 @@ find_or_download_ysql_snapshots() {
   # Just one snapshot for now.
   # (disabling a code checker error about a singular loop iteration)
   # shellcheck disable=SC2043
-  for ver in "2.25.0.0-pg15-alpha-2"; do
+  for ver in "2025.1.0.0-pg15-12-3"; do
     for bt in "release" "sanitizers" "mac"; do
       local name="${prefix}_${ver}_${bt}"
       if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then

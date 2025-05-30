@@ -254,6 +254,13 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
     max_graceful_shutdown_wait_sec_ = max_graceful_shutdown_wait_sec;
   }
 
+  template <class T>
+  std::unique_ptr<T> Proxy() {
+    return std::make_unique<T>(proxy_cache_, bound_rpc_addr());
+  }
+
+  Status WaitProcessReady();
+
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
   virtual ~ExternalDaemon();
@@ -276,6 +283,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   void FlushCoverage();
 
   std::string ProcessNameAndPidStr();
+
+  std::string DefaultOutputPrefix();
 
   const std::string daemon_id_;
   rpc::Messenger* messenger_;

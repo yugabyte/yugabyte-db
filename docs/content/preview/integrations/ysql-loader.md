@@ -111,7 +111,7 @@ A file containing a Docker command can help you to perform migration. <!-- For m
 
 ### Migrate schema and data using Docker
 
-You start migration by running Docker. Using Bash, you access the container and run the YSQL Loader command (`/usr/local/bin/pgloader`). Examples in this section use the Docker image that is based on CentOS 7, so the YSQL Loader command file is stored in the CentOS home directory and the Docker volume is used for mapping the configuration from the `/home/centos` directory to the Docker container directory. The Docker `–rm` flag ensures that the container is removed once YSQL Loader completes its tasks.
+You start migration by running Docker. Using Bash, you access the container and run the YSQL Loader command (`/usr/local/bin/pgloader`). Examples in this section use the Docker image that is based on CentOS 7, so the YSQL Loader command file is stored in the CentOS home directory and the Docker volume is used for mapping the configuration from the `/home/centos` directory to the Docker container directory. The Docker `--rm` flag ensures that the container is removed once YSQL Loader completes its tasks.
 
 ```sh
 $ docker run --rm --name <name_for_container> \

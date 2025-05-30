@@ -9,7 +9,6 @@
  */
 
 #include "postgres.h"
-#include "miscadmin.h"
 
 #include <inttypes.h>
 
@@ -28,16 +27,17 @@
 #include "catalog/yb_catalog_version.h"
 #include "executor/ybExpr.h"
 #include "executor/ybModifyTable.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "optimizer/cost.h"
+#include "pg_yb_utils.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
 
@@ -45,22 +45,23 @@ static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_vers
 	Schema_pg_yb_catalog_version
 };
 
-static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version);
+static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
+											   bool acquire_for_update_lock);
 static Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 													   Oid db_oid);
 
 /* Retrieve Catalog Version */
 
-uint64_t
-YbGetMasterCatalogVersion()
+static uint64_t
+YbGetMasterCatalogVersionImpl(bool acquire_for_update_lock)
 {
 	uint64_t	version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 	switch (YbGetCatalogVersionType())
 	{
 		case CATALOG_VERSION_CATALOG_TABLE:
-			if (YbGetMasterCatalogVersionFromTable(YbMasterCatalogVersionTableDBOid(),
-												   &version))
+			if (YbGetMasterCatalogVersionFromTable(YbMasterCatalogVersionTableDBOid(), &version,
+												   acquire_for_update_lock))
 				return version;
 			/*
 			 * In spite of the fact the pg_yb_catalog_version table exists it has no actual
@@ -68,7 +69,7 @@ YbGetMasterCatalogVersion()
 			 * fallback to an old protobuf mechanism until the next cache refresh.
 			 */
 			yb_catalog_version_type = CATALOG_VERSION_PROTOBUF_ENTRY;
-			switch_fallthrough();
+			yb_switch_fallthrough();
 		case CATALOG_VERSION_PROTOBUF_ENTRY:
 			/* deprecated (kept for compatibility with old clusters). */
 			HandleYBStatus(YBCPgGetCatalogMasterVersion(&version));
@@ -83,7 +84,70 @@ YbGetMasterCatalogVersion()
 	return version;
 }
 
+uint64_t
+YbGetMasterCatalogVersion()
+{
+	return YbGetMasterCatalogVersionImpl(false /* acquire_for_update_lock */ );
+}
+
+void
+YbMaybeLockMasterCatalogVersion(YbDdlMode mode)
+{
+	/*
+	 * When object locks are off (i.e., the old way), we ensure that concurrent DDLs don't stamp on
+	 * each other by incrementing the catalog version. DDLs with overlapping [read time, commit time]
+	 * windows would conflict with each other and only one of them would be able to make progress.
+	 * This catalog version increment happens at the end of a DDL transaction.
+	 *
+	 * By relying on catalog version increments for disallowing concurrent DDLs, long running DDLs
+	 * run into the risk of finding that they face conflict with other concurrently committed DDLs
+	 * only after doing all the expensive work (think of index backfill). To fail fast, we acquire
+	 * a FOR UPDATE lock at the start of the DDL.
+	 *
+	 * An online index backfill goes through multiple phases, each of which is a DDL transaction.
+	 * We acquire this lock at the start of each phase.
+	 *
+	 * NOTE:
+	 * (1) Some DDLs don't increment the catalog version (e.g., CREATE TABLE). These are harmless
+	 *		 for concurrent DDLs. We avoid acquiring the lock for them, they don't have
+	 *		 YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT in their mode.
+	 * (2) Global DDLs (i.e., those that modify shared catalog tables) will increment all catalog
+	 *		 versions. We still only lock the catalog version of the current database. So, they might
+	 *		 still face the problem described above if they are long running.
+	 * (3) We enable this feature only if the invalidation messages are used and per-database catalog
+	 *		 version mode is enabled.
+	 */
+	if (yb_force_early_ddl_serialization &&
+		!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks &&
+		(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
+	{
+		elog(DEBUG1, "Locking catalog version for db oid %d", MyDatabaseId);
+		YbGetMasterCatalogVersionImpl(true /* acquire_for_update_lock */ );
+	}
+}
+
 /* Modify Catalog Version */
+
+static Datum
+GetInvalidationMessages(const SharedInvalidationMessage *invalMessages, int nmsgs,
+						bool *is_null)
+{
+	if (!invalMessages)
+	{
+		Assert(nmsgs >= 0);
+		*is_null = true;
+		return (Datum) 0;
+	}
+
+	size_t		str_len = sizeof(SharedInvalidationMessage) * nmsgs;
+	bytea	   *bstr = palloc(VARHDRSZ + str_len);
+
+	memcpy(VARDATA(bstr), invalMessages, str_len);
+	SET_VARSIZE(bstr, VARHDRSZ + str_len);
+	*is_null = false;
+	return PointerGetDatum(bstr);
+}
 
 static void
 YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
@@ -113,10 +177,10 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	if (!snapshot_set)
 		PushActiveSnapshot(GetTransactionSnapshot());
 
-	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
+	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
 	{
 		bool		log_ysql_catalog_versions =
-		*YBCGetGFlags()->log_ysql_catalog_versions;
+			*YBCGetGFlags()->log_ysql_catalog_versions;
 
 		ereport(LOG,
 				(errmsg("%s: incrementing all master db catalog versions (%sbreaking)",
@@ -128,9 +192,11 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 
 	PG_TRY();
 	{
+		yb_is_calling_internal_sql_for_ddl = true;
 		FunctionCallInvoke(fcinfo);
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		yb_is_calling_internal_sql_for_ddl = false;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
 			PopActiveSnapshot();
@@ -139,6 +205,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	{
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		yb_is_calling_internal_sql_for_ddl = false;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		if (!snapshot_set)
 			PopActiveSnapshot();
@@ -147,11 +214,181 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	PG_END_TRY();
 }
 
-Oid
-YbGetSQLIncrementCatalogVersionsFunctionOid()
+static void
+MaybeLogNewSQLIncrementCatalogVersion(bool success,
+									  Oid db_oid,
+									  bool is_breaking_change,
+									  bool is_global_ddl,
+									  const char *command_tag,
+									  uint64_t new_version)
 {
-	List	   *names = list_make2(makeString("pg_catalog"),
-								   makeString("yb_increment_all_db_catalog_versions"));
+	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
+	{
+		bool		log_ysql_catalog_versions =
+			*YBCGetGFlags()->log_ysql_catalog_versions;
+		char		tmpbuf1[20] = "";
+		char		tmpbuf2[60] = " failed";
+
+		/* Log MyDatabaseId to if it differs from db_oid. */
+		if (db_oid != MyDatabaseId)
+			snprintf(tmpbuf1, sizeof(tmpbuf1), " from %u", MyDatabaseId);
+		if (success)
+			snprintf(tmpbuf2, sizeof(tmpbuf2),
+					 ", new version for database %u is %" PRIu64,
+					 db_oid, new_version);
+
+		char	   *action = is_global_ddl ? "all master db catalog versions"
+			: "master db catalog version";
+
+		ereport(LOG,
+				(errmsg("%s: incrementing %s "
+						"(%sbreaking) with inval messages%s%s",
+						__func__, action, is_breaking_change ? "" : "non",
+						tmpbuf1, tmpbuf2),
+				 errdetail("Local version: %" PRIu64 ", node tag: %s.",
+						   YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				 errhidestmt(!log_ysql_catalog_versions),
+				 errhidecontext(!log_ysql_catalog_versions)));
+	}
+}
+
+static uint64_t
+YbCallNewSQLIncrementCatalogVersionHelper(Oid functionId,
+										  Oid db_oid,
+										  bool is_breaking_change,
+										  const char *command_tag,
+										  Datum messages,
+										  bool is_null,
+										  int expiration_secs,
+										  bool is_global_ddl)
+{
+	FmgrInfo	flinfo;
+
+	LOCAL_FCINFO(fcinfo, 4);
+	fmgr_info(functionId, &flinfo);
+	InitFunctionCallInfoData(*fcinfo, &flinfo, 4, InvalidOid, NULL, NULL);
+	fcinfo->args[0].value = ObjectIdGetDatum(db_oid);
+	fcinfo->args[0].isnull = false;
+	fcinfo->args[1].value = BoolGetDatum(is_breaking_change);
+	fcinfo->args[1].isnull = false;
+	fcinfo->args[2].value = messages;
+	fcinfo->args[2].isnull = is_null;
+	fcinfo->args[3].value = expiration_secs;
+	fcinfo->args[3].isnull = false;
+
+	/* Save old values and set new values to enable the call. */
+	bool		saved = yb_non_ddl_txn_for_sys_tables_allowed;
+
+	yb_non_ddl_txn_for_sys_tables_allowed = true;
+	bool		saved_enable_seqscan = enable_seqscan;
+
+	/*
+	 * Avoid sequential scan for non-global-impact DDL, otherwise we can get
+	 * conflicts between concurrent cross-database DDLs.
+	 */
+	if (!is_global_ddl)
+		enable_seqscan = false;
+	Oid			save_userid;
+	int			save_sec_context;
+
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
+						   SECURITY_RESTRICTED_OPERATION);
+	/* Calling a user defined function requires a snapshot. */
+	bool		snapshot_set = ActiveSnapshotSet();
+
+	if (!snapshot_set)
+		PushActiveSnapshot(GetTransactionSnapshot());
+	volatile uint64_t new_version;
+
+	PG_TRY();
+	{
+		yb_is_calling_internal_sql_for_ddl = true;
+		Datum		retval = FunctionCallInvoke(fcinfo);
+
+		/* Restore old values. */
+		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		yb_is_calling_internal_sql_for_ddl = false;
+		enable_seqscan = saved_enable_seqscan;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		if (!snapshot_set)
+			PopActiveSnapshot();
+		if (fcinfo->isnull)
+		{
+			elog(WARNING, "function %u returned NULL", functionId);
+			new_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+		}
+		else
+		{
+			new_version = DatumGetUInt64(retval);
+			Assert(new_version != YB_CATCACHE_VERSION_UNINITIALIZED);
+		}
+		MaybeLogNewSQLIncrementCatalogVersion(true /* success */ ,
+											  db_oid,
+											  is_breaking_change,
+											  is_global_ddl,
+											  command_tag,
+											  new_version);
+	}
+	PG_CATCH();
+	{
+		/* Restore old values. */
+		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		yb_is_calling_internal_sql_for_ddl = false;
+		enable_seqscan = saved_enable_seqscan;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		if (!snapshot_set)
+			PopActiveSnapshot();
+		MaybeLogNewSQLIncrementCatalogVersion(false /* success */ ,
+											  db_oid,
+											  is_breaking_change,
+											  is_global_ddl,
+											  command_tag,
+											  0 /* new_version */ );
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	return new_version;
+}
+
+static uint64_t
+YbCallNewSQLIncrementCatalogVersion(Oid functionId, Oid db_oid, bool is_breaking_change,
+									const char *command_tag,
+									Datum messages, bool is_null, int expiration_secs)
+{
+	return YbCallNewSQLIncrementCatalogVersionHelper(functionId,
+													 db_oid,
+													 is_breaking_change,
+													 command_tag,
+													 messages,
+													 is_null,
+													 expiration_secs,
+													 false /* is_global_ddl */ );
+}
+
+static uint64_t
+YbCallNewSQLIncrementAllCatalogVersions(Oid functionId,
+										Oid db_oid,
+										bool is_breaking_change,
+										const char *command_tag,
+										Datum messages,
+										bool is_null,
+										int expiration_secs)
+{
+	return YbCallNewSQLIncrementCatalogVersionHelper(functionId,
+													 db_oid,
+													 is_breaking_change,
+													 command_tag,
+													 messages,
+													 is_null,
+													 expiration_secs,
+													 true /* is_global_ddl */ );
+}
+
+static Oid
+YbGetSQLIncrementCatalogVersionFunctionOidHelper(char *fname)
+{
+	List	   *names = list_make2(makeString("pg_catalog"), makeString(fname));
 	FuncCandidateList clist = FuncnameGetCandidates(names,
 													-1 /* nargs */ ,
 													NIL /* argnames */ ,
@@ -168,13 +405,82 @@ YbGetSQLIncrementCatalogVersionsFunctionOid()
 	return InvalidOid;
 }
 
+Oid
+YbGetSQLIncrementCatalogVersionsFunctionOid()
+{
+	return YbGetSQLIncrementCatalogVersionFunctionOidHelper("yb_increment_all_db_catalog_versions");
+}
+
+static Oid
+YbGetNewIncrementCatalogVersionFunctionOid()
+{
+	return YbGetSQLIncrementCatalogVersionFunctionOidHelper("yb_increment_db_catalog_version_with_inval_messages");
+}
+
+static Oid
+YbGetNewIncrementAllCatalogVersionsFunctionOid()
+{
+	return YbGetSQLIncrementCatalogVersionFunctionOidHelper("yb_increment_all_db_catalog_versions_with_inval_messages");
+}
+
 static void
 YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 												bool is_breaking_change,
 												bool is_global_ddl,
-												const char *command_tag)
+												const char *command_tag,
+												const SharedInvalidationMessage *invalMessages,
+												int nmsgs)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
+
+	if (YbIsInvalidationMessageEnabled())
+	{
+		Oid			func_oid = is_global_ddl ? YbGetNewIncrementAllCatalogVersionsFunctionOid()
+			: YbGetNewIncrementCatalogVersionFunctionOid();
+
+		if (OidIsValid(func_oid) && YbInvalidationMessagesTableExists())
+		{
+			bool		is_null = false;
+			Datum		messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
+			int			expiration_secs = yb_invalidation_message_expiration_secs;
+
+			if (is_global_ddl)
+			{
+				/*
+				 * Call yb_increment_all_db_catalog_versions_with_inval_messages(
+				 *     is_breaking_change, messages, expiration_secs).
+				 * Pass MyDatabaseId to get the new version of MyDatabaseId.
+				 */
+				uint64_t	new_version =
+					YbCallNewSQLIncrementAllCatalogVersions(func_oid, MyDatabaseId,
+															is_breaking_change,
+															command_tag, messages,
+															is_null, expiration_secs);
+
+				YbSetNewCatalogVersion(new_version);
+				return;
+			}
+
+			/*
+			 * Call yb_increment_db_catalog_version_with_inval_messages(
+			 *     db_oid, is_breaking_change, is_global_ddl, messages).
+			 */
+			uint64_t	new_version =
+				YbCallNewSQLIncrementCatalogVersion(func_oid, db_oid,
+													is_breaking_change,
+													command_tag, messages,
+													is_null, expiration_secs);
+
+			/*
+			 * The new version of database_oid is only meaningful when
+			 * db_oid == MyDatabaseId.
+			 */
+			if (db_oid == MyDatabaseId)
+				YbSetNewCatalogVersion(new_version);
+
+			return;
+		}
+	}
 
 	if (is_global_ddl)
 	{
@@ -297,7 +603,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 
 	int			rows_affected_count = 0;
 
-	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
+	if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
 	{
 		bool		log_ysql_catalog_versions = *YBCGetGFlags()->log_ysql_catalog_versions;
 		char		tmpbuf[30] = "";
@@ -337,8 +643,11 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 bool
 YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 										  bool is_global_ddl,
-										  const char *command_tag)
+										  const char *command_tag,
+										  const SharedInvalidationMessage *invalMessages,
+										  int nmsgs)
 {
+	YbResetNewCatalogVersion();
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
 
@@ -349,7 +658,9 @@ YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 	YbIncrementMasterDBCatalogVersionTableEntryImpl(database_oid,
 													is_breaking_change,
 													is_global_ddl,
-													command_tag);
+													command_tag,
+													invalMessages,
+													nmsgs);
 	if (yb_test_fail_next_inc_catalog_version)
 	{
 		yb_test_fail_next_inc_catalog_version = false;
@@ -532,9 +843,8 @@ YbIsSystemCatalogChange(Relation rel)
 	return IsCatalogRelation(rel) && !IsBootstrapProcessingMode();
 }
 
-
 bool
-YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
+YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version, bool acquire_for_update_lock)
 {
 	*version = 0;				/* unset; */
 
@@ -567,8 +877,22 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 		YbDmlAppendTargetRegularAttr(&Desc_pg_yb_catalog_version[attnum - 1],
 									 ybc_stmt);
 
+	YbcPgExecParameters exec_params = {0};
 
-	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */ ));
+	if (acquire_for_update_lock)
+	{
+		exec_params.rowmark = ROW_MARK_EXCLUSIVE;
+		/*
+		 * We want to stick to Fail-on-Conflict concurrency control to ensure that higher priority
+		 * user DDLs always take precedence over lower priority auto-ANALYZEs. In other words, user DDLs
+		 * should abort running auto-ANALYZEs, and auto-ANALYZEs should face a conflict error if a user
+		 * DDL is already running.
+		 */
+		exec_params.pg_wait_policy = LockWaitError;
+		exec_params.docdb_wait_policy = YBGetDocDBWaitPolicy(exec_params.pg_wait_policy);
+	}
+
+	HandleYBStatus(YBCPgExecSelect(ybc_stmt, acquire_for_update_lock ? &exec_params : NULL));
 
 	bool		has_data = false;
 

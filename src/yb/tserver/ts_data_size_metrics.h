@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 
 namespace yb::tserver {

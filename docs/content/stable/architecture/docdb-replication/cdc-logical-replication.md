@@ -68,7 +68,7 @@ Each tablet sends changes in transaction commit time order. Further, in a transa
 
 ![VWAL-walsender](/images/architecture/vwal_walsender_interaction.png)
 
-VWAL collects changes across multiple tablets, assembles the transactions, assigns LSN to each change and transaction boundary (BEGIN, COMMIT) record, and sends the changes to the walsender in transaction commit time order.
+VWAL collects changes across multiple tablets, assembles the transactions, assigns a Log Sequence Number ([LSN](../../../develop/change-data-capture/using-logical-replication/key-concepts/#lsn-type)) to each change and transaction boundary (BEGIN, COMMIT) record, and sends the changes to the walsender in transaction commit time order.
 
 **Step 3 - walsender to client**
 

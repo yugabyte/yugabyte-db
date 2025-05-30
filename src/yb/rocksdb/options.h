@@ -1551,8 +1551,8 @@ struct ReadOptions {
 
   Slice user_key_for_filter;
 
-  // Defer iterator filter checks to iteration phase. I.e. user could call SeekWithNewFilter
-  // before Seek, to recheck file filter for all SST files.
+  // Defer iterator filter checks to iteration phase. I.e. user could call UpdateFilterKey
+  // before Seek/Next, to recheck file filter for all SST files.
   bool defer_iterator_filter = false;
 
   std::shared_ptr<ReadFileFilter> file_filter;

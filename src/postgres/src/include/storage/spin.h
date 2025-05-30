@@ -13,7 +13,8 @@
  *	void SpinLockAcquire(volatile slock_t *lock)
  *		Acquire a spinlock, waiting if necessary.
  *		Time out and abort() if unable to acquire the lock in a
- *		"reasonable" amount of time --- roughly 15s.
+ *		"reasonable" amount of time --- typically ~ 1 minute.
+ *		YB note: instead of 1 minute, it's roughly 15 seconds.
  *
  *	void SpinLockRelease(volatile slock_t *lock)
  *		Unlock a previously acquired lock.
@@ -51,15 +52,19 @@
 #ifndef SPIN_H
 #define SPIN_H
 
-#include "miscadmin.h"
-#include "storage/proc.h"
 #include "storage/s_lock.h"
 #ifndef HAVE_SPINLOCKS
 #include "storage/pg_sema.h"
 #endif
 
+/* YB includes */
+#include "miscadmin.h"
+#include "storage/proc.h"
+
+
 #define SpinLockInit(lock)	S_INIT_LOCK(lock)
 
+/* YB modified */
 #define SpinLockAcquire(lock) \
 	do \
 	{ \
@@ -68,6 +73,7 @@
 		S_LOCK(lock); \
 	} while (0)
 
+/* YB modified */
 #define SpinLockRelease(lock) \
 	do \
 	{ \

@@ -37,7 +37,7 @@ export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
 
   const [
     {
-      formData: { selectedTables, preflightResponse }
+      formData: { selectedTables, preflightResponse, generalSettings }
     },
     { saveSelectTablesFormData, moveToNextPage, moveToPrevPage, setSubmitLabel }
   ] = restoreContext;
@@ -79,7 +79,7 @@ export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
     setSubmitLabel(t('newRestoreModal.generalSettings.restore'));
   });
 
-  const tablesInPreflight = getTablesFromPreflighResponse(preflightResponse!);
+  const tablesInPreflight = getTablesFromPreflighResponse(preflightResponse!, generalSettings?.incrementalBackupProps?.singleKeyspaceRestore ? generalSettings?.selectedKeyspace?.label : undefined);
 
   return (
     <form>

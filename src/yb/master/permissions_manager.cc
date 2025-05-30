@@ -13,21 +13,21 @@
 
 #include "yb/master/permissions_manager.h"
 
-#include <mutex>
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_dcl.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/util/crypt.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
@@ -81,10 +81,10 @@ class ScopedMutation {
 
 }  // anonymous namespace
 
-
 PermissionsManager::PermissionsManager(CatalogManager* catalog_manager)
     : security_config_(nullptr),
-      catalog_manager_(catalog_manager) {
+      catalog_manager_(catalog_manager),
+      cm_mutex_(catalog_manager_->mutex_) {
   CHECK_NOTNULL(catalog_manager);
 }
 
@@ -452,7 +452,7 @@ Status PermissionsManager::AlterRole(
 
     s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), role);
     if (!s.ok()) {
-      LOG(ERROR) << "Unable to alter role " << req->name() << ": " << s;
+      LOG(WARNING) << "Unable to alter role " << req->name() << ": " << s;
       return s;
     }
     l.Commit();
@@ -518,8 +518,8 @@ Status PermissionsManager::DeleteRole(
     // Update sys-catalog with the new member_of list for this role.
     s = catalog_manager_->sys_catalog_->Upsert(catalog_manager_->leader_ready_term(), role);
     if (!s.ok()) {
-      LOG(ERROR) << "Unable to remove role " << req->name()
-                 << " from member_of list for role " << role_name;
+      LOG(WARNING) << "Unable to remove role " << req->name()
+                   << " from member_of list for role " << role_name;
       role->mutable_metadata()->AbortMutation();
     } else {
       role->mutable_metadata()->CommitMutation();

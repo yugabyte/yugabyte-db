@@ -246,7 +246,7 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile) {
 
 Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length) {
   CodedInputStream in(data, narrow_cast<uint32_t>(length));
-  in.SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit, -1);
+  in.SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit);
   // Parse data into protobuf message
   if (!msg->ParseFromCodedStream(&in)) {
     return STATUS(Corruption, "Error parsing msg", InitializationErrorMessage("parse", *msg));
@@ -582,7 +582,7 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
 
   ArrayInputStream ais(body.data(), narrow_cast<int>(body.size()));
   CodedInputStream cis(&ais);
-  cis.SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit, -1);
+  cis.SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit);
   if (PREDICT_FALSE(!msg->ParseFromCodedStream(&cis))) {
     return STATUS(IOError, "Unable to parse PB from path", reader_->filename());
   }

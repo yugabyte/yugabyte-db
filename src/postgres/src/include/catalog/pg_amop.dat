@@ -4172,4 +4172,21 @@
   amoprighttype => 'jsonb', amopstrategy => '5', amopopr => '>(jsonb,jsonb)',
   amopmethod => 'lsm' },
 
+# lsm multirange_ops
+{ amopfamily => 'lsm/multirange_ops', amoplefttype => 'anymultirange',
+  amoprighttype => 'anymultirange', amopstrategy => '1',
+  amopopr => '<(anymultirange,anymultirange)', amopmethod => 'lsm' },
+{ amopfamily => 'lsm/multirange_ops', amoplefttype => 'anymultirange',
+  amoprighttype => 'anymultirange', amopstrategy => '2',
+  amopopr => '<=(anymultirange,anymultirange)', amopmethod => 'lsm' },
+{ amopfamily => 'lsm/multirange_ops', amoplefttype => 'anymultirange',
+  amoprighttype => 'anymultirange', amopstrategy => '3',
+  amopopr => '=(anymultirange,anymultirange)', amopmethod => 'lsm' },
+{ amopfamily => 'lsm/multirange_ops', amoplefttype => 'anymultirange',
+  amoprighttype => 'anymultirange', amopstrategy => '4',
+  amopopr => '>=(anymultirange,anymultirange)', amopmethod => 'lsm' },
+{ amopfamily => 'lsm/multirange_ops', amoplefttype => 'anymultirange',
+  amoprighttype => 'anymultirange', amopstrategy => '5',
+  amopopr => '>(anymultirange,anymultirange)', amopmethod => 'lsm' },
+
 ]

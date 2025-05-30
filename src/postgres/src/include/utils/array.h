@@ -68,17 +68,18 @@
 struct ExprState;
 struct ExprContext;
 
+
+/*
+ * Maximum number of array subscripts (arbitrary limit)
+ */
+#define MAXDIM 6
+
 /*
  * Maximum number of elements in an array.  We limit this to at most about a
  * quarter billion elements, so that it's not necessary to check for overflow
  * in quite so many places --- for instance when palloc'ing Datum arrays.
 */
 #define MaxArraySize ((Size) (MaxAllocSize / sizeof(Datum)))
-
-/*
- * Maximum number of array subscripts (arbitrary limit)
- */
-#define MAXDIM 6
 
 /*
  * Arrays are varlena objects, so must meet the varlena convention that
@@ -393,6 +394,7 @@ extern void array_bitmap_copy(bits8 *destbitmap, int destoffset,
 extern ArrayType *construct_array(Datum *elems, int nelems,
 								  Oid elmtype,
 								  int elmlen, bool elmbyval, char elmalign);
+extern ArrayType *construct_array_builtin(Datum *elems, int nelems, Oid elmtype);
 extern ArrayType *construct_md_array(Datum *elems,
 									 bool *nulls,
 									 int ndims,

@@ -27,60 +27,59 @@ export interface BackupDetails  {
    */
   ybc_task_id: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   tserver_ip: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   user_operation: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   ybdb_api: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   database_keyspace: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   task_start_time: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   task_status: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   time_taken: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   bytes_transferred: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof BackupDetails
    */
   actual_size: string;
 }
-
 
 

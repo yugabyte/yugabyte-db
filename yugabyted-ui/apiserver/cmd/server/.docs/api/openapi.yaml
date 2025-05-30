@@ -39,7 +39,69 @@ tags:
   name: voyager-info
 - description: APIs for getting Voyager data migrations metrics
   name: voyager-metrics
+- description: APIs for getting xCluster metrics
+  name: xCluster
 paths:
+  /xcluster_metrics:
+    get:
+      description: Retrieve the list of databases on which restore is run in the YugabyteDB
+        cluster.
+      operationId: getXclusterReplicationIDs
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/xCluster_Replication_Groups'
+          description: List of all xCluster replication groups
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get list of all xCluster replication group ids
+  /xcluster_namespace_details/{replication_id}:
+    get:
+      description: Retrieve the list of namespaces and tables involved in the replication
+        group identified by the given replication ID.
+      operationId: getXclusterReplicationNamespacesInfo
+      parameters:
+      - description: Unique identifier for the replication group
+        explode: false
+        in: path
+        name: replication_id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/xCluster_Namespace_Metrics'
+          description: List of all namespaces and tables present in a replication
+            group.
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get list of all xCluster replication group namespace and table details
   /migrations:
     get:
       description: Get the list of Voyager migrations
@@ -1011,18 +1073,30 @@ components:
             $ref: '#/components/schemas/ClusterSpec'
       description: DB Cluster to be updated
   responses:
-    VoyagerMigrationsResponse:
+    xClusterResponse:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/VoyagerMigrationsInfo'
-      description: List of the Voyager migrations
+            $ref: '#/components/schemas/xCluster_Replication_Groups'
+      description: List of all xCluster replication groups
     ApiError:
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
       description: API Error
+    xClusterNamespaceResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/xCluster_Namespace_Metrics'
+      description: List of all namespaces and tables present in a replication group.
+    VoyagerMigrationsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VoyagerMigrationsInfo'
+      description: List of the Voyager migrations
     VoyagerAssesmentResponse:
       content:
         application/json:
@@ -1170,6 +1244,277 @@ components:
       description: Retrieve the list of databases on which restore is run in the YugabyteDB
         cluster.
   schemas:
+    xClusterInboundGroup:
+      description: Schema for xCluster replication group details.
+      example:
+        target_universe_uuid: target_universe_uuid
+        target_cluster_node_ips:
+        - target_cluster_node_ips
+        - target_cluster_node_ips
+        source_universe_uuid: source_universe_uuid
+        replication_group_id: replication_group_id
+        state: state
+        source_cluster_node_ips:
+        - source_cluster_node_ips
+        - source_cluster_node_ips
+      properties:
+        replication_group_id:
+          description: Unique identifier for the replication group.
+          type: string
+        state:
+          description: The current status of the replication group.
+          type: string
+        target_cluster_node_ips:
+          description: List of target-side node IPs involved in replication.
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+        source_cluster_node_ips:
+          description: List of source-side node IPs involved in replication.
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+        source_universe_uuid:
+          description: UUID of the source universe for the replication group.
+          type: string
+        target_universe_uuid:
+          description: UUID of the target universe for the replication group.
+          type: string
+      required:
+      - current_cluster_ip_address
+      - namespace
+      - replication_group_id
+      - source_leader_host
+      - state
+      title: Get xCluster replication group ids list.
+      type: object
+    TableReplicationLagDetailsOutbound:
+      description: Schema for table details and namespace in replication.
+      example:
+        async_replication_sent_lag_micros: 0
+        async_replication_committed_lag_micros: 6
+        namespace: namespace
+        table_uuid: table_uuid
+        is_checkpointing: true
+        table_name: table_name
+        is_part_of_initial_bootstrap: true
+      properties:
+        namespace:
+          description: Namespace to which the current table belongs.
+          type: string
+        table_uuid:
+          description: Unique identifier for the table.
+          type: string
+        table_name:
+          description: Name of the table.
+          type: string
+        is_checkpointing:
+          description: Indicates whether the table is currently checkpointing.
+          type: boolean
+        is_part_of_initial_bootstrap:
+          description: Indicates whether the table is part of the initial bootstrap
+            process.
+          type: boolean
+        async_replication_sent_lag_micros:
+          description: The lag time in microseconds for sent replication data.
+          format: int64
+          type: integer
+        async_replication_committed_lag_micros:
+          description: The lag time in microseconds for committed replication data.
+          format: int64
+          type: integer
+      required:
+      - async_replication_committed_lag_micros
+      - async_replication_sent_lag_micros
+      - is_checkpointing
+      - is_part_of_initial_bootstrap
+      - keyspace
+      - state
+      - stream_id
+      - table_name
+      - table_uuid
+      title: Table information for a namespace in the replication group and per table
+        level lag time.
+      type: object
+    xClusterOutboundGroup:
+      description: Schema for xCluster replication group details.
+      example:
+        replication_cluster_node_ips:
+        - replication_cluster_node_ips
+        - replication_cluster_node_ips
+        tables_list_with_lag:
+        - async_replication_sent_lag_micros: 0
+          async_replication_committed_lag_micros: 6
+          namespace: namespace
+          table_uuid: table_uuid
+          is_checkpointing: true
+          table_name: table_name
+          is_part_of_initial_bootstrap: true
+        - async_replication_sent_lag_micros: 0
+          async_replication_committed_lag_micros: 6
+          namespace: namespace
+          table_uuid: table_uuid
+          is_checkpointing: true
+          table_name: table_name
+          is_part_of_initial_bootstrap: true
+        target_universe_uuid: target_universe_uuid
+        source_universe_uuid: source_universe_uuid
+        replication_group_id: replication_group_id
+        state: state
+      properties:
+        replication_group_id:
+          description: Unique identifier for the replication group.
+          type: string
+        state:
+          description: The current status of the replication group (e.g., 'active',
+            'inactive').
+          type: string
+        replication_cluster_node_ips:
+          description: The list of IP addresses of the nodes involved in the replication.
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+        source_universe_uuid:
+          description: UUID of the source universe for the replication group.
+          type: string
+        target_universe_uuid:
+          description: UUID of the target universe for the replication group.
+          type: string
+        tables_list_with_lag:
+          description: List of namespaces from outbound and lag of each table
+          items:
+            $ref: '#/components/schemas/TableReplicationLagDetailsOutbound'
+          type: array
+          uniqueItems: true
+      required:
+      - current_cluster_ip_address
+      - namespace
+      - replication_group_id
+      - state
+      - target_universe_uuid
+      title: Get xCluster replication group ids list.
+      type: object
+    ApiError:
+      properties:
+        error:
+          $ref: '#/components/schemas/ApiError_error'
+      title: API Error
+      type: object
+    xClusterTableInfoInbound:
+      description: Schema for table details in xCluster replication.
+      example:
+        keyspace: keyspace
+        avg_apply_latency_ms: 6.027456183070403
+        namespace_id: namespace_id
+        avg_throughput_KiBps: 1.4658129805029452
+        stream_id: stream_id
+        table_uuid: table_uuid
+        state: state
+        avg_get_changes_latency_ms: 0.8008281904610115
+        table_name: table_name
+      properties:
+        table_uuid:
+          description: Unique identifier for the table.
+          type: string
+        namespace_id:
+          description: Unique identifier for the namespace.
+          type: string
+        table_name:
+          description: Name of the table.
+          type: string
+        stream_id:
+          description: Stream ID associated with the table for replication.
+          type: string
+        state:
+          description: The current state of the table.
+          type: string
+        keyspace:
+          description: Keyspace to which the table belongs.
+          type: string
+        avg_get_changes_latency_ms:
+          description: The average time taken by the consumer to fetch changes from
+            the producer
+          format: float64
+          type: number
+        avg_apply_latency_ms:
+          description: The average time taken to apply received changes to the consumer
+            table.
+          format: float64
+          type: number
+        avg_throughput_KiBps:
+          description: The average throughput in KiB per second for this replication
+            stream.
+          format: float64
+          type: number
+      required:
+      - avg_apply_latency_ms
+      - avg_get_changes_latency_ms
+      - avg_throughput_KiBps
+      - keyspace
+      - state
+      - stream_id
+      - table_name
+      - table_uuid
+      title: Table information for a namespace in the replication group.
+      type: object
+    NamespacesInfo:
+      description: A single namespace and its corresponding tables participating in
+        the replication
+      example:
+        namespace: namespace
+        table_info_list:
+        - keyspace: keyspace
+          avg_apply_latency_ms: 6.027456183070403
+          namespace_id: namespace_id
+          avg_throughput_KiBps: 1.4658129805029452
+          stream_id: stream_id
+          table_uuid: table_uuid
+          state: state
+          avg_get_changes_latency_ms: 0.8008281904610115
+          table_name: table_name
+        - keyspace: keyspace
+          avg_apply_latency_ms: 6.027456183070403
+          namespace_id: namespace_id
+          avg_throughput_KiBps: 1.4658129805029452
+          stream_id: stream_id
+          table_uuid: table_uuid
+          state: state
+          avg_get_changes_latency_ms: 0.8008281904610115
+          table_name: table_name
+      properties:
+        namespace:
+          description: Name of the namespace in the replication
+          type: string
+        table_info_list:
+          items:
+            $ref: '#/components/schemas/xClusterTableInfoInbound'
+          type: array
+      required:
+      - namespace
+      - table_info_list
+      title: Namespace and corresponding tables participating in the replication
+      type: object
+    xClusterPlacementLocation:
+      description: Get universe's placement location in xCluster replication.
+      example:
+        cloud: cloud
+        zone: zone
+        region: region
+      properties:
+        cloud:
+          description: Cloud name
+          type: string
+        zone:
+          description: Zone name
+          type: string
+        region:
+          description: Region name
+          type: string
+      title: Get xCluster placement location info.
+      type: object
     VoyagerMigrationDetails:
       description: Information regarding a specific voyager migration task
       example:
@@ -1298,12 +1643,6 @@ components:
           type: array
       title: YB Voyager migrations Info
       type: object
-    ApiError:
-      properties:
-        error:
-          $ref: '#/components/schemas/ApiError_error'
-      title: API Error
-      type: object
     AssesmentComplexityInfo:
       description: Assesment complexity details
       example:
@@ -1425,8 +1764,7 @@ components:
       title: Schema for Suggested refactoring tab in Migrate Schema page
       type: object
     RefactoringCount:
-      description: Count of automatic, manual and invalid SQL objects displayed in
-        Schema analysis page
+      description: Count of automatic, manual and invalid SQL objects.
       example:
         sql_object_type: sql_object_type
         invalid: 5
@@ -4014,6 +4352,174 @@ components:
       - ybdb_api
       title: Get Restore Details
       type: object
+    xCluster_Replication_Groups:
+      example:
+        outbound_replication_groups:
+        - replication_cluster_node_ips:
+          - replication_cluster_node_ips
+          - replication_cluster_node_ips
+          tables_list_with_lag:
+          - async_replication_sent_lag_micros: 0
+            async_replication_committed_lag_micros: 6
+            namespace: namespace
+            table_uuid: table_uuid
+            is_checkpointing: true
+            table_name: table_name
+            is_part_of_initial_bootstrap: true
+          - async_replication_sent_lag_micros: 0
+            async_replication_committed_lag_micros: 6
+            namespace: namespace
+            table_uuid: table_uuid
+            is_checkpointing: true
+            table_name: table_name
+            is_part_of_initial_bootstrap: true
+          target_universe_uuid: target_universe_uuid
+          source_universe_uuid: source_universe_uuid
+          replication_group_id: replication_group_id
+          state: state
+        - replication_cluster_node_ips:
+          - replication_cluster_node_ips
+          - replication_cluster_node_ips
+          tables_list_with_lag:
+          - async_replication_sent_lag_micros: 0
+            async_replication_committed_lag_micros: 6
+            namespace: namespace
+            table_uuid: table_uuid
+            is_checkpointing: true
+            table_name: table_name
+            is_part_of_initial_bootstrap: true
+          - async_replication_sent_lag_micros: 0
+            async_replication_committed_lag_micros: 6
+            namespace: namespace
+            table_uuid: table_uuid
+            is_checkpointing: true
+            table_name: table_name
+            is_part_of_initial_bootstrap: true
+          target_universe_uuid: target_universe_uuid
+          source_universe_uuid: source_universe_uuid
+          replication_group_id: replication_group_id
+          state: state
+        inbound_replication_groups:
+        - target_universe_uuid: target_universe_uuid
+          target_cluster_node_ips:
+          - target_cluster_node_ips
+          - target_cluster_node_ips
+          source_universe_uuid: source_universe_uuid
+          replication_group_id: replication_group_id
+          state: state
+          source_cluster_node_ips:
+          - source_cluster_node_ips
+          - source_cluster_node_ips
+        - target_universe_uuid: target_universe_uuid
+          target_cluster_node_ips:
+          - target_cluster_node_ips
+          - target_cluster_node_ips
+          source_universe_uuid: source_universe_uuid
+          replication_group_id: replication_group_id
+          state: state
+          source_cluster_node_ips:
+          - source_cluster_node_ips
+          - source_cluster_node_ips
+      properties:
+        inbound_replication_groups:
+          items:
+            $ref: '#/components/schemas/xClusterInboundGroup'
+          type: array
+          uniqueItems: true
+        outbound_replication_groups:
+          items:
+            $ref: '#/components/schemas/xClusterOutboundGroup'
+          type: array
+          uniqueItems: true
+      required:
+      - replication_groups
+      title: xCluster Replication Groups
+      type: object
+    xCluster_Namespace_Metrics:
+      example:
+        namespace_list:
+        - namespace: namespace
+          table_info_list:
+          - keyspace: keyspace
+            avg_apply_latency_ms: 6.027456183070403
+            namespace_id: namespace_id
+            avg_throughput_KiBps: 1.4658129805029452
+            stream_id: stream_id
+            table_uuid: table_uuid
+            state: state
+            avg_get_changes_latency_ms: 0.8008281904610115
+            table_name: table_name
+          - keyspace: keyspace
+            avg_apply_latency_ms: 6.027456183070403
+            namespace_id: namespace_id
+            avg_throughput_KiBps: 1.4658129805029452
+            stream_id: stream_id
+            table_uuid: table_uuid
+            state: state
+            avg_get_changes_latency_ms: 0.8008281904610115
+            table_name: table_name
+        - namespace: namespace
+          table_info_list:
+          - keyspace: keyspace
+            avg_apply_latency_ms: 6.027456183070403
+            namespace_id: namespace_id
+            avg_throughput_KiBps: 1.4658129805029452
+            stream_id: stream_id
+            table_uuid: table_uuid
+            state: state
+            avg_get_changes_latency_ms: 0.8008281904610115
+            table_name: table_name
+          - keyspace: keyspace
+            avg_apply_latency_ms: 6.027456183070403
+            namespace_id: namespace_id
+            avg_throughput_KiBps: 1.4658129805029452
+            stream_id: stream_id
+            table_uuid: table_uuid
+            state: state
+            avg_get_changes_latency_ms: 0.8008281904610115
+            table_name: table_name
+        target_universe_uuid: target_universe_uuid
+        source_universe_uuid: source_universe_uuid
+        replication_group_id: replication_group_id
+        source_placement_location:
+        - cloud: cloud
+          zone: zone
+          region: region
+        - cloud: cloud
+          zone: zone
+          region: region
+        target_placement_location:
+        - cloud: cloud
+          zone: zone
+          region: region
+        - cloud: cloud
+          zone: zone
+          region: region
+      properties:
+        replication_group_id:
+          description: Unique replication group id of each replication
+          type: string
+        namespace_list:
+          items:
+            $ref: '#/components/schemas/NamespacesInfo'
+          type: array
+        source_placement_location:
+          items:
+            $ref: '#/components/schemas/xClusterPlacementLocation'
+          type: array
+        target_placement_location:
+          items:
+            $ref: '#/components/schemas/xClusterPlacementLocation'
+          type: array
+        source_universe_uuid:
+          type: string
+        target_universe_uuid:
+          type: string
+      required:
+      - namespace_list
+      - replication_group_id
+      title: xCluster Namespace Metrics
+      type: object
     API_for_Plan_and_Asses_page:
       example:
         data:
@@ -4974,6 +5480,15 @@ components:
       - restore
       title: Restore Details
       type: object
+    ApiError_error:
+      properties:
+        detail:
+          description: Error message
+          type: string
+        status:
+          description: Error code
+          type: integer
+      type: object
     VoyagerMigrationDetails_source_db:
       example:
         schema: schema
@@ -5030,15 +5545,6 @@ components:
           type: string
         version:
           type: string
-      type: object
-    ApiError_error:
-      properties:
-        detail:
-          description: Error message
-          type: string
-        status:
-          description: Error code
-          type: integer
       type: object
     NodeData_metrics_active_connections:
       example:

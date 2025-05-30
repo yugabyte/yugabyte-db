@@ -55,6 +55,19 @@ public class UpdateProviderMetadata {
     this.platformScheduler = platformScheduler;
   }
 
+  public void resetUpdatingProviders() {
+    for (Provider provider : Provider.getAll()) {
+      if (provider.getUsabilityState() == Provider.UsabilityState.UPDATING) {
+        if (provider.getUpdateSource() == Provider.UpdateSource.AUTO) {
+          provider.setUsabilityState(provider.getPrevUsabilityState());
+        } else {
+          provider.setUsabilityState(Provider.UsabilityState.ERROR);
+        }
+        provider.save();
+      }
+    }
+  }
+
   public void start() {
     boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
     if (vmOsPatchingEnabled) {
@@ -91,6 +104,7 @@ public class UpdateProviderMetadata {
   public void updateProviderMetadata(Provider provider, Map<String, Object> defaultYbaOsVersion) {
     boolean updateFailed = false;
     provider.setUsabilityState(Provider.UsabilityState.UPDATING);
+    provider.setUpdateSource(Provider.UpdateSource.AUTO);
     provider.save();
     try {
       if (provider.getCode().equals("aws")) {
@@ -134,7 +148,7 @@ public class UpdateProviderMetadata {
       if (defaultYbaOsVersion != null && defaultYbaOsVersion.containsKey(providerCode)) {
         currOSVersionDBMap = (Map<String, String>) defaultYbaOsVersion.get(providerCode);
       }
-      if (imageBundleUtil.migrateYBADefaultBundles(currOSVersionDBMap, provider)) {
+      if (imageBundleUtil.shouldMigrateYBADefaultBundles(currOSVersionDBMap, provider)) {
         // In case defaultYbaAmiVersion is not null & not equal to version specified in
         // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
         // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating

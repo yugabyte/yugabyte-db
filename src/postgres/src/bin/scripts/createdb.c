@@ -196,6 +196,8 @@ main(int argc, char *argv[])
 
 	conn = connectMaintenanceDatabase(&cparams, progname, echo);
 
+	setFmtEncoding(PQclientEncoding(conn));
+
 	initPQExpBuffer(&sql);
 
 	appendPQExpBuffer(&sql, "CREATE DATABASE %s",
@@ -225,7 +227,7 @@ main(int argc, char *argv[])
 		appendStringLiteralConn(&sql, lc_ctype, conn);
 	}
 	if (locale_provider)
-		appendPQExpBuffer(&sql, " LOCALE_PROVIDER %s", locale_provider);
+		appendPQExpBuffer(&sql, " LOCALE_PROVIDER %s", fmtId(locale_provider));
 	if (icu_locale)
 	{
 		appendPQExpBufferStr(&sql, " ICU_LOCALE ");

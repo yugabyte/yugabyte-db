@@ -16,6 +16,24 @@ type: docs
 
 If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major release of YugabyteDB. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
 
+## cron-based universes
+
+cron and root-level systemd have been deprecated in favor of user-level systemd with node agent for management of universe nodes.
+
+In particular, cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
+
+However, on-premises cron-based universes must be upgraded manually. To do this, in YugabyteDB Anywhere v2024.2.2 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**.
+
+## Node agent
+
+YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
+
+YugabyteDB Anywhere will attempt to automatically update universes. If it is unable to update a universe, make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by clicking **Actions>Install Node Agent**.
+
+## Transparent hugepages
+
+Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by following the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
+
 ## Review major changes in previous YugabyteDB releases
 
 {{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}

@@ -30,7 +30,6 @@ import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
-import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import db.migration.default_.common.R__Sync_System_Roles;
 import java.util.HashSet;
@@ -327,9 +326,6 @@ public class LdapUtilTest extends FakeDBApplication {
     when(entryCursor.get()).thenReturn(entry);
 
     Set<Permission> permissionSet = fetchPermissionSet(Role.BackupAdmin);
-    com.yugabyte.yw.models.rbac.Role role =
-        com.yugabyte.yw.models.rbac.Role.create(
-            customer.getUuid(), "BackupAdmin", "BackupAdmin", RoleType.System, permissionSet);
 
     Users updatedUser =
         ldapUtil.authViaLDAP(

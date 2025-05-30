@@ -1,0 +1,1702 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 5700000;
+SET documentdb.next_collection_id TO 5700;
+SET documentdb.next_collection_index_id TO 5700;
+SET client_min_messages TO DEBUG3;
+-- $cmp
+-- should return 0
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [1, 1]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [-1, -1]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [null, null]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": ["$a", "$b"]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$cmp": ["$a", null]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": ["str", "str"]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [0.00002, 0.00002]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [true, true]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$cmp": ["$a", {}]}}');
+DEBUG:  Optimizing document expression into constant.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": "$a"}}', '{"result": { "$cmp": [{"$literal": "$a"}, "$a.b"]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+-- should return 1
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [2, 1]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [0, -1]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [null, "$a"]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": ["str", null]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": ["str", "s"]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [true, false]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [0.0001, 0.00001]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [0.00001, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$cmp": [{"$add": [2, "$a"]}, {"$subtract": [2, "$a"]}]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$cmp": ["$a", {"b": 1, "c": 1}]}}');
+DEBUG:  Optimizing document expression into constant.
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": "$a"}}', '{"result": { "$cmp": [{"b": "$a"}, "$a"]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+-- should return -1
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [1, 2]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [-1, 0]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": ["$a", null]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [null, "str"]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": ["string", "stringa"]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": ["String", "string"]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [false, true]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [0.00001, 0.0001]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [{"$numberDouble": "NaN"}, 0.00001]}}');
+DEBUG:  Precomputed bson $cmp operator for constant comparison.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$cmp": [{"$add": [2, "$a"]}, {"$multiply": [2, "$a"]}]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [1, 2, 3, 4, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$cmp": ["$a", [3, 2, 3, 4]]}}');
+DEBUG:  Optimizing array expression into constant.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$cmp": ["$a", {"b": 1, "c": 1, "d": 2}]}}');
+DEBUG:  Optimizing document expression into constant.
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+-- $eq operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [1, 1]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [-1, -1]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [null, null]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": ["$a", "$b"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$eq": ["$a", null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": ["str", "str"]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [0.00002, 0.00002]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [true, true]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [{"$numberDouble": "NaN"}, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$eq": ["$a", {}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": "$a"}}', '{"result": { "$eq": [{"$literal": "$a"}, "$a.b"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [2, 1]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [0, -1]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [null, "$a"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": ["str", null]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": ["str", "s"]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [true, false]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [0.0001, 0.00001]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": ["string", "stringa"]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": ["String", "string"]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [false, true]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [0.00001, 0.0001]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [{"$numberDouble": "NaN"}, 0.00001]}}');
+DEBUG:  Precomputed bson $eq operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$eq": [{"$add": [2, "$a"]}, {"$multiply": [2, "$a"]}]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3, 4, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$eq": [{"$add": [2, "$a"]}, {"$subtract": [2, "$a"]}]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$eq": ["$a", [1, 2, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$eq": ["$a", {"b": 1, "c": 1}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": "$a"}}', '{"result": { "$eq": [{"b": "$a"}, "$a"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- $ne operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [2, 1]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [0, -1]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [null, "$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": ["str", null]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": ["str", "s"]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [true, false]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [0.0001, 0.00001]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": ["string", "stringa"]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": ["String", "string"]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [false, true]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [0.00001, 0.0001]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [{"$numberDouble": "NaN"}, 0.00001]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$ne": [{"$add": [2, "$a"]}, {"$multiply": [2, "$a"]}]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3, 4, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$ne": [{"$add": [2, "$a"]}, {"$subtract": [2, "$a"]}]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$ne": ["$a", [1, 2, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$ne": ["$a", {"b": 1, "c": 1}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": "$a"}}', '{"result": { "$ne": [{"b": "$a"}, "$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [1, 1]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [-1, -1]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [null, null]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": ["$a", "$b"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$ne": ["$a", null]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": ["str", "str"]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [0.00002, 0.00002]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [true, true]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [{"$numberDouble": "NaN"}, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Precomputed bson $ne operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$ne": ["$a", {}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": "$a"}}', '{"result": { "$ne": [{"$literal": "$a"}, "$a.b"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- $gt operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [2, 1]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [0, -1]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [null, "$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": ["str", null]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": ["str", "s"]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [true, false]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [0.0001, 0.00001]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [0.1, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$gt": [{"$add": [2, "$a"]}, {"$subtract": [2, "$a"]}]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$gt": ["$a", {"b": 1, "c": 1}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [-1, -1]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [null, null]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": ["$a", "$b"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$gt": ["$a", null]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": ["str", "str"]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [0.00002, 0.00002]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [true, true]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [{"$numberDouble": "NaN"}, 0.1]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [null, "str"]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": ["string", "stringa"]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": ["String", "string"]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [false, true]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [0.00001, 0.0001]}}');
+DEBUG:  Precomputed bson $gt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$gt": [{"$add": [2, "$a"]}, {"$multiply": [2, "$a"]}]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gt": ["$a", [1, 2, 3, 4, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$gt": ["$a", {}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- $gte operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [2, 1]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [0, -1]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [null, "$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": ["str", null]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": ["str", "s"]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [true, false]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [0.0001, 0.00001]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [-1, -1]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [null, null]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": ["$a", "$b"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$gte": ["$a", null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": ["str", "str"]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [0.1, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [{"$numberDouble": "NaN"}, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [0.00002, 0.00002]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [true, true]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$gte": [{"$add": [2, "$a"]}, {"$subtract": [2, "$a"]}]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$gte": ["$a", {"b": 1, "c": 1}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$gte": ["$a", {}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [null, "str"]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": ["string", "stringa"]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": ["String", "string"]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [false, true]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [0.00001, 0.0001]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [{"$numberDouble": "NaN"}, 0.1]}}');
+DEBUG:  Precomputed bson $gte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$gte": [{"$add": [2, "$a"]}, {"$multiply": [2, "$a"]}]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$gte": ["$a", [1, 2, 3, 4, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- $lt operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [1, 2]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [-1, 0]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": ["$a", null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [null, "str"]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": ["string", "stringa"]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": ["String", "string"]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [false, true]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [0.00001, 0.0001]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [{"$numberDouble": "NaN"}, 0.1]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$lt": [{"$add": [2, "$a"]}, {"$multiply": [2, "$a"]}]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3, 4, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [3, 2, 3, 4]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$lt": ["$a", {"b": 1, "c": 1, "d": 2}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [2, 1]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [0, -1]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [null, "$a"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": ["str", null]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": ["str", "s"]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [true, false]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [0.0001, 0.00001]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [-1, -1]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [null, null]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": ["$a", "$b"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$lt": ["$a", null]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": ["str", "str"]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [0.00002, 0.00002]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [true, true]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [0.1, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $lt operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$lt": [{"$add": [2, "$a"]}, {"$subtract": [2, "$a"]}]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lt": ["$a", [1, 2, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$lt": ["$a", {"b": 1, "c": 1}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$lt": ["$a", {}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- $lte operator
+-- should return true
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [1, 2]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [-1, 0]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": ["$a", null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [null, "str"]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": ["string", "stringa"]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": ["String", "string"]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [false, true]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [0.00001, 0.0001]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [-1, -1]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [null, null]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": ["$a", "$b"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$lte": ["$a", null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": ["str", "str"]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [0.00002, 0.00002]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [true, true]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [[3,2,1,2,4,6], [3,2,1,2,4,6]]}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [{"$numberDouble": "NaN"}, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 3}', '{"result": { "$lte": [{"$add": [2, "$a"]}, {"$multiply": [2, "$a"]}]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3, 4, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [3, 2, 3, 4]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$lte": ["$a", {"b": 1, "c": 1, "d": 2}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+
+-- should return false
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [2, 1]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [0, -1]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [null, "$a"]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": ["str", null]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": ["str", "s"]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [true, false]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [0.0001, 0.00001]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [0.1, {"$numberDouble": "NaN"}]}}');
+DEBUG:  Precomputed bson $lte operator for constant comparison.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$lte": [{"$add": [2, "$a"]}, {"$subtract": [2, "$a"]}]}}');
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3, 3, 5]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$lte": ["$a", [1, 2, 3]]}}');
+DEBUG:  Optimizing array expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 1, "d": 0}}', '{"result": { "$lte": ["$a", {"b": 1, "c": 1}]}}');
+DEBUG:  Optimizing document expression into constant.
+ bson_dollar_project  
+---------------------------------------------------------------------
+ { "result" : false }
+(1 row)
+
+-- should error for wrong number of args
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [2, 3, 2]}}');
+ERROR:  Expression $cmp takes exactly 2 arguments. 3 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [2]}}');
+ERROR:  Expression $eq takes exactly 2 arguments. 1 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": []}}');
+ERROR:  Expression $ne takes exactly 2 arguments. 0 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": 2}}');
+ERROR:  Expression $gt takes exactly 2 arguments. 1 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [1, 2, 3, 4, 5]}}');
+ERROR:  Expression $gte takes exactly 2 arguments. 5 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [2, 1, 0]}}');
+ERROR:  Expression $lt takes exactly 2 arguments. 3 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [1]}}');
+ERROR:  Expression $lte takes exactly 2 arguments. 1 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [{"$divide": [1, 0]}]}}');
+ERROR:  Expression $lte takes exactly 2 arguments. 1 were passed in.
+-- should error if there is an error in nested expressions
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$cmp": [2, {"$subtract": [1, {"$date": { "$numberLong": "1" }}]}]}}');
+ERROR:  can't $subtract date from int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$eq": [{"$divide": [1, 0]}, 2]}}');
+ERROR:  can't $divide by zero
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ne": [{"$not": []}, 3]}}');
+ERROR:  Expression $not takes exactly 1 arguments. 0 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gt": [{"$in": [1, 2]}, 2]}}');
+ERROR:  $in requires an array as a second argument, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$gte": [{"$divide": [1, 0, 3]}, 2]}}');
+ERROR:  Expression $divide takes exactly 2 arguments. 3 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lt": [{"$divide": [1, 0, {"$not": []}]}, 2]}}');
+ERROR:  Expression $divide takes exactly 2 arguments. 3 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$lte": [{"$add": [{"$date": { "$numberLong": "1" }}, {"$date": { "$numberLong": "1" }}]}, 3]}}');
+ERROR:  only one date allowed in an $add expression

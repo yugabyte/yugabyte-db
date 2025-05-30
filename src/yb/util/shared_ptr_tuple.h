@@ -87,7 +87,7 @@ struct SharedPtrTuple : public TypeIndexer<Types ...> {
   template <class Type>
   bool has_type() const { return super::template index_of<Type>() >= 0; }
 
-  void reset() { super::template reset_tail(&storage_); }
+  void reset() { super::template reset_tail<>(&storage_); }
 
  protected:
   typedef TypeIndexer<Types ...> super;

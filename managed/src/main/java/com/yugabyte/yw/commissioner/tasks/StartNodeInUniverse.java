@@ -182,9 +182,11 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
               null,
               ImmutableSet.of(currentNode)));
 
-      // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+      if (startTserver) {
+        // Update the DNS entry for this universe.
+        createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNode);
+      }
 
       // Update the swamper target file.
       // It is required because the node could be removed from the swamper file

@@ -15,20 +15,8 @@ type: docs
 Triggers are special types of stored procedures that automatically execute in response to specific events on a particular table or view in a database. Triggers allow you to define automated actions that occur whenever data is modified, enabling you to enforce business rules, validate data, or maintain audit trails.
 
 ## Setup
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
 
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
+{{% explore-setup-single-new %}}
 
 ## Create triggers
 

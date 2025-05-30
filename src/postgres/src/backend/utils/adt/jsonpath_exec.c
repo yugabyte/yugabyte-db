@@ -1231,6 +1231,9 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 	JsonPathBool res;
 	JsonPathBool res2;
 
+	/* since this function recurses, it could be driven to stack overflow */
+	check_stack_depth();
+
 	if (!canHaveNext && jspHasNext(jsp))
 		elog(ERROR, "boolean jsonpath item cannot have next item");
 
@@ -1325,8 +1328,8 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 				 */
 				JsonValueList vals = {0};
 				JsonPathExecResult res =
-				executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
-												  false, &vals);
+					executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
+													  false, &vals);
 
 				if (jperIsError(res))
 					return jpbUnknown;
@@ -1336,8 +1339,8 @@ executeBoolItem(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			else
 			{
 				JsonPathExecResult res =
-				executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
-												  false, NULL);
+					executeItemOptUnwrapResultNoThrow(cxt, &larg, jb,
+													  false, NULL);
 
 				if (jperIsError(res))
 					return jpbUnknown;
@@ -1838,20 +1841,29 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		 * According to SQL/JSON standard enumerate ISO formats for: date,
 		 * timetz, time, timestamptz, timestamp.
 		 *
-		 * We also support ISO 8601 for timestamps, because to_json[b]()
-		 * functions use this format.
+		 * We also support ISO 8601 format (with "T") for timestamps, because
+		 * to_json[b]() functions use this format.
 		 */
 		static const char *fmt_str[] =
 		{
-			"yyyy-mm-dd",
+			"yyyy-mm-dd",		/* date */
+			"HH24:MI:SS.USTZH:TZM", /* timetz */
+			"HH24:MI:SS.USTZH",
 			"HH24:MI:SSTZH:TZM",
 			"HH24:MI:SSTZH",
+			"HH24:MI:SS.US",	/* time without tz */
 			"HH24:MI:SS",
+			"yyyy-mm-dd HH24:MI:SS.USTZH:TZM",	/* timestamptz */
+			"yyyy-mm-dd HH24:MI:SS.USTZH",
 			"yyyy-mm-dd HH24:MI:SSTZH:TZM",
 			"yyyy-mm-dd HH24:MI:SSTZH",
-			"yyyy-mm-dd HH24:MI:SS",
+			"yyyy-mm-dd\"T\"HH24:MI:SS.USTZH:TZM",
+			"yyyy-mm-dd\"T\"HH24:MI:SS.USTZH",
 			"yyyy-mm-dd\"T\"HH24:MI:SSTZH:TZM",
 			"yyyy-mm-dd\"T\"HH24:MI:SSTZH",
+			"yyyy-mm-dd HH24:MI:SS.US", /* timestamp without tz */
+			"yyyy-mm-dd HH24:MI:SS",
+			"yyyy-mm-dd\"T\"HH24:MI:SS.US",
 			"yyyy-mm-dd\"T\"HH24:MI:SS"
 		};
 
@@ -1867,7 +1879,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			if (!fmt_txt[i])
 			{
 				MemoryContext oldcxt =
-				MemoryContextSwitchTo(TopMemoryContext);
+					MemoryContextSwitchTo(TopMemoryContext);
 
 				fmt_txt[i] = cstring_to_text(fmt_str[i]);
 				MemoryContextSwitchTo(oldcxt);

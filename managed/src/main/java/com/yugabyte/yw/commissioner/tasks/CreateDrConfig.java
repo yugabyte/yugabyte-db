@@ -2,12 +2,16 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class CreateDrConfig extends CreateXClusterConfig {
 
   @Inject

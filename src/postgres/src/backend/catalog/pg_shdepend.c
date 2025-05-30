@@ -21,7 +21,6 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/objectaddress.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_conversion.h"
@@ -60,23 +59,24 @@
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
-#include "commands/tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/typecmds.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/fmgroids.h"
+#include "utils/memutils.h"
+#include "utils/syscache.h"
 
-/* Yugabyte includes */
-#include "postgres_ext.h"
+/* YB includes */
+#include "catalog/objectaddress.h"
 #include "catalog/pg_yb_profile_d.h"
 #include "catalog/pg_yb_role_profile_d.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/yb_profile.h"
-#include "utils/memutils.h"
-#include "utils/syscache.h"
+#include "commands/yb_tablegroup.h"
 #include "pg_yb_utils.h"
+#include "postgres_ext.h"
 
 typedef enum
 {
@@ -188,7 +188,7 @@ recordDependencyOnOwner(Oid classId, Oid objectId, Oid owner)
 	recordSharedDependencyOn(&myself, &referenced, SHARED_DEPENDENCY_OWNER);
 }
 
-#ifdef YB_DEEPTHI
+#ifdef YB_TODO
 /* Postgres 13 has its own definition */
 /*
  * recordDependencyOnTablespace
@@ -434,7 +434,7 @@ changeDependencyOnOwner(Oid classId, Oid objectId, Oid newOwnerId)
  * recordDependencyOnTablespace
  *
  * A convenient wrapper of recordSharedDependencyOn -- register the specified
- * tablespace to the given object.
+ * tablespace as default for the given object.
  *
  * Note: it's the caller's responsibility to ensure that there isn't a
  * tablespace entry for the object already.
@@ -1415,6 +1415,7 @@ storeObjectDescription(StringInfo descs,
 	pfree(objdesc);
 }
 
+
 /*
  * shdepDropOwned
  *
@@ -1658,12 +1659,12 @@ shdepReassignOwned(List *roleids, Oid newrole)
 
 			/*
 			 * The various ALTER OWNER routines tend to leak memory in
-			 * GetCurrentMemoryContext().  That's not a problem when they're only
+			 * CurrentMemoryContext.  That's not a problem when they're only
 			 * called once per command; but in this usage where we might be
 			 * touching many objects, it can amount to a serious memory leak.
 			 * Fix that by running each call in a short-lived context.
 			 */
-			cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
+			cxt = AllocSetContextCreate(CurrentMemoryContext,
 										"shdepReassignOwned",
 										ALLOCSET_DEFAULT_SIZES);
 			oldcxt = MemoryContextSwitchTo(cxt);

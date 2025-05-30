@@ -205,7 +205,8 @@ public class RestoreBackupYbc extends YbcTaskBase {
         restoreBackupParams.currentIdx = taskParams().index;
         restoreBackupParams.nodeIp = nodeIp;
         restoreParams = Json.toJson(restoreBackupParams);
-        getRunnableTask().setTaskParams(restoreParams);
+        final JsonNode restoreParamsRef = restoreParams;
+        TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(restoreParamsRef));
       }
 
       try {
@@ -336,6 +337,9 @@ public class RestoreBackupYbc extends YbcTaskBase {
         Set<String> masterAutoFlags = backupConfig.masterAutoFlags;
         Set<String> tserverAutoFlags = backupConfig.tserverAutoFlags;
         ybcBackupUtil.validateAutoFlagCompatibility(universe, masterAutoFlags, tserverAutoFlags);
+      }
+      if (backupConfig.ysqlMajorVersion != null) {
+        ybcBackupUtil.validateYsqlMajorVersion(universe, backupConfig.ysqlMajorVersion);
       }
     } catch (IOException e) {
       log.error("Error while validating backup metadata: ", e);

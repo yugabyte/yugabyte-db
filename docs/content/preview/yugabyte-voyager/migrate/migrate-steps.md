@@ -25,13 +25,14 @@ The following page describes the steps to perform and verify a successful offlin
 | PREPARE | [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
 | | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
 | | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
-| EXPORT | [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
+| ASSESS | [Assess Migration](#assess-migration) | Assess the migration complexity, and get schema changes, data distribution, and cluster sizing recommendations using the `yb-voyager assess-migration` command. |
+| SCHEMA | [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
 | |[Analyze schema](#analyze-schema) | Generate a _Schema&nbsp;Analysis&nbsp;Report_ using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | | [Modify schema](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
-| |[Export data](#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
-| IMPORT | [Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
+| |[Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
+| DATA | [Export data](#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
 | | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
-| | [Post&nbsp;snapshot&nbsp;import](#post-snapshot-import) | Restore NOT VALID constraints and refresh materialized views (if any) in the target YugabyteDB database using the `yb-voyager import schema` command with additional flags `--post-snapshot-import` and `--refresh-mviews`. |
+| | [Finalize schema post data import](#finalize-schema-post-data-import) | Restore NOT VALID constraints and refresh materialized views (if any) in the target YugabyteDB database using the `yb-voyager finalize-schema-post-data-import` command with additional flag `--refresh-mviews`.|
 | | [Verify](#verify-migration) | Check if the offline migration is successful. |
 | END | [End migration](#end-migration) | Clean up the migration information stored in the export directory and databases (source and target). |
 
@@ -130,6 +131,12 @@ The export directory has the following sub-directories and files:
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
 
+## Assess migration
+
+This step is optional and only applicable to PostgreSQL and Oracle database migrations. Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB. You run assessments using the `yb-voyager assess-migration` command.
+
+Refer to [Migration assessment](../../migrate/assess-migration/) for details.
+
 ## Migrate your database to YugabyteDB
 
 Proceed with schema and data migration using the following steps:
@@ -173,20 +180,22 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
 
 ```
 
+Note that if the source database is PostgreSQL and you haven't already run `assess-migration`, the schema is also assessed and a migration assessment report is generated.
+
 Refer to [export schema](../../reference/schema-migration/export-schema/) for details about the arguments.
 
 #### Analyze schema
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
-The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command An example invocation of the command with required arguments is as follows:
+The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) step, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command with required arguments is as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 ```
 
-The above command generates a report file under the `EXPORT_DIR/reports/` directory.
+The command generates a report file under the `EXPORT_DIR/reports/` directory.
 
 Refer to [analyze schema](../../reference/schema-migration/analyze-schema/) for details about the arguments.
 
@@ -205,6 +214,41 @@ Include the primary key definition in the `CREATE TABLE` statement. Primary Key 
 {{< /note >}}
 
 Refer to the [Manual review guideline](../../known-issues/) for a detailed list of limitations and suggested workarounds associated with the source databases when migrating to YugabyteDB Voyager.
+
+### Import schema
+
+Import the schema using the `yb-voyager import schema` command.
+
+{{< note title="Usage for target_db_schema" >}}
+
+The `target_db_schema` argument specifies the schema of the target YugabyteDB database and is applicable _only for_ MySQL and Oracle.
+`yb-voyager` imports the source database into the `public` schema of the target YugabyteDB database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
+
+{{< /note >}}
+
+An example invocation of the command with required arguments is as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
+```
+
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+
+{{< note title="NOT VALID constraints are not imported" >}}
+
+Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
+
+Voyager will add these constraints back during [Finalize schema post data import](#finalize-schema-post-data-import).
+
+{{< /note >}}
+
+yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
 ### Export data
 
@@ -236,8 +280,8 @@ Sequence migration consists of two steps: sequence creation and setting resume v
 
 Note that there are some special cases involving sequences such as the following:
 
-- In MySQL, auto-increment column is migrated to YugbayteDB as a normal column with a sequence attached to it.
-- For PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
+- In MySQL, auto-increment column is migrated to YugabyteDB as a normal column with a sequence attached to it.
+- For PostgreSQL, only the sequences attached to or owned by the migrating tables are restored during the migration.
 
 {{< /note >}}
 
@@ -261,42 +305,7 @@ Consider the following caveats before using the feature:
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-mysql/).
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) will have no effect.
 - In MySQL RDS, writes are not allowed during the data export process.
-- For Oracle where sequences are not attached to a column, resume value generation is unsupported.
-
-### Import schema
-
-Import the schema using the `yb-voyager import schema` command.
-
-{{< note title="Usage for target_db_schema" >}}
-
-The `target_db_schema` argument specifies the schema of the target YugabyteDB database and is applicable _only for_ MySQL and Oracle.
-`yb-voyager` imports the source database into the `public` schema of the target YugabyteDB database. By specifying `--target-db-schema` argument during import, you can instruct `yb-voyager` to create a non-public schema and use it for the schema/data import.
-
-{{< /note >}}
-
-An example invocation of the command with required arguments is as follows:
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import schema --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
-```
-
-Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
-
-{{< note title="NOT VALID constraints are not imported" >}}
-
-Currently, `import schema` does not import NOT VALID constraints exported from source, because this could lead to constraint violation errors during the import if the source contains the data that is violating the constraint.
-
-Voyager will add these constraints back during [Post snapshot import](#post-snapshot-import).
-
-{{< /note >}}
-
-yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
+- Sequences that are not associated with any column or attached to columns of non-integer types are not supported for resuming value generation.
 
 ### Import data
 
@@ -342,36 +351,25 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
 
-### Post snapshot import
+### Finalize schema post data import
 
-If there are any NOT VALID constraints on the source, create them after the `import data` command is completed by using the `import schema` command with the `post-snapshot-import` flag:
+If there are any NOT VALID constraints on the source, create them after the `import data` command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them by setting the `--refresh-mviews` flag to true.
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager import schema --export-dir <EXPORT_DIR> \
+yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
        --target-db-host <TARGET_DB_HOST> \
        --target-db-user <TARGET_DB_USER> \
        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-       --post-snapshot-import true
 ```
 
-If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them using the following command:
+Refer to [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) for details about the arguments.
 
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import schema --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-        --post-snapshot-import true \
-        --refresh-mviews true
-```
-
-Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+{{< note title ="Note" >}}
+The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+{{< /note >}}
 
 ### Verify migration
 

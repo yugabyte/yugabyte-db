@@ -35,7 +35,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "catalog/catalog.h"
 #include "pg_yb_utils.h"
 
@@ -530,7 +530,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	if (check_option)
 	{
 		const char *view_updatable_error =
-		view_query_is_auto_updatable(viewParse, true);
+			view_query_is_auto_updatable(viewParse, true);
 
 		if (view_updatable_error)
 			ereport(ERROR,

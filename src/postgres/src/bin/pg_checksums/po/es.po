@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_checksums (PostgreSQL) 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-09-24 23:22+0000\n"
+"POT-Creation-Date: 2025-02-16 20:25+0000\n"
 "PO-Revision-Date: 2022-10-20 09:06+0200\n"
 "Last-Translator: Carlos Chapi <carloswaldo@babelruins.org>\n"
 "Language-Team: pgsql-es-ayuda <pgsql-es-ayuda@lists.postgresql.org>\n"
@@ -206,12 +206,12 @@ msgstr "checksums activados en archivo «%s»"
 msgid "could not open directory \"%s\": %m"
 msgstr "no se pudo abrir el directorio «%s»: %m"
 
-#: pg_checksums.c:342 pg_checksums.c:415
+#: pg_checksums.c:346 pg_checksums.c:415
 #, c-format
 msgid "could not stat file \"%s\": %m"
 msgstr "no se pudo hacer stat al archivo «%s»: %m"
 
-#: pg_checksums.c:366
+#: pg_checksums.c:370
 #, c-format
 msgid "invalid segment number %d in file name \"%s\""
 msgstr "número de segmento %d no válido en nombre de archivo «%s»"

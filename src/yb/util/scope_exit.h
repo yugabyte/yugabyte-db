@@ -13,61 +13,66 @@
 
 #pragma once
 
-#include <type_traits>
+#include <concepts>
+#include <functional>
 #include <optional>
 #include <utility>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 
-template <class F>
-class NODISCARD_CLASS ScopeExitLambda {
+// Execute the lambda when object goes out of scope.
+// The class has the Cancel method to dismiss execution the lambda and release the resources held
+// by it immediately.
+// The class is useful to perform cleanup due to unexpected exits, such as
+// VERIFY_RESULT and RETURN_NOT_OK. Whereas in the success case, the cleanup is not needed.
+//
+// Ex:
+//  Status DoStuff(const Identifier& id) {
+//    std::lock_guard l(mutex_);
+//    AddToMap(id);
+//    auto se = CancelableScopeExit([&id]{ RemoveFromMap(id); });
+//
+//    RETURN_NOT_OK(Commit(VERIFY_RESULT(DoInternalStuff(id))));
+//
+//    se.Cancel();
+//    return Status::OK();
+//  }
+template <std::convertible_to<std::function<void()>> F>
+class [[nodiscard]] CancelableScopeExit { // NOLINT
  public:
-  ScopeExitLambda(ScopeExitLambda&& rhs) : f_(std::move(rhs.f_)) { rhs.Cancel(); }
+  explicit CancelableScopeExit(const F& f) : f_(f) {}
+  explicit CancelableScopeExit(F&& f) : f_(std::move(f)) {}
+  explicit CancelableScopeExit(CancelableScopeExit<F>&& rhs) : f_(std::move(rhs.f_)) {
+    rhs.f_.reset();
+  }
 
-  explicit ScopeExitLambda(const F& f) : f_(f) {}
-  explicit ScopeExitLambda(F&& f) : f_(std::move(f)) {}
-
-  ~ScopeExitLambda() {
+  ~CancelableScopeExit() {
     if (f_) {
       (*f_)();
     }
   }
 
-  // Cancel the lambda and release the resources held by it.
-  // This is useful when ScopeExit is used to perform cleanup due to unexpected exits, such as
-  // VERIFY_RESULT and RETURN_NOT_OK. Whereas in the success case, the cleanup is not needed.
-  //
-  // Ex:
-  //  Status DoStuff(const Identifier& id) {
-  //    std::lock_guard l(mutex_);
-  //    AddToMap(id);
-  //    auto se = CancellableScopeExit([&id](){RemoveFromMap(id);});
-  //
-  //    auto stuff = VERIFY_RESULT(DoInternalStuff(id));
-  //    RETURN_NOT_OK(Commit(stuff));
-  //
-  //    se.Cancel();
-  //    return Status::OK();
-  //  }
-  void Cancel() { f_ = std::nullopt; }
+  void Cancel() { f_.reset(); }
 
  private:
   std::optional<F> f_;
 
-  DISALLOW_COPY_AND_ASSIGN(ScopeExitLambda);
+  DISALLOW_COPY_AND_ASSIGN(CancelableScopeExit);
 };
 
-template <class F>
-ScopeExitLambda<F> ScopeExit(const F& f) {
-  return ScopeExitLambda<F>(f);
-}
+// Execute the lambda when object goes out of scope.
+// Unlike CancelableScopeExit execution can't be dismissed (no Cancel method)
+template <std::convertible_to<std::function<void()>> F>
+class [[nodiscard]] ScopeExit { // NOLINT
+ public:
+  explicit ScopeExit(const F& f) : impl_(f) {}
+  explicit ScopeExit(F&& f) : impl_(std::move(f)) {}
+  explicit ScopeExit(ScopeExit<F>&&) = default;
 
-template <class F>
-ScopeExitLambda<typename std::remove_reference<F>::type> ScopeExit(F&& f) {
-  return ScopeExitLambda<typename std::remove_reference<F>::type>(std::forward<F>(f));
-}
+ private:
+  CancelableScopeExit<F> impl_;
+};
 
 } // namespace yb

@@ -226,9 +226,6 @@ class ClockboundClock : public PhysicalClock {
   struct alignas(CACHELINE_SIZE) PaddedClockboundCtx {
     std::mutex mutex;
     clockbound_ctx *ctx;
-    char padding[
-        CACHELINE_SIZE -
-        (sizeof(std::mutex) + sizeof(clockbound_ctx*)) % CACHELINE_SIZE];
   };
   static_assert(sizeof(PaddedClockboundCtx) % CACHELINE_SIZE == 0);
 

@@ -58,9 +58,9 @@ If you do not wish to port your overrides, do not include `--reset-then-reuse-va
 
 If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
 
-## Install Yugabyte Kubernetes Operator by upgrading an existing YBA
+## Install YugabyteDB Kubernetes Operator by upgrading an existing YBA
 
-The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/ea>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
+The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/ea idea="831">}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
 
 1. Apply the following Custom Resource Definition:
 
@@ -153,4 +153,4 @@ The [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-opera
     anab-test-restore   Ready   2.21.1.0-b269
     ```
 
-For more information, see [Yugabyte Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
+For more information, see [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).

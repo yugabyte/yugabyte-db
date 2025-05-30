@@ -228,6 +228,8 @@ InstrAggNode(Instrumentation *dst, Instrumentation *add)
 		dst_event->sum += add_event->sum;
 		dst_event->count += add_event->count;
 	}
+
+	dst->yb_instr.rows_removed_by_recheck += add->yb_instr.rows_removed_by_recheck;
 }
 
 /* note current values during parallel executor startup */

@@ -1,0 +1,196 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 8500000;
+SET documentdb.next_collection_id TO 8500;
+SET documentdb.next_collection_index_id TO 8500;
+-- $bsonSize operator
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": {"x":1} }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "12" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": {}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "5" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": [{"a":1}] }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "12" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": {"$undefined":true} }}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": {"x":1 , "b": 5, "c": {"$numberLong": "10"} } }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "30" } }
+(1 row)
+
+-- $bsonSize operator , large size documents
+SELECT * FROM bson_dollar_project(('{"input" : "' || LPAD('', 16000000, 'a') || '"}')::bson, '{"result": { "$bsonSize": "$$ROOT" }}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "16000017" } }
+(1 row)
+
+-- $bsonSize operator , document based tests
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$bsonSize": "$$ROOT" }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "12" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b":{"a":12} }', '{"result": { "$bsonSize": "$$ROOT" }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "27" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b":{"a":12} }', '{"result": { "$bsonSize": "$$ROOT.b" }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "12" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$bsonSize": "$$CURRENT" }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "12" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b":{"a":12} }', '{"result": { "$bsonSize": "$$CURRENT" }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "27" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b":{"a":12} }', '{"result": { "$bsonSize": "$$CURRENT.b" }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "12" } }
+(1 row)
+
+-- $bsonSize operator negative tests
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": [1,2] }}');
+ERROR:  Expression $bsonSize takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": [1] }}');
+ERROR:  $bsonSize requires a document input, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": 11 }}');
+ERROR:  $bsonSize requires a document input, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": true }}');
+ERROR:  $bsonSize requires a document input, found: bool
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": "12absd" }}');
+ERROR:  $bsonSize requires a document input, found: string
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$bsonSize": "$a" }}');
+ERROR:  $bsonSize requires a document input, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$bsonSize": {"$regex": "a*b", "$options":""} }}');
+ERROR:  $bsonSize requires a document input, found: regex
+-- $binarySize operator
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "" }}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": null }}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": {"$undefined":true} }}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "abvd" }}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "4" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "hello!" }}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "6" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "abc\\0c" }}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "6" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "I ❤️ documentdb" }}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "19" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "🙈" }}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "4" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": "アユシュ・サルージャです"}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "36" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": {"$binary": { "base64": "bGlnaHQgdw==", "subType": "01"}}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "7" } }
+(1 row)
+
+-- $binarySize operator , large size documents
+SELECT * FROM bson_dollar_project(('{"input" : "' || LPAD('', 16000000, 'a') || '"}')::bson, '{"result": { "$binarySize": "$input" }}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "16000000" } }
+(1 row)
+
+-- $binarySize operator , document based tests
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$binarySize": "$a" }}');
+ERROR:  $binarySize requires a string or BinData argument, found: int
+SELECT * FROM bson_dollar_project('{"a":"temp", "b":{"a":12} }', '{"result": { "$binarySize": "$a" }}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "4" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b":{"a":"world!"} }', '{"result": { "$binarySize": "$b.a" }}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "6" } }
+(1 row)
+
+-- $binarySize operator negative tests
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": [1,2] }}');
+ERROR:  Expression $binarySize takes exactly 1 arguments. 2 were passed in.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": [1] }}');
+ERROR:  $binarySize requires a string or BinData argument, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": 11 }}');
+ERROR:  $binarySize requires a string or BinData argument, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": true }}');
+ERROR:  $binarySize requires a string or BinData argument, found: bool
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$binarySize": "$a" }}');
+ERROR:  $binarySize requires a string or BinData argument, found: int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$binarySize": {"$regex": "a*b", "$options":""} }}');
+ERROR:  $binarySize requires a string or BinData argument, found: regex

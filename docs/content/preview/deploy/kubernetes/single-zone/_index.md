@@ -18,7 +18,7 @@ type: indexpage
     title="Open Source Kubernetes"
     body="Single-zone deployment on upstream Kubernetes."
     href="oss/helm-chart/"
-    icon="fa-light fa-dharmachakra">}}
+    icon="fa-thin fa-dharmachakra">}}
 
   {{<index/item
     title="Amazon Elastic Kubernetes Service (Amazon EKS)"

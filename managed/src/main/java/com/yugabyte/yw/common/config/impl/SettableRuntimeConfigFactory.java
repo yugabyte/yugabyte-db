@@ -48,7 +48,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
 
   private final Config appConfig;
 
-  private static final String newLine = System.getProperty("line.separator");
+  private static final String newLine = System.lineSeparator();
 
   // We need to do this because appConfig is preResolved by playFramework
   // So setting references to global or universe scoped config in reference.conf or application.conf

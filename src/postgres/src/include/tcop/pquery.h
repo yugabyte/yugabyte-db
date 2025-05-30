@@ -26,9 +26,10 @@ enum YbPgBatchDetection
 	IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL,
 };
 
-extern int	yb_pg_batch_detection_mechanism;
 
 extern PGDLLIMPORT Portal ActivePortal;
+
+extern int	yb_pg_batch_detection_mechanism;
 
 
 extern PortalStrategy ChoosePortalStrategy(List *stmts);

@@ -165,9 +165,9 @@ class PosixLogger : public Logger {
         if (fallocate(
                 fd_, FALLOC_FL_KEEP_SIZE, 0,
                 static_cast<off_t>(desired_allocation_chunk * kDebugLogChunkSize)) != 0) {
-          LOG(ERROR) << STATUS_IO_ERROR(fname_, errno)
-                     << " desired_allocation_chunk: " << desired_allocation_chunk
-                     << " kDebugLogChunkSize: " << kDebugLogChunkSize;
+          LOG(WARNING) << STATUS_IO_ERROR(fname_, errno)
+                       << " desired_allocation_chunk: " << desired_allocation_chunk
+                       << " kDebugLogChunkSize: " << kDebugLogChunkSize;
         }
       }
 #endif

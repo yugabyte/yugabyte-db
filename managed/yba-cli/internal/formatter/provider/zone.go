@@ -167,7 +167,7 @@ func (z *ZoneContext) startSubsection(format string) (*template.Template, error)
 }
 
 func (z *ZoneContext) subSection(name string) {
-	z.Output.Write([]byte("\n\n"))
+	z.Output.Write([]byte("\n"))
 	z.Output.Write([]byte(formatter.Colorize(name, formatter.RedColor)))
 	z.Output.Write([]byte("\n"))
 }

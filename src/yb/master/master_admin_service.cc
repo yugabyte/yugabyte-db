@@ -24,8 +24,8 @@
 
 #include "yb/util/flags.h"
 
-DEFINE_test_flag(bool, timeout_non_leader_master_rpcs, false,
-                 "Timeout all master requests to non leader.");
+DEFINE_test_flag(int32, timeout_non_leader_master_rpcs_ms, 0,
+    "Timeout all master requests to non leader for the specified number of milliseconds");
 
 namespace yb {
 namespace master {

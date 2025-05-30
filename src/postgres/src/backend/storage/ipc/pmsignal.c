@@ -437,7 +437,7 @@ void
 PostmasterDeathSignalInit(void)
 {
 #ifdef USE_POSTMASTER_DEATH_SIGNAL
-	int			signum;
+	int			signum = POSTMASTER_DEATH_SIGNAL;
 
 	/*
 	 * In YB, all backends are stateless and upon PG master termination, all
@@ -446,8 +446,6 @@ PostmasterDeathSignalInit(void)
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
 		signum = SIGKILL;
-	else
-		signum = POSTMASTER_DEATH_SIGNAL;
 
 	/* Register our signal handler. */
 	pqsignal(signum, postmaster_death_handler);

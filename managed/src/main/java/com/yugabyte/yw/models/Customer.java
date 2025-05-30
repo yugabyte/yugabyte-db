@@ -12,6 +12,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.swagger.annotations.ApiModel;
@@ -159,6 +160,9 @@ public class Customer extends Model {
     cust.setName(name);
     cust.setCreationDate(new Date());
     cust.save();
+
+    // Sync built in roles.
+    R__Sync_System_Roles.syncSystemRoles(cust.uuid);
     return cust;
   }
 

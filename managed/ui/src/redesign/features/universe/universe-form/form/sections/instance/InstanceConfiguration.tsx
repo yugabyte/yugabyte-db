@@ -67,11 +67,11 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     (c: any) => c.key === RuntimeConfigKey.AWS_COOLDOWN_HOURS
   )?.value;
 
-  // Value of runtime config key
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.use_k8s_custom_resources'
   );
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
+
   const maxVolumeCount = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.max_volume_count'
   )?.value;
@@ -110,52 +110,49 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     }
   }, [provider?.uuid]);
 
-  // Wrapper elements to get instance metadata and dedicated container element
-  const getInstanceMetadataElement = (isDedicatedMasterField: boolean) => {
-    return (
-      <Box width={masterPlacement === MasterPlacementMode.DEDICATED ? '100%' : CONTAINER_WIDTH}>
-        {provider?.code === CloudType.kubernetes && useK8CustomResources ? (
-          <>
-            <K8NodeSpecField
-              isEditMode={!isCreateMode}
-              isDedicatedMasterField={isDedicatedMasterField}
-              disabled={isViewMode}
-            />
-            <K8VolumeInfoField
-              isEditMode={!isCreateMode}
-              isDedicatedMasterField={isDedicatedMasterField}
-              disableVolumeSize={isViewMode}
-              maxVolumeCount={maxVolumeCount}
-            />
-          </>
-        ) : (
-          <>
-            <InstanceTypeField
-              isEditMode={!isCreateMode}
-              isDedicatedMasterField={isDedicatedMasterField}
-              disabled={isViewMode}
-            />
-            <VolumeInfoField
-              isEditMode={!isCreateMode}
-              isPrimary={isPrimary}
-              isViewMode={isViewMode}
-              isDedicatedMasterField={isDedicatedMasterField}
-              maxVolumeCount={maxVolumeCount}
-              updateOptions={updateOptions}
-              diffInHours={diffInHours}
-              AwsCoolDownPeriod={AwsCoolDownPeriod}
-            />
-          </>
-        )}
-      </Box>
-    );
-  };
-  const getDedicatedContainerElement = (instanceLabel: string, isDedicatedMasterField: boolean) => {
+  const getKubernetesInstanceElement = (instanceLabel: string, isMaster: boolean) => {
     return (
       <Box className={helperClasses.settingsContainer}>
         <Box m={2}>
           <Typography className={classes.subsectionHeaderFont}>{t(instanceLabel)}</Typography>
-          {getInstanceMetadataElement(isDedicatedMasterField)}
+          <Box width={'100%'}>
+            <K8NodeSpecField isMaster={isMaster} isEditMode={!isCreateMode} disabled={isViewMode} />
+            <K8VolumeInfoField
+              isMaster={isMaster}
+              isEditMode={!isCreateMode}
+              disableVolumeSize={isViewMode}
+              maxVolumeCount={maxVolumeCount}
+            />
+          </Box>
+        </Box>
+      </Box>
+    );
+  };
+
+  // Wrapper elements to get instance metadata and dedicated container element
+  const getInstanceMetadataElement = (isMaster: boolean) => {
+    return (
+      <Box width={masterPlacement === MasterPlacementMode.DEDICATED ? '100%' : CONTAINER_WIDTH}>
+        <InstanceTypeField isEditMode={!isCreateMode} isMaster={isMaster} disabled={isViewMode} />
+        <VolumeInfoField
+          isEditMode={!isCreateMode}
+          isPrimary={isPrimary}
+          isViewMode={isViewMode}
+          isMaster={isMaster}
+          maxVolumeCount={maxVolumeCount}
+          updateOptions={updateOptions}
+          diffInHours={diffInHours}
+          AwsCoolDownPeriod={AwsCoolDownPeriod}
+        />
+      </Box>
+    );
+  };
+  const getDedicatedContainerElement = (instanceLabel: string, isMaster: boolean) => {
+    return (
+      <Box className={helperClasses.settingsContainer}>
+        <Box m={2}>
+          <Typography className={classes.subsectionHeaderFont}>{t(instanceLabel)}</Typography>
+          {getInstanceMetadataElement(isMaster)}
         </Box>
       </Box>
     );
@@ -183,11 +180,25 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
           <Grid lg={6} item container>
             {/* Display separate section for Master and TServer in dedicated mode*/}
             <Box flex={1} display="flex" flexDirection="row">
-              {masterPlacement === MasterPlacementMode.COLOCATED
-                ? getInstanceMetadataElement(false)
-                : getDedicatedContainerElement('universeForm.tserver', false)}
-              {masterPlacement === MasterPlacementMode.DEDICATED &&
-                getDedicatedContainerElement('universeForm.master', true)}
+              {provider?.code !== CloudType.kubernetes && (
+                <>
+                  {masterPlacement === MasterPlacementMode.COLOCATED
+                    ? getInstanceMetadataElement(false)
+                    : getDedicatedContainerElement('universeForm.tserver', false)}
+                  {masterPlacement === MasterPlacementMode.DEDICATED &&
+                    getDedicatedContainerElement('universeForm.master', true)}
+                </>
+              )}
+              {useK8CustomResources &&
+                provider?.code === CloudType.kubernetes &&
+                getKubernetesInstanceElement('universeForm.tserver', false)}
+              {useK8CustomResources &&
+                provider?.code === CloudType.kubernetes &&
+                isPrimary &&
+                getKubernetesInstanceElement('universeForm.master', true)}
+              {provider?.code === CloudType.kubernetes &&
+                !useK8CustomResources &&
+                getInstanceMetadataElement(false)}
             </Box>
           </Grid>
         </Grid>

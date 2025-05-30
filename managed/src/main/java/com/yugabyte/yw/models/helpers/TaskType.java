@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.helpers;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
@@ -391,12 +392,12 @@ public enum TaskType {
       CustomerTask.TaskType.Sync,
       CustomerTask.TargetType.DrConfig),
 
-  SetTablesDrConfig(
+  SetDatabasesDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
-  SetDatabasesDrConfig(
+  SetTablesDrConfig(
       com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
@@ -481,6 +482,11 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyAuditLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyKubernetesAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyKubernetesAuditLoggingConfig.class,
+      CustomerTask.TaskType.ModifyAuditLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
   InstallYbcSoftware(
       com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
       CustomerTask.TaskType.InstallYbcSoftware,
@@ -559,6 +565,11 @@ public enum TaskType {
       CustomerTask.TaskType.FinalizeUpgrade,
       CustomerTask.TargetType.Universe),
 
+  FinalizeKubernetesUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeKubernetesUpgrade.class,
+      CustomerTask.TaskType.FinalizeUpgrade,
+      CustomerTask.TargetType.Universe),
+
   RollbackUpgrade(
       com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class,
       CustomerTask.TaskType.RollbackUpgrade,
@@ -609,6 +620,11 @@ public enum TaskType {
       CustomerTask.TaskType.SyncMasterAddresses,
       CustomerTask.TargetType.Universe),
 
+  CreateContinuousBackup(
+      com.yugabyte.yw.commissioner.tasks.CreateContinuousBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
   CreateYbaBackup(
       com.yugabyte.yw.commissioner.tasks.CreateYbaBackup.class,
       CustomerTask.TaskType.CreateYbaBackup,
@@ -616,12 +632,12 @@ public enum TaskType {
 
   RestoreYbaBackup(
       com.yugabyte.yw.commissioner.tasks.RestoreYbaBackup.class,
-      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TaskType.RestoreYbaBackup,
       CustomerTask.TargetType.Yba),
 
   RestoreContinuousBackup(
       com.yugabyte.yw.commissioner.tasks.RestoreContinuousBackup.class,
-      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TaskType.RestoreYbaBackup,
       CustomerTask.TargetType.Yba),
 
   EnableNodeAgentInUniverse(
@@ -638,6 +654,21 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.CloneNamespace.class,
       CustomerTask.TaskType.CloneNamespace,
       CustomerTask.TargetType.Universe),
+
+  TlsToggleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.upgrade.TlsToggleKubernetes.class,
+      CustomerTask.TaskType.TlsToggle,
+      CustomerTask.TargetType.Universe),
+
+  UpdateOOMServiceState(
+      UpdateOOMServiceState.class,
+      CustomerTask.TaskType.UpdateOOMServiceState,
+      CustomerTask.TargetType.Universe),
+
+  SendUserNotification(
+      com.yugabyte.yw.commissioner.tasks.SendUserNotification.class,
+      CustomerTask.TaskType.SendUserNotification,
+      CustomerTask.TargetType.User),
 
   /* Subtasks start here */
 
@@ -661,6 +692,8 @@ public enum TaskType {
 
   PersistSystemdUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade.class),
 
+  PersistUseClockbound(com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound.class),
+
   UpdateNodeDetails(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails.class),
 
   // Tasks belonging to subtasks classpath
@@ -681,8 +714,6 @@ public enum TaskType {
   AnsibleSetupServer(com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.class),
 
   AnsibleCreateServer(com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer.class),
-
-  PrecheckNode(com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode.class),
 
   PrecheckNodeDetached(com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNodeDetached.class),
 
@@ -913,6 +944,9 @@ public enum TaskType {
   AddExistingPitrToXClusterConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig.class),
 
+  DrConfigWebhookCall(
+      com.yugabyte.yw.commissioner.tasks.subtasks.webhook.DrConfigWebhookCall.class),
+
   SetRestoreState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreState.class),
 
   // Tasks belonging to subtasks.cloud classpath
@@ -1040,8 +1074,14 @@ public enum TaskType {
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
 
+  CheckOpentelemetryOperator(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator.class),
+
   PGUpgradeTServerCheck(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.PGUpgradeTServerCheck.class),
+
+  CleanUpPGUpgradeDataDir(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CleanUpPGUpgradeDataDir.class),
 
   RunYsqlMajorVersionCatalogUpgrade(
       com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlMajorVersionCatalogUpgrade.class),
@@ -1143,7 +1183,12 @@ public enum TaskType {
 
   SetupYNP(com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP.class),
 
-  YNPProvisioning(com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning.class);
+  YNPProvisioning(com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning.class),
+
+  ConfigureOOMServiceOnNode(
+      com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode.class),
+
+  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1201,6 +1246,7 @@ public enum TaskType {
           .put(SoftwareKubernetesUpgradeYB, 53)
           .put(RollbackKubernetesUpgrade, 54)
           .put(ModifyAuditLoggingConfig, 55)
+          .put(ModifyKubernetesAuditLoggingConfig, 56)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

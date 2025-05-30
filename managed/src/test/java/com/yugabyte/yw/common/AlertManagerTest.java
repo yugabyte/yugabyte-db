@@ -135,7 +135,8 @@ public class AlertManagerTest extends FakeDBApplication {
   public void testSendNotification_MetricsSetOk() {
     metricService.setFailureStatusMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, defaultCustomer));
-    am.setChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, defaultChannel, false);
+    am.setChannelStatusMetric(
+        PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, defaultCustomer, defaultChannel, false);
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 

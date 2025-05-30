@@ -42,6 +42,13 @@ class YBBackupTestBase {
   TmpDirProvider tmp_dir_;
 };
 
+Status RunBackupCommand(
+  auto& cluster, const std::string& temp_dir, const std::vector<std::string>& args);
+Status CreateBackup(
+    MiniClusterBase& cluster, TmpDirProvider& provider, const std::string& keyspace);
+Status RestoreBackup(
+    MiniClusterBase& cluster, TmpDirProvider& provider, const std::string& keyspace);
+
 class YBBackupTest : public pgwrapper::PgCommandTestBase, public YBBackupTestBase {
  protected:
   YBBackupTest() : pgwrapper::PgCommandTestBase(false, false) {}

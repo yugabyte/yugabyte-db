@@ -31,7 +31,7 @@ YugabyteDB Voyager has the following features:
 - Supports widely-used databases for migration and, in most cases, doesn't require changes to the [source databases](#source-databases).
 - Supports all YugabyteDB products as the [target database](#target-database).
 - [Unified CLI](../reference/yb-voyager-cli/) experience for all different source databases.
-- [Auto-tuneable](../performance/) based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
+- [Auto-tuneable](../reference/performance/) based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Progress monitoring, including the expected time for data export and import to complete, using progress bars.
 - In case of failures, data import can be resumed.
 - Parallelism of data across tables.

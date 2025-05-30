@@ -124,7 +124,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 	 * context. Similarly, the function arguments need to be evaluated in a
 	 * context that is longer lived than the per-tuple context: The argument
 	 * values would otherwise disappear when we reset that context in the
-	 * inner loop.  As the caller's GetCurrentMemoryContext() is typically a
+	 * inner loop.  As the caller's CurrentMemoryContext is typically a
 	 * query-lifespan context, we don't want to leak memory there.  We require
 	 * the caller to pass a separate memory context that can be used for this,
 	 * and can be reset each time through to avoid bloat.
@@ -177,7 +177,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 								 setexpr->fcinfo->fncollation,
 								 NULL, (Node *) &rsinfo);
 		/* evaluate the function's argument list */
-		Assert(GetCurrentMemoryContext() == argContext);
+		Assert(CurrentMemoryContext == argContext);
 		ExecEvalFuncArgs(fcinfo, setexpr->args, econtext);
 
 		/*
@@ -259,7 +259,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			if (first_time)
 			{
 				MemoryContext oldcontext =
-				MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+					MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 				tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
 				rsinfo.setResult = tupstore;
@@ -289,7 +289,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 					if (tupdesc == NULL)
 					{
 						MemoryContext oldcontext =
-						MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+							MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 						/*
 						 * This is the first non-NULL result from the
@@ -394,7 +394,7 @@ no_function_result:
 	if (rsinfo.setResult == NULL)
 	{
 		MemoryContext oldcontext =
-		MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 		tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
 		rsinfo.setResult = tupstore;

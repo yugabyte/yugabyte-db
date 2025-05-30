@@ -3,7 +3,7 @@ title: Contribute to YugabyteDB
 headerTitle: Contribute to YugabyteDB
 linkTitle: Contribute
 description: Contribute to the YugabyteDB code and documentation.
-image: fa-light fa-code-pull-request
+image: fa-thin fa-code-pull-request
 headcontent: Contribute code and docs to improve YugabyteDB.
 type: indexpage
 cascade:

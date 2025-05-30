@@ -43,36 +43,36 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     title="Configure backup storage"
     body="Configure the storage location for your backups."
     href="configure-backup-storage/"
-    icon="fa-light fa-bucket">}}
+    icon="fa-thin fa-bucket">}}
 
   {{<index/item
     title="Schedule universe data backups"
     body="Create backup schedules to regularly back up universe data."
     href="schedule-data-backups/"
-    icon="fa-light fa-calendar">}}
+    icon="fa-thin fa-calendar">}}
 
   {{<index/item
     title="Back up universe data"
     body="Back up universes and create incremental backups."
     href="back-up-universe-data/"
-    icon="fa-light fa-down-to-bracket">}}
+    icon="fa-thin fa-down-to-bracket">}}
 
   {{<index/item
     title="Restore universe data"
     body="Restore from full and incremental backups."
     href="restore-universe-data/"
-    icon="fa-light fa-up-to-bracket">}}
+    icon="fa-thin fa-up-to-bracket">}}
 
   {{<index/item
     title="Perform point-in-time recovery"
     body="Recover universe data from a specific point in time."
     href="pitr/"
-    icon="fa-light fa-timeline-arrow">}}
+    icon="fa-thin fa-timeline-arrow">}}
 
   {{<index/item
     title="Disaster recovery"
     body="Fail over to a backup universe in case of unplanned outages."
     href="disaster-recovery/"
-    icon="fa-light fa-sun-cloud">}}
+    icon="fa-thin fa-sun-cloud">}}
 
 {{</index/block>}}

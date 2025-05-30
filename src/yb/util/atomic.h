@@ -449,6 +449,17 @@ T AddFetch(std::atomic<T>* atomic, const D& delta, std::memory_order memory_orde
   return atomic->fetch_add(delta, memory_order) + delta;
 }
 
+template <class T>
+bool MakeAtLeast(std::atomic<T>& atomic, T new_value) {
+  auto old_value = atomic.load();
+  while (old_value < new_value) {
+    if (atomic.compare_exchange_strong(old_value, new_value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ------------------------------------------------------------------------------------------------
 // A utility for testing if an atomic is lock-free.
 

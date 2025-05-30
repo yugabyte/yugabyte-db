@@ -306,6 +306,8 @@ Heading 5 is used so that we can deep-link to the flag.
 
 This is a paragraph.
 
+## Include files
+
 {{% readfile "include-file.md" %}}
 
 {{% includeMarkdown "include-markdown.md" %}}

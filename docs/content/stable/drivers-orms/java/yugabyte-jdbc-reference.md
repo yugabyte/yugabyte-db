@@ -55,7 +55,7 @@ To get the driver and HikariPool from Maven, add the following dependencies to t
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.7.3-yb-1</version>
+  <version>{{< version-driver-java >}}</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
@@ -72,7 +72,7 @@ To get the driver and HikariPool, add the following dependencies to the Gradle p
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
-implementation 'com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1'
+implementation 'com.yugabyte:jdbc-yugabytedb:{{< version-driver-java >}}'
 implementation 'com.zaxxer:HikariCP:5.0.1'
 ```
 
@@ -171,6 +171,8 @@ To use the driver, do the following:
 
   Connection conn = ds.getConnection();
   ```
+
+The driver also supports connecting to multiple YugabyteDB clusters, while keeping connections balanced in each connected cluster. For more information, refer to [Connect to multiple clusters](../../smart-drivers/#connect-to-multiple-clusters)
 
 ## Try it out
 

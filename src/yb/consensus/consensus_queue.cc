@@ -164,14 +164,15 @@ std::string MajorityReplicatedData::ToString() const {
 }
 
 std::string PeerMessageQueue::TrackedPeer::ToString() const {
-  return Format(
-      "{ peer: $0 is_new: $1 last_received: $2 next_index: $3 last_known_committed_idx: $4 "
-      "is_last_exchange_successful: $5 needs_remote_bootstrap: $6 member_type: $7 "
-      "num_sst_files: $8 last_applied: $9 last_successful_communication_time: $10ms ago}",
-      uuid, is_new, last_received, next_index, last_known_committed_idx,
-      is_last_exchange_successful, needs_remote_bootstrap, PeerMemberType_Name(member_type),
-      num_sst_files, last_applied,
-      MonoTime::Now().GetDeltaSince(last_successful_communication_time).ToMilliseconds());
+  auto time_since_last_communication_ms =
+      MonoTime::Now().GetDeltaSince(last_successful_communication_time).ToMilliseconds();
+  return YB_STRUCT_TO_STRING(
+      (peer, uuid), is_new, last_received, next_index, last_known_committed_idx,
+      is_last_exchange_successful, needs_remote_bootstrap,
+      (member_type, PeerMemberType_Name(member_type)), num_sst_files, last_applied,
+      (last_successful_communication_time,
+       std::to_string(time_since_last_communication_ms) + "ms ago"),
+      leader_lease_expiration);
 }
 
 void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
@@ -717,10 +718,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
       // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
       // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
       // happen under normal circumstances.
-      LOG_WITH_PREFIX(ERROR) << "Error trying to read ahead of the log "
-                                      << "while preparing peer request: "
-                                      << s.ToString() << ". Destination peer: "
-                                      << peer_uuid;
+      LOG_WITH_PREFIX(DFATAL)
+          << "Error trying to read ahead of the log while preparing peer request: "
+          << s << ". Destination peer: " << peer_uuid;
       return s;
     } else {
       LOG_WITH_PREFIX(FATAL) << "Error reading the log while preparing peer request: "
@@ -742,7 +742,7 @@ int64_t PeerMessageQueue::GetStartOpIdIndex(int64_t start_index) {
                           : start_index;
 }
 
-Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForCDC(
+Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForXRepl(
     int64_t last_op_id_index, int64_t to_index, CoarseTimePoint deadline, bool fetch_single_entry) {
   // If an empty OpID is only sent on the first read request, start at the earliest known entry.
   int64_t after_op_index = GetStartOpIdIndex(last_op_id_index);
@@ -759,6 +759,33 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForCDC(
         .CloneAndAddErrorCode(cdc::CDCError(cdc::CDCErrorPB::CHECKPOINT_TOO_OLD));
   }
   return result;
+}
+
+Result<XClusterReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForXCluster(
+    const yb::OpId& last_op_id, const CoarseTimePoint deadline, bool fetch_single_entry) {
+  const auto [committed_index, majority_replicated_index] =
+      GetCommittedAndMajorityReplicatedIndex();
+  bool pending_messages = committed_index != majority_replicated_index;
+
+  XClusterReadOpsResult xcluster_result{
+      .result =
+          {.messages = ReplicateMsgs(),
+           .preceding_op = OpId(),
+           .have_more_messages = HaveMoreMessages(pending_messages)},
+      .majority_replicated_index = majority_replicated_index};
+
+  if (last_op_id.index >= committed_index) {
+    // No committed records left to read.
+    return xcluster_result;
+  }
+
+  xcluster_result.result = VERIFY_RESULT(
+      ReadFromLogCacheForXRepl(last_op_id.index, committed_index, deadline, fetch_single_entry));
+
+  xcluster_result.result.have_more_messages =
+      HaveMoreMessages(xcluster_result.result.have_more_messages.get() || pending_messages);
+
+  return xcluster_result;
 }
 
 // Read majority replicated messages from cache for CDC.
@@ -791,7 +818,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
   }
 
   auto result = VERIFY_RESULT(
-      ReadFromLogCacheForCDC(last_op_id.index, to_index, deadline, fetch_single_entry));
+      ReadFromLogCacheForXRepl(last_op_id.index, to_index, deadline, fetch_single_entry));
 
   result.have_more_messages =
       HaveMoreMessages(result.have_more_messages.get() || pending_messages);
@@ -842,7 +869,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
       }
     }
 
-    auto result = VERIFY_RESULT(ReadFromLogCacheForCDC(
+    auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
         last_op_id.index, committed_op_id_index, deadline, fetch_single_entry));
 
     res.messages.insert(res.messages.end(), result.messages.begin(), result.messages.end());
@@ -968,7 +995,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
   // Read the ops from the segment starting from current_index + 1.
   while (current_index < segment_last_index) {
     auto result = VERIFY_RESULT(
-        ReadFromLogCacheForCDC(current_index, segment_last_index, deadline, fetch_single_entry));
+        ReadFromLogCacheForXRepl(current_index, segment_last_index, deadline, fetch_single_entry));
 
     read_ops.read_from_disk_size += result.read_from_disk_size;
     read_ops.messages.insert(
@@ -1858,7 +1885,7 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
   std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
   if (peer == nullptr) {
-    LOG(ERROR) << "Invalid peer UUID: " << peer_uuid;
+    LOG(WARNING) << "Invalid peer UUID: " << peer_uuid;
     return false;
   }
   const bool peer_can_be_leader = peer->last_received >= queue_state_.majority_replicated_op_id;
@@ -1874,7 +1901,7 @@ OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {
   std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
   if (peer == nullptr) {
-    LOG(ERROR) << "Invalid peer UUID: " << uuid;
+    LOG(WARNING) << "Invalid peer UUID: " << uuid;
     return OpId::Min();
   }
   return peer->last_received;

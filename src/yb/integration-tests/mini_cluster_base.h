@@ -59,6 +59,14 @@ class MiniClusterBase {
 
   virtual std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const = 0;
 
+  virtual HostPort YsqlHostport() const = 0;
+
+  virtual std::string GetMasterAddresses() const = 0;
+
+  virtual std::string GetTabletServerHTTPAddresses() const = 0;
+
+  virtual rpc::ProxyCache& proxy_cache() = 0;
+
  protected:
   virtual ~MiniClusterBase() = default;
 

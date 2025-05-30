@@ -1186,9 +1186,13 @@ insert into child values (10, 1, 'b');
 select * from parent; select * from child;
 
 update parent set val1 = 'b' where aid = 1; -- should fail
+merge into parent p using (values (1)) as v(id) on p.aid = v.id
+  when matched then update set val1 = 'b'; -- should fail
 select * from parent; select * from child;
 
 delete from parent where aid = 1; -- should fail
+merge into parent p using (values (1)) as v(id) on p.aid = v.id
+  when matched then delete; -- should fail
 select * from parent; select * from child;
 
 -- replace the trigger function with one that restarts the deletion after
@@ -1583,6 +1587,42 @@ create trigger qqq after insert on parted_trig_1_1 for each row execute procedur
 insert into parted_trig values (50), (1500);
 drop table parted_trig;
 
+-- Verify that the correct triggers fire for cross-partition updates
+create table parted_trig (a int) partition by list (a);
+create table parted_trig1 partition of parted_trig for values in (1);
+create table parted_trig2 partition of parted_trig for values in (2);
+insert into parted_trig values (1);
+
+create or replace function trigger_notice() returns trigger as $$
+  begin
+    raise notice 'trigger % on % % % for %', TG_NAME, TG_TABLE_NAME, TG_WHEN, TG_OP, TG_LEVEL;
+    if TG_LEVEL = 'ROW' then
+      if TG_OP = 'DELETE' then
+        return OLD;
+      else
+        return NEW;
+      end if;
+    end if;
+    return null;
+  end;
+  $$ language plpgsql;
+create trigger parted_trig_before_stmt before insert or update or delete on parted_trig
+   for each statement execute procedure trigger_notice();
+create trigger parted_trig_before_row before insert or update or delete on parted_trig
+   for each row execute procedure trigger_notice();
+create trigger parted_trig_after_row after insert or update or delete on parted_trig
+   for each row execute procedure trigger_notice();
+create trigger parted_trig_after_stmt after insert or update or delete on parted_trig
+   for each statement execute procedure trigger_notice();
+
+update parted_trig set a = 2 where a = 1;
+
+-- update action in merge should behave the same
+merge into parted_trig using (select 1) as ss on true
+  when matched and a = 2 then update set a = 1;
+
+drop table parted_trig;
+
 -- Verify propagation of trigger arguments to partitions
 create table parted_trig (a int) partition by list (a);
 create table parted_trig1 partition of parted_trig for values in (1);
@@ -1881,6 +1921,26 @@ alter table parent enable always trigger tg;
 select tgrelid::regclass, tgname, tgenabled from pg_trigger
   where tgrelid in ('parent'::regclass, 'child1'::regclass)
   order by tgrelid::regclass::text, tgname;
+-- This variant malfunctioned in some releases.
+alter table parent disable trigger user;
+select tgrelid::regclass, tgname, tgenabled from pg_trigger
+  where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgname;
+drop table parent, child1;
+
+-- Check processing of foreign key triggers
+create table parent (a int primary key, f int references parent)
+  partition by list (a);
+create table child1 partition of parent for values in (1);
+select tgrelid::regclass, rtrim(tgname, '0123456789') as tgname,
+  tgfoid::regproc, tgenabled
+  from pg_trigger where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgfoid;
+alter table parent disable trigger all;
+select tgrelid::regclass, rtrim(tgname, '0123456789') as tgname,
+  tgfoid::regproc, tgenabled
+  from pg_trigger where tgrelid in ('parent'::regclass, 'child1'::regclass)
+  order by tgrelid::regclass::text, tgfoid;
 drop table parent, child1;
 
 -- Verify that firing state propagates correctly on creation, too
@@ -2126,6 +2186,52 @@ drop trigger child_row_trig on child;
 alter table parent attach partition child for values in ('AAA');
 
 drop table child, parent;
+
+--
+-- Verify access of transition tables with UPDATE triggers and tuples
+-- moved across partitions.
+--
+create or replace function dump_update_new() returns trigger language plpgsql as
+$$
+  begin
+    raise notice 'trigger = %, new table = %', TG_NAME,
+                 (select string_agg(new_table::text, ', ' order by a) from new_table);
+    return null;
+  end;
+$$;
+create or replace function dump_update_old() returns trigger language plpgsql as
+$$
+  begin
+    raise notice 'trigger = %, old table = %', TG_NAME,
+                 (select string_agg(old_table::text, ', ' order by a) from old_table);
+    return null;
+  end;
+$$;
+create table trans_tab_parent (a text) partition by list (a);
+create table trans_tab_child1 partition of trans_tab_parent for values in ('AAA1', 'AAA2');
+create table trans_tab_child2 partition of trans_tab_parent for values in ('BBB1', 'BBB2');
+create trigger trans_tab_parent_update_trig
+  after update on trans_tab_parent referencing old table as old_table
+  for each statement execute procedure dump_update_old();
+create trigger trans_tab_parent_insert_trig
+  after insert on trans_tab_parent referencing new table as new_table
+  for each statement execute procedure dump_insert();
+create trigger trans_tab_parent_delete_trig
+  after delete on trans_tab_parent referencing old table as old_table
+  for each statement execute procedure dump_delete();
+insert into trans_tab_parent values ('AAA1'), ('BBB1');
+-- should not trigger access to new table when moving across partitions.
+update trans_tab_parent set a = 'BBB2' where a = 'AAA1';
+drop trigger trans_tab_parent_update_trig on trans_tab_parent;
+create trigger trans_tab_parent_update_trig
+  after update on trans_tab_parent referencing new table as new_table
+  for each statement execute procedure dump_update_new();
+-- should not trigger access to old table when moving across partitions.
+update trans_tab_parent set a = 'AAA2' where a = 'BBB1';
+delete from trans_tab_parent;
+-- clean up
+drop table trans_tab_parent, trans_tab_child1, trans_tab_child2;
+drop function dump_update_new, dump_update_old;
 
 --
 -- Verify behavior of statement triggers on (non-partition)
@@ -2417,6 +2523,20 @@ delete from refd_table where length(b) = 3;
 select * from trig_table;
 
 drop table refd_table, trig_table;
+
+--
+-- Test that we can drop a not-yet-fired deferred trigger
+--
+
+create table refd_table (id int primary key);
+create table trig_table (fk int references refd_table initially deferred);
+
+begin;
+insert into trig_table values (1);
+drop table refd_table cascade;
+commit;
+
+drop table trig_table;
 
 --
 -- self-referential FKs are even more fun

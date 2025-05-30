@@ -25,26 +25,26 @@
 
 #include <limits.h>
 #include <math.h>
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/time.h>
-#include <sys/resource.h>
-#endif
-#ifndef HAVE_GETRUSAGE
-#include "rusagestub.h"
 #endif
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
-#include "utils/builtins.h"
-
 #include "funcapi.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
+#ifndef HAVE_GETRUSAGE
+#include "rusagestub.h"
+#endif
+#include "utils/builtins.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 /*
  * Scale the ru_maxrss value according to the platform.

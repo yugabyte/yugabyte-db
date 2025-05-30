@@ -53,7 +53,7 @@ If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used
 
 {{<note title="Tables always have a primary key">}}
 
-PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/)), so a table isn't viable without a primary key.
+PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/)), so a table isn't viable without a primary key.
 
 Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as `PRIMARY KEY` and the table will be sharded on `ybrowid HASH`.
 
@@ -174,7 +174,7 @@ CREATE TABLE <name> (columns) WITH (COLOCATION = false);
 This ensures that the table is not stored on the same tablet as the rest of the tables for this database, but instead has its own set of tablets. Use this option for large tables that need to be scaled out.
 
 {{<note>}}
-Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for more details.
+Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../explore/colocation/) for more details.
 {{</note>}}
 
 ### Storage parameters

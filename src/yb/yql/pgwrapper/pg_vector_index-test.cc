@@ -18,12 +18,19 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 
+#include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/doc_vector_index.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 
 #include "yb/qlexpr/index.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_vector_indexes.h"
+
+#include "yb/tools/tools_test_utils.h"
+#include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 
@@ -36,16 +43,26 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
+DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_insert_tasks);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::tablet {
 
+extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
+
+}
+
+namespace yb::vector_index {
+
+extern MonoDelta TEST_sleep_during_flush;
 
 }
 
@@ -55,6 +72,7 @@ YB_STRONGLY_TYPED_BOOL(AddFilter);
 YB_STRONGLY_TYPED_BOOL(Backfill);
 
 using FloatVector = std::vector<float>;
+const std::string kVectorIndexName = "vi";
 
 const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
@@ -63,6 +81,7 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
 class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
+    FLAGS_TEST_use_custom_varz = true;
     itest::SetupQuickSplit(1_KB);
     PgMiniTestBase::SetUp();
     tablet::TEST_fail_on_seq_scan_with_vector_indexes = true;
@@ -88,6 +107,8 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       create_suffix = " WITH (COLOCATED = 1)";
       RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
       conn = VERIFY_RESULT(Connect());
+    } else if (num_tablets_) {
+      create_suffix += "SPLIT INTO 1 TABLETS";
     }
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -97,12 +118,17 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
     return conn;
   }
 
-  Status CreateIndex(PGConn& conn) {
-    return conn.ExecuteFormat("CREATE INDEX ON test USING ybhnsw (embedding $0)", VectorOpsName());
+  Status CreateIndex(
+       PGConn& conn, const std::string& index_name = kVectorIndexName,
+       std::optional<vector_index::DistanceKind> distance_kind = std::nullopt) {
+    return conn.ExecuteFormat(
+        "CREATE INDEX $1 ON test USING ybhnsw (embedding $0) "
+            "WITH (ef_construction = 256, m = 32, m0 = 128)",
+        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name);
   }
 
-  Result<PGConn> MakeIndex(size_t dimensions = 3) {
-    auto conn = VERIFY_RESULT(MakeTable(dimensions));
+  Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
+    auto conn =  VERIFY_RESULT(table_exists ? Connect() : MakeTable(dimensions));
     RETURN_NOT_OK(CreateIndex(conn));
     return conn;
   }
@@ -112,11 +138,15 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
   Status InsertRows(PGConn& conn, size_t start_row, size_t end_row);
   Status InsertRandomRows(PGConn& conn, size_t num_rows);
 
-  void VerifyRead(PGConn& conn, size_t limit, bool add_filter);
+  void VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter);
   void VerifyRows(
-      PGConn& conn, bool add_filter, const std::vector<std::string>& expected, int64_t limit = -1);
+      PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected,
+      int64_t limit = -1);
+  void VerifyRows(
+      PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+      int64_t limit = -1);
 
-  void TestSimple();
+  void TestSimple(bool table_exists = false);
   void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
   void TestRestart(tablet::FlushFlags flush_flags);
   void TestMetric(const std::string& expected);
@@ -144,7 +174,12 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
 
   const char* VectorOpsName() const {
     using vector_index::DistanceKind;
-    switch (distance_kind_) {
+    return VectorOpsName(distance_kind_);
+  }
+
+  static const char* VectorOpsName(vector_index::DistanceKind distance_kind) {
+    using vector_index::DistanceKind;
+    switch (distance_kind) {
       case DistanceKind::kL2Squared:
         return "vector_l2_ops";
       case DistanceKind::kInnerProduct:
@@ -152,7 +187,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       case DistanceKind::kCosine:
         return "vector_cosine_ops";
     }
-    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind_);
+    FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
   }
 
   const char* VectorOp() const {
@@ -198,6 +233,7 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
   size_t dimensions_;
   size_t real_dimensions_;
   std::vector<size_t> shuffle_vector_;
+  int num_tablets_ = 0;
 };
 
 uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
@@ -208,8 +244,8 @@ uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
   return result;
 }
 
-void PgVectorIndexTest::TestSimple() {
-  auto conn = ASSERT_RESULT(MakeIndex());
+void PgVectorIndexTest::TestSimple(bool table_exists) {
+  auto conn = ASSERT_RESULT(MakeIndex(3, table_exists));
 
   size_t num_found_peers = 0;
   auto check_tablets = [this, &num_found_peers]() -> Result<bool> {
@@ -224,12 +260,14 @@ void PgVectorIndexTest::TestSimple() {
       auto tables = metadata.GetAllColocatedTables();
       tablet::TableInfoPtr main_table_info;
       tablet::TableInfoPtr index_table_info;
+      size_t num_indexes = 0;
       for (const auto& table_id : tables) {
         auto table_info = VERIFY_RESULT(metadata.GetTableInfo(table_id));
         LOG(INFO) << "Table: " << table_info->ToString();
         if (table_info->table_name == "test") {
           main_table_info = table_info;
         } else if (table_info->index_info) {
+          ++num_indexes;
           index_table_info = table_info;
         }
       }
@@ -237,7 +275,11 @@ void PgVectorIndexTest::TestSimple() {
         continue;
       }
       ++num_found_peers;
-      if (!index_table_info) {
+      if (num_indexes != 1) {
+        return false;
+      }
+      auto vector_indexes = tablet->vector_indexes().List();
+      if (!vector_indexes || vector_indexes->size() != 1) {
         return false;
       }
       SCHECK_EQ(
@@ -250,8 +292,10 @@ void PgVectorIndexTest::TestSimple() {
   ASSERT_OK(WaitFor(check_tablets, 10s * kTimeMultiplier, "Index created on all tablets"));
   ASSERT_NE(num_found_peers, 0);
 
-  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '[1.0, 0.5, 0.25]')"));
-  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, '[0.125, 0.375, 0.25]')"));
+  if (!table_exists) {
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '[1.0, 0.5, 0.25]')"));
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, '[0.125, 0.375, 0.25]')"));
+  }
 
   auto result = ASSERT_RESULT(conn.FetchAllAsString(
       "SELECT * FROM test" + IndexQuerySuffix("[1.0, 0.4, 0.3]", 5)));
@@ -265,6 +309,25 @@ TEST_P(PgVectorIndexTest, Simple) {
 TEST_P(PgVectorIndexTest, NotApplied) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   TestSimple();
+}
+
+TEST_P(PgVectorIndexTest, Drop) {
+  TestSimple();
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  TestSimple(true);
+}
+
+TEST_P(PgVectorIndexTest, DropWithFlush) {
+  ANNOTATE_UNPROTECTED_WRITE(vector_index::TEST_sleep_during_flush) = 250ms * kTimeMultiplier;
+  TestSimple();
+  auto conn = ASSERT_RESULT(Connect());
+  ThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    ASSERT_OK(cluster_->FlushTablets(
+        tablet::FlushMode::kAsync, tablet::FlushFlags::kVectorIndexes));
+  });
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
 }
 
 std::string VectorAsString(int64_t id) {
@@ -303,8 +366,22 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(
     size_t num_rows, Backfill backfill = Backfill::kFalse) {
   auto conn = VERIFY_RESULT(MakeTable());
   if (backfill) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = num_rows / 5 + 1;
     RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+    std::future<void> future;
+    if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
+      future = std::async([this] {
+        std::this_thread::sleep_for(1s);
+        CHECK_OK(cluster_->mini_tablet_server(1)->Restart());
+        ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks)
+            = false;
+        std::this_thread::sleep_for(5s * kTimeMultiplier);
+      });
+    }
     RETURN_NOT_OK(CreateIndex(conn));
+    if (future.valid()) {
+      future.get();
+    }
   } else {
     RETURN_NOT_OK(CreateIndex(conn));
     RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
@@ -319,11 +396,24 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFillRandom(size_t num_rows) {
 }
 
 void PgVectorIndexTest::VerifyRows(
-    PGConn& conn, bool add_filter, const std::vector<std::string>& expected, int64_t limit) {
-  auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(Format(
-      "SELECT * FROM test $0$1",
-      add_filter ? "WHERE id + 3 <= 5" : "",
-      IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit))))));
+    PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected, int64_t limit) {
+  VerifyRows(conn, add_filter ? "WHERE id + 3 <= 5" : "", expected, limit);
+}
+
+void PgVectorIndexTest::VerifyRows(
+    PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+    int64_t limit) {
+  if (limit >= 0 && make_unsigned(limit) < expected.size()) {
+    std::vector<std::string> new_expected(expected.begin(), expected.begin() + limit);
+    return VerifyRows(conn, filter, new_expected, limit);
+  }
+  auto query = Format(
+      "SELECT * FROM test AS t $0$1", filter,
+      IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit)));
+  LOG_WITH_FUNC(INFO) << "   Query: " << AsString(query);
+  auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(query)));
+  LOG_WITH_FUNC(INFO) << "  Result: " << AsString(result);
+  LOG_WITH_FUNC(INFO) << "Expected: " << AsString(expected);
   ASSERT_EQ(result.size(), expected.size());
   for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
     SCOPED_TRACE(Format("Row $0", i));
@@ -331,7 +421,7 @@ void PgVectorIndexTest::VerifyRows(
   }
 }
 
-void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, bool add_filter) {
+void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter) {
   std::vector<std::string> expected;
   for (size_t i = 1; i <= limit; ++i) {
     expected.push_back(ExpectedRow(i));
@@ -357,7 +447,7 @@ TEST_P(PgVectorIndexTest, Split) {
   // Give some time for split to happen.
   std::this_thread::sleep_for(2s * kTimeMultiplier);
 
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 TEST_P(PgVectorIndexTest, ManyRows) {
@@ -365,6 +455,14 @@ TEST_P(PgVectorIndexTest, ManyRows) {
 }
 
 TEST_P(PgVectorIndexTest, ManyRowsWithBackfill) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_concurrent_writes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_insert_tasks) = 1;
+  TestManyRows(AddFilter::kFalse, Backfill::kTrue);
+}
+
+TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
+  num_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
 }
 
@@ -406,18 +504,18 @@ void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
   for (const auto& peer : peers) {
     auto tablet = peer->shared_tablet();
-    if (tablet->TEST_HasVectorIndexes()) {
+    if (tablet->vector_indexes().TEST_HasIndexes()) {
       tablet->TEST_SleepBeforeApplyIntents(5s * kTimeMultiplier);
       break;
     }
   }
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, flush_flags));
   DisableFlushOnShutdown(*cluster_, true);
   ASSERT_OK(RestartCluster());
   conn = ASSERT_RESULT(Connect());
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 TEST_P(PgVectorIndexTest, Restart) {
@@ -432,6 +530,10 @@ TEST_P(PgVectorIndexTest, BootstrapFlushedIntentsDB) {
   TestRestart(tablet::FlushFlags::kIntents);
 }
 
+TEST_P(PgVectorIndexTest, BootstrapFlushedVectorIndexes) {
+  TestRestart(tablet::FlushFlags::kVectorIndexes);
+}
+
 TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
   constexpr size_t kNumRows = 64;
   const std::string kDistantVector = "[100, 500, 9000]";
@@ -441,6 +543,8 @@ TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2", kDistantVector));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 10", kCloseVector));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = NULL WHERE id = 20"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1000, NULL)"));
 
   std::vector<std::string> expected = {
     BuildRow(10, kCloseVector),
@@ -449,12 +553,12 @@ TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
     ExpectedRow(5),
     ExpectedRow(6),
   };
-  ASSERT_NO_FATALS(VerifyRows(conn, false, expected));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, expected));
 
   std::vector<std::string> expected_filtered = {
     BuildRow(2, kDistantVector),
   };
-  ASSERT_NO_FATALS(VerifyRows(conn, true, expected_filtered));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kTrue, expected_filtered));
 }
 
 TEST_P(PgVectorIndexTest, RemoteBootstrap) {
@@ -500,7 +604,7 @@ TEST_P(PgVectorIndexTest, RemoteBootstrap) {
     }
     return false;
   }, 60s * kTimeMultiplier, "Wait desired leader"));
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 TEST_P(PgVectorIndexTest, SnapshotSchedule) {
@@ -517,7 +621,7 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
       nullptr, YQL_DATABASE_PGSQL, DbName(),
       client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
 
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 
   auto hybrid_time = cluster_->mini_master(0)->Now();
   ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, hybrid_time));
@@ -525,13 +629,13 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
   ASSERT_OK(conn.Execute("DELETE FROM test"));
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
-  ASSERT_NO_FATALS(VerifyRows(conn, false, {}, 10));
+  ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kFalse, {}, 10));
 
   auto snapshot_id = ASSERT_RESULT(snapshot_util.PickSuitableSnapshot(
       schedule_id, hybrid_time));
   ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
 
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, false));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
 void PgVectorIndexTest::TestRandom() {
@@ -554,6 +658,7 @@ void PgVectorIndexTest::TestRandom() {
   }
 
   auto conn = ASSERT_RESULT(MakeIndexAndFillRandom(kNumRows));
+
   size_t sum_missing = 0;
   std::vector<size_t> counts;
 
@@ -654,6 +759,161 @@ TEST_P(PgVectorIndexTest, InnerProduct) {
 TEST_P(PgVectorIndexTest, Cosine) {
   distance_kind_ = vector_index::DistanceKind::kCosine;
   TestMetric("2; 3; 1");
+}
+
+TEST_P(PgVectorIndexTest, EfSearch) {
+  constexpr size_t kNumRows = 1000;
+  constexpr int kIterations = 10;
+  constexpr int kSmallEf = 1;
+  constexpr int kBigEf = 1000;
+
+  num_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
+
+  std::unordered_map<int, std::vector<MonoDelta>> times;
+  for (int i = 0; i != kIterations; ++i) {
+    for (int ef : {kSmallEf, kBigEf}) {
+      ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
+      auto start = MonoTime::Now();
+      ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
+      auto passed = MonoTime::Now() - start;
+      times[ef].push_back(passed);
+    }
+  }
+  std::ranges::sort(times[kSmallEf]);
+  std::ranges::sort(times[kBigEf]);
+
+  auto small_median = times[kSmallEf][kIterations / 2];
+  auto big_median = times[kBigEf][kIterations / 2];
+  LOG(INFO) << "ef=" << kSmallEf << ": " << small_median.ToPrettyString()
+            << ", ef=" << kBigEf << ": " << big_median.ToPrettyString();
+  ASSERT_LT(small_median, big_median);
+}
+
+TEST_P(PgVectorIndexTest, Paging) {
+  constexpr int kNumRows = 64;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(conn.Execute("CREATE TABLE fk (id INT PRIMARY KEY)"));
+
+  auto keys = {42, 3, 21, 10, 30};
+
+  std::vector<int> available_keys;
+  for (auto key : keys) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO fk VALUES ($0)", key));
+    available_keys.push_back(key);
+    std::ranges::sort(available_keys);
+    std::vector<std::string> expected;
+    for (auto k : available_keys) {
+      expected.push_back(Format("$0, $1, $0", k, VectorAsString(k)));
+    }
+    for (int limit = 1; limit <= kNumRows; limit *= 2) {
+      SCOPED_TRACE(Format("limit: $0", limit));
+      ASSERT_NO_FATALS(VerifyRows(
+          conn, "INNER JOIN fk as f ON t.id = f.id", expected, limit));
+    }
+  }
+}
+
+TEST_P(PgVectorIndexTest, Options) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  std::unordered_map<TabletId, std::unordered_set<TableId>> checked_indexes;
+  std::vector<std::string> option_names = {"m", "m0", "ef_construction"};
+  // We need unique values for used params. Since m and ef has different allowed intervals,
+  // use different counters for them. counters[0] for m/m0 and counters[1] for ef_construction.
+  std::array<size_t, 2> counters = {32, 64};
+  for (int i = 0; i != 1 << option_names.size(); ++i) {
+    std::string expected_options;
+    {
+      std::string options;
+      size_t prev_value = 0;
+      for (size_t j = 0; j != option_names.size(); ++j) {
+        if (!expected_options.empty()) {
+          expected_options += " ";
+        }
+        size_t value;
+        if ((i & (1 << j))) {
+          value = ++counters[j >= 2];
+          if (!options.empty()) {
+            options += ", ";
+          }
+          options += Format("$0 = $1", option_names[j], value);
+        } else {
+          switch (j) {
+            case 0:
+              value = 32; // Default value for m
+              break;
+            case 1:
+              // When not specified m0 uses value of m.
+              value = prev_value;
+              break;
+            case 2:
+              value = 200; // Default value for ef
+              break;
+            default:
+              ASSERT_LT(j, 4U) << "Unexpected number of options";
+              value = 0;
+              break;
+          }
+        }
+        expected_options += Format("$0: $1", option_names[j], value);
+        prev_value = value;
+      }
+      if (!options.empty()) {
+        options = " WITH (" + options + ")";
+      }
+      auto query = "CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)" + options;
+      LOG(INFO) << "Query: " << query;
+      ASSERT_OK(conn.Execute(query));
+    }
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      auto tablet = peer->shared_tablet();
+      auto vector_indexes = tablet->vector_indexes().List();
+      if (!vector_indexes) {
+        continue;
+      }
+      auto& tablet_indexes = checked_indexes[peer->tablet_id()];
+      size_t num_new_indexes = 0;
+      for (const auto& vector_index : *vector_indexes) {
+        if (!tablet_indexes.insert(vector_index->table_id()).second) {
+          continue;
+        }
+        ++num_new_indexes;
+        auto doc_read_context = ASSERT_RESULT(
+            tablet->metadata()->GetTableInfo(vector_index->table_id()))->doc_read_context;
+        const auto& hnsw_options = doc_read_context->vector_idx_options->hnsw();
+        LOG(INFO)
+            << "Vector index: " << AsString(vector_index) << ", options: "
+            << AsString(hnsw_options);
+        ASSERT_EQ(AsString(hnsw_options), expected_options);
+      }
+      ASSERT_EQ(num_new_indexes, 1);
+    }
+  }
+}
+
+TEST_P(PgVectorIndexTest, Backup) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "This test does not work with yb_backup.py";
+  }
+
+  ASSERT_OK(cluster_->StartYbControllerServers());
+
+  TestManyRows(AddFilter::kFalse);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateIndex(conn, "vi_cos", vector_index::DistanceKind::kCosine));
+
+  tools::TmpDirProvider tmp_dir;
+  ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, "ysql." + DbName()));
+
+  // Restore the backup.
+  const std::string kRestoreDb = "restored_db";
+  ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, "ysql." + kRestoreDb));
+
+  auto restore_conn = ASSERT_RESULT(ConnectToDB(kRestoreDb));
+  VerifyRead(restore_conn, 10, AddFilter::kFalse);
 }
 
 std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {

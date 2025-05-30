@@ -148,10 +148,14 @@ message PgsqlPartitionBound {
   optional bool is_inclusive = 2;
 }
 
-// YB_TODO(upgrade): Handle in pg15 upgrade path.
 message PgsqlRandState {
   required uint64 s0 = 1;
   required uint64 s1 = 2;
+}
+
+message PgsqlSampleBlockPB {
+  required bytes lower_bound = 1;
+  required bytes upper_bound = 2;
 }
 
 // Random sampling state
@@ -163,7 +167,7 @@ message PgsqlSamplingStatePB {
   // number of rows considered for sample across all blocks
   optional double samplerows = 3;
   // number of total rows estimated
-  optional double estimated_total_rows = 8;
+  optional double DEPRECATED_estimated_total_rows = 8;
   // current number of rows to skip
   optional double rowstoskip = 4;
   // reservoir state W
@@ -172,6 +176,13 @@ message PgsqlSamplingStatePB {
   reserved 6;
   // 128 bits of sampler random state.
   optional PgsqlRandState rand_state = 7;
+  // number of blocks collected so far across all tablets
+  optional uint64 num_blocks_collected = 11;
+  // number of blocks considered so far for sample across all tablets
+  optional uint64 num_blocks_processed = 12;
+  // Whether caller expects only sample blocks boundaries as a result of this request processing.
+  optional bool is_blocks_sampling_stage = 13 [default = false];
+
   optional YsqlSamplingAlgorithm sampling_algorithm = 9;
   optional DocDbBlocksSamplingMethod docdb_blocks_sampling_method = 10;
 }
@@ -304,6 +315,9 @@ message PgsqlWriteRequestPB {
   // data. Bypass this check when we know its safe.
   // Valid cases are InitDB, pg_upgrade, and temp tables.
   optional bool force_catalog_modifications = 27;
+
+  // What metric changes to return in response.
+  optional PgsqlMetricsCaptureType metrics_capture = 28;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -539,6 +553,10 @@ message PgsqlReadRequestPB {
   // If present, the request is to collect random sample
   optional PgsqlSamplingStatePB sampling_state = 30 [(rpc.lightweight_field).pointer = true];
 
+  // Boundaries of blocks to be sampled at 2nd stage for getting sample of rows, empty during 1st
+  // stage.
+  repeated PgsqlSampleBlockPB sample_blocks = 44;
+
   // Instruction for BACKFILL operation from the tablet server.
   // This is the serialized-string of "message PgsqlBackfillSpecPB" which will be used by
   // the tablet server handling the PgsqlRead to terminate the scan and checkpoint the paging
@@ -549,6 +567,7 @@ message PgsqlReadRequestPB {
   // Per scanned row, expressions are evaluated by PGgate one by one, and if any is evaluated to
   // false the row is skipped.
   repeated PgsqlExpressionPB where_clauses = 33;
+  optional uint32 expression_serialization_version = 43;
 
   // Columns referenced by this write operation.
   // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information

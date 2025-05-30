@@ -12,6 +12,7 @@ import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
+import com.amazonaws.regions.DefaultAwsRegionProviderChain;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
 import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
@@ -75,7 +76,7 @@ public class IAMTemporaryCredentialsProvider {
     List<CustomAWSCredentials> credentialsSource = new ArrayList<>();
     switch (s3Data.iamConfig.credentialSource) {
       case ASSUME_INSTANCE_ROLE:
-        credentialsSource.add(new AssumeInstanceRole(s3Data.iamConfig, s3Data.fallbackRegion));
+        credentialsSource.add(new AssumeInstanceRole(s3Data.iamConfig));
         break;
       case EC2_INSTANCE:
         credentialsSource.add(new InstanceProfileCredentials());
@@ -84,18 +85,16 @@ public class IAMTemporaryCredentialsProvider {
         credentialsSource.add(new IAMUserCredentials(s3Data.iamConfig.iamUserProfile));
         break;
       case WEB_TOKEN:
-        credentialsSource.add(
-            new AssumeRoleWithWebIdentity(s3Data.iamConfig, s3Data.fallbackRegion));
+        credentialsSource.add(new AssumeRoleWithWebIdentity(s3Data.iamConfig));
         break;
       case DEFAULT:
         log.debug(
             "Trying chain of credential providers in order: WebIdentityTokenCredentialsProvider,"
                 + " ProfileCredentialsProvider, AssumeInstanceRole,"
                 + " EC2ContainerCredentialsProvider");
-        credentialsSource.add(
-            new AssumeRoleWithWebIdentity(s3Data.iamConfig, s3Data.fallbackRegion));
+        credentialsSource.add(new AssumeRoleWithWebIdentity(s3Data.iamConfig));
         credentialsSource.add(new IAMUserCredentials(s3Data.iamConfig.iamUserProfile));
-        credentialsSource.add(new AssumeInstanceRole(s3Data.iamConfig, s3Data.fallbackRegion));
+        credentialsSource.add(new AssumeInstanceRole(s3Data.iamConfig));
         credentialsSource.add(new InstanceProfileCredentials());
         break;
       default:
@@ -141,16 +140,16 @@ public class IAMTemporaryCredentialsProvider {
 
   private static class AssumeInstanceRole implements CustomAWSCredentials {
     IAMConfiguration iamConfig;
-    String signingRegion;
+    String stsRegion;
 
     @Override
     public String getSourceName() {
       return "AssumeInstanceRole";
     }
 
-    public AssumeInstanceRole(IAMConfiguration iamConfig, String signingRegion) {
+    public AssumeInstanceRole(IAMConfiguration iamConfig) {
       this.iamConfig = iamConfig;
-      this.signingRegion = signingRegion;
+      this.stsRegion = iamConfig.stsRegion;
     }
 
     @Override
@@ -158,7 +157,7 @@ public class IAMTemporaryCredentialsProvider {
       int maxDuration = iamConfig.duration;
       String roleArn = null;
       AWSSecurityTokenService stsService =
-          getStandardSTSClientWithoutCredentials(signingRegion, iamConfig.regionalSTS)
+          getStandardSTSClientWithoutCredentials(stsRegion, iamConfig.regionalSTS)
               .withCredentials(new EC2ContainerCredentialsProviderWrapper())
               .build();
 
@@ -212,16 +211,16 @@ public class IAMTemporaryCredentialsProvider {
 
   private static class AssumeRoleWithWebIdentity implements CustomAWSCredentials {
     IAMConfiguration iamConfig;
-    String signingRegion;
+    String stsRegion;
 
     @Override
     public String getSourceName() {
       return "WebIdentityTokenCredentialsProvider";
     }
 
-    public AssumeRoleWithWebIdentity(IAMConfiguration iamConfig, String signingRegion) {
+    public AssumeRoleWithWebIdentity(IAMConfiguration iamConfig) {
       this.iamConfig = iamConfig;
-      this.signingRegion = signingRegion;
+      this.stsRegion = iamConfig.stsRegion;
     }
 
     @Override
@@ -232,7 +231,7 @@ public class IAMTemporaryCredentialsProvider {
 
       // Create STS client to make subsequent calls.
       AWSSecurityTokenService stsService =
-          getStandardSTSClientWithoutCredentials(signingRegion, iamConfig.regionalSTS)
+          getStandardSTSClientWithoutCredentials(stsRegion, iamConfig.regionalSTS)
               .withCredentials(new AWSStaticCredentialsProvider(new AnonymousAWSCredentials()))
               .build();
       // Fetch AWS_ROLE_ARN from environment( Yugaware is required to have it if service account IAM
@@ -337,13 +336,22 @@ public class IAMTemporaryCredentialsProvider {
   }
 
   private static AWSSecurityTokenServiceClientBuilder getStandardSTSClientWithoutCredentials(
-      String fallbackRegion, boolean regionalSTS) {
-    fallbackRegion = AWSUtil.getClientRegion(fallbackRegion);
+      String stsRegion, boolean regionalSTS) {
+    String region = stsRegion;
+    if (StringUtils.isBlank(region)) {
+      try {
+        region = new DefaultAwsRegionProviderChain().getRegion();
+      } catch (SdkClientException e) {
+        log.trace("No region found in Default region chain.");
+      }
+    }
+    // If region still empty, revert to default region.
+    region = StringUtils.isBlank(region) ? "us-east-1" : region;
     String stsEndpoint = STS_DEFAULT_ENDPOINT;
     if (regionalSTS) {
-      stsEndpoint = String.format("sts.%s.amazonaws.com", fallbackRegion);
+      stsEndpoint = String.format("sts.%s.amazonaws.com", region);
     }
     return AWSSecurityTokenServiceClientBuilder.standard()
-        .withEndpointConfiguration(new EndpointConfiguration(stsEndpoint, fallbackRegion));
+        .withEndpointConfiguration(new EndpointConfiguration(stsEndpoint, region));
   }
 }

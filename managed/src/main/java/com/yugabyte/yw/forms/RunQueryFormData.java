@@ -2,14 +2,14 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
 import org.yb.CommonTypes.TableType;
 
 @Data
-@JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class RunQueryFormData {
 
   @NotNull private String query;

@@ -1,9 +1,9 @@
 ---
-title: Replication metrics
-headerTitle: Replication
-linkTitle: Replication metrics
-headcontent: Monitor xCluster replication
-description: Learn about YugabyteDB's replication metrics, and how to select and use the metrics.
+title: xCluster metrics
+headerTitle: xCluster metrics
+linkTitle: xCluster
+headcontent: Monitor xCluster replication metrics
+description: Learn about YugabyteDB's xCluster replication metrics.
 menu:
   preview:
     identifier: replication
@@ -12,7 +12,6 @@ menu:
 type: docs
 ---
 
-### xCluster
 
 YugabyteDB allows you to asynchronously replicate data between independent YugabyteDB clusters.
 
@@ -24,5 +23,5 @@ The following table describes key replication metrics. All metrics are counters 
 | :------ | :---------- |
 | `async_replication_committed_lag_micros` | The time in microseconds for the replication lag on the target cluster. This metric is available only on the source cluster. |
 | `time_since_last_getchanges` | The time elapsed in microseconds from when the source cluster got a request to replicate from the target cluster. This metric is available only on the source cluster. |
-| `consumer_safe_time_lag` | The time elapsed in milliseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the consumer cluster. This metric is available only on the target cluster. |
-| `consumer_safe_time_skew` | The time elapsed in milliseconds for replication between the first and the last tablet replica on the consumer cluster. This metric is available only on the target cluster. |
+| `consumer_safe_time_lag` | The time elapsed in milliseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the consumer cluster. This metric is available only on the target cluster. (Only applies to transactional xCluster.) |
+| `consumer_safe_time_skew` | The time elapsed in milliseconds for replication between the first and the last tablet replica on the consumer cluster. This metric is available only on the target cluster. (Only applies to transactional xCluster.) |

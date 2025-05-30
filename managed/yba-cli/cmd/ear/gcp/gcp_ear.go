@@ -30,6 +30,7 @@ func init() {
 	GCPEARCmd.AddCommand(listGCPEARCmd)
 	GCPEARCmd.AddCommand(describeGCPEARCmd)
 	GCPEARCmd.AddCommand(deleteGCPEARCmd)
+	GCPEARCmd.AddCommand(refreshGCPEARCmd)
 
 	GCPEARCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the configuration for the action. %s",

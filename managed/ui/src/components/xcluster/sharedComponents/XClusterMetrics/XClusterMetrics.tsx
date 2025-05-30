@@ -20,8 +20,7 @@ import {
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   PollingIntervalMs,
-  TimeRangeType,
-  XClusterConfigType
+  TimeRangeType
 } from '../../constants';
 import {
   adaptMetricDataForRecharts,
@@ -114,6 +113,41 @@ export const XClusterMetrics = ({
     consumerSafeTimeSkewMetricsSplitCount,
     setConsumerSafeTimeSkewMetricsSplitCount
   ] = useState<number>(1);
+
+  const [
+    consumerReplicationErrorCountMetricsNodeAggregation,
+    setConsumerReplicationErrorCountMetricsNodeAggregation
+  ] = useState<NodeAggregation>(NodeAggregation.MAX);
+  const [
+    consumerReplicationErrorCountMetricsSplitType,
+    setConsumerReplicationErrorCountMetricsSplitType
+  ] = useState<SplitType>(SplitType.NONE);
+  const [
+    consumerReplicationErrorCountMetricsSplitMode,
+    setConsumerReplicationErrorCountMetricsSplitMode
+  ] = useState<SplitMode>(SplitMode.NONE);
+  const [
+    consumerReplicationErrorCountMetricsSplitCount,
+    setConsumerReplicationErrorCountMetricsSplitCount
+  ] = useState<number>(1);
+
+  const [
+    cdcGetChangesThroughputMetricsNodeAggregation,
+    setCdcGetChangesThroughputMetricsNodeAggregation
+  ] = useState<NodeAggregation>(NodeAggregation.MAX);
+  const [
+    cdcGetChangesThroughputMetricsSplitType,
+    setCdcGetChangesThroughputMetricsSplitType
+  ] = useState<SplitType>(SplitType.NONE);
+  const [
+    cdcGetChangesThroughputMetricsSplitMode,
+    setCdcGetChangesThroughputMetricsSplitMode
+  ] = useState<SplitMode>(SplitMode.NONE);
+  const [
+    cdcGetChangesThroughputMetricsSplitCount,
+    setCdcGetChangesThroughputMetricsSplitCount
+  ] = useState<number>(1);
+
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const theme = useTheme();
 
@@ -270,6 +304,87 @@ export const XClusterMetrics = ({
       }, [])
     }
   );
+
+  const consumerReplicationErrorCountMetricSettings = {
+    metric: MetricName.CONSUMER_REPLICATION_ERROR_COUNT,
+    nodeAggregation: consumerReplicationErrorCountMetricsNodeAggregation,
+    splitType: consumerReplicationErrorCountMetricsSplitType,
+    splitMode: consumerReplicationErrorCountMetricsSplitMode,
+    splitCount: consumerReplicationErrorCountMetricsSplitCount
+  };
+  const consumerReplicationErrorCountMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [consumerReplicationErrorCountMetricSettings],
+    nodePrefix: targetUniverseQuery.data?.universeDetails.nodePrefix,
+    start: metricTimeRange.startMoment.format('X'),
+    end: metricTimeRange.endMoment.format('X')
+  };
+  const consumerReplicationErrorCountMetricsQuery = useQuery(
+    isFixedTimeRange
+      ? metricQueryKey.detail(consumerReplicationErrorCountMetricRequestParams)
+      : metricQueryKey.live(
+          consumerReplicationErrorCountMetricRequestParams,
+          selectedTimeRangeOption.value,
+          selectedTimeRangeOption.type
+        ),
+    () => api.fetchMetrics(consumerReplicationErrorCountMetricRequestParams),
+    {
+      enabled: !!targetUniverseQuery.data,
+      // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
+      // queries will return the same data.
+      staleTime: isFixedTimeRange ? Infinity : 0,
+      refetchInterval: isFixedTimeRange ? false : PollingIntervalMs.XCLUSTER_METRICS,
+      select: useCallback((metricQueryResponse: MetricsQueryResponse) => {
+        const { data: metricTraces = [], ...metricQueryMetadata } =
+          metricQueryResponse.xcluster_consumer_replication_error_count ?? {};
+        return {
+          ...metricQueryMetadata,
+          metricTraces,
+          metricData: adaptMetricDataForRecharts(metricTraces, (trace) => getUniqueTraceId(trace))
+        };
+      }, [])
+    }
+  );
+
+  const cdcGetChangesThroughputMetricSettings = {
+    metric: MetricName.CDC_SERVICE_GET_CHANGES_THROUGHPUT_MBPS,
+    nodeAggregation: cdcGetChangesThroughputMetricsNodeAggregation,
+    splitType: cdcGetChangesThroughputMetricsSplitType,
+    splitMode: cdcGetChangesThroughputMetricsSplitMode,
+    splitCount: cdcGetChangesThroughputMetricsSplitCount
+  };
+  const cdcGetChangesThroughputMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [cdcGetChangesThroughputMetricSettings],
+    nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
+    start: metricTimeRange.startMoment.format('X'),
+    end: metricTimeRange.endMoment.format('X')
+  };
+  const cdcGetChangesThroughputMetricsQuery = useQuery(
+    isFixedTimeRange
+      ? metricQueryKey.detail(cdcGetChangesThroughputMetricRequestParams)
+      : metricQueryKey.live(
+          cdcGetChangesThroughputMetricRequestParams,
+          selectedTimeRangeOption.value,
+          selectedTimeRangeOption.type
+        ),
+    () => api.fetchMetrics(cdcGetChangesThroughputMetricRequestParams),
+    {
+      enabled: !!targetUniverseQuery.data,
+      // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
+      // queries will return the same data.
+      staleTime: isFixedTimeRange ? Infinity : 0,
+      refetchInterval: isFixedTimeRange ? false : PollingIntervalMs.XCLUSTER_METRICS,
+      select: useCallback((metricQueryResponse: MetricsQueryResponse) => {
+        const { data: metricTraces = [], ...metricQueryMetadata } =
+          metricQueryResponse.cdc_service_get_changes_throughput_mbps ?? {};
+        return {
+          ...metricQueryMetadata,
+          metricTraces,
+          metricData: adaptMetricDataForRecharts(metricTraces, (trace) => getUniqueTraceId(trace))
+        };
+      }, [])
+    }
+  );
+
   if (sourceUniverseQuery.isError) {
     return (
       <YBErrorIndicator
@@ -305,6 +420,8 @@ export const XClusterMetrics = ({
   //              Tracking with PLAT-11663
   if (
     configReplicationLagMetricQuery.isError ||
+    consumerReplicationErrorCountMetricsQuery.isError ||
+    cdcGetChangesThroughputMetricsQuery.isError ||
     (getIsTransactionalAtomicityEnabled(xClusterConfig.type) &&
       (consumerSafeTimeLagMetricsQuery.isError || consumerSafeTimeSkewMetricsQuery.isError))
   ) {
@@ -403,6 +520,32 @@ export const XClusterMetrics = ({
       MetricName.CONSUMER_SAFE_TIME_SKEW,
       consumerSafeTimeSkewMetricSettings,
       consumerSafeTimeSkewMetricsQuery.data?.metricTraces ?? [],
+      namespaceUuidToNamespaceName
+    )
+  };
+  const consumerReplicationErrorCountMetrics = {
+    ...(consumerReplicationErrorCountMetricsQuery.data ?? {
+      metricData: [],
+      layout: undefined,
+      metricTraces: []
+    }),
+    metricTraces: getFilteredMetricTraces(
+      MetricName.CONSUMER_REPLICATION_ERROR_COUNT,
+      consumerReplicationErrorCountMetricSettings,
+      consumerReplicationErrorCountMetricsQuery.data?.metricTraces ?? [],
+      namespaceUuidToNamespaceName
+    )
+  };
+  const cdcGetChangesThroughputMetrics = {
+    ...(cdcGetChangesThroughputMetricsQuery.data ?? {
+      metricData: [],
+      layout: undefined,
+      metricTraces: []
+    }),
+    metricTraces: getFilteredMetricTraces(
+      MetricName.CDC_SERVICE_GET_CHANGES_THROUGHPUT_MBPS,
+      cdcGetChangesThroughputMetricSettings,
+      cdcGetChangesThroughputMetricsQuery.data?.metricTraces ?? [],
       namespaceUuidToNamespaceName
     )
   };
@@ -544,6 +687,45 @@ export const XClusterMetrics = ({
             />
           </>
         )}
+        <YBMetricGraph
+          metric={consumerReplicationErrorCountMetrics}
+          title={t('graphTitle.consumerReplicationErrorCount')}
+          metricSettings={consumerReplicationErrorCountMetricSettings}
+          namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
+          graphHeaderAccessor={
+            <MetricsFilter
+              metricsNodeAggregation={consumerReplicationErrorCountMetricsNodeAggregation}
+              metricsSplitType={consumerReplicationErrorCountMetricsSplitType}
+              metricsSplitMode={consumerReplicationErrorCountMetricsSplitMode}
+              metricsSplitCount={consumerReplicationErrorCountMetricsSplitCount}
+              metricsSplitTypeOptions={[SplitType.NODE, SplitType.NONE]}
+              setMetricsNodeAggregation={setConsumerReplicationErrorCountMetricsNodeAggregation}
+              setMetricsSplitType={setConsumerReplicationErrorCountMetricsSplitType}
+              setMetricsSplitMode={setConsumerReplicationErrorCountMetricsSplitMode}
+              setMetricsSplitCount={setConsumerReplicationErrorCountMetricsSplitCount}
+            />
+          }
+        />
+        <YBMetricGraph
+          metric={cdcGetChangesThroughputMetrics}
+          title={t('graphTitle.cdcGetChangesThroughput')}
+          metricSettings={cdcGetChangesThroughputMetricSettings}
+          unit={t('unitAbbreviation.megabytesPerSecond', { keyPrefix: 'common' })}
+          namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
+          graphHeaderAccessor={
+            <MetricsFilter
+              metricsNodeAggregation={cdcGetChangesThroughputMetricsNodeAggregation}
+              metricsSplitType={cdcGetChangesThroughputMetricsSplitType}
+              metricsSplitMode={cdcGetChangesThroughputMetricsSplitMode}
+              metricsSplitCount={cdcGetChangesThroughputMetricsSplitCount}
+              metricsSplitTypeOptions={[SplitType.NODE, SplitType.NONE]}
+              setMetricsNodeAggregation={setCdcGetChangesThroughputMetricsNodeAggregation}
+              setMetricsSplitType={setCdcGetChangesThroughputMetricsSplitType}
+              setMetricsSplitMode={setCdcGetChangesThroughputMetricsSplitMode}
+              setMetricsSplitCount={setCdcGetChangesThroughputMetricsSplitCount}
+            />
+          }
+        />
       </Box>
     </div>
   );

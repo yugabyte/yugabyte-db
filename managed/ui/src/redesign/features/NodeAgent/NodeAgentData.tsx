@@ -210,7 +210,7 @@ export const NodeAgentData: FC<NodeAgentDataProps> = ({
       ?.universeDetails.universePaused && nodeAgent.lastError
       ? t('errorLabel.universePaused')
       : nodeAgent.lastError
-      ? t(`errorLabel.${nodeAgent.lastError}`)
+      ? t(`errorLabel.${nodeAgent.lastError.code}`)
       : '';
 
   /**

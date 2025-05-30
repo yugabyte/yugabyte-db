@@ -127,7 +127,12 @@ var createHashicorpVaultEARCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateKMSConfig(util.HashicorpVaultEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: Hashicorp Vault", "Create")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"EAR: Hashicorp Vault",
+				"Create",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

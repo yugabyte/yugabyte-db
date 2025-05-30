@@ -26,7 +26,7 @@ The first time you log in, YugabyteDB Aeon provides a welcome experience with a 
 - Load sample data and run queries
 - Explore a sample application
 
-<!-- Following sections are duplicated in quick-start-yugabytdb-managed -->
+<!-- Following sections are duplicated in quick-start-yugabytedb-managed -->
 
 ### What's next
 

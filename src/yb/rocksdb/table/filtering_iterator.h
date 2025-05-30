@@ -89,24 +89,8 @@ class FilteringIterator : public InternalIterator {
     return iterator_->GetProperty(std::move(prop_name), prop);
   }
 
-  ScanForwardResult ScanForward(
-      const Comparator* user_key_comparator, const Slice& upperbound,
-      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
-    KeyFilterCallback kf_callback = [this, key_filter_callback](
-                                        Slice prefixed_key, size_t shared_bytes,
-                                        Slice delta) -> KeyFilterCallbackResult {
-      // TODO: add support for shared prefix encoded key filter callback.
-      LOG_IF(DFATAL, shared_bytes != 0)
-          << "Key filter callback with shared prefix is not supported.";
-      if (!Satisfied(delta)) {
-        return KeyFilterCallbackResult{.skip_key = true, .cache_key = false};
-      }
-
-      return key_filter_callback ? (*key_filter_callback)(prefixed_key, shared_bytes, delta)
-                                 : KeyFilterCallbackResult{.skip_key = false, .cache_key = false};
-    };
-
-    return iterator_->ScanForward(user_key_comparator, upperbound, &kf_callback, scan_callback);
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    iterator_->UpdateFilterKey(user_key_for_filter);
   }
 
   const KeyValueEntry& ApplyFilter(bool backward) {

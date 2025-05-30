@@ -19,7 +19,7 @@ YugabyteDB can scale seamlessly while running a read-write workload. You can see
 
 ## Set up a universe
 
-Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a local multi-node universe, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as Latency and Throughput charts for the running workload.
+Follow the [setup instructions](../../cluster-setup-local/) to start a local multi-node universe, connect the [YB Workload Simulator](../../cluster-setup-local/#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as Latency and Throughput charts for the running workload.
 
 ## Observe IOPS per node
 

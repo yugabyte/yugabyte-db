@@ -16,6 +16,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/permissions_manager.h"
 
 #include "yb/util/status_log.h"

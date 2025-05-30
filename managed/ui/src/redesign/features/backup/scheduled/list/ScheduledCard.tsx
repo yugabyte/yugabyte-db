@@ -252,10 +252,8 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
           >
             <MenuItem
               onClick={() => {
-                if (!isScheduleEnabled) return;
                 setShowEditModal(true);
               }}
-              disabled={schedule.status !== IBackupScheduleStatus.ACTIVE}
             >
               <i className="fa fa-pencil"></i> {t('editPolicy')}
             </MenuItem>
@@ -349,9 +347,9 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
           <div className={clsx(classes.value, !isScheduleEnabled && classes.inactive)}>
             {schedule.backupInfo?.timeBeforeDelete
               ? convertMsecToTimeFrame(
-                  schedule.backupInfo.timeBeforeDelete,
-                  schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
-                )
+                schedule.backupInfo.timeBeforeDelete,
+                schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
+              )
               : 'Indefinitely'}
           </div>
         </div>
@@ -385,14 +383,19 @@ export const ScheduledCard: FC<ScheduledCardProps> = ({
       >
         {t('deleteModal.deleteMsg')}
       </YBConfirmModal>
-      <EditScheduledPolicyModal
-        visible={showEditModal}
-        onHide={() => {
-          setShowEditModal(false);
-        }}
-        universeUUID={universeUUID}
-        schedule={schedule}
-      />
+      {
+        showEditModal && (
+          <EditScheduledPolicyModal
+            visible={showEditModal}
+            onHide={() => {
+              setShowEditModal(false);
+            }}
+            universeUUID={universeUUID}
+            schedule={schedule}
+          />
+        )
+      }
+
       <ScheduledBackupShowIntervalsModal
         schedule={schedule}
         visible={showIntervalsModal}

@@ -116,5 +116,8 @@ public class AWSCloudInfo implements CloudInfoInterface {
     if (this.awsAccessKeySecret != null && this.awsAccessKeySecret.contains("*")) {
       this.awsAccessKeySecret = awsCloudInfo.awsAccessKeySecret;
     }
+    if (this.awsHostedZoneName == null && awsCloudInfo.awsHostedZoneName != null) {
+      this.awsHostedZoneName = awsCloudInfo.awsHostedZoneName;
+    }
   }
 }

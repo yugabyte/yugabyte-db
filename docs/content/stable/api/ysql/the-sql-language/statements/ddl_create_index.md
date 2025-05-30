@@ -14,9 +14,7 @@ type: docs
 
 Use the `CREATE INDEX` statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
 
-{{<note>}}
-In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. Indexes are not colocated with the base table.
-{{</note>}}
+In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed.
 
 ## Syntax
 
@@ -47,7 +45,7 @@ For details on how online index backfill works, refer to [Online Index Backfill]
 
 {{< /note >}}
 
-Regarding colocation, indexes follow their table. If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
+If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
 
 ### Partitioned Indexes
 

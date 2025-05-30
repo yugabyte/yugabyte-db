@@ -1,0 +1,36 @@
+-- show all functions exported in documentdb_api_distributed
+\df documentdb_api_distributed.*
+                                              List of functions
+           Schema           |        Name        |   Result data type   |     Argument data types     | Type 
+---------------------------------------------------------------------
+ documentdb_api_distributed | complete_upgrade   | boolean              |                             | func
+ documentdb_api_distributed | initialize_cluster | void                 |                             | func
+ documentdb_api_distributed | rebalancer_start   | documentdb_core.bson | p_spec documentdb_core.bson | func
+ documentdb_api_distributed | rebalancer_status  | documentdb_core.bson | p_spec documentdb_core.bson | func
+ documentdb_api_distributed | rebalancer_stop    | documentdb_core.bson | p_spec documentdb_core.bson | func
+(5 rows)
+
+-- show all aggregates exported
+\da+ documentdb_api_distributed.*
+                     List of aggregate functions
+ Schema | Name | Result data type | Argument data types | Description 
+---------------------------------------------------------------------
+(0 rows)
+
+-- This is last (Tables/indexes)
+\d documentdb_api_distributed.*
+    Table "documentdb_api_distributed.documentdb_cluster_data"
+  Column  |         Type         | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ metadata | documentdb_core.bson |           | not null | 
+Indexes:
+    "documentdb_cluster_data_pkey" PRIMARY KEY, btree (metadata)
+Triggers:
+    documentdb_versions_trigger AFTER DELETE OR UPDATE ON documentdb_api_distributed.documentdb_cluster_data FOR EACH STATEMENT EXECUTE FUNCTION documentdb_api_internal.update_documentdb_version_data()
+
+Index "documentdb_api_distributed.documentdb_cluster_data_pkey"
+  Column  |         Type         | Key? | Definition 
+---------------------------------------------------------------------
+ metadata | documentdb_core.bson | yes  | metadata
+primary key, btree, for table "documentdb_api_distributed.documentdb_cluster_data"
+

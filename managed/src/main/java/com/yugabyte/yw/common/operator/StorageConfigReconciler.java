@@ -3,6 +3,7 @@ package com.yugabyte.yw.common.operator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -65,19 +66,14 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
 
     objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
     objectMapper.configure(SerializationFeature.WRITE_NULL_MAP_VALUES, false);
+    // Convert to upper snake case for the customer config
+    objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.UPPER_SNAKE_CASE);
 
     ObjectNode payload = objectMapper.createObjectNode();
 
     Data data = sc.getSpec().getData();
     JsonNode dataJson = objectMapper.valueToTree(data);
     ObjectNode object = (ObjectNode) dataJson;
-    // TODO: find a better way to do cleanup
-    object.remove("aws_ACCESS_KEY_ID");
-    object.remove("aws_SECRET_ACCESS_KEY");
-    object.remove("backup_LOCATION");
-    object.remove("gcs_CREDENTIALS_JSON");
-    object.remove("azure_STORAGE_SAS_TOKEN");
-    object.remove("use_IAM");
 
     boolean useIAM = object.has("USE_IAM") && (object.get("USE_IAM").asBoolean(false) == true);
     object.remove("USE_IAM");

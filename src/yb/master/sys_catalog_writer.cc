@@ -14,7 +14,6 @@
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -22,7 +21,10 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/master/master_types.pb.h"
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/tablet/tablet.h"
 

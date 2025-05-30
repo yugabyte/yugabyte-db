@@ -16,6 +16,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 
+#include "yb/dockv/value_type.h"
 #include "yb/rocksdb/iterator.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -135,7 +136,7 @@ const rocksdb::KeyValueEntry& PerformRocksDBSeek(
       const auto cmp = result->key.compare(seek_key);
       if (cmp > 0) {
         VLOG_WITH_FUNC(4)
-            << "Seek because position after current: " << dockv::BestEffortDocDBKeyToStr(seek_key);
+            << "Seek because position before current: " << dockv::BestEffortDocDBKeyToStr(seek_key);
         result = &iter->Seek(seek_key);
         ++stats.seek;
       } else if (cmp < 0) {
@@ -208,8 +209,8 @@ const rocksdb::KeyValueEntry& SeekBackward(Slice upper_bound_key, rocksdb::Itera
   // positioned after the given key, which is confirmed by the above IsIterBeforeKey() call.
   DCHECK(entry.Valid()); // Maybe it's even better to put a CHECK here.
   if (PREDICT_FALSE(!entry.Valid())) {
-    LOG_WITH_FUNC(ERROR) << "Unexpected Seek() result -- invalid entry, key = '"
-                         << upper_bound_key.ToDebugHexString() << "', status: " << iter.status();
+    LOG_WITH_FUNC(DFATAL) << "Unexpected Seek() result -- invalid entry, key = '"
+                          << upper_bound_key.ToDebugHexString() << "', status: " << iter.status();
     return entry;
   }
 

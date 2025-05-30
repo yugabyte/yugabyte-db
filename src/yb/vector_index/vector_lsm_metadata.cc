@@ -17,8 +17,6 @@
 
 #include "yb/gutil/endian.h"
 
-#include "yb/rocksdb/env.h"
-
 #include "yb/util/crc.h"
 #include "yb/util/path_util.h"
 #include "yb/util/stol_utils.h"
@@ -34,7 +32,7 @@ const std::string kMetaFileSuffix = ".meta";
 }
 
 Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
-    rocksdb::Env* env, const std::string& dir) {
+    Env* env, const std::string& dir) {
   VectorLSMMetadataLoadResult result;
   auto files = VERIFY_RESULT(env->GetChildren(dir));
   erase_if(files, [](const auto& file) {
@@ -48,7 +46,7 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
   LOG(INFO) << "Metadata files in " << dir << ": " << AsString(files);
   const std::string* first_file_to_keep = nullptr;
   for (const auto& file : files) {
-    std::string buffer;
+    faststring buffer;
     auto full_path = JoinPathSegments(dir, file);
     RETURN_NOT_OK_PREPEND(ReadFileToString(env, full_path, &buffer),
                           Format("Failed to read $0: ", full_path));
@@ -127,13 +125,12 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
   return result;
 }
 
-Result<std::unique_ptr<rocksdb::WritableFile>> VectorLSMMetadataOpenFile(
-    rocksdb::Env* env, const std::string& dir, size_t file_index) {
+Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
+    Env* env, const std::string& dir, size_t file_index) {
   auto fname = std::to_string(file_index) + kMetaFileSuffix;
   auto full_path = JoinPathSegments(dir, fname);
-  std::unique_ptr<rocksdb::WritableFile> result;
-  rocksdb::EnvOptions options;
-  RETURN_NOT_OK(env->NewWritableFile(full_path, &result, options));
+  std::unique_ptr<WritableFile> result;
+  RETURN_NOT_OK(env->NewWritableFile(full_path, &result));
   return result;
 }
 
@@ -141,7 +138,7 @@ Result<std::unique_ptr<rocksdb::WritableFile>> VectorLSMMetadataOpenFile(
 //  - 4 bytes - size of serialized update body.
 //  - serialized update body.
 //  - CRC sum for the serialized update body.
-Status VectorLSMMetadataAppendUpdate(rocksdb::WritableFile& file, const VectorLSMUpdatePB& update) {
+Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB& update) {
   constexpr auto kHeaderSize = sizeof(EntrySizeType);
   std::string bytes;
   bytes.append(kHeaderSize, '\0');

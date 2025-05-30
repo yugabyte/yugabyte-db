@@ -58,11 +58,13 @@ PIDFILE=${YB_HOME_DIR}/collect_metrics.pid
 if [ -f $PIDFILE ]
 then
   PID=$(cat "$PIDFILE")
-  PID_CHECK_STATUS=$(ps -p $PID > /dev/null 2>&1; echo $?)
+  PID_CHECK_STATUS=$(ps -f -p $PID | grep collect_metrics.sh > /dev/null 2>&1; echo $?)
   if [ "$PID_CHECK_STATUS" -eq 0 ]
   then
     echo "Process $PID already running"
     exit 1
+  else
+    rm -f "$PIDFILE"
   fi
 fi
 

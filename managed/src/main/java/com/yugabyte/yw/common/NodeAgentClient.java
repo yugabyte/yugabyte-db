@@ -15,6 +15,8 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
+import com.yugabyte.yw.common.NodeAgentClient.ChannelFactory;
+import com.yugabyte.yw.common.NodeAgentClient.GrpcClientRequestInterceptor;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -25,28 +27,46 @@ import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.YBAError;
+import com.yugabyte.yw.nodeagent.AbortTaskRequest;
+import com.yugabyte.yw.nodeagent.ConfigureServerInput;
+import com.yugabyte.yw.nodeagent.ConfigureServerOutput;
+import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
+import com.yugabyte.yw.nodeagent.ConfigureServiceOutput;
+import com.yugabyte.yw.nodeagent.DescribeTaskRequest;
+import com.yugabyte.yw.nodeagent.DescribeTaskResponse;
+import com.yugabyte.yw.nodeagent.DownloadFileRequest;
+import com.yugabyte.yw.nodeagent.DownloadFileResponse;
+import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
+import com.yugabyte.yw.nodeagent.DownloadSoftwareOutput;
+import com.yugabyte.yw.nodeagent.ExecuteCommandRequest;
+import com.yugabyte.yw.nodeagent.ExecuteCommandResponse;
+import com.yugabyte.yw.nodeagent.FileInfo;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorOutput;
+import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
+import com.yugabyte.yw.nodeagent.InstallSoftwareOutput;
+import com.yugabyte.yw.nodeagent.InstallYbcInput;
+import com.yugabyte.yw.nodeagent.InstallYbcOutput;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentStub;
-import com.yugabyte.yw.nodeagent.Server.AbortTaskRequest;
-import com.yugabyte.yw.nodeagent.Server.DescribeTaskRequest;
-import com.yugabyte.yw.nodeagent.Server.DescribeTaskResponse;
-import com.yugabyte.yw.nodeagent.Server.DownloadFileRequest;
-import com.yugabyte.yw.nodeagent.Server.DownloadFileResponse;
-import com.yugabyte.yw.nodeagent.Server.ExecuteCommandRequest;
-import com.yugabyte.yw.nodeagent.Server.ExecuteCommandResponse;
-import com.yugabyte.yw.nodeagent.Server.FileInfo;
-import com.yugabyte.yw.nodeagent.Server.PingRequest;
-import com.yugabyte.yw.nodeagent.Server.PingResponse;
-import com.yugabyte.yw.nodeagent.Server.PreflightCheckInput;
-import com.yugabyte.yw.nodeagent.Server.PreflightCheckOutput;
-import com.yugabyte.yw.nodeagent.Server.SubmitTaskRequest;
-import com.yugabyte.yw.nodeagent.Server.SubmitTaskResponse;
-import com.yugabyte.yw.nodeagent.Server.UpdateRequest;
-import com.yugabyte.yw.nodeagent.Server.UpdateResponse;
-import com.yugabyte.yw.nodeagent.Server.UpgradeInfo;
-import com.yugabyte.yw.nodeagent.Server.UploadFileRequest;
-import com.yugabyte.yw.nodeagent.Server.UploadFileResponse;
+import com.yugabyte.yw.nodeagent.PingRequest;
+import com.yugabyte.yw.nodeagent.PingResponse;
+import com.yugabyte.yw.nodeagent.PreflightCheckInput;
+import com.yugabyte.yw.nodeagent.PreflightCheckOutput;
+import com.yugabyte.yw.nodeagent.ServerControlInput;
+import com.yugabyte.yw.nodeagent.ServerControlOutput;
+import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
+import com.yugabyte.yw.nodeagent.ServerGFlagsOutput;
+import com.yugabyte.yw.nodeagent.SetupCGroupInput;
+import com.yugabyte.yw.nodeagent.SetupCGroupOutput;
+import com.yugabyte.yw.nodeagent.SubmitTaskRequest;
+import com.yugabyte.yw.nodeagent.SubmitTaskResponse;
+import com.yugabyte.yw.nodeagent.UpdateRequest;
+import com.yugabyte.yw.nodeagent.UpdateResponse;
+import com.yugabyte.yw.nodeagent.UpgradeInfo;
+import com.yugabyte.yw.nodeagent.UploadFileRequest;
+import com.yugabyte.yw.nodeagent.UploadFileResponse;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
@@ -97,6 +117,7 @@ import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -188,8 +209,8 @@ public class NodeAgentClient {
 
   @Builder
   public static class NodeAgentUpgradeParam {
-    private String certDir;
-    private Path packagePath;
+    @NonNull private String certDir;
+    @Nullable private Path packagePath;
   }
 
   /** This class intercepts the client request to add the authorization token header. */
@@ -377,7 +398,7 @@ public class NodeAgentClient {
       setCorrelationId();
       this.throwable = throwable;
       latch.countDown();
-      log.error("Error encountered for {} - {}", getId(), throwable.getMessage());
+      log.error("Error encountered for {} - {}", getId(), throwable.getMessage(), throwable);
     }
 
     @Override
@@ -517,7 +538,7 @@ public class NodeAgentClient {
       try {
         super.onNext(response);
         if (response.hasError()) {
-          com.yugabyte.yw.nodeagent.Server.Error error = response.getError();
+          com.yugabyte.yw.nodeagent.Error error = response.getError();
           onError(
               new RuntimeException(
                   String.format("Code: %d, Error: %s", error.getCode(), error.getMessage())));
@@ -838,14 +859,14 @@ public class NodeAgentClient {
   public void startUpgrade(NodeAgent nodeAgent, NodeAgentUpgradeParam param) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
+    UpgradeInfo.Builder builder = UpgradeInfo.newBuilder().setCertDir(param.certDir);
+    if (param.packagePath != null) {
+      builder.setPackagePath(param.packagePath.toString());
+    }
     stub.update(
         UpdateRequest.newBuilder()
             .setState(State.UPGRADE.name())
-            .setUpgradeInfo(
-                UpgradeInfo.newBuilder()
-                    .setPackagePath(param.packagePath.toString())
-                    .setCertDir(param.certDir)
-                    .build())
+            .setUpgradeInfo(builder.build())
             .build());
   }
 
@@ -871,11 +892,121 @@ public class NodeAgentClient {
   public PreflightCheckOutput runPreflightCheck(
       NodeAgent nodeAgent, PreflightCheckInput input, String user) {
     SubmitTaskRequest.Builder builder =
-        SubmitTaskRequest.newBuilder().setPreflightCheckInput(input);
+        SubmitTaskRequest.newBuilder()
+            .setPreflightCheckInput(input)
+            .setTaskId(UUID.randomUUID().toString());
     if (StringUtils.isNotBlank(user)) {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), PreflightCheckOutput.class);
+  }
+
+  public ConfigureServiceOutput runConfigureEarlyoom(
+      NodeAgent nodeAgent, ConfigureServiceInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(String.format("ConfigureEarlyoom-%s", UUID.randomUUID().toString()))
+            .setConfigureServiceInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ConfigureServiceOutput.class);
+  }
+
+  public ServerControlOutput runServerControl(
+      NodeAgent nodeAgent, ServerControlInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setServerControlInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ServerControlOutput.class);
+  }
+
+  public ConfigureServerOutput runConfigureServer(
+      NodeAgent nodeAgent, ConfigureServerInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setConfigureServerInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ConfigureServerOutput.class);
+  }
+
+  public InstallSoftwareOutput runInstallSoftware(
+      NodeAgent nodeAgent, InstallSoftwareInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setInstallSoftwareInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), InstallSoftwareOutput.class);
+  }
+
+  public DownloadSoftwareOutput runDownloadSoftware(
+      NodeAgent nodeAgent, DownloadSoftwareInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setDownloadSoftwareInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), DownloadSoftwareOutput.class);
+  }
+
+  public InstallYbcOutput runInstallYbcSoftware(
+      NodeAgent nodeAgent, InstallYbcInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setInstallYbcInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), InstallYbcOutput.class);
+  }
+
+  public InstallOtelCollectorOutput runInstallOtelCollector(
+      NodeAgent nodeAgent, InstallOtelCollectorInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setInstallOtelCollectorInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), InstallOtelCollectorOutput.class);
+  }
+
+  public SetupCGroupOutput runSetupCGroupInput(
+      NodeAgent nodeAgent, SetupCGroupInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setSetupCGroupInput(input)
+            .setTaskId(UUID.randomUUID().toString());
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), SetupCGroupOutput.class);
+  }
+
+  public ServerGFlagsOutput runServerGFlags(
+      NodeAgent nodeAgent, ServerGFlagsInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setServerGFlagsInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), ServerGFlagsOutput.class);
   }
 
   public synchronized void cleanupCachedClients() {
@@ -889,6 +1020,7 @@ public class NodeAgentClient {
   // Common method to submit async task and wait for the result.
   private <T> T runAsyncTask(
       NodeAgent nodeAgent, SubmitTaskRequest request, Class<T> responseClass) {
+    Objects.requireNonNull(request.getTaskId(), "Task ID must be set");
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     SubmitTaskResponse response = NodeAgentGrpc.newBlockingStub(channel).submitTask(request);
     String taskId = response.getTaskId();

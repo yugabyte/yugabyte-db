@@ -164,8 +164,8 @@ class VectorIterator : public InternalIterator {
     assert(keys_.size() == values_.size());
   }
 
-  void ExpectSeekToPrefixOnly() {
-    expect_seek_to_prefix_only_ = true;
+  void ExpectSeekToPrefixOnly(bool value) {
+    expect_seek_to_prefix_only_ = value;
   }
 
   const KeyValueEntry& SeekToFirst() override {
@@ -363,6 +363,10 @@ class SleepingBackgroundTask {
         should_sleep_(true),
         done_with_sleep_(false),
         sleeping_(false) {}
+
+  ~SleepingBackgroundTask() {
+    WakeUp();
+  }
 
   bool IsSleeping() {
     MutexLock l(&mutex_);

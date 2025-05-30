@@ -143,6 +143,11 @@ METRIC_DEFINE_gauge_uint64(cdcsdk, cdcsdk_last_sent_physicaltime, "CDCSDK Last R
     "Physical Time of the Last Read Operation from a CDCSDK GetChanges request",
     {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
 
+METRIC_DEFINE_gauge_uint64(cdcsdk, cdcsdk_flush_lag, "CDCSDK flush Lag",
+    yb::MetricUnit::kMicroseconds,
+    "Lag between last committed record in the WAL and the replication slot's restart time.",
+    {0 /* zero means we don't expose it as counter */, yb::AggregationFunction::kMax});
+
 // CDC Server Metrics
 METRIC_DEFINE_counter(server, cdc_rpc_proxy_count, "CDC Rpc Proxy Count", yb::MetricUnit::kRequests,
   "Number of CDC GetChanges requests that required proxy forwarding");
@@ -192,6 +197,7 @@ CDCSDKTabletMetrics::CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& enti
       MINIT(cdcsdk_change_event_count),
       GINIT(cdcsdk_expiry_time_ms),
       GINIT(cdcsdk_last_sent_physicaltime),
+      GINIT(cdcsdk_flush_lag),
       entity_(entity) {}
 
 void CDCSDKTabletMetrics::ClearMetrics() {
@@ -200,6 +206,7 @@ void CDCSDKTabletMetrics::ClearMetrics() {
   cdcsdk_change_event_count.reset();
   cdcsdk_expiry_time_ms->set_value(0);
   cdcsdk_last_sent_physicaltime->set_value(0);
+  cdcsdk_flush_lag->set_value(0);
 }
 
 Result<std::string> CDCSDKTabletMetrics::TEST_GetAttribute(const std::string& key) const {

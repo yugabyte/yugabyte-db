@@ -65,7 +65,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
       bool is_paused);
   ~XClusterPoller();
 
-  void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
+  void Init(
+      bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, bool is_ddl_queue_client = false);
   void InitDDLQueuePoller(
       bool use_local_tserver, rocksdb::RateLimiter* rate_limiter,
       const NamespaceId& source_namespace_id, const NamespaceName& target_namespace_name,
@@ -133,7 +134,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
       EXCLUDES(data_mutex_);
   void VerifyApplyChangesResponse(XClusterOutputClientResponse response);
   void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
-  void UpdateSafeTime(int64 new_time);
+  void UpdateSafeTime(HybridTime new_time);
   void InvalidateSafeTime();
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);

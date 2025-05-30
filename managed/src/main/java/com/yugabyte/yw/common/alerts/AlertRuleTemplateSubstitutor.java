@@ -39,6 +39,7 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
   public static final String AFFECTED_NODE_IDENTIFIERS = "affected_node_identifiers";
   public static final String AFFECTED_VOLUMES = "affected_volumes";
   public static final String AFFECTED_INSTANCE_ADDRS = "affected_instance_addrs";
+  public static final String AFFECTED_BACKUP_LOCATIONS = "affected_backup_locations";
 
   private final Map<String, String> labels;
 

@@ -21,25 +21,13 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 bool
 ShouldAcquireYBAdvisoryLocks()
 {
-	return IsYugaByteEnabled() && yb_enable_advisory_locks;
-}
-
-static void
-YbRaiseAdvisoryLocksNotSupported(void)
-{
-	if (!yb_silence_advisory_locks_not_supported_error)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("advisory locks are not yet implemented"),
-				 errhint("If the app doesn't need strict functionality, this error can be silenced "
-						 "by using the GFlag yb_silence_advisory_locks_not_supported_error. "
-						 "See https://github.com/yugabyte/yugabyte-db/issues/3642 for details.")));
+	return IsYugaByteEnabled() && !yb_silence_advisory_locks_not_supported_error;
 }
 
 YbcAdvisoryLockId
@@ -58,11 +46,27 @@ GetYBAdvisoryLockId(LOCKTAG tag)
 	return lock;
 }
 
+/*  Returns true if lock is released, false if lock is not found. */
+bool
+HandleStatusIgnoreLockNotFound(YbcStatus status, YbcAdvisoryLockMode mode)
+{
+	if (status && YBCStatusPgsqlError(status) == ERRCODE_YB_TXN_LOCK_NOT_FOUND)
+	{
+		const char *lock_type = (mode == YB_ADVISORY_LOCK_SHARED) ? "ShareLock" : "ExclusiveLock";
+
+		elog(WARNING, "you don't own a lock of type %s", lock_type);
+		YBCFreeStatus(status);
+		return false;
+	}
+	HandleYBStatus(status);
+	return true;
+}
+
 /*  Returns true if lock is acquired, false if lock is skipped. */
 bool
 HandleStatusIgnoreSkipLocking(YbcStatus status)
 {
-	if (status && YBCIsTxnSkipLockingError(YBCStatusTransactionError(status)))
+	if (status && YBCStatusPgsqlError(status) == ERRCODE_YB_TXN_SKIP_LOCKING)
 	{
 		YBCFreeStatus(status);
 		return false;
@@ -76,7 +80,6 @@ do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
 		PG_RETURN_BOOL(HandleStatusIgnoreSkipLocking(YBCAcquireAdvisoryLock( \
 			GetYBAdvisoryLockId(tag), mode, /* wait= */ false, session_level))); \
-	YbRaiseAdvisoryLocksNotSupported(); \
 } while(0)
 
 #define AcquireYBAdvisoryLock(tag, mode, session_level) \
@@ -87,15 +90,13 @@ do { \
 			GetYBAdvisoryLockId(tag), mode, /* wait= */ true, session_level)); \
 		PG_RETURN_VOID(); \
 	} \
-	YbRaiseAdvisoryLocksNotSupported(); \
 } while(0)
 
 #define ReleaseYBAdvisoryLock(tag, mode) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
-		PG_RETURN_BOOL(HandleStatusIgnoreSkipLocking( \
-			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode))); \
-	YbRaiseAdvisoryLocksNotSupported(); \
+		PG_RETURN_BOOL(HandleStatusIgnoreLockNotFound( \
+			YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(tag), mode), mode)); \
 } while(0)
 
 /*
@@ -1169,8 +1170,6 @@ pg_advisory_unlock_all(PG_FUNCTION_ARGS)
 		HandleYBStatus(YBCReleaseAllAdvisoryLocks(MyDatabaseId));
 		PG_RETURN_VOID();
 	}
-	YbRaiseAdvisoryLocksNotSupported();
 	LockReleaseSession(USER_LOCKMETHOD);
-
 	PG_RETURN_VOID();
 }

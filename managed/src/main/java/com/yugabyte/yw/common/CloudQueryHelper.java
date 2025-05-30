@@ -82,8 +82,10 @@ public class CloudQueryHelper extends DevopsBase {
 
     commandArgs.add("--num_volumes");
     commandArgs.add(numVolumes);
-    commandArgs.add("--volume_type");
-    commandArgs.add(volumeType);
+    if (volumeType != null) {
+      commandArgs.add("--volume_type");
+      commandArgs.add(volumeType);
+    }
     if (cloudType == Common.CloudType.aws) {
       commandArgs.add("--region");
       commandArgs.add(regionName);

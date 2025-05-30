@@ -3,5 +3,5 @@
 ####################################################################################################
 # Postgres Testsuites: This suite includes tests on publication statements.
 ####################################################################################################
-test: yb_pg_publication
-test: yb_publication
+test: yb.port.publication
+test: yb.orig.publication

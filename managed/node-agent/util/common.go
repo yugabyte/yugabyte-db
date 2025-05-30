@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	pb "node-agent/generated/service"
 	"os"
 	"os/user"
 	"path"
@@ -23,6 +22,7 @@ const (
 	// Node agent common constants.
 	DefaultConfig           = "config"
 	preflightCheckScript    = "/pkg/scripts/preflight_check.sh"
+	earlyoomInstallScript   = "/pkg/scripts/earlyoom-installer.sh"
 	nodeAgentDir            = "/node-agent"
 	configDir               = "/config"
 	certsDir                = "/cert"
@@ -112,9 +112,6 @@ type ContextKey string
 // Handler is a generic handler func.
 type Handler func(context.Context) (any, error)
 
-// RPCResponseConverter is the converter for response in async executor.
-type RPCResponseConverter func(any) (*pb.DescribeTaskResponse, error)
-
 // UserDetail is a placeholder for OS user.
 type UserDetail struct {
 	User      *user.User
@@ -135,13 +132,14 @@ func ExtractBaseURL(value string) (string, error) {
 	var baseUrl string
 	if parsedUrl.Port() == "" {
 		baseUrl = fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Hostname())
+	} else {
+		baseUrl = fmt.Sprintf(
+			"%s://%s:%s",
+			parsedUrl.Scheme,
+			parsedUrl.Hostname(),
+			parsedUrl.Port(),
+		)
 	}
-	baseUrl = fmt.Sprintf(
-		"%s://%s:%s",
-		parsedUrl.Scheme,
-		parsedUrl.Hostname(),
-		parsedUrl.Port(),
-	)
 	return baseUrl, nil
 }
 
@@ -153,11 +151,6 @@ func PlatformGetProvidersEndpoint(cuuid string) string {
 // Returns the platform endpoint for fetching the provider.
 func PlatformGetProviderEndpoint(cuuid, puuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers/%s", cuuid, puuid)
-}
-
-// Returns the platform endpoint for fetching access keys for a provider.
-func PlatformGetAccessKeysEndpoint(cuuid, puuid string) string {
-	return fmt.Sprintf("/api/customers/%s/providers/%s/access_keys", cuuid, puuid)
 }
 
 // Returns the platform endpoint for fetching Users.
@@ -266,6 +259,12 @@ func PreflightCheckPath() string {
 	return MustGetHomeDirectory() + preflightCheckScript
 }
 
+// Returns the Path to Install Earlyoom script
+// which should be present in  ~/scripts folder.
+func EarlyoomScriptPath() string {
+	return MustGetHomeDirectory() + earlyoomInstallScript
+}
+
 // Returns the config directory path.
 // All the config files should
 // be present in this directory.
@@ -300,6 +299,10 @@ func UpgradeScriptPath() string {
 
 func VersionFile() string {
 	return MustGetHomeDirectory() + "/pkg/version_metadata.json"
+}
+
+func TemplateDir() string {
+	return MustGetHomeDirectory() + "/pkg/templates"
 }
 
 func IsDigits(str string) bool {

@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -367,6 +368,33 @@ public class UniverseActionsHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.UpdateLoadBalancerConfig,
+        universe.getName());
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.getUniverseUUID(),
+        universe.getName());
+    return taskUUID;
+  }
+
+  public UUID updateAdditionalServicesState(
+      Customer customer, Universe universe, AdditionalServicesStateData data) {
+    LOG.info(
+        "Update additional services state: {} {}  ", universe.getUniverseUUID(), Json.toJson(data));
+    UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+    params.additionalServicesStateData = data;
+    UUID taskUUID = commissioner.submit(TaskType.UpdateOOMServiceState, params);
+    LOG.info(
+        "Submitted additional services state {} : {}, task uuid = {}.",
+        universe.getUniverseUUID(),
+        universe.getName(),
+        taskUUID);
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.UpdateOOMServiceState,
         universe.getName());
     LOG.info(
         "Saved task uuid {} in customer tasks table for universe {} : {}.",

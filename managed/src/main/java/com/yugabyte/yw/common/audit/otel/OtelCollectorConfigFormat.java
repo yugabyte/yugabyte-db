@@ -119,6 +119,7 @@ public class OtelCollectorConfigFormat {
     private boolean enabled;
     private String initial_interval;
     private String max_interval;
+    private String max_elapsed_time;
   }
 
   @Data
@@ -142,6 +143,13 @@ public class OtelCollectorConfigFormat {
   public static class DataDogApiConfig {
     private String site;
     private String key;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class LokiExporter extends Exporter {
+    private String endpoint;
+    private Map<String, String> headers;
   }
 
   @Data

@@ -25,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/rocksdb/db.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -1472,12 +1473,18 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Status CDCSDKYsqlTest::InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id) {
+      const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range) {
     InitVirtualWALForCDCRequestPB init_req;
     init_req.set_stream_id(stream_id.ToString());
     init_req.set_session_id(session_id);
     for (const auto& table_id : table_ids) {
       init_req.add_table_id(table_id);
+    }
+
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range) {
+      auto slot_hash_range_req = init_req.mutable_slot_hash_range();
+      slot_hash_range_req->set_start_range(slot_hash_range->start_range);
+      slot_hash_range_req->set_end_range(slot_hash_range->end_range);
     }
 
     RETURN_NOT_OK(WaitFor(
@@ -1572,7 +1579,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   Status CDCSDKYsqlTest::UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t& session_id) {
+      uint64_t session_id) {
     UpdatePublicationTableListRequestPB req;
     UpdatePublicationTableListResponsePB resp;
 
@@ -1913,9 +1920,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       if (get_changes_result.ok()) {
         change_resp = *get_changes_result;
       } else {
-        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
-                   << tablets[tablet_idx].tablet_id()
-                   << ", status: " << get_changes_result.status();
+        LOG(WARNING) << "Encountered error while calling GetChanges on tablet: "
+                     << tablets[tablet_idx].tablet_id()
+                     << ", status: " << get_changes_result.status();
         break;
       }
 
@@ -1976,7 +1983,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   Result<CDCSDKYsqlTest::GetAllPendingChangesResponse>
   CDCSDKYsqlTest::GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
-      bool init_virtual_wal, const uint64_t session_id, bool allow_sending_feedback) {
+      bool init_virtual_wal, const uint64_t session_id, bool allow_sending_feedback,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range) {
     // We will keep on consuming changes until we get the entire txn i.e COMMIT record of the
     // last txn. This indicates that even though we might have received the expecpted DML
     // records, we might still continue calling GetConsistentChanges until we receive the
@@ -1984,9 +1992,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
     GetAllPendingChangesResponse resp;
     if (init_virtual_wal) {
-      Status s = InitVirtualWAL(stream_id, table_ids, session_id);
+      Status s = InitVirtualWAL(stream_id, table_ids, session_id, std::move(slot_hash_range));
       if (!s.ok()) {
-        LOG(ERROR) << "Error while trying to initialize virtual WAL: " << s;
+        LOG(WARNING) << "Error while trying to initialize virtual WAL: " << s;
         RETURN_NOT_OK(s);
       }
     }
@@ -2005,8 +2013,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           if (get_changes_result.ok()) {
             change_resp = *get_changes_result;
           } else {
-            LOG(ERROR) << "Encountered error while calling GetConsistentChanges on stream: "
-                       << stream_id << ", status: " << get_changes_result.status();
+            LOG(WARNING) << "Encountered error while calling GetConsistentChanges on stream: "
+                         << stream_id << ", status: " << get_changes_result.status();
             RETURN_NOT_OK(get_changes_result);
           }
 
@@ -2047,7 +2055,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
               auto result =
                   UpdateAndPersistLSN(stream_id, confirmed_flush_lsn, restart_lsn, session_id);
               if (!result.ok()) {
-                LOG(ERROR) << "UpdateRestartLSN failed: " << result;
+                LOG(WARNING) << "UpdateRestartLSN failed: " << result;
                 RETURN_NOT_OK(result);
               }
             }
@@ -2095,9 +2103,9 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       if (get_changes_result.ok()) {
         change_resp = *get_changes_result;
       } else {
-        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
-                   << tablets[tablet_idx].tablet_id()
-                   << ", status: " << get_changes_result.status();
+        LOG(WARNING) << "Encountered error while calling GetChanges on tablet: "
+                     << tablets[tablet_idx].tablet_id()
+                     << ", status: " << get_changes_result.status();
         break;
       }
 
@@ -2520,19 +2528,28 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   }
 
   Status CDCSDKYsqlTest::StepDownLeader(size_t new_leader_index, const TabletId tablet_id) {
-    Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
-    if (!status.ok()) {
-      return status;
-    }
+    std::string error_message;
 
-    status = yb_admin_client_->LeaderStepDownWithNewLeader(
-        tablet_id,
-        test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
-    if (!status.ok()) {
-      return status;
-    }
-    SleepFor(MonoDelta::FromMilliseconds(500));
-    return Status::OK();
+    return WaitFor(
+        [&]() -> Result<bool> {
+          Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
+          if (!status.ok()) {
+            error_message = status.ToString();
+            return false;
+          }
+
+          status = yb_admin_client_->LeaderStepDownWithNewLeader(
+              tablet_id,
+              test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
+          if (!status.ok()) {
+            error_message = status.ToString();
+            return false;
+          }
+
+          SleepFor(MonoDelta::FromMilliseconds(500));
+          return true;
+        },
+        MonoDelta::FromSeconds(60), error_message);
   }
 
   Status CDCSDKYsqlTest::CreateSnapshot(const NamespaceName& ns) {
@@ -2886,8 +2903,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         total_seen_records += change_resp.cdc_sdk_proto_records_size();
         first_iter = false;
       } else {
-        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
-                   << tablets[0].tablet_id();
+        LOG(WARNING) << "Encountered error while calling GetChanges on tablet: "
+                     << tablets[0].tablet_id();
         break;
       }
     }

@@ -60,26 +60,6 @@
       }
     }
 
-    .replication-info-banners-container {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-
-      margin: 30px 0 20px;
-      .replication-info-banner-content {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 10px;
-
-        width: 100%;
-
-        .restart-replication-button {
-          margin-left: auto;
-        }
-      }
-    }
-
     .replication-status {
       background: colors.$YB_WHITE;
       padding: 12px;

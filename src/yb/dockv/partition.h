@@ -315,7 +315,7 @@ class PartitionSchema {
   //
   // If partition_key is empty, encoded partition key is also empty and that means corresponding
   // partition boundary is absent (tablet is the first/last in table key range).
-  Result<std::string> GetEncodedPartitionKey(const std::string& partition_key);
+  Result<std::string> GetEncodedPartitionKey(const std::string& partition_key) const;
   static Result<std::string> GetEncodedPartitionKey(
     const std::string& partition_key, const PartitionSchemaPB& partition_schema);
 

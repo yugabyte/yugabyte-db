@@ -155,7 +155,7 @@ std::string CassandraValue::ToString() const {
       return result;
     }
     default:
-      return "Not supported: " + std::to_string(to_underlying(value_type));
+      return "Not supported: " + std::to_string(std::to_underlying(value_type));
   }
 }
 

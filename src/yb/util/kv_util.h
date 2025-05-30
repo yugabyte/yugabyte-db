@@ -26,6 +26,10 @@ namespace yb {
 using KeyBuffer = ByteBuffer<0x40>;
 using ValueBuffer = ByteBuffer<0x100>;
 
+inline std::string AsDebugHexString(const KeyBuffer& bound) {
+  return AsDebugHexString(bound.AsSlice());
+}
+
 namespace util {
 
 // We are flipping the sign bit of 64-bit integers appearing as object keys in a document so that

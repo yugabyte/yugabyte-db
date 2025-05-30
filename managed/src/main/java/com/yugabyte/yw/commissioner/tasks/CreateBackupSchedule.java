@@ -38,7 +38,7 @@ public class CreateBackupSchedule extends BackupScheduleBase {
     super.validateParams(isFirstTry);
     taskParams()
         .scheduleParams
-        .validateExistingSchedule(isFirstTry, taskParams().getCustomerUUID());
+        .validateExistingSchedule(taskParams().getCustomerUUID(), isFirstTry);
     if (isFirstTry) {
       Universe universe = getUniverse();
       taskParams().scheduleParams.validateScheduleParams(backupHelper, universe);

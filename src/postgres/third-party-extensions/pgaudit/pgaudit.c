@@ -40,7 +40,7 @@
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 PG_MODULE_MAGIC;
@@ -349,7 +349,7 @@ stack_push()
      * free'd on stack_pop, or by our callback when the parent context is
      * destroyed.
      */
-    contextAudit = AllocSetContextCreate(GetCurrentMemoryContext(),
+    contextAudit = AllocSetContextCreate(CurrentMemoryContext,
                                          "pgaudit stack context",
                                          ALLOCSET_DEFAULT_SIZES);
 
@@ -510,6 +510,9 @@ log_audit_event(AuditEventStackItem *stackItem)
     if (creating_extension)
         return;
 
+    if (yb_is_calling_internal_sql_for_ddl)
+        return;
+
     /* If this event has already been logged don't log it again */
     if (stackItem->auditEvent.logged)
         return;
@@ -551,12 +554,10 @@ log_audit_event(AuditEventStackItem *stackItem)
                 case T_AlterRoleStmt:
 
                     if (stackItem->auditEvent.commandText != NULL)
-                    {
-                        CommandTag command_tag = YbParseCommandTag(stackItem->auditEvent.commandText);
-                        stackItem->auditEvent.commandText = YbRedactPasswordIfExists(stackItem->auditEvent.commandText,
-                            command_tag);
-                    }
-                    switch_fallthrough();
+                        stackItem->auditEvent.commandText =
+                            YbGetRedactedQueryString(stackItem->auditEvent.commandText,
+                                                     NULL /* redacted_query_len */ );
+                    yb_switch_fallthrough();
 
                 /* Fall through */
 
@@ -1690,7 +1691,7 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
 
     /* Switch memory context for query */
     contextQuery = AllocSetContextCreate(
-                            GetCurrentMemoryContext(),
+                            CurrentMemoryContext,
                             "pgaudit_func_ddl_command_end temporary context",
                             ALLOCSET_DEFAULT_SIZES);
     contextOld = MemoryContextSwitchTo(contextQuery);
@@ -1801,7 +1802,7 @@ pgaudit_sql_drop(PG_FUNCTION_ARGS)
 
     /* Switch memory context for the query */
     contextQuery = AllocSetContextCreate(
-                            GetCurrentMemoryContext(),
+                            CurrentMemoryContext,
                             "pgaudit_func_ddl_command_end temporary context",
                             ALLOCSET_DEFAULT_SIZES);
     contextOld = MemoryContextSwitchTo(contextQuery);

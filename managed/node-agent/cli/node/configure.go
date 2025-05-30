@@ -464,12 +464,12 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	}
 	util.ConsoleLogger().Infof(ctx, "Completed Node Agent Configuration")
 	util.ConsoleLogger().Infof(ctx, "Checking for existing Node Agent with IP %s", nodeIp)
-	err = server.ValidateNodeAgentIfExists(server.Context(), apiToken)
+	err = server.ValidateNodeAgentIfExists(ctx, apiToken)
 	if err == nil {
 		util.ConsoleLogger().Infof(ctx, "Node Agent is already registered with IP %s", nodeIp)
 	} else if err == util.ErrNotExist {
 		util.ConsoleLogger().Infof(ctx, "Registering Node Agent with IP %s", nodeIp)
-		err = server.RegisterNodeAgent(server.Context(), apiToken)
+		err = server.RegisterNodeAgent(ctx, apiToken)
 		if err != nil {
 			util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
 		}

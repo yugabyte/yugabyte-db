@@ -35,10 +35,10 @@ import json
 import logging
 import os
 import re
-import shlex
 import subprocess
 import sys
 import time
+from typing import List
 
 try:
     import html
@@ -50,7 +50,7 @@ try:
     from builtins import RuntimeError
 except Exception as e:
     from exceptions import RuntimeError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 NODE_INFO = '{{NODE_INFO}}'
@@ -60,9 +60,11 @@ TSERVER = "yb-tserver"
 POSTMASTER = "yb-postmaster"
 POSTGRES = "postgres"
 OTEL_COLLECTOR = "otelcol-contrib"
+OTEL_COLLECTOR_HEALTH_ENDPOINT = "http://localhost:13133/health"
 YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
 CONNECTION_POOLING_MANAGER = "odyssey"
+EARLYOOM = "earlyoom"
 TOTAL = "total"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
@@ -125,6 +127,10 @@ HEALTH_CHECK_POSTMASTER_BOOT_TIME_SEC = MetricDefinition(
 HEALTH_CHECK_CONNECTION_POOLING_MANAGER_BOOT_TIME_SEC = MetricDefinition(
     "ybp_health_check_connection_pooling_manager_boot_time_sec",
     "Connection pooling manager process boot time in seconds from epoch",
+    "sec")
+HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC = MetricDefinition(
+    "ybp_health_check_otel_collector_boot_time_sec",
+    "Otel Collector process boot time in seconds from epoch",
     "sec")
 HEALTH_CHECK_NODE_MASTER_FATAL_LOGS = MetricDefinition(
     "ybp_health_check_node_master_fatal_logs",
@@ -260,6 +266,12 @@ YB_NODE_UNEXPECTED_TSERVER_RUNNING = MetricDefinition(
 YB_NODE_UNEXPECTED_MASTER_RUNNING = MetricDefinition(
     "yb_node_unexpected_master_running",
     "Master is running on node (but should not)")
+YB_NODE_CLOCKBOUND_STATUS = MetricDefinition(
+    "yb_node_clockbound_status",
+    "Check whether clockbound is synchronized")
+YB_EARLYOOM_KILLS_COUNT = MetricDefinition(
+    "yb_earlyoom_kills_count",
+    "Number of process kills initiated by earlyoom during last hour")
 
 ###################################################################################################
 # Reporting
@@ -551,7 +563,8 @@ class NodeChecker():
                  master_http_port, tserver_http_port, ysql_server_http_port, node_version,
                  is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
-                 master_rpc_port, tserver_rpc_port, verbose, clock_service_required):
+                 master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
+                 enable_earlyoom, topk_other_processes, topk_mem_threshold_percent):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -588,7 +601,10 @@ class NodeChecker():
         self.temp_output_file = temp_output_file
         self.ddl_atomicity_check = ddl_atomicity_check
         self.master_leader_url = master_leader_url
+        self.enable_earlyoom = enable_earlyoom
         self.verbose = verbose
+        self.topk_other_processes = topk_other_processes
+        self.topk_mem_threshold_percent = topk_mem_threshold_percent
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -600,8 +616,8 @@ class NodeChecker():
                     return js
                 self.verbose_log("skipping prev stats because of version")
                 return {}
-        except IOError as ie:
-            logging.info("Failed to load prev process results")
+        except Exception as ie:
+            logging.error("Failed to load prev per process results: {}".format(str(ie)))
             return {}
 
     def _dump_per_process_results(self):
@@ -609,7 +625,7 @@ class NodeChecker():
             with open(self.temp_output_file, 'w') as f:
                 self.current_process_results['version'] = PER_PROCESS_VERSION
                 json.dump(self.current_process_results, f)
-         except IOError as ie:
+         except Exception as ie:
             logging.error("Failed to write current per process results: {}".format(str(ie)))
 
     def _new_entry(self, message, process=None):
@@ -1065,7 +1081,7 @@ class NodeChecker():
 
     def check_uptime_for_process(self, process):
         logging.info("Checking uptime for {} process {}".format(self.node, process))
-        if process in [MASTER, TSERVER, CONNECTION_POOLING_MANAGER]:
+        if process in [MASTER, TSERVER, CONNECTION_POOLING_MANAGER, OTEL_COLLECTOR]:
             e = self._new_entry("Uptime", process)
         else:
             e = self._new_metric_entry("Uptime", process)
@@ -1086,6 +1102,8 @@ class NodeChecker():
                 hc_metric_definition = HEALTH_CHECK_TSERVER_BOOT_TIME_SEC
             elif process == CONNECTION_POOLING_MANAGER:
                 hc_metric_definition = HEALTH_CHECK_CONNECTION_POOLING_MANAGER_BOOT_TIME_SEC
+            elif process == OTEL_COLLECTOR:
+                hc_metric_definition = HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC
             else:
                 hc_metric_definition = HEALTH_CHECK_POSTMASTER_BOOT_TIME_SEC
 
@@ -1609,7 +1627,6 @@ class NodeChecker():
 
 
     def check_ddl_atomicity_internal(self, recheck_table_uuids):
-        logging.info("Checking DDL atomicity on node {}".format(self.node))
         e = self._new_entry("DDL atomicity")
         metric = Metric.from_definition(YB_DDL_ATOMICITY_CHECK)
         tables_with_errors = []
@@ -1774,13 +1791,16 @@ class NodeChecker():
                     try:
                         table_schema_json = json.loads(table_schema_response)
                     except Exception as ex:
+                        # Somehow this can happen during DDL operations.
+                        # We will recheck once, and if happens again - raise an error.
                         logging.warning("Table HTTP API response is not a valid json: %s",
                                          table_schema_response)
-                        metric.add_value(0)
-                        return (e.fill_and_return_entry(
-                            ['Table HTTP API response is not a valid json'],
-                            has_error=True,
-                            metrics=[metric]), [])
+                        tables_with_errors.append(tableid)
+                        errors.append(("Table {} with oid {} and uuid {} exists in {} but master "
+                                       "leader API returns wrong table details - {}")
+                                       .format(tablename, pg_oid, tableid, dbname,
+                                               table_schema_response))
+                        continue
                     columns = [html.unescape(
                         column['column']) for column in table_schema_json["columns"]]
                     # Check if each column exists in pg_attribute
@@ -1841,7 +1861,11 @@ class NodeChecker():
 
     def check_yb_node_clock_drift(self):
         e = self._new_entry("Node Clock Drift")
-        if not chrony_exists() and not ntp_exists() and not timesyncd_exists():
+        ntp_services = [_ChronyService(), _NtpdService(), _SystemdTimesyncdService()]
+        found_services = [service for service in ntp_services if service.exists()]
+        # First check to make sure at least 1 service is installed, and if we need to skip the check
+        # otherwise.
+        if not found_services:
             if self.clock_service_required:
                 return e.fill_and_return_entry(["no time sync service found (chrony, ntp(d) or " +
                                                "timesyncd)"],
@@ -1849,19 +1873,45 @@ class NodeChecker():
             return e.ignore_check()
         # metrics[0] is clock drift metric
         # metrics[1] is ntp service status
+        # Initialize both with default values
         metrics = [
             Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK),
             Metric.from_definition(YB_NODE_NTP_SERVICE_STATUS)
         ]
-        service_status = get_ntp_service_status()
-        service_error = service_status == 0
-        msgs = ["Ntp service is%s running" % " not" if service_error else ""]
-        metrics[1].add_value(service_status)
-        drift_ms = get_clock_drift_ms()
-        # Returns error string on failure, int on success
-        if isinstance(drift_ms, str):
-          msgs.append(drift_ms)
-          return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+
+        # Ensure 1 service is active
+        active_service = None
+        for service in found_services:
+            if service.is_running():
+                active_service = service
+                break
+        if active_service is None:
+            msgs = ["Found ntp services {}, but none are running".format(
+               ", ".join([s.name() for s in found_services]))]
+            for metric in metrics:
+                metric.add_value(0)
+            return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+        msgs = ["Ntp service {} is running".format(active_service.name())]
+
+        # Validate clock is synced
+        in_sync = get_timedatectl_sync()
+        if not in_sync:
+            msgs.append("System clock is not synchronized")
+            for metric in metrics:
+                metric.add_value(0)
+            return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+
+        # Service is running and clock is synced.
+        metrics[1].add_value(1)
+
+        # Validate drift time is in a good state
+        try:
+            drift_ms = active_service.drift_ms()
+        except Exception as ex:
+            msgs.append("Failed to get clock drift: {}".format(str(ex)))
+            metrics[0].add_value(0)
+            return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
+
         metrics[0].add_value(drift_ms)
         if drift_ms > self.time_drift_err_threshold:
             msgs.append("Node clock drift is {} ms, over {} ms".format(
@@ -1870,12 +1920,10 @@ class NodeChecker():
         if drift_ms > self.time_drift_wrn_threshold:
             msgs.append("Node clock drift is {} ms, over {} ms".format(
                 drift_ms, self.time_drift_wrn_threshold))
-            if service_error:
-                return e.fill_and_return_entry(msgs, has_error=True, metrics=metrics)
             return e.fill_and_return_warning_entry(msgs, metrics=metrics)
 
         msgs.append("%s ms" % drift_ms)
-        return e.fill_and_return_entry(msgs, has_error=service_error, metrics=metrics)
+        return e.fill_and_return_entry(msgs, metrics=metrics)
 
     def check_process_stats(self, process_name):
         metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
@@ -1917,6 +1965,31 @@ class NodeChecker():
             return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
                                            has_error=True, metrics = metrics)
 
+
+    def check_other_process_stats(self):
+        metric = Metric.from_definition(YB_PROCESS_MEMORY_KB)
+        e = self._new_metric_entry("Per-process topK other check")
+        top_k = self.topk_other_processes
+        threshold = self.topk_mem_threshold_percent
+        try:
+            res = self._load_top_k_by_mem_pids(top_k, threshold)
+            other_label = Label("subtype", "other")
+            virtual_label = Label('type', 'virtual')
+            proportional_label = Label('type', 'proportional')
+            resident_label = Label('type', 'resident')
+            for process_name in res.keys():
+                stat = res[process_name]['total_stat']
+                process = Label("process", process_name)
+                metric.add_value(stat['resident_memory_kb'], labels=[process, other_label,
+                                                                     resident_label])
+                metric.add_value(stat['virtual_memory_kb'], labels=[process, other_label,
+                                                                    virtual_label])
+            return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+        except Exception as ex:
+            return e.fill_and_return_entry(["Failed to parse other stats: {}".format(str(ex))],
+                                           has_error=True, metrics = [metric])
+
+
     def check_systemd_unit_preexec_present(self):
         e = self._new_entry("Systemd unit preexec check")
         services = ["yb-master.service", "yb-tserver.service"]
@@ -1938,6 +2011,78 @@ class NodeChecker():
                 return e.ignore_check()
         return e.fill_and_return_entry(errors, has_error=len(errors) > 0)
 
+    def check_otel_container_health_k8s(self):
+        """Checks the health status of the OpenTelemetry Collector running in the pod."""
+        logging.info("Checking uptime for Otel-collector for {}".format(self.node))
+
+        e = self._new_entry("Uptime", OTEL_COLLECTOR)
+        try:
+            # Sample out -
+            # {"status":"Server available",
+            #  "upSince":"2025-03-26T16:54:47.936558866Z",
+            #  "uptime":"13h33m15.557940292s"}
+            output = self.http_request(OTEL_COLLECTOR_HEALTH_ENDPOINT)
+            if not output:
+                return e.fill_and_return_entry(
+                    ["OpenTelemetry health check failed: empty response"], has_error=True
+                )
+
+            if check_for_errors(output):
+                return e.fill_and_return_entry(
+                    ["OpenTelemetry health check failed: {}".format(output)], has_error=True
+                )
+
+            health_json = json.loads(output)
+            status = health_json.get("status", "")
+            up_since = health_json.get("upSince", "")
+
+            if status != "Server available" or not up_since:
+                return e.fill_and_return_entry(
+                    ["OpenTelemetry health check failed: {}".format(output)], has_error=True
+                )
+
+            # Parse timestamp, ignoring nanoseconds
+            TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
+            boot_time_in_epoch = int(
+                datetime.strptime(up_since[:26], TIMESTAMP_FORMAT)
+                .replace(tzinfo=timezone.utc)
+                .timestamp()
+            )
+
+            hc_metric = Metric.from_definition(
+                HEALTH_CHECK_OTEL_COLLECTOR_BOOT_TIME_SEC
+            ).add_value(boot_time_in_epoch)
+            node_metric = Metric.from_definition(YB_NODE_BOOT_TIME).add_value(
+                boot_time_in_epoch, [Label("process", OTEL_COLLECTOR)]
+            )
+            metrics = [hc_metric, node_metric]
+
+            current_time = int(time.time())
+            uptime = current_time - boot_time_in_epoch
+            recent_operation = self.start_time_ms and (
+                current_time - self.start_time_ms / 1000 <= RECENT_FAILURE_THRESHOLD_SEC
+            )
+
+            has_error = uptime <= RECENT_FAILURE_THRESHOLD_SEC and not recent_operation
+            uptime_msg = "Uptime: {} seconds ({})".format(
+                uptime, self.get_uptime_in_dhms(uptime)
+            )
+
+            return e.fill_and_return_entry(
+                [uptime_msg], has_error=has_error, metrics=metrics
+            )
+
+        except json.JSONDecodeError:
+            return e.fill_and_return_entry(
+                ["OpenTelemetry health check failed: Invalid JSON response"], has_error=True
+            )
+        except Exception as ex:
+            logging.exception("Unexpected error during OpenTelemetry health check")
+            return e.fill_and_return_entry(
+                ["OpenTelemetry health check failed: {}".format(ex)], has_error=True
+            )
+
+
     def _check_unit_for_preexec(self, service, user=True):
         cmd = ""
         if user:
@@ -1954,6 +2099,42 @@ class NodeChecker():
                 return True
         return False
 
+
+    def _load_top_k_by_mem_pids(self, k, threshold):
+        used_pids = []
+        for proc in self.current_process_results.keys():
+            proc_results = self.current_process_results[proc]
+            if proc != "version" and "process_map" in proc_results.keys():
+                used_pids.extend(list(proc_results['process_map'].keys()))
+        result = {}
+        cmd = "ps -eo pid,ppid,comm,%mem --sort=-%mem"
+        output = self._check_output(cmd)
+        for line in output.splitlines()[1:]:
+            if len(result.keys()) >= k:
+                break
+            split = line.split()
+            pid = split[0]
+            ppid = split[1]
+            if pid in used_pids or ppid in used_pids:
+                continue
+            command = split[2]
+            mem_pct = float(split[3])
+            if threshold > 0 and mem_pct < threshold:
+                break
+            used_pids.append(pid)
+            if command in result.keys():
+                command = "{}_{}".format(command, pid)
+            self.verbose_log("checking {} with pid {}".format(command, pid))
+            pidlist = self._get_subprocess_pids(pid)
+            pidlist.append(pid)
+            stats = self._load_per_process_metrics_by_pids("", pid, pidlist)
+            if (stats['total_stat']['resident_memory_kb'] == 0
+                    and stats['total_stat']['virtual_memory_kb'] == 0):
+                continue
+            result[command] = stats
+        return result
+
+
     def _load_per_process_metrics(self, process_name):
         root_pid = self.get_process_pid_by_name(process_name)
         if root_pid is None:
@@ -1968,6 +2149,10 @@ class NodeChecker():
             if postgre_pid is not None:
                 pid_list.remove(postgre_pid)
                 pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
+        return self._load_per_process_metrics_by_pids(process_name, root_pid, pid_list)
+
+
+    def _load_per_process_metrics_by_pids(self, process_name, root_pid, pid_list):
         total_stat = self._get_empty_proc_results()
         prev_process_map = {}
         if process_name in self.prev_process_results.keys():
@@ -1978,7 +2163,11 @@ class NodeChecker():
 
         process_map = {}
         for cur_pid in pid_list:
-            stat = self._get_process_stats_by_pid(cur_pid)
+            stat = self._get_empty_proc_results()
+            try:
+                stat = self._get_process_stats_by_pid(cur_pid)
+            except Exception as e:
+                pass
             # Calculating the sum with current state
             total_stat = self._merge_proc_results(stat, total_stat)
             # We need to substract pid stats from prev run
@@ -2049,14 +2238,21 @@ class NodeChecker():
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
         stat = self._check_output(cmd).strip()
-        stat_list = stat.split('\n')
-        for stat in stat_list:
-            lst = stat.split(' ')
-            if len(lst) > 0:
-                if lst[0] == 'Pss:':
-                    res['proportional_memory_kb'] += int(lst[len(lst) - 2])
-                if lst[0] == 'Rss:':
-                    res['resident_memory_kb'] += int(lst[len(lst) - 2])
+        if "permission denied" in stat.lower():
+            # This is less precise, but we cannot use smaps for processes with diff user.
+            psstat = self._check_output("ps -o rss -p {} --no-headers".format(pid)).strip()
+            lst = psstat.split(' ')
+            if len(lst) > 0 and lst[0].isdigit():
+                res['resident_memory_kb'] += int(lst[0])
+        else:
+            stat_list = stat.split('\n')
+            for stat in stat_list:
+                lst = stat.split(' ')
+                if len(lst) > 0:
+                    if lst[0] == 'Pss:':
+                        res['proportional_memory_kb'] += int(lst[len(lst) - 2])
+                    if lst[0] == 'Rss:':
+                        res['resident_memory_kb'] += int(lst[len(lst) - 2])
 
         cmd = 'cat /proc/{}/io'.format(pid)
         stat = self._check_output(cmd).strip()
@@ -2087,6 +2283,53 @@ class NodeChecker():
         if value == 1:
             details.append("Found {} with pid {}".format(process, pid))
         return e.fill_and_return_entry(details, has_error=(value == 1), metrics=[metric])
+
+    def check_clockbound_sync_status(self):
+        e = self._new_entry("Clockbound status check")
+        check_cmd = "clockbound-check"
+        output = self._check_output(check_cmd).strip()
+        metric = Metric.from_definition(YB_NODE_CLOCKBOUND_STATUS)
+        has_errors = False
+        if "Synchronized" not in output:
+            has_errors = True
+        errors = [output]
+        metric.add_value(0 if has_errors else 1)
+        return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
+
+    def count_earlyoom_kills(self):
+        e = self._new_metric_entry("Earlyoom kills count")
+        try:
+            cmd = ('journalctl --since "1 hour ago" --user -u earlyoom | '
+                   'grep -E "sending SIG(TERM|KILL) to process" | wc -l')
+            res = self._check_output(cmd).strip()
+            count = 0
+            if res.isdigit():
+                count = int(res)
+            metric = Metric.from_definition(YB_EARLYOOM_KILLS_COUNT) \
+                .add_value(count)
+            return e.fill_and_return_entry([count], has_error=False, metrics=[metric])
+        except Exception as ex:
+            message = str(ex)
+            return e.fill_and_return_entry([message], has_error=True)
+
+    def check_earlyoom(self, enable_earlyoom):
+        e = self._new_entry("Earlyoom service status")
+        # if ssl_installed is not None and not ssl_installed:
+        #     return e.fill_and_return_warning_entry(["OpenSSL is not installed, skipped"])
+        pid = self.get_process_pid_by_name(EARLYOOM)
+        if enable_earlyoom:
+            if pid is None:
+                return e.fill_and_return_entry(["No process running"], has_error=True)
+            cmd = "cat /proc/{}/status | grep VmLck".format(pid)
+            output = self._check_output(cmd)
+            if output.find("VmLck") == -1:
+                return e.fill_and_return_warning_entry(
+                    ["Unable to do mlock (required for better performance)"])
+        else:
+            if pid is not None:
+                return e.fill_and_return_entry(
+                    ["Found running process: {}, should be disabled".format(pid)], has_error=True)
+        return e.fill_and_return_entry([], has_error=False)
 
     def verbose_log(self, message):
         if self.verbose:
@@ -2160,103 +2403,9 @@ def is_equal_release_build(release_build1, release_build2):
     return (is_equal_or_newer_release_build(release_build1, release_build2) and
             is_equal_or_newer_release_build(release_build2, release_build1))
 
-def get_clock_drift_ms():
-    if chrony_exists():
-        return _chrony_get_clock_drift_ms()
-    if ntp_exists():
-        return _ntp_get_clock_drift_ms()
-    if timesyncd_exists():
-        return _timesyncd_get_clock_drift_ms()
-    logging.error("unknown time service: must be ntp(d) or chrony")
-    return "Failed to get clock drift"
-
-
-def _chrony_get_clock_drift_ms():
-    """
-    Get the clock drift in milliseconds. Returns absolute value of the drift
-    """
-    env = os.environ.copy()
-    chrony_out = check_output("systemctl status chronyd.service", env)
-    if "Error" not in chrony_out and "Active: active" in chrony_out:
-        # Check drift using chrony
-        out = check_output("chronyc tracking", env)
-        skew_match = re.search("System time.*: (.*) second", out, re.MULTILINE)
-        delay_match = re.search("Root delay.*: (.*) second", out, re.MULTILINE)
-        dispersion_match = re.search("Root dispersion.*: (.*) second", out, re.MULTILINE)
-        if skew_match and delay_match and dispersion_match:
-            skew = float(skew_match.group(1))
-            delay = float(delay_match.group(1))
-            dispersion = float(dispersion_match.group(1))
-            # Main algorithm is (skew + dispersion + (.5 * delay))
-            return (skew + dispersion + (.5 * delay)) * 1000 # Convert seconds to milliseconds
-    return "Failed to get clock drift from chrony"
-
-def _ntp_get_clock_drift_ms():
-    env = os.environ.copy()
-    ntp_out = check_output("systemctl status ntp.service", env)
-    ntpd_out = check_output("systemctl status ntpd.service", env)
-    if "Active: active" in ntp_out or "Active: active" in ntpd_out:
-        out = check_output("ntpq -p | awk '$1 ~ \"^*\" {print $9}'", env)
-        if "Error" not in out and out.strip() != "":
-            return int(float(out)) # ntpq -p offset is already in milliseconds
-    return "Failed to get clock drift from ntp(d)"
-
-def _timesyncd_get_clock_drift_ms():
-    # Timesyncd does not do incremental clock drift correction, and instead will step the clock
-    # to be correct. We will return 0 here and handle a not-synced system with other errors.
-    return 0
-
-# return 1 if ntp service status is good, 0 otherwise.
-# A good status is both having timedatectl show the system clock is "in sync" and
-# having the specific ntp service (chrony, ntpd, or timesyncd) be running.
-def get_ntp_service_status():
-    # First we check if the clock is synced, and fail if its not
-    if get_timedatectl_sync() == 0:
-        return 0
-    if chrony_exists():
-        return 1 if is_service_running("chronyd.service") else 0
-    elif ntp_exists():
-        ntp_running = is_service_running("ntp.service")
-        ntpd_running = is_service_running("ntpd.service")
-        return 1 if ntp_running or ntpd_running else 0
-    elif timesyncd_exists():
-        return get_timedatectl_status()
-    logging.error("unknown time service: must be ntp(d), chrony, or systemd-timesyncd")
-    return 0
-
-def chrony_exists():
-    env = os.environ.copy()
-    chrony_out = check_output("command -v chronyc", env)
-    return "Error" not in chrony_out
-
-def ntp_exists():
-    env = os.environ.copy()
-    ntp_out = check_output("command -v ntpq", env)
-    return "Error" not in ntp_out
-
-def timesyncd_exists():
-    env = os.environ.copy()
-    timesyncd_out = check_output("systemctl status systemd-timesyncd", env)
-    return "Error" not in timesyncd_out
-
-# Returns 1 if timesyncd is running 0 otherwise.
-def get_timedatectl_status():
-    # timesyncd is not running
-    if not is_service_running("systemd-timesyncd.service"):
-        return 0
-    return 1
-
-# Returns 1 if system clock is synchronized 0 otherwise.
-def get_timedatectl_sync():
-    env = os.environ.copy()
-    out = check_output("timedatectl status", env)
-    if "System clock synchronized: yes" in out:
-        return 1
-    return 0
-
 def is_service_running(service_name):
     env = os.environ.copy()
-    cmd = "systemctl show --no-pager {}".format(service_name)
+    cmd = "systemctl show --no-pager -p LoadState,ActiveState {}".format(service_name)
     out = check_output(cmd, env)
     if out.startswith("Error"):
         logging.warning("failed to determine if {} is running".format(service_name))
@@ -2269,6 +2418,87 @@ def is_service_running(service_name):
             return value == "active"
     logging.warning("No 'ActiveState' or 'LoadState' found in service details")
     return False
+
+class _NtpServiceBase:
+    _name = None
+    _exists_cmd = None
+    def name(self) -> str:
+        return self._name
+
+    def exists(self) -> bool:
+        if self._exists_cmd is None:
+            raise NotImplementedError()
+        env = os.environ.copy()
+        cmd = "command -v {}".format(self._exists_cmd)
+        out = check_output(cmd, env)
+        return "Error" not in out
+
+    def is_running(self) -> bool:
+        raise NotImplementedError()
+
+    def drift_ms(self) -> int:
+        raise NotImplementedError()
+
+class _ChronyService(_NtpServiceBase):
+    _name = "chrony"
+    _exists_cmd = "chronyc"
+
+    def is_running(self):
+        return is_service_running("chronyd.service")
+
+    def drift_ms(self):
+        env = os.environ.copy()
+        # Check drift using chrony
+        out = check_output("chronyc tracking", env)
+        skew_match = re.search("System time.*: (.*) second", out, re.MULTILINE)
+        delay_match = re.search("Root delay.*: (.*) second", out, re.MULTILINE)
+        dispersion_match = re.search("Root dispersion.*: (.*) second", out, re.MULTILINE)
+        if skew_match and delay_match and dispersion_match:
+            skew = float(skew_match.group(1))
+            delay = float(delay_match.group(1))
+            dispersion = float(dispersion_match.group(1))
+            # Main algorithm is (skew + dispersion + (.5 * delay))
+            return (skew + dispersion + (.5 * delay)) * 1000 # Convert seconds to milliseconds
+        raise Exception("Unable to find skew, delay, or dispersion from chronyc")
+
+class _NtpdService(_NtpServiceBase):
+    _name = "ntpd"
+    _exists_cmd = "ntpd"
+
+    def is_running(self):
+        ntp_running = is_service_running("ntp.service")
+        ntpd_running = is_service_running("ntpd.service")
+        return ntp_running or ntpd_running
+
+    def drift_ms(self):
+        env = os.environ.copy()
+        # Prints the 9th column from the first row that starts with '*' from ntpq -p, which is the
+        # offset in milliseconds.
+        out = check_output("ntpq -p | awk '$1 ~ \"^*\" {print $9}'", env)
+        if "Error" not in out and out.strip() != "":
+            return int(float(out)) # ntpq -p offset is already in milliseconds
+        raise Exception("Failed to get clock drift from ntp(d)")
+
+class _SystemdTimesyncdService(_NtpServiceBase):
+    _name = "systemd-timesyncd"
+
+    # Systemd needs a custom exists function, since there is no extra command that comes with
+    # systemd-timesyncd, just the service.
+    def exists(self):
+        env = os.environ.copy()
+        timesyncd_out = check_output("systemctl status systemd-timesyncd", env)
+        return "Error" not in timesyncd_out
+
+    def is_running(self):
+        return is_service_running("systemd-timesyncd.service")
+
+    def drift_ms(self):
+        return 0
+
+def get_timedatectl_sync() -> bool:
+    env = os.environ.copy()
+    out = check_output("timedatectl status", env)
+    return "System clock synchronized: yes" in out
 
 class CheckCoordinator:
     class PreCheckRunInfo:
@@ -2388,7 +2618,11 @@ class NodeInfo:
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
         self.otel_enabled = data["otelCollectorEnabled"]
+        self.enable_earlyoom = data["earlyoomEnabled"]
         self.clockSyncServiceRequired = data.get("clockSyncServiceRequired", True)
+        self.clockbound_enabled = data["clockboundEnabled"]
+        self.topk_other_processes = data["topKOtherProcesses"]
+        self.topk_mem_threshold_percent = data["topKMemThresholdPercent"]
 
 
 def main():
@@ -2437,10 +2671,13 @@ def main():
         n.master_http_port, n.tserver_http_port, n.ysql_server_http_port, n.yb_version,
         n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
-        n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired)
+        n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
+        n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
-
+    coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
+    if n.enable_earlyoom:
+        coordinator.add_check(checker, "count_earlyoom_kills")
     coordinator.add_check(checker, "check_node_metrics_collection")
     coordinator.add_check(checker, "check_disk_utilization")
     coordinator.add_check(checker, "check_for_core_files")
@@ -2476,7 +2713,8 @@ def main():
         coordinator.add_check(checker, "check_underreplicated_tablets")
         coordinator.add_check(checker, "check_process_stats", MASTER)
     else:
-        coordinator.add_check(checker, "check_unexpected_process", MASTER)
+        if not args.metrics_only:
+            coordinator.add_check(checker, "check_unexpected_process", MASTER)
 
     if n.tserver_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", TSERVER)
@@ -2525,7 +2763,8 @@ def main():
         coordinator.add_check(checker, "check_process_stats", POSTMASTER)
         coordinator.add_check(checker, "check_process_stats", TSERVER)
     else:
-        coordinator.add_check(checker, "check_unexpected_process", TSERVER)
+        if not args.metrics_only:
+            coordinator.add_check(checker, "check_unexpected_process", TSERVER)
 
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
@@ -2535,10 +2774,22 @@ def main():
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
 
+    if n.otel_enabled and n.tserver_index >= 0:
+        if n.is_k8s:
+            coordinator.add_check(checker, "check_otel_container_health_k8s")
+        else:
+            coordinator.add_check(checker, "check_uptime_for_process", OTEL_COLLECTOR)
+
     if args.ddl_atomicity_check:
         coordinator.add_check(checker, "check_ddl_atomicity")
 
+    if n.clockbound_enabled:
+        coordinator.add_check(checker, "check_clockbound_sync_status")
+
     coordinator.add_check(checker, "check_process_stats", TOTAL)
+    if n.topk_other_processes > 0:
+        # This should be run after TOTAL is calculated (we don't want it to be included in total).
+        coordinator.add_check(checker, "check_other_process_stats")
 
     entries = coordinator.run()
     for e in entries:

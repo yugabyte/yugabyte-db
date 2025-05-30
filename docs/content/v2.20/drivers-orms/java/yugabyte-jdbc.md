@@ -74,7 +74,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.7.3-yb-1</version>
+  <version>{{< version-driver-java >}}</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
@@ -94,7 +94,7 @@ Install the added dependency using `mvn install`.
 If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
 ```java
-implementation 'com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1'
+implementation 'com.yugabyte:jdbc-yugabytedb:{{< version-driver-java >}}'
 implementation 'com.zaxxer:HikariCP:5.0.1'
 ```
 
@@ -108,7 +108,7 @@ Use the `DriverManager.getConnection` method to obtain the connection object for
 
 The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
-| JDBC Parameter | Description | Default |
+| JDBC&nbsp;Parameter | Description | Default |
 | :------------- | :---------- | :------ |
 | hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost |
 | port |  Listen port for YSQL | 5433 |
@@ -119,7 +119,7 @@ The following table describes the connection parameters required to connect, inc
 | topology-keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Specify comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `load-balance` is false | Empty |
 | yb-servers-refresh-interval | The interval in seconds to refresh the servers list; ignored if `load-balance` is false | 300 |
 | fallback-to-topology-keys-only | If set to true and `topology-keys` are specified, the driver only tries to connect to nodes specified in `topology-keys` | false |
-| failed&#8209;host&#8209;reconnect&#8209;delay&#8209;secs | Time (in seconds) to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
+| failed-host-reconnect-delay-secs | Time (in seconds) to wait before trying to connect to failed nodes. When the driver is unable to connect to a node, it marks the node as failed using a timestamp, and ignores the node when trying new connections until this time elapses. | 5 |
 
 In v42.7.3-yb-1 and later, the `load_balance` property supports the following additional properties: any (alias for 'true'), only-primary, only-rr, prefer-primary, and prefer-rr. See [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 

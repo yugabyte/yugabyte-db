@@ -4,5 +4,5 @@
 # Ported transaction tests.
 ####################################################################################################
 
-test: yb_pg_test_setup
-test: yb_pg_transactions
+test: yb.port.test_setup
+test: yb.port.transactions

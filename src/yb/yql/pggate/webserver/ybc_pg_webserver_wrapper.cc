@@ -20,6 +20,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <regex>
 
 #include "yb/gutil/map-util.h"
 
@@ -39,9 +40,10 @@
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 using std::string;
+DECLARE_uint32(ysql_conn_mgr_max_client_connections);
+DECLARE_string(metric_node_name);
 
 namespace yb::pggate {
-DECLARE_string(metric_node_name);
 
 static YbcPgmEntry *ybpgm_table;
 static int ybpgm_num_entries;
@@ -72,6 +74,10 @@ static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connect
 // YSQL Connection Manager-specific metric labels
 static const char *DATABASE = "database";
 static const char *USER = "user";
+
+static std::regex rename_from(
+  "yb_ysqlserver_((CatalogCacheMisses)|(CatalogCacheTableMisses))");
+static std::string rename_to = "handler_latency_yb_ysqlserver_SQLProcessor_$1";
 
 namespace {
 
@@ -155,7 +161,7 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
     return;
   }
 
-  static const uint32_t num_pools = YSQL_CONN_MGR_MAX_POOLS;
+  static const int32_t num_pools = atoi(getenv("FLAGS_ysql_conn_mgr_max_pools"));
 
   struct ConnectionStats *shmp = (struct ConnectionStats *)shmat(shmid, NULL, 0);
   if (shmp == NULL) {
@@ -163,10 +169,11 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
     return;
   }
 
-  for (uint32_t itr = 0; itr < num_pools; itr++) {
-    if (strcmp(shmp[itr].database_name, "") == 0
-      || strcmp(shmp[itr].user_name, "") == 0 )
-      break;
+  for (int32_t itr = 0; itr < num_pools; itr++) {
+    // OID as -1 means either that pool has been deleted due to no activity for a while or this
+    // index is never been used to store the stats for any pool in connection manager.
+    if (shmp[itr].database_oid == -1 || shmp[itr].user_oid == -1)
+      continue;
     stats->push_back(shmp[itr]);
   }
 
@@ -211,6 +218,15 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
           last_updated_timestamp, AggregationFunction::kSum, kServerLevel, METRIC_TYPE_SERVER,
           "gauge", "Timestamp of last update to YSQL Connection Manager metrics"),
       "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
+
+  // Publish the maximum number of clients which can connect to connection manager
+  WARN_NOT_OK(
+      pwriter->WriteSingleEntry(
+          ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_max_client_connections",
+          FLAGS_ysql_conn_mgr_max_client_connections, AggregationFunction::kSum, kServerLevel,
+          METRIC_TYPE_SERVER, "gauge", "Maximum number of clients that can connect to YSQL "
+          "Connection Manager"),
+      "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
@@ -278,20 +294,33 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
   writer.StartArray();
 
   for (const auto *entry = ybpgm_table, *end = entry + ybpgm_num_entries; entry != end; ++entry) {
-    writer.StartObject();
-    writer.String("name");
-    writer.String(entry->name);
-    writer.String("count");
-    writer.Int64(entry->calls);
-    writer.String("sum");
-    writer.Int64(entry->total_time);
-    writer.String("rows");
-    writer.Int64(entry->rows);
-    if (strlen(entry->table_name) > 0) {
-      writer.String("table_name");
-      writer.String(entry->table_name);
-    }
-    writer.EndObject();
+
+    const auto singleEntryWriter = [&writer, &entry] (const std::string& metric_name) {
+        writer.StartObject();
+        writer.String("name");
+        writer.String(metric_name);
+        writer.String("count");
+        writer.Int64(entry->calls);
+        writer.String("sum");
+        writer.Int64(entry->total_time);
+        writer.String("rows");
+        writer.Int64(entry->rows);
+        if (strlen(entry->table_name) > 0) {
+          writer.String("table_name");
+          writer.String(entry->table_name);
+        }
+        writer.EndObject();
+      };
+
+    singleEntryWriter(entry->name);
+
+    // minor hack to emit old and new names for certain count metrics
+    const std::string duplicate_name = std::regex_replace(
+      entry->name, rename_from, rename_to);
+
+    if (duplicate_name != entry->name)
+      singleEntryWriter(duplicate_name);
+
   }
 
   writer.EndArray();
@@ -454,9 +483,13 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
     // "control".
     writer.String("database_name");
     writer.String(stat.database_name);
+    writer.String("DB OID");
+    writer.Int64(stat.database_oid);
 
     writer.String("user_name");
     writer.String(stat.user_name);
+    writer.String("User OID");
+    writer.Int64(stat.user_oid);
 
     // Number of logical connections that are attached to any physical connection. A logical
     // connection gets attached to a physical connection during lifetime of a transaction.
@@ -527,6 +560,16 @@ static void PgPrometheusMetricsHandler(
             "counter", ybpgm_table[i].count_help),
         "Couldn't write text metrics for Prometheus");
 
+    // minor hack to emit old and new names for certain count metrics
+    const std::string duplicate_name = std::regex_replace(
+      metric_name, rename_from, rename_to);
+    if (duplicate_name != metric_name) {
+      WARN_NOT_OK(writer.WriteSingleEntry(
+        prometheus_attr, duplicate_name + "_count", ybpgm_table[i].calls,
+        AggregationFunction::kSum, kServerLevel, metric_entity_type,
+        "counter", ybpgm_table[i].count_help),
+    "Couldn't write text metrics for Prometheus");
+    }
     // Skip over empty metrics.
     if (strcmp(ybpgm_table[i].sum_help, "Not applicable") != 0) {
       WARN_NOT_OK(
@@ -682,12 +725,12 @@ void DestroyWebserver(struct WebserverWrapper *webserver) {
 
 void SetWebserverConfig(
     WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
-    int webserver_profiler_sample_freq_bytes) {
+    int webserver_profiler_sample_period_bytes) {
   Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
   webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
 
-  if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
-    SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
+  if (GetTCMallocSamplingPeriod() != webserver_profiler_sample_period_bytes) {
+    SetTCMallocSamplingPeriod(webserver_profiler_sample_period_bytes);
   }
 }
 }  // extern "C"

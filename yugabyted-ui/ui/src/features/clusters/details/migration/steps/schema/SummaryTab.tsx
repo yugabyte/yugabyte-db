@@ -40,58 +40,57 @@ export const SummaryTab: FC<SummaryTabProps> = ({ analysis }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const automaticDDLImport = analysis.summary.graph.reduce(
-    (prev, curr) => prev + (curr.automatic ?? 0),
-    0
+  const { automaticDDLImport, manualRefactoring } = analysis.summary.graph.reduce(
+    (acc, curr) => {
+      acc.automaticDDLImport += curr.automatic ?? 0;
+      acc.manualRefactoring += curr.manual ?? 0;
+      return acc;
+    },
+    { automaticDDLImport: 0, manualRefactoring: 0 }
   );
 
-  const manualRefactoring = analysis.summary.graph.reduce(
-    (prev, curr) => prev + (curr.manual ?? 0),
-    0
-  );
 
   const total = automaticDDLImport + manualRefactoring;
   return (
     <Box>
       <Grid container>
-        <div>
-          <div className={classes.stat}>
-            <div>
+        <Box>
+          <Box className={classes.stat}>
+            <Box>
               <Typography variant="body1" className={clsx(classes.label, classes.statLabel)}>
                 {t("clusterDetail.voyager.migrateSchema.automaticDDLImport")}
               </Typography>
               <Typography variant="h4" className={classes.value}>
                 {automaticDDLImport}
               </Typography>
-            </div>
+            </Box>
 
-            <div>
+            <Box>
               <Typography variant="body1" className={clsx(classes.label, classes.statLabel)}>
                 {t("clusterDetail.voyager.migrateSchema.manualRefactoring")}
               </Typography>
               <Typography variant="h4" className={classes.value}>
                 {manualRefactoring}
               </Typography>
-            </div>
-          </div>
-        </div>
-        <div>
+            </Box>
+          </Box>
+        </Box>
+        <Box>
           <Typography variant="body1" className={clsx(classes.label, classes.statLabel)}>
             {t("clusterDetail.voyager.migrateSchema.totalAnalyzed")}
           </Typography>
           <Typography variant="h4" className={classes.value}>
             {total}
           </Typography>
-        </div>
+        </Box>
       </Grid>
 
       {analysis.summary.graph.length > 0 && total > 0 && (
         <RefactoringGraph sqlObjects={analysis.summary.graph}
           sqlObjectsList={[
-            ...(analysis.reviewRecomm.unsupportedFeatures ?? []),
-            ...(analysis.reviewRecomm.unsupportedDataTypes ?? []),
-            ...(analysis.reviewRecomm.unsupportedFunctions ?? [])
+            ...(analysis?.reviewRecomm?.assessmentIssues ?? [])
           ]}
+          isAssessmentPage={false}
         />
       )}
     </Box>

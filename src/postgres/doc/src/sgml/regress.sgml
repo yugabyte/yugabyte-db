@@ -194,8 +194,9 @@ make check-world -j8 >/dev/null
    </listitem>
    <listitem>
     <para>
-     Regression tests for the ECPG interface library,
-     located in <filename>src/interfaces/ecpg/test</filename>.
+     Regression tests for the interface libraries,
+     located in <filename>src/interfaces/libpq/test</filename> and
+     <filename>src/interfaces/ecpg/test</filename>.
     </para>
    </listitem>
    <listitem>
@@ -250,11 +251,11 @@ make check-world -j8 >/dev/null
 
   <para>
    Some test suites are not run by default, either because they are not secure
-   to run on a multiuser system or because they require special software.  You
-   can decide which test suites to run additionally by setting the
-   <command>make</command> or environment variable
-   <varname>PG_TEST_EXTRA</varname> to a whitespace-separated list, for
-   example:
+   to run on a multiuser system, because they require special software or
+   because they are resource intensive.  You can decide which test suites to
+   run additionally by setting the <command>make</command> or environment
+   variable <varname>PG_TEST_EXTRA</varname> to a whitespace-separated list,
+   for example:
 <programlisting>
 make check-world PG_TEST_EXTRA='kerberos ldap ssl'
 </programlisting>
@@ -520,11 +521,11 @@ make check NO_LOCALE=1
     <para>
      Most of the date and time results are dependent on the time zone
      environment.  The reference files are generated for time zone
-     <literal>PST8PDT</literal> (Berkeley, California), and there will be
+     <literal>America/Los_Angeles</literal>, and there will be
      apparent failures if the tests are not run with that time zone setting.
      The regression test driver sets environment variable
-     <envar>PGTZ</envar> to <literal>PST8PDT</literal>, which normally
-     ensures proper results.
+     <envar>PGTZ</envar> to <literal>America/Los_Angeles</literal>,
+     which normally ensures proper results.
     </para>
    </sect2>
 

@@ -55,6 +55,7 @@ export const CurrentFormStep = (props: CurrentFormStepProps) => {
           {props.isDrInterface ? (
             <BootstrapSummary
               isDrInterface={true}
+              isCreateConfig={false}
               storageConfigUuid={props.storageConfigUuid}
               isFormDisabled={isFormDisabled}
               sourceUniverseUuid={sourceUniverseUuid}

@@ -304,6 +304,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
   public boolean installNodeAgent = false;
 
+  @ApiModelProperty(value = "YbaApi Internal. True if a node agent for missing in any of the nodes")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.4.0")
+  public boolean nodeAgentMissing = false;
+
+  @ApiModelProperty(value = "YbaApi Internal. State for additional services")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
+  public AdditionalServicesStateData additionalServicesStateData;
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -959,6 +967,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                 + " nodes")
     private ProxyConfig proxyConfig;
 
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.25.1.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(value = "YbaApi Internal. Use clockbound as time source")
+    private boolean useClockbound = false;
+
     @Override
     public String toString() {
       StringBuilder sb = new StringBuilder();
@@ -982,6 +996,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       sb.append(", staticPublicIP=").append(assignStaticPublicIP);
       sb.append(", tags=").append(instanceTags);
       sb.append(", masterInstanceType=").append(masterInstanceType);
+      sb.append(", imageBundleUUID=").append(imageBundleUUID);
       sb.append(", kubernetesOperatorVersion=").append(kubernetesOperatorVersion);
       return sb.toString();
     }
@@ -1574,6 +1589,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private String softwareVersion;
 
     @ApiModelProperty private int autoFlagConfigVersion;
+
+    @ApiModelProperty private String targetUpgradeSoftwareVersion;
   }
 
   // XCluster: All the xCluster related code resides in this section.

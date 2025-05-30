@@ -38,6 +38,8 @@
 #include <utility>
 #include <vector>
 
+#include "yb/client/client.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -81,6 +83,7 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
@@ -276,7 +279,7 @@ Status TabletPeer::InitTabletPeer(
         static const char* error_msg =
             "A memtable with no frontiers set found when deciding what memtables to "
             "flush! This should not happen.";
-        LOG(ERROR) << error_msg << " Stack trace:\n" << GetStackTrace();
+        LOG(DFATAL) << error_msg;
         return STATUS(IllegalState, error_msg);
       };
     });
@@ -475,7 +478,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   // Because we changed the tablet state, we need to re-report the tablet to the master.
   mark_dirty_clbk_.Run(context);
 
-  return tablet_->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause */ nullptr);
+  return tablet_->CompleteStartup();
 }
 
 bool TabletPeer::StartShutdown() {
@@ -614,7 +617,7 @@ Status TabletPeer::Shutdown(
     // Once raft group state enters QUIESCING state,
     // new queries cannot be processed from then onwards.
     // Aborting any remaining active transactions in the tablet.
-    AbortSQLTransactions();
+    AbortActiveTransactions();
   }
 
   if (is_shutdown_initiated) {
@@ -625,14 +628,14 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-void TabletPeer::AbortSQLTransactions() const {
+void TabletPeer::AbortActiveTransactions() const {
   if (!tablet_) {
     return;
   }
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
   WARN_NOT_OK(
-      tablet_->AbortSQLTransactions(deadline),
+      tablet_->AbortActiveTransactions(deadline),
       "Cannot abort transactions for tablet " + tablet_->tablet_id());
 }
 
@@ -765,6 +768,7 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   if (!tablet) {
     return STATUS(IllegalState, "Tablet destroyed");
   }
+  // TODO(yyan) : we should use the last replicated op id instead of last committed op id.
   data->op_id = consensus->GetLastCommittedOpId();
   data->log_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
   return Status::OK();
@@ -783,37 +787,44 @@ std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
 }
 
 void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
-  std::lock_guard lock(lock_);
-  DCHECK(status_pb_out != nullptr);
-  DCHECK(status_listener_.get() != nullptr);
-  const auto disk_size_info = GetOnDiskSizeInfo();
-  status_pb_out->set_tablet_id(status_listener_->tablet_id());
-  status_pb_out->set_namespace_name(status_listener_->namespace_name());
-  status_pb_out->set_table_name(status_listener_->table_name());
-  status_pb_out->set_table_id(status_listener_->table_id());
-  status_pb_out->set_last_status(status_listener_->last_status());
-  status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
-  status_pb_out->set_state(state_);
-  status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
-  auto tablet = tablet_;
-  if (tablet) {
-    status_pb_out->set_table_type(tablet->table_type());
-    auto vector_index_finished_backfills = tablet->VectorIndexFinishedBackfills();
-    if (vector_index_finished_backfills) {
-      *status_pb_out->mutable_vector_index_finished_backfills() =
-          std::move(*vector_index_finished_backfills);
+  std::shared_ptr<RaftConsensus> consensus;
+  {
+    std::lock_guard lock(lock_);
+    DCHECK(status_pb_out != nullptr);
+    DCHECK(status_listener_.get() != nullptr);
+    const auto disk_size_info = GetOnDiskSizeInfo();
+    status_pb_out->set_tablet_id(status_listener_->tablet_id());
+    status_pb_out->set_namespace_name(status_listener_->namespace_name());
+    status_pb_out->set_table_name(status_listener_->table_name());
+    status_pb_out->set_table_id(status_listener_->table_id());
+    status_pb_out->set_last_status(status_listener_->last_status());
+    status_listener_->partition()->ToPB(status_pb_out->mutable_partition());
+    status_pb_out->set_state(state_);
+    status_pb_out->set_tablet_data_state(meta_->tablet_data_state());
+    auto tablet = tablet_;
+    if (tablet) {
+      status_pb_out->set_table_type(tablet->table_type());
+      auto vector_index_finished_backfills = tablet->vector_indexes().FinishedBackfills();
+      if (vector_index_finished_backfills) {
+        *status_pb_out->mutable_vector_index_finished_backfills() =
+            std::move(*vector_index_finished_backfills);
+      }
     }
+    disk_size_info.ToPB(status_pb_out);
+    // Set hide status of the tablet.
+    status_pb_out->set_is_hidden(meta_->hidden());
+    status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
+    for (const auto& table : meta_->GetAllColocatedTables()) {
+      status_pb_out->add_colocated_table_ids(table);
+    }
+    consensus = consensus_;
   }
-  disk_size_info.ToPB(status_pb_out);
-  // Set hide status of the tablet.
-  status_pb_out->set_is_hidden(meta_->hidden());
-  status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
-  for (const auto& table : meta_->GetAllColocatedTables()) {
-    status_pb_out->add_colocated_table_ids(table);
+  if (consensus) {
+    consensus->log()->GetLatestEntryOpId().ToPB(status_pb_out->mutable_last_op_id());
   }
 }
 
-Status TabletPeer::RunLogGC() {
+Status TabletPeer::RunLogGC(bool rollover) {
   if (!CheckRunning().ok()) {
     return Status::OK();
   }
@@ -828,6 +839,9 @@ Status TabletPeer::RunLogGC() {
     LOG_WITH_PREFIX(INFO) << __func__ << ": " << details;
   } else {
      min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  }
+  if (rollover) {
+    RETURN_NOT_OK(log_->AllocateSegmentAndRollOver());
   }
   int32_t num_gced = 0;
   return log_->GC(min_log_index, &num_gced);
@@ -1101,7 +1115,7 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
   auto op_id = GetLatestLogEntryOpId();
 
   // The bootstrap_time is the minium time from which the provided OpId will be transactionally
-  // consistent. It is important to call AbortSQLTransactions, which resolves the pending
+  // consistent. It is important to call AbortActiveTransactions, which resolves the pending
   // transactions and aborts the active ones. This step synchronizes our clock with the
   // transaction status tablet clock, ensuring that the bootstrap_time we compute later is correct.
   // Ex: Our safe time is 100, and we have a pending intent for which the log got GCed. So this
@@ -1109,7 +1123,7 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
   // If, the coordinator is at 110 and the transaction was committed at 105. We need to move our
   // clock to 110 and pick a higher bootstrap_time so that the commit is not part of the bootstrap.
   if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xrepl_bootstrap)) {
-    AbortSQLTransactions();
+    AbortActiveTransactions();
   }
   auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
   return std::make_pair(std::move(op_id), std::move(bootstrap_time));
@@ -1470,7 +1484,7 @@ Status TabletPeer::StartReplicaOperation(
 void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
   auto driver = NewReplicaOperationDriver(nullptr);
   if (!driver.ok()) {
-    LOG_WITH_PREFIX(ERROR) << "Failed to create operation driver to set propagated hybrid time";
+    LOG_WITH_PREFIX(DFATAL) << "Failed to create operation driver to set propagated hybrid time";
     return;
   }
   (**driver).SetPropagatedSafeTime(ht, tablet_->mvcc_manager());
@@ -1750,19 +1764,17 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
     }
 
     switch (peer_pb.member_type()) {
-      case PeerMemberType::OBSERVER:
-        FALLTHROUGH_INTENDED;
+      case PeerMemberType::OBSERVER: [[fallthrough]];
       case PeerMemberType::VOTER:
-        LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
-                   << PeerMemberType_Name(peer_pb.member_type())
-                   << " Not changing its role after remote bootstrap";
+        LOG(WARNING) << "Peer " << peer_pb.permanent_uuid() << " is a "
+                     << PeerMemberType_Name(peer_pb.member_type())
+                     << " Not changing its role after remote bootstrap";
 
         // Even though this is an error, we return Status::OK() so the remote server doesn't
         // tombstone its tablet.
         return Status::OK();
 
-      case PeerMemberType::PRE_OBSERVER:
-        FALLTHROUGH_INTENDED;
+      case PeerMemberType::PRE_OBSERVER: [[fallthrough]];
       case PeerMemberType::PRE_VOTER: {
         consensus::ChangeConfigRequestPB req;
         consensus::ChangeConfigResponsePB resp;

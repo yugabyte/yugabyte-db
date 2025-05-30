@@ -91,6 +91,8 @@ class Schema;
 class BackgroundTask;
 class XClusterSafeTimeTest;
 
+YB_STRONGLY_TYPED_BOOL(UserTabletsOnly);
+
 namespace consensus {
 class RaftConfigPB;
 } // namespace consensus
@@ -129,6 +131,14 @@ YB_DEFINE_ENUM(TabletDirType, (kData)(kWal));
 YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
 
 YB_STRONGLY_TYPED_BOOL(MarkDirtyAfterRegister);
+
+struct AdminCompactionOptions {
+  const bool should_wait;
+  TableIdsPtr vector_index_ids;
+
+  explicit AdminCompactionOptions(bool should_wait_) : should_wait(should_wait_)
+  {}
+};
 
 // Keeps track of the tablets hosted on the tablet server side.
 //
@@ -301,10 +311,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   }
 
   // Get all of the tablets currently hosted on this server.
-  TabletPeers GetTabletPeers(TabletPtrs* tablet_ptrs = nullptr) const;
+  TabletPeers GetTabletPeers(
+      TabletPtrs* tablet_ptrs = nullptr,
+      UserTabletsOnly user_tablets_only = UserTabletsOnly::kFalse) const;
   // Get all of the tablets currently hosted on this server that belong to a given table.
   TabletPeers GetTabletPeersWithTableId(const TableId& table_id) const;
-  void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
+  void GetTabletPeersUnlocked(
+      TabletPeers* tablet_peers,
+      UserTabletsOnly user_tablets_only =
+          UserTabletsOnly::kFalse) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 
   // Get TabletPeers for all status tablets hosted on this server.
@@ -395,7 +410,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Trigger admin full compactions concurrently on the provided tablets.
   // should_wait determines whether this function is asynchronous or not.
-  Status TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait);
+  Status TriggerAdminCompaction(const TabletPtrs& tablets, const AdminCompactionOptions& options);
 
   // Create Metadata cache atomically and return the metadata cache object.
   client::YBMetaDataCache* CreateYBMetaDataCache();
@@ -627,7 +642,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
       const std::string& source_addr, const std::string& debug_session_string);
 
-  rpc::ThreadPool* VectorIndexThreadPool();
+  void UpdateCompactFlushRateLimitBytesPerSec();
+
+  void UpdateAllowCompactionFailures();
+
+  rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
+  PriorityThreadPool* VectorIndexPriorityThreadPool(tablet::VectorIndexPriorityThreadPoolType type);
 
   const CoarseTimePoint start_time_;
 
@@ -804,8 +824,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
   std::atomic<client::YBMetaDataCache*> metadata_cache_;
 
+  std::vector<FlagCallbackRegistration> flag_callbacks_;
+
+  std::string allow_compaction_failures_for_tablet_ids_ GUARDED_BY(mutex_);
+
   std::mutex vector_index_thread_pool_mutex_;
-  AtomicUniquePtr<rpc::ThreadPool> vector_index_thread_pool_;
+  std::array<AtomicUniquePtr<rpc::ThreadPool>, tablet::kVectorIndexThreadPoolTypeMapSize>
+      vector_index_thread_pools_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

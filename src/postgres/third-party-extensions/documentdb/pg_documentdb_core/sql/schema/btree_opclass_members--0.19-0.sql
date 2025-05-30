@@ -1,0 +1,2 @@
+ALTER OPERATOR FAMILY __CORE_SCHEMA__.bson_btree_ops USING btree ADD FUNCTION 3 __CORE_SCHEMA__.bson_in_range_numeric(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, bool, bool); -- To check RANGE with numeric values for Partition by
+ALTER OPERATOR FAMILY __CORE_SCHEMA__.bson_btree_ops USING btree ADD FUNCTION 3 __CORE_SCHEMA__.bson_in_range_interval(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson, interval, bool, bool); -- To check RANGE with interval value for Partition by

@@ -12,6 +12,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.Date;
@@ -19,9 +20,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import javax.annotation.Nullable;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
+@Slf4j
 public class ScheduleUtil {
 
   /**
@@ -94,6 +97,10 @@ public class ScheduleUtil {
 
     Date nextScheduleTaskTime = schedule.getNextScheduleTaskTime();
     if (Objects.isNull(nextScheduleTaskTime)) {
+      LOG.debug(
+          "No next schedule increment task time found for schedule {}. Starting in {} from now",
+          schedule.getScheduleUUID(),
+          incrementFrequency);
       long newIncrementScheduleTaskTime = (new Date()).getTime() + incrementFrequency;
       return new Date(newIncrementScheduleTaskTime);
     }
@@ -207,5 +214,15 @@ public class ScheduleUtil {
     } catch (JsonProcessingException e) {
       LOG.debug("Skipping Schedule param validation");
     }
+  }
+
+  public static void deleteAllSchedulesForUnivere(Universe universe) {
+    log.info("Deleting all schedules for universe {}", universe.getName());
+    Schedule.getAllSchedulesByOwnerUUID(universe.getUniverseUUID())
+        .forEach(
+            schedule -> {
+              ScheduleTask.getAllTasks(schedule.getScheduleUUID()).forEach(ScheduleTask::delete);
+              schedule.delete();
+            });
   }
 }

@@ -17,16 +17,16 @@ LiveQueryResponseSchema:
   type: object
   properties:
     data:
-      $ref: '#/LiveQueryResponseData'
+      $ref: "#/LiveQueryResponseData"
 LiveQueryResponseData:
   title: Live Query Response Data
   description: Live Query Response Data
   type: object
   properties:
     ysql:
-      $ref: '#/LiveQueryResponseYSQLData'
+      $ref: "#/LiveQueryResponseYSQLData"
     ycql:
-      $ref: '#/LiveQueryResponseYCQLData'
+      $ref: "#/LiveQueryResponseYCQLData"
 LiveQueryResponseYSQLData:
   title: Live Query Response YSQL Data
   description: Schema for Live Query Response YSQL Data
@@ -38,7 +38,7 @@ LiveQueryResponseYSQLData:
     queries:
       type: array
       items:
-        $ref: '#/LiveQueryResponseYSQLQueryItem'
+        $ref: "#/LiveQueryResponseYSQLQueryItem"
 LiveQueryResponseYSQLQueryItem:
   title: Live Query Response YSQL Query Item
   description: Schema for Live Query Response YSQL Query Item
@@ -77,7 +77,7 @@ LiveQueryResponseYCQLData:
     queries:
       type: array
       items:
-        $ref: '#/LiveQueryResponseYCQLQueryItem'
+        $ref: "#/LiveQueryResponseYCQLQueryItem"
 LiveQueryResponseYCQLQueryItem:
   title: Live Query Response YCQL Query Item
   description: Schema for Live Query Response YCQL Query Item
@@ -107,14 +107,14 @@ SlowQueryResponseSchema:
   type: object
   properties:
     data:
-      $ref: '#/SlowQueryResponseData'
+      $ref: "#/SlowQueryResponseData"
 SlowQueryResponseData:
   title: Slow Query Response Data
   description: Slow Query Response Data
   type: object
   properties:
     ysql:
-      $ref: '#/SlowQueryResponseYSQLData'
+      $ref: "#/SlowQueryResponseYSQLData"
 SlowQueryResponseYSQLData:
   title: Slow Query Response YSQL Data
   description: Schema for Slow Query Response YSQL Data
@@ -126,7 +126,7 @@ SlowQueryResponseYSQLData:
     queries:
       type: array
       items:
-        $ref: '#/SlowQueryResponseYSQLQueryItem'
+        $ref: "#/SlowQueryResponseYSQLQueryItem"
 SlowQueryResponseYSQLQueryItem:
   title: Slow Query Response YSQL Query Item
   description: Schema for Slow Query Response YSQL Query Item
@@ -183,7 +183,7 @@ NodeData:
     is_read_replica:
       type: boolean
     preference_order:
-     type: integer
+      type: integer
     is_master_up:
       type: boolean
     is_bootstrapping:
@@ -375,7 +375,7 @@ ClusterTableData:
   uniqueItems: true
   nullable: false
   items:
-    $ref: '#/ClusterTable'
+    $ref: "#/ClusterTable"
 ClusterTable:
   title: Cluster Table Object
   description: Model representing a DB table
@@ -394,7 +394,7 @@ ClusterTable:
       minLength: 1
       nullable: false
     type:
-      $ref: '#/YbApiEnum'
+      $ref: "#/YbApiEnum"
     size_bytes:
       type: integer
       format: int64
@@ -421,9 +421,9 @@ ClusterData:
     - info
   properties:
     spec:
-      $ref: '#/ClusterSpec'
+      $ref: "#/ClusterSpec"
     info:
-      $ref: '#/ClusterDataInfo'
+      $ref: "#/ClusterDataInfo"
 ClusterSpec:
   title: Cluster Specification
   description: Cluster spec
@@ -436,17 +436,17 @@ ClusterSpec:
       maxLength: 63
       pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
     cloud_info:
-      $ref: '#/CloudInfo'
+      $ref: "#/CloudInfo"
     cluster_info:
-      $ref: '#/ClusterInfo'
+      $ref: "#/ClusterInfo"
     cluster_region_info:
       type: array
       uniqueItems: true
       items:
-        $ref: '#/ClusterRegionInfo'
+        $ref: "#/ClusterRegionInfo"
       nullable: true
     encryption_info:
-      $ref: '#/EncryptionInfo'
+      $ref: "#/EncryptionInfo"
   required:
     - name
     - cloud_info
@@ -460,7 +460,7 @@ CloudInfo:
   type: object
   properties:
     code:
-      $ref: '#/CloudEnum'
+      $ref: "#/CloudEnum"
     region:
       type: string
       minLength: 1
@@ -489,14 +489,14 @@ ClusterInfo:
       maximum: 24
       default: 3
     fault_tolerance:
-      $ref: '#/ClusterFaultTolerance'
+      $ref: "#/ClusterFaultTolerance"
     replication_factor:
       description: The replication factor applied on the cluster
       type: integer
       minimum: 1
       maximum: 24
     node_info:
-      $ref: '#/ClusterNodeInfo'
+      $ref: "#/ClusterNodeInfo"
     is_production:
       description: Describes if the cluster is a production cluster
       type: boolean
@@ -566,14 +566,14 @@ ClusterRegionInfo:
   type: object
   properties:
     placement_info:
-      $ref: '#/PlacementInfo'
+      $ref: "#/PlacementInfo"
   required:
     - placement_info
 PlacementInfo:
   type: object
   properties:
     cloud_info:
-      $ref: '#/CloudInfo'
+      $ref: "#/CloudInfo"
     num_nodes:
       description: How many nodes are in the region
       type: integer
@@ -612,7 +612,7 @@ ClusterDataInfo:
       description: The current version of YugabyteDB installed on the cluster
       type: string
     metadata:
-      $ref: '#/EntityMetadata'
+      $ref: "#/EntityMetadata"
   required:
     - universe_uuid
     - cluster_uuid
@@ -668,7 +668,7 @@ ClusterTabletData:
   description: List of cluster tablets
   type: object
   additionalProperties:
-    $ref: '#/ClusterTablet'
+    $ref: "#/ClusterTablet"
 ClusterTablet:
   title: Cluster Tablet Object
   description: Model representing a tablet
@@ -700,11 +700,11 @@ GflagsInfo:
     master_flags:
       type: array
       items:
-        $ref: '#/Gflag'
+        $ref: "#/Gflag"
     tserver_flags:
       type: array
       items:
-        $ref: '#/Gflag'
+        $ref: "#/Gflag"
   required:
     - master_flags
     - tserver_flags
@@ -743,19 +743,19 @@ TableInfo:
       type: object
       properties:
         live_replicas:
-          $ref: '#/TableReplicationInfo'
+          $ref: "#/TableReplicationInfo"
         read_replicas:
           type: array
           items:
-            $ref: '#/TableReplicationInfo'
+            $ref: "#/TableReplicationInfo"
     columns:
       type: array
       items:
-        $ref: '#/ColumnInfo'
+        $ref: "#/ColumnInfo"
     tablets:
       type: array
       items:
-        $ref: '#/TabletInfo'
+        $ref: "#/TabletInfo"
   required:
     - table_name
     - table_id
@@ -787,7 +787,7 @@ TabletInfo:
     raft_config:
       type: array
       items:
-        $ref: '#/RaftConfig'
+        $ref: "#/RaftConfig"
 RaftConfig:
   title: Raft Config
   description: Raft Config
@@ -821,7 +821,7 @@ TableReplicationInfo:
     placement_blocks:
       type: array
       items:
-        $ref: '#/PlacementBlock'
+        $ref: "#/PlacementBlock"
     placement_uuid:
       type: string
       format: uuid
@@ -831,7 +831,7 @@ PlacementBlock:
   type: object
   properties:
     cloud_info:
-      $ref: '#/PlacementCloudInfo'
+      $ref: "#/PlacementCloudInfo"
     min_num_replicas:
       type: integer
 PlacementCloudInfo:
@@ -860,7 +860,7 @@ VoyagerMigrationsInfo:
     migrations:
       type: array
       items:
-        $ref: '#/VoyagerMigrationDetails'
+        $ref: "#/VoyagerMigrationDetails"
 VoyagerMigrationDetails:
   title: Voyager task details
   description: Information regarding a specific voyager migration task
@@ -934,7 +934,7 @@ VoyagerMigrateDataMetrics:
     metrics:
       type: array
       items:
-        $ref: '#/VoyagerMigrateDataMetricsDetails'
+        $ref: "#/VoyagerMigrateDataMetricsDetails"
 VoyagerMigrateDataMetricsDetails:
   title: Voyager Migrate Data Metrics details
   description: Voyager data migration metrics details
@@ -959,15 +959,6 @@ VoyagerMigrateDataMetricsDetails:
       format: int64
     invocation_timestamp:
       type: string
-# MigrateSchemaTasks:
-#   title: YB Voyager Migrate schema tasks
-#   description: List of schema migrations tasks
-#   type: object
-#   properties:
-#     metrics:
-#       type: array
-#       items:
-#         $ref: '#/MigrateSchemaTaskDetail'
 MigrateSchemaTaskInfo:
   title: Details for export schema, import schema and analyze schema steps
   description: Voyager data migration metrics details
@@ -984,73 +975,29 @@ MigrateSchemaTaskInfo:
       type: string
     import_schema:
       type: string
-    suggestions_errors:
-      type: array
-      items:
-        $ref: '#/ErrorsAndSuggestionsDetails'
     current_analysis_report:
-      $ref: '#/SchemaAnalysisReport'
+      $ref: "#/SchemaAnalysisReport"
     analysis_history:
       type: array
       items:
         $ref: '#/SchemaAnalysisReport'
-    sql_objects:
-      type: array
-      items:
-        $ref: '#/SqlObjectsDetails'
 SchemaAnalysisReport:
   title: Schema Analysis report
   description: Voyager data migration metrics details
   type: object
   properties:
-    unsupported_functions:
+    voyager_version:
+      type: string
+    target_db_version:
+      type: string
+    sql_objects:
       type: array
       items:
-        $ref: '#/UnsupportedSqlWithDetails'
-    unsupported_features:
-      type: array
-      items:
-        $ref: '#/UnsupportedSqlWithDetails'
-    unsupported_datatypes:
-      type: array
-      items:
-        $ref: '#/UnsupportedSqlWithDetails'
+        $ref: '#/SqlObjectsDetails'
     recommended_refactoring:
-      $ref: '#/RecommendedRefactoringGraph'
-UnsupportedSqlWithDetails:
-  title: Schema for Suggested refactoring tab in Migrate Schema page
-  description: Schema for Suggested refactoring tab in Migrate Schema page
-  type: object
-  properties:
-    suggestions_errors:
       type: array
       items:
-        $ref: '#/ErrorsAndSuggestionsDetails'
-    unsupported_type:
-      type: string
-    count:
-      type: integer
-ErrorsAndSuggestionsDetails:
-  title: Errors and Suggestions details
-  description: Errors and suggestions details
-  type: object
-  properties:
-    issueType:
-      type: string
-    objectType:
-      type: string
-    objectName:
-      type: string
-    reason:
-      type: string
-    sqlStatement:
-      type: string
-    filePath:
-      type: string
-    suggestion:
-      type: string
-    GH:
-      type: string
+        $ref: '#/RefactoringCount'
 SqlObjectsDetails:
   title: Sql Objects
   description: Sql obejcts type and count
@@ -1064,73 +1011,120 @@ SqlObjectsDetails:
       type: integer
     objectNames:
       type: string
-    objectDetails:
+    issues:
+      type: array
+      items:
+        $ref: '#/AnalysisIssueDetails'
+AnalysisIssueDetails:
+  title: Analysis Issue Details
+  description: Details of issues in Schema Analysis Report
+  type: object
+  properties:
+    issueType:
       type: string
+    objectName:
+      type: string
+    reason:
+      type: string
+    sqlStatement:
+      type: string
+    filePath:
+      type: string
+    suggestion:
+      type: string
+    GH:
+      type: string
+    docs_link:
+      type: string
+    minimum_versions_fixed_in:
+      type: array
+      items:
+        type: string
 MigrationAssessmentReport:
   title: Details of the migration assessment report
   description: Details of the migration assessment report
   type: object
   properties:
+    operating_system:
+      type: string
+    voyager_version:
+      type: string
+    target_db_version:
+      type: string
     assessment_status:
       type: boolean
     summary:
-      $ref: '#/AssessmentReportSummary'
+      $ref: "#/AssessmentReportSummary"
     source_environment:
-      $ref: '#/SourceEnvironmentInfo'
+      $ref: "#/SourceEnvironmentInfo"
     source_database:
-      $ref: '#/SourceDatabaseInfo'
+      $ref: "#/SourceDatabaseInfo"
     target_recommendations:
-      $ref: '#/TargetClusterRecommendationDetails'
+      $ref: "#/TargetClusterRecommendationDetails"
     recommended_refactoring:
-      $ref: '#/RecommendedRefactoringGraph'
-    unsupported_data_types:
       type: array
       items:
-        $ref: '#/UnsupportedSqlInfo'
-    unsupported_functions:
+        $ref: '#/RefactoringCount'
+    assessment_issues:
       type: array
       items:
-        $ref: '#/UnsupportedSqlInfo'
-    unsupported_features:
+        $ref: '#/AssessmentCategoryInfo'
+    notes:
       type: array
       items:
-        $ref: '#/UnsupportedSqlInfo'
-UnsupportedSqlInfo:
-  title: Unsupported SQL Info
-  description: Unsupported SQL Info
+        type: string
+AssessmentCategoryInfo:
+  title: Assessment Issue Info
+  description: Assessment Issues aggrageted based on Issue Category (migration caveat,datatype,etc)
   type: object
   properties:
-    unsupported_type:
+    category:
+      type: string
+    category_description:
+      type: string
+    issues:
+      type: array
+      items:
+        $ref: '#/AssessmentIssueInfo'
+AssessmentIssueInfo:
+  title: Assessment Sub Issue Info
+  description: Assessment Issues of a particular issue type (migration caveat, datatype, etc)
+  type: object
+  properties:
+    type:
+      type: string
+    name:
+      type: string
+    description:
       type: string
     count:
       type: integer
+    impact:
+      type: string
     objects:
       type: array
       items:
-        $ref: '#/UnsupportedSqlObjectData'
+        $ref: "#/UnsupportedSqlObjectData"
     docs_link:
       type: string
+    minimum_versions_fixed_in:
+      type: array
+      items:
+        type: string
 UnsupportedSqlObjectData:
   title: Unsupported SQL Object Data
   description: Unsupported SQL Object Data
   type: object
   properties:
+    object_type:
+      type: string
     object_name:
       type: string
     sql_statement:
       type: string
-RecommendedRefactoringGraph:
-  title: Refectoring recommendations per SQL object type
-  description: Refectoring recommendations for migrating SQL objects
-  type: object
-  properties:
-    refactor_details:
-      type: array
-      items:
-        $ref: '#/RefactoringCount'
 RefactoringCount:
   title: Count of automatic, manual and invalid SQL objects
-  description: Count of automatic, manual and invalid SQL objects displayed in Schema analysis page
+  description: Count of automatic, manual and invalid SQL objects.
   type: object
   properties:
     sql_object_type:
@@ -1149,9 +1143,9 @@ TargetClusterRecommendationDetails:
     recommendation_summary:
       type: string
     target_cluster_recommendation:
-      $ref: '#/TargetClusterSpec'
+      $ref: "#/TargetClusterSpec"
     target_schema_recommendation:
-      $ref: '#/TargetSchemaRecommendations'
+      $ref: "#/TargetSchemaRecommendations"
 TargetClusterSpec:
   title: Target cluster size recommendations
   description: schema for target cluster cpu, memory
@@ -1196,6 +1190,8 @@ AssessmentReportSummary:
   properties:
     migration_complexity:
       type: string
+    migration_comlexity_explanation:
+      type: string
     estimated_migration_time:
       type: string
     summary:
@@ -1230,53 +1226,19 @@ SourceDatabaseInfo:
     total_index_size:
       type: integer
       format: int64
-MigrationAssesmentInfo:
-  title: Details for Voyager migrations assesment
-  description: Details for Voyager migrations assesment
-  type: object
-  properties:
-    assesment_status:
-      type: boolean
-    top_errors:
-      type: array
-      items:
-        type: string
-    top_suggestions:
-      type: array
-      items:
-        type: string
-    complexity_overview:
-      type: array
-      items:
-        $ref: '#/AssesmentComplexityInfo'
-    operating_system:
-      type: string
-AssesmentComplexityInfo:
-  title: Assesment complexity details
-  description: Assesment complexity details
-  type: object
-  properties:
-    schema:
-      type: string
-    sql_objects_count:
-      type: integer
-    table_count:
-      type: integer
-    complexity:
-      type: string
 AssessmentSourceDbObject:
   title: Details about Source DB's SQL Objects
-  description:  Details about Source DB's SQL Objects
+  description: Details about Source DB's SQL Objects
   type: object
   properties:
     sql_objects_count:
       type: array
       items:
-        $ref: '#/SqlObjectCount'
+        $ref: "#/SqlObjectCount"
     sql_objects_metadata:
       type: array
       items:
-        $ref: '#/SqlObjectMetadata'
+        $ref: "#/SqlObjectMetadata"
 SqlObjectCount:
   title: Count of specific Sql Object type in the source DB
   description: Count of specific Sql Object type in the source DB
@@ -1306,7 +1268,7 @@ SqlObjectMetadata:
       format: int64
 AssessmentTargetRecommendationObject:
   title: Details about Target table recommendations
-  description:  Details about Target table recommendations
+  description: Details about Target table recommendations
   type: object
   properties:
     num_of_colocated_tables:
@@ -1322,7 +1284,7 @@ AssessmentTargetRecommendationObject:
     recommendation_details:
       type: array
       items:
-        $ref: '#/TargetRecommendationItem'
+        $ref: "#/TargetRecommendationItem"
 TargetRecommendationItem:
   title: Target recommendation table metadata information
   description: Target recommendation table metadata information
@@ -1341,15 +1303,15 @@ ConnectionsStats:
   type: object
   properties:
     data:
-      $ref: '#/ConnectionsStatsData'
+      $ref: "#/ConnectionsStatsData"
 ConnectionsStatsData:
   type: object
   additionalProperties:
-    $ref: '#/ConnectionStats'
+    $ref: "#/ConnectionStats"
 ConnectionStats:
   type: array
   items:
-    $ref: '#/ConnectionStatsItem'
+    $ref: "#/ConnectionStatsItem"
 ConnectionStatsItem:
   type: object
   properties:
@@ -1483,3 +1445,184 @@ RestoreDetails:
     - time_taken
     - bytes_transferred
     - actual_size
+xClusterPlacementLocation:
+  title: Get xCluster placement location info.
+  description: Get universe's placement location in xCluster replication.
+  type: object
+  properties:
+    cloud:
+      type: string
+      description: Cloud name
+    zone:
+      type: string
+      description: Zone name
+    region:
+      type: string
+      description: Region name
+xClusterOutboundGroup:
+  title: Get xCluster replication group ids list.
+  description: Schema for xCluster replication group details.
+  type: object
+  properties:
+    replication_group_id:
+      type: string
+      description: Unique identifier for the replication group.
+    state:
+      type: string
+      description: The current status of the replication group (e.g., 'active', 'inactive').
+    replication_cluster_node_ips:
+      type: array
+      description: The list of IP addresses of the nodes involved in the replication.
+      uniqueItems: true
+      items:
+        type: string
+    source_universe_uuid:
+      type: string
+      description: UUID of the source universe for the replication group.
+    target_universe_uuid:
+      type: string
+      description: UUID of the target universe for the replication group.
+    tables_list_with_lag:
+      type: array
+      description: List of namespaces from outbound and lag of each table
+      uniqueItems: true
+      items:
+        $ref: "#/TableReplicationLagDetailsOutbound"
+  required:
+    - replication_group_id
+    - state
+    - namespace
+    - current_cluster_ip_address
+    - target_universe_uuid
+xClusterInboundGroup:
+  title: Get xCluster replication group ids list.
+  description: Schema for xCluster replication group details.
+  type: object
+  properties:
+    replication_group_id:
+      type: string
+      description: Unique identifier for the replication group.
+    state:
+      type: string
+      description: The current status of the replication group.
+    target_cluster_node_ips:
+      type: array
+      description: List of target-side node IPs involved in replication.
+      uniqueItems: true
+      items:
+        type: string
+    source_cluster_node_ips:
+      type: array
+      description: List of source-side node IPs involved in replication.
+      uniqueItems: true
+      items:
+        type: string
+    source_universe_uuid:
+      type: string
+      description: UUID of the source universe for the replication group.
+    target_universe_uuid:
+      type: string
+      description: UUID of the target universe for the replication group.
+  required:
+    - replication_group_id
+    - state
+    - namespace
+    - current_cluster_ip_address
+    - source_leader_host
+xClusterTableInfoInbound:
+  title: Table information for a namespace in the replication group.
+  description: Schema for table details in xCluster replication.
+  type: object
+  properties:
+    table_uuid:
+      type: string
+      description: Unique identifier for the table.
+    namespace_id:
+      type: string
+      description: Unique identifier for the namespace.
+    table_name:
+      type: string
+      description: Name of the table.
+    stream_id:
+      type: string
+      description: Stream ID associated with the table for replication.
+    state:
+      type: string
+      description: The current state of the table.
+    keyspace:
+      type: string
+      description: Keyspace to which the table belongs.
+    avg_get_changes_latency_ms:
+      type: number
+      format: float64
+      description: The average time taken by the consumer to fetch changes from the producer
+    avg_apply_latency_ms:
+      type: number
+      format: float64
+      description: The average time taken to apply received changes to the consumer table.
+    avg_throughput_KiBps:
+      type: number
+      format: float64
+      description: The average throughput in KiB per second for this replication stream.
+  required:
+    - table_uuid
+    - table_name
+    - stream_id
+    - state
+    - keyspace
+    - avg_get_changes_latency_ms
+    - avg_apply_latency_ms
+    - avg_throughput_KiBps
+TableReplicationLagDetailsOutbound:
+  title: Table information for a namespace in the replication group and per table level lag time.
+  description: Schema for table details and namespace in replication.
+  type: object
+  properties:
+    namespace:
+      type: string
+      description: Namespace to which the current table belongs.
+    table_uuid:
+      type: string
+      description: Unique identifier for the table.
+    table_name:
+      type: string
+      description: Name of the table.
+    is_checkpointing:
+      type: boolean
+      description: Indicates whether the table is currently checkpointing.
+    is_part_of_initial_bootstrap:
+      type: boolean
+      description: Indicates whether the table is part of the initial bootstrap process.
+    async_replication_sent_lag_micros:
+      type: integer
+      description: The lag time in microseconds for sent replication data.
+      format: int64
+    async_replication_committed_lag_micros:
+      type: integer
+      description: The lag time in microseconds for committed replication data.
+      format: int64
+  required:
+    - table_uuid
+    - table_name
+    - stream_id
+    - state
+    - keyspace
+    - is_checkpointing
+    - is_part_of_initial_bootstrap
+    - async_replication_committed_lag_micros
+    - async_replication_sent_lag_micros
+NamespacesInfo:
+  type: object
+  title: Namespace and corresponding tables participating in the replication
+  description: A single namespace and its corresponding tables participating in the replication
+  properties:
+    namespace:
+      type: string
+      description: Name of the namespace in the replication
+    table_info_list:
+      type: array
+      items:
+        $ref: "#/xClusterTableInfoInbound"
+  required:
+    - namespace
+    - table_info_list

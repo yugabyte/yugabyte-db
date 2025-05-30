@@ -663,7 +663,11 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestLeaderDistribution)) {
   constexpr auto kPartitionPrefix = "test_geo_partitioned_partition_";
   constexpr size_t kNumZones = 3;
   constexpr size_t kNumServersEachZone = 3;
+#if defined(__APPLE__)
+  constexpr size_t kNumTabletsEachPartition = 30;
+#else
   constexpr size_t kNumTabletsEachPartition = 90;
+#endif
 
   // Create parent table.
   ASSERT_OK(conn.ExecuteFormat(

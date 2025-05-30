@@ -106,7 +106,7 @@ The service is comprised of a React frontend and a Java backend. Prior knowledge
 1. Build application images and start the containers:
 
     ```shell
-    docker-compose up --build
+    docker compose up --build
     ```
 
 The `yugaplus-backend` container connects to the PostgreSQL container, initializes the movie catalog, and preloads a sample dataset comprising over 2,800 movies. This dataset includes embeddings pre-generated for movie overviews using the OpenAI Embedding model (`text-embedding-ada-002`). Upon successful startup, the backend will display the following messages in the terminal window:

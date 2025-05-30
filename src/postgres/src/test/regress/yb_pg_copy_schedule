@@ -1,0 +1,10 @@
+# src/test/regress/yb_pg_copy_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This suite includes all tests on the COPY command that are enabled for YugaByte.
+####################################################################################################
+test: yb.port.copy
+test: copyselect
+test: copydml
+test: yb.port.copy2

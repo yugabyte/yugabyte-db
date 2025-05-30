@@ -4,7 +4,6 @@ headerTitle: Hasura
 linkTitle: Hasura
 description: Using Hasura with YugabyteDB
 headcontent: Using Hasura with YugabyteDB
-image: /images/develop/graphql/hasura/hasura.png
 menu:
   preview_integrations:
     identifier: hasura

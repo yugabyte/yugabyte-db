@@ -201,6 +201,7 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
       KeyEntryValue::MakeColumnId(ColumnId(0)),
       KeyEntryValue::SystemColumnId(ColumnId(numeric_limits<ColumnIdRep>::max())),
       KeyEntryValue::SystemColumnId(ColumnId(0)),
+      KeyEntryValue::MakeBson(string("foo\0bar\x01", 8)),
   }) {
     EncodeAndDecode(primitive_value);
   }
@@ -238,6 +239,7 @@ TEST(PrimitiveValueTest, PrimitiveValueRoundTrip) {
   TestRoundTrip(PrimitiveValue::Float(3.1415), DataType::FLOAT);
   TestRoundTrip(PrimitiveValue::Float(100.0), DataType::FLOAT);
   TestRoundTrip(PrimitiveValue::Float(1e-37), DataType::FLOAT);
+  TestRoundTrip(PrimitiveValue("foo"), DataType::BSON);
 }
 
 TEST(PrimitiveValueTest, TestEncoding) {
@@ -274,6 +276,9 @@ TEST(PrimitiveValueTest, TestEncoding) {
 
   TestEncoding(R"#("#\x80\xff\x05T=\xf7)\xbc\x18\x80K")#",
                KeyEntryValue(HybridTime::FromMicros(1000)));
+
+  TestEncoding(
+      R"#("ofoo\x00\x01bar\x01\x00\x00")#", KeyEntryValue::MakeBson(string("foo\0bar\x01", 8)));
 }
 
 TEST(PrimitiveValueTest, TestCompareStringsWithEmbeddedZeros) {
@@ -478,6 +483,10 @@ TEST(PrimitiveValueTest, TestAllTypesComparisons) {
   ComparePrimitiveValues(
       KeyEntryValue::Int32(RandomUniformInt<int32_t>()),
       KeyEntryValue::Int32(RandomUniformInt<int32_t>()));
+
+  ComparePrimitiveValues(
+      KeyEntryValue::MakeBson(RandomHumanReadableString(10)),
+      KeyEntryValue::MakeBson(RandomHumanReadableString(10)));
 }
 
 void ValidateEncodedKeyEntryType(const DataType& data_type) {
@@ -515,6 +524,7 @@ void ValidateEncodedKeyEntryType(const DataType& data_type) {
       key_entry_value = KeyEntryValue::MakeTimestamp(Timestamp(1000));
       break;
     case DataType::VECTOR: FALLTHROUGH_INTENDED;
+    case DataType::BSON: FALLTHROUGH_INTENDED;
     case DataType::UUID: FALLTHROUGH_INTENDED;
     case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
     case DataType::UNKNOWN_DATA: FALLTHROUGH_INTENDED;

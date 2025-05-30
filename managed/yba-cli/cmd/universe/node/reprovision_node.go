@@ -16,8 +16,8 @@ import (
 // reprovisionNodeCmd represents the universe command
 var reprovisionNodeCmd = &cobra.Command{
 	Use:   "reprovision",
-	Short: "Reprovision a node instance in YugabyteDB Anywhere universe",
-	Long: "Reprovision a node instance in YugabyteDB Anywhere universe.\n" +
+	Short: "Reprovision a node in YugabyteDB Anywhere universe",
+	Long: "Reprovision a node in YugabyteDB Anywhere universe.\n" +
 		"Re-provision node with already stopped processes.",
 	Example: `yba universe node reprovision --name <universe-name> --node-name <node-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
@@ -28,7 +28,7 @@ var reprovisionNodeCmd = &cobra.Command{
 		if len(strings.TrimSpace(universeName)) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No universe name found to reprovision node instance"+
+				formatter.Colorize("No universe name found to reprovision node"+
 					"\n", formatter.RedColor))
 		}
 		nodeName, err := cmd.Flags().GetString("node-name")

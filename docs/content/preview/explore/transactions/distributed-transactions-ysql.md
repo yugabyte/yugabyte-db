@@ -35,7 +35,7 @@ The best way to understand distributed transactions in YugabyteDB is through exa
 
 To learn about how YugabyteDB handles failures during transactions, see [High availability of transactions](../../fault-tolerance/transaction-availability/).
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## Create a table
 

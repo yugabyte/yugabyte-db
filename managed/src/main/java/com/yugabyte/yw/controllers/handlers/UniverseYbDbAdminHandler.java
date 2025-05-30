@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
@@ -72,6 +73,7 @@ public class UniverseYbDbAdminHandler {
   @Inject RuntimeConfGetter confGetter;
   @Inject UniverseTableHandler tableHandler;
   @Inject GFlagsValidation gFlagsValidation;
+  @Inject SoftwareUpgradeHelper softwareUpgradeHelper;
 
   public UniverseYbDbAdminHandler() {}
 
@@ -210,6 +212,12 @@ public class UniverseYbDbAdminHandler {
       ConfigureDBApiParams requestParams, Customer customer, Universe universe) {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot configure YSQL APIs as a major version upgrade is in progress.");
+    }
+
     // Check runtime flag for connection pooling.
     if (requestParams.enableConnectionPooling) {
       boolean allowConnectionPooling =

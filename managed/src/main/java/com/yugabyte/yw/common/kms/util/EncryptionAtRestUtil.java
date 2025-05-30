@@ -40,6 +40,10 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.encrypt.Encryptors;
@@ -54,6 +58,14 @@ public class EncryptionAtRestUtil {
     CMK,
     @EnumValue("DATA_KEY")
     DATA_KEY;
+  }
+
+  @AllArgsConstructor
+  @RequiredArgsConstructor
+  @Getter
+  public static class EncryptionKey {
+    @NonNull public byte[] keyBytes;
+    public ObjectNode encryptionContext;
   }
 
   private static final String BACKUP_KEYS_FILE_NAME = "backup_keys.json";
@@ -157,6 +169,17 @@ public class EncryptionAtRestUtil {
         .removeCacheEntry(universeUUID);
   }
 
+  public static void addKeyRef(
+      UUID universeUUID, UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
+    KmsHistory.createKmsHistory(
+        configUUID,
+        universeUUID,
+        KmsHistoryId.TargetType.UNIVERSE_KEY,
+        Base64.getEncoder().encodeToString(keyRef),
+        Base64.getEncoder().encodeToString(keyRef),
+        encryptionContext);
+  }
+
   public static void addKeyRef(UUID universeUUID, UUID configUUID, byte[] keyRef) {
     KmsHistory.createKmsHistory(
         configUUID,
@@ -167,24 +190,36 @@ public class EncryptionAtRestUtil {
   }
 
   public static void addKeyRefAndKeyId(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, String dbKeyId) {
+      UUID universeUUID,
+      UUID configUUID,
+      byte[] keyRef,
+      String dbKeyId,
+      ObjectNode encryptionContext) {
     KmsHistory.createKmsHistory(
         configUUID,
         universeUUID,
         KmsHistoryId.TargetType.UNIVERSE_KEY,
         Base64.getEncoder().encodeToString(keyRef),
-        dbKeyId);
+        dbKeyId,
+        encryptionContext);
   }
 
   public static KmsHistory createKmsHistory(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, int reEncryptionCount, String dbKeyId) {
+      UUID universeUUID,
+      UUID configUUID,
+      byte[] keyRef,
+      int reEncryptionCount,
+      String dbKeyId,
+      ObjectNode encryptionContext) {
     return KmsHistory.createKmsHistory(
         configUUID,
         universeUUID,
         KmsHistoryId.TargetType.UNIVERSE_KEY,
         Base64.getEncoder().encodeToString(keyRef),
         reEncryptionCount,
-        dbKeyId);
+        dbKeyId,
+        encryptionContext,
+        false /* saveToDb */);
   }
 
   public static boolean keyRefExists(UUID universeUUID, byte[] keyRef) {
@@ -270,17 +305,21 @@ public class EncryptionAtRestUtil {
 
   public static String getPlainTextUniverseKey(KmsHistory kmsHistory) {
     return getPlainTextUniverseKey(
-        kmsHistory.getUuid().targetUuid, kmsHistory.getConfigUuid(), kmsHistory.getUuid().keyRef);
+        kmsHistory.getUuid().targetUuid,
+        kmsHistory.getConfigUuid(),
+        kmsHistory.getUuid().keyRef,
+        kmsHistory.getEncryptionContext());
   }
 
-  public static String getPlainTextUniverseKey(UUID universeUUID, UUID configUUID, String keyRef) {
+  public static String getPlainTextUniverseKey(
+      UUID universeUUID, UUID configUUID, String keyRef, ObjectNode encryptionContext) {
     KmsConfig kmsConfig = KmsConfig.getOrBadRequest(configUUID);
     byte[] encryptedUniverseKey = Base64.getDecoder().decode(keyRef);
     byte[] plainTextUniverseKey =
         kmsConfig
             .getKeyProvider()
             .getServiceInstance()
-            .retrieveKey(universeUUID, configUUID, encryptedUniverseKey);
+            .retrieveKey(universeUUID, configUUID, encryptedUniverseKey, encryptionContext);
     return Base64.getEncoder().encodeToString(plainTextUniverseKey);
   }
 
@@ -411,18 +450,22 @@ public class EncryptionAtRestUtil {
     public byte[] keyRef;
     public KeyProvider keyProvider;
     public String dbKeyId;
+    public ObjectNode encryptionContext;
 
-    public BackupEntry(byte[] keyRef, KeyProvider keyProvider, String dbKeyId) {
+    public BackupEntry(
+        byte[] keyRef, KeyProvider keyProvider, String dbKeyId, ObjectNode encryptionContext) {
       this.keyRef = keyRef;
       this.keyProvider = keyProvider;
       this.dbKeyId = dbKeyId;
+      this.encryptionContext = encryptionContext;
     }
 
     public ObjectNode toJson() {
       return Json.newObject()
           .put("key_ref", Base64.getEncoder().encodeToString(keyRef))
           .put("key_provider", keyProvider.name())
-          .put("db_key_id", dbKeyId);
+          .put("db_key_id", dbKeyId)
+          .set("encryption_context", encryptionContext);
     }
 
     @Override

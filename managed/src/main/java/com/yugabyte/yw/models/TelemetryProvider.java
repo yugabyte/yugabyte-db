@@ -12,6 +12,7 @@ import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Entity;
@@ -48,6 +49,7 @@ public class TelemetryProvider extends Model {
   @NotNull
   @Valid
   @DbJson
+  @Encrypted
   @ApiModelProperty(value = "configuration", accessMode = READ_WRITE)
   private TelemetryProviderConfig config;
 

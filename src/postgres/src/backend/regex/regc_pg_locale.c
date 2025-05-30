@@ -15,10 +15,13 @@
  *-------------------------------------------------------------------------
  */
 
-#include "c.h"
+#include "c.h"					/* YB include */
+
 #include "catalog/pg_collation.h"
-#include "utils/palloc.h"
 #include "utils/pg_locale.h"
+
+/* YB includes */
+#include "utils/palloc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -321,7 +324,8 @@ pg_wc_isdigit(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswdigit((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					isdigit((unsigned char) c));
@@ -330,7 +334,8 @@ pg_wc_isdigit(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswdigit_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -360,7 +365,8 @@ pg_wc_isalpha(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswalpha((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					isalpha((unsigned char) c));
@@ -369,7 +375,8 @@ pg_wc_isalpha(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswalpha_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -399,7 +406,8 @@ pg_wc_isalnum(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswalnum((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					isalnum((unsigned char) c));
@@ -408,7 +416,8 @@ pg_wc_isalnum(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswalnum_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -447,7 +456,8 @@ pg_wc_isupper(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswupper((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					isupper((unsigned char) c));
@@ -456,7 +466,8 @@ pg_wc_isupper(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswupper_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -486,7 +497,8 @@ pg_wc_islower(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswlower((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					islower((unsigned char) c));
@@ -495,7 +507,8 @@ pg_wc_islower(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswlower_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -525,7 +538,8 @@ pg_wc_isgraph(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswgraph((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					isgraph((unsigned char) c));
@@ -534,7 +548,8 @@ pg_wc_isgraph(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswgraph_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -564,7 +579,8 @@ pg_wc_isprint(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswprint((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					isprint((unsigned char) c));
@@ -573,7 +589,8 @@ pg_wc_isprint(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswprint_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -603,7 +620,8 @@ pg_wc_ispunct(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswpunct((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					ispunct((unsigned char) c));
@@ -612,7 +630,8 @@ pg_wc_ispunct(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswpunct_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -642,7 +661,8 @@ pg_wc_isspace(pg_wchar c)
 		case PG_REGEX_LOCALE_WIDE:
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswspace((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			return (c <= (pg_wchar) UCHAR_MAX &&
 					isspace((unsigned char) c));
@@ -651,7 +671,8 @@ pg_wc_isspace(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return iswspace_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			return (c <= (pg_wchar) UCHAR_MAX &&
@@ -685,7 +706,8 @@ pg_wc_toupper(pg_wchar c)
 				return pg_ascii_toupper((unsigned char) c);
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return towupper((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			/* force C behavior for ASCII characters, per comments above */
 			if (c <= (pg_wchar) 127)
@@ -698,7 +720,8 @@ pg_wc_toupper(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return towupper_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			if (c <= (pg_wchar) UCHAR_MAX)
@@ -732,7 +755,8 @@ pg_wc_tolower(pg_wchar c)
 				return pg_ascii_tolower((unsigned char) c);
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return towlower((wint_t) c);
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE:
 			/* force C behavior for ASCII characters, per comments above */
 			if (c <= (pg_wchar) 127)
@@ -745,7 +769,8 @@ pg_wc_tolower(pg_wchar c)
 			if (sizeof(wchar_t) >= 4 || c <= (pg_wchar) 0xFFFF)
 				return towlower_l((wint_t) c, (*pg_regex_locale)->info.lt);
 #endif
-			switch_fallthrough();
+			/* FALL THRU */
+			yb_switch_fallthrough();
 		case PG_REGEX_LOCALE_1BYTE_L:
 #ifdef HAVE_LOCALE_T
 			if (c <= (pg_wchar) UCHAR_MAX)

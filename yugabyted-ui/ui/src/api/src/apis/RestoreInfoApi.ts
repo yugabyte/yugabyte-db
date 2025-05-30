@@ -20,9 +20,9 @@ import type { AxiosInstance } from 'axios';
 // @ts-ignore
 import type {
   ApiError,
-  InlineResponse2002,
 } from '../models';
 
+import type { InlineResponse2002 } from '../models/InlineResponse2002';
 
 /**
  * Retrieve the list of databases on which restore is run in the YugabyteDB cluster.
@@ -96,7 +96,6 @@ export const useGetRestoreDetailsQuery = <T = InlineResponse2002, Error = ApiErr
     ...query
   };
 };
-
 
 
 

@@ -48,7 +48,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 typedef struct EventTriggerQueryState
@@ -905,7 +905,7 @@ EventTriggerInvoke(List *fn_oid_list, EventTriggerData *trigdata)
 	 * Let's evaluate event triggers in their own memory context, so that any
 	 * leaks get cleaned up promptly.
 	 */
-	context = AllocSetContextCreate(GetCurrentMemoryContext(),
+	context = AllocSetContextCreate(CurrentMemoryContext,
 									"event trigger context",
 									ALLOCSET_DEFAULT_SIZES);
 	oldcontext = MemoryContextSwitchTo(context);
@@ -1813,8 +1813,14 @@ EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt, Oid cfgId,
 	command->in_extension = creating_extension;
 	ObjectAddressSet(command->d.atscfg.address,
 					 TSConfigRelationId, cfgId);
-	command->d.atscfg.dictIds = palloc(sizeof(Oid) * ndicts);
-	memcpy(command->d.atscfg.dictIds, dictIds, sizeof(Oid) * ndicts);
+	if (ndicts > 0)
+	{
+		command->d.atscfg.dictIds = palloc(sizeof(Oid) * ndicts);
+		memcpy(command->d.atscfg.dictIds, dictIds, sizeof(Oid) * ndicts);
+	}
+	else
+		command->d.atscfg.dictIds = NULL;
+
 	command->d.atscfg.ndicts = ndicts;
 	command->parsetree = (Node *) copyObject(stmt);
 

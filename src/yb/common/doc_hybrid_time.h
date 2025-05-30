@@ -205,4 +205,9 @@ inline std::ostream& operator<<(std::ostream& os, const DocHybridTime& ht) {
   return os << ht.ToString();
 }
 
+struct MaxSeenHtData {
+  EncodedDocHybridTime max_seen_ht{DocHybridTime::kMin};
+  std::string max_seen_ht_key;
+};
+
 }  // namespace yb

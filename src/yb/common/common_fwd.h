@@ -32,6 +32,7 @@ class ConstContiguousRow;
 class DocHybridTime;
 class EncodedDocHybridTime;
 class HybridTime;
+struct ReadRestartData;
 class MissingValueProvider;
 class TableProperties;
 class TransactionStatusManager;

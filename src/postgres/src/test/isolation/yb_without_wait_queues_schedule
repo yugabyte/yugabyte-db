@@ -1,7 +1,7 @@
-test: yb-stat-activity-waitevent-statement-retry
-test: rc-ignores-txn-priority-bounds
-test: yb-fk-row-locking
-test: yb-user-managed-constraint
-test: yb-fk-relationship
-test: yb-check-constraint-locking
-test: yb-advisory-locks-fail-on-conflict
+test: yb.orig.stat-activity-waitevent-statement-retry
+test: yb.orig.rc-ignores-txn-priority-bounds
+test: yb.orig.fk-row-locking
+test: yb.orig.user-managed-constraint
+test: yb.orig.fk-relationship
+test: yb.orig.check-constraint-locking
+test: yb.orig.advisory-locks-fail-on-conflict

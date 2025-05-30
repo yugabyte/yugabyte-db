@@ -95,7 +95,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
   @Before
   public void before() {
     defaultCustomer = ModelFactory.testCustomer();
-    defaultUser = ModelFactory.testUser(defaultCustomer);
+    defaultUser = ModelFactory.testUser(defaultCustomer, Users.Role.Admin);
     superAdminUser =
         ModelFactory.testUser(defaultCustomer, "superadmin@customer.com", Role.SuperAdmin);
     baseRoute = "/api/customers/" + defaultCustomer.getUuid() + "/hooks";

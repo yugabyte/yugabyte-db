@@ -67,43 +67,6 @@ inline uint64 gbswap_64(uint64 host_int) {
 #endif  // bswap_64
 }
 
-#ifdef IS_LITTLE_ENDIAN
-
-// Definitions for ntohl etc. that don't require us to include
-// netinet/in.h. We wrap bswap_32 and bswap_16 in functions rather
-// than just #defining them because in debug mode, gcc doesn't
-// correctly handle the (rather involved) definitions of bswap_32.
-// gcc guarantees that inline functions are as fast as macros, so
-// this isn't a performance hit.
-inline uint16 ghtons(uint16 x) { return bswap_16(x); }
-inline uint32 ghtonl(uint32 x) { return bswap_32(x); }
-inline uint64 ghtonll(uint64 x) { return gbswap_64(x); }
-
-#elif defined IS_BIG_ENDIAN
-
-// These definitions are simpler on big-endian machines
-// These are functions instead of macros to avoid self-assignment warnings
-// on calls such as "i = ghtnol(i);".  This also provides type checking.
-inline uint16 ghtons(uint16 x) { return x; }
-inline uint32 ghtonl(uint32 x) { return x; }
-inline uint64 ghtonll(uint64 x) { return x; }
-
-#else
-#error "Unsupported bytesex: Either IS_BIG_ENDIAN or IS_LITTLE_ENDIAN must be defined"  // NOLINT
-#endif  // bytesex
-
-
-// ntoh* and hton* are the same thing for any size and bytesex,
-// since the function is an involution, i.e., its own inverse.
-#define gntohl(x) ghtonl(x)
-#define gntohs(x) ghtons(x)
-#define gntohll(x) ghtonll(x)
-#if !defined(__APPLE__)
-// This one is safe to take as it's an extension
-#define htonll(x) ghtonll(x)
-#define ntohll(x) htonll(x)
-#endif
-
 // Utilities to convert numbers between the current hosts's native byte
 // order and little-endian byte order
 //

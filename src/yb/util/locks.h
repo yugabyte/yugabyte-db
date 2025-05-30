@@ -329,4 +329,51 @@ class SemaphoreLock {
   Semaphore& semaphore_;
 };
 
+// simple_spinlock is something intermediate between spinlock and mutex, because it could fallback
+// waiting on futex. Also, it collects stats, etc.
+// TrivialSpinlock does not have such overhead and is more performant. For instance while testing
+// RWQueue in conjunction with it, the execution time was 1.5 times lower.
+class CAPABILITY("mutex") TrivialSpinlock {
+ public:
+  TrivialSpinlock() = default;
+
+  ~TrivialSpinlock() {
+    DCHECK(!is_locked());
+  }
+
+  void lock() ACQUIRE() {
+    size_t lock_counter = 16;
+    while (!try_lock()) {
+      while (is_locked()) {
+        // Max of 32752 pauses before we fallback to yield.
+        if (lock_counter <= 16 * 1024) {
+          for (size_t n = 0; n < lock_counter; ++n) {
+            base::subtle::PauseCPU();
+          }
+          lock_counter *= 2;
+        } else {
+          std::this_thread::yield();
+        }
+      }
+    }
+  }
+
+  void unlock() RELEASE() {
+    lockword_.store(false, std::memory_order_release);
+  }
+
+  bool try_lock() TRY_ACQUIRE(true) {
+    return !lockword_.exchange(true, std::memory_order_acquire);
+  }
+
+  bool is_locked() {
+    return lockword_.load(std::memory_order_relaxed);
+  }
+
+ private:
+  std::atomic<bool> lockword_{false};
+
+  DISALLOW_COPY_AND_ASSIGN(TrivialSpinlock);
+};
+
 } // namespace yb

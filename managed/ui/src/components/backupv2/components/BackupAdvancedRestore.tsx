@@ -38,6 +38,7 @@ import { YBLoading } from '../../common/indicators';
 import { handleCACertErrMsg } from '../../customCACerts';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { AllowedTasks, TableType } from '../../../redesign/helpers/dtos';
 import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
@@ -113,6 +114,8 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
   let isYbcEnabledinCurrentUniverse = false;
 
+  const interceptBackupLink = useInterceptBackupTaskLinks();
+
   if (isDefinedNotNull(currentUniverseUUID)) {
     isYbcEnabledinCurrentUniverse = isYbcEnabledUniverse(universeDetails);
   }
@@ -131,9 +134,9 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
         toast.success(
           <span>
             Success. Click &nbsp;
-            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
               here
-            </a>
+            </a>)}
             &nbsp; for task details
           </span>
         );

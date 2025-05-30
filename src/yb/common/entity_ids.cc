@@ -11,7 +11,9 @@
 // under the License.
 //
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 
 #include <boost/uuid/nil_generator.hpp>
 
@@ -262,6 +264,33 @@ bool IsCurrentVersionYsqlCatalogTable(const TableId& table_id) {
   }
 
   return IsCurrentPgVersion(table_id);
+}
+
+Result<TableId> GetRestoreTargetTablegroupId(
+    const NamespaceId& restore_target_namespace_id, const TableId& backup_source_tablegroup_id) {
+  // Since we preserve tablegroup oid in ysql_dump, then generate the target_tablegroup_id using
+  // restore_target_namespace_id and backup_source_tablegroup_id.
+  PgOid target_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(restore_target_namespace_id));
+  PgOid tablegroup_oid = VERIFY_RESULT(
+      GetPgsqlTablegroupOid(GetTablegroupIdFromParentTableId(backup_source_tablegroup_id)));
+  auto target_tablegroup_id = GetPgsqlTablegroupId(target_database_oid, tablegroup_oid);
+  if (IsColocatedDbTablegroupParentTableId(backup_source_tablegroup_id)) {
+    // This tablegroup parent table is in a colocated database, and has string
+    // 'colocation' in its id.
+    return GetColocationParentTableId(target_tablegroup_id);
+  } else {
+    return GetTablegroupParentTableId(target_tablegroup_id);
+  }
+  return target_tablegroup_id;
+}
+
+Result<TableId> GetRestoreTargetTableIdUsingRelfilenode(
+    const NamespaceId& restore_target_namespace_id, const TableId& backup_source_table_id) {
+  // new_table_id at restore side (if existed) and old_table_id (from backup side) have the same
+  // relfilenode. This is the last 4 bytes in the DocDB table UUID. Construct the new table UUID.
+  PgOid relfilenode = VERIFY_RESULT(GetPgsqlTableOid(backup_source_table_id));
+  PgOid restore_target_db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(restore_target_namespace_id));
+  return GetPgsqlTableId(restore_target_db_oid, relfilenode);
 }
 
 namespace xrepl {

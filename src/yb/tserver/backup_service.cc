@@ -12,7 +12,6 @@
 
 #include "yb/tserver/backup_service.h"
 
-#include "yb/util/debug/trace_event.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/tablet/tablet.h"
@@ -24,6 +23,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
@@ -32,6 +32,7 @@
 using namespace std::literals;
 
 DEFINE_test_flag(int32, tablet_delay_restore_ms, 0, "Delay restore on tablet");
+DEFINE_test_flag(bool, fail_tserver_snapshot_op, false, "Fail to delete snapshot");
 
 namespace yb {
 namespace tserver {
@@ -50,6 +51,14 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
                                                TabletSnapshotOpResponsePB* resp,
                                                RpcContext context) {
   if (!CheckUuidMatchOrRespond(tablet_manager_, "TabletSnapshotOp", req, resp, &context)) {
+    return;
+  }
+
+  if (FLAGS_TEST_fail_tserver_snapshot_op) {
+    auto status = STATUS_FORMAT(
+        InvalidArgument,
+        "Failing tablet snapshot op because of FLAGS_TEST_fail_tserver_snapshot_op");
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;
   }
 

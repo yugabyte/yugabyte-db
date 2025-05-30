@@ -23,6 +23,9 @@
 
 #include "yb/master/master_ddl.pb.h"
 
+DEFINE_test_flag(bool, allow_wait_for_alter_table_to_finish, true,
+    "When disabled, alter returns without waiting inline and checking the alter status at master.");
+
 using std::string;
 
 namespace yb {
@@ -110,7 +113,7 @@ Status YBTableAlterer::Alter() {
     client_->default_admin_operation_timeout();
   auto deadline = CoarseMonoClock::Now() + timeout;
   RETURN_NOT_OK(client_->data_->AlterTable(client_, req, deadline));
-  if (wait_) {
+  if (wait_ && PREDICT_TRUE(FLAGS_TEST_allow_wait_for_alter_table_to_finish)) {
     YBTableName alter_name = rename_to_ ? *rename_to_ : table_name_;
     RETURN_NOT_OK(client_->data_->WaitForAlterTableToFinish(
         client_, alter_name, table_id_, deadline));

@@ -116,71 +116,75 @@ class PgPartmanTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
   std::string ysql_bin_path_;
 };
 
-TEST_F(PgPartmanTest, TestIdNative) { RunAndAssertTest("test_native/yb_pg_test-id-native.sql"); }
+TEST_F(PgPartmanTest, TestIdNative) {
+  RunAndAssertTest("test_native/yb.port.test-id-native.sql");
+}
 
-TEST_F(PgPartmanTest, TestIdGapFill) { RunAndAssertTest("test_native/yb_pg_test-id-gap-fill.sql"); }
+TEST_F(PgPartmanTest, TestIdGapFill) {
+  RunAndAssertTest("test_native/yb.port.test-id-gap-fill.sql");
+}
 
 TEST_F(PgPartmanTest, TestIdNativeMixedCase) {
-  RunAndAssertTest("test_native/yb_pg_test-id-native-mixed-case.sql");
+  RunAndAssertTest("test_native/yb.port.test-id-native-mixed-case.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeGapFill) {
-  RunAndAssertTest("test_native/yb_pg_test-time-gap-fill.sql");
+  RunAndAssertTest("test_native/yb.port.test-time-gap-fill.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeNativeMixedCase) {
-  RunAndAssertTest("test_native/yb_pg_test-time-native-mixed-case.sql");
+  RunAndAssertTest("test_native/yb.port.test-time-native-mixed-case.sql");
 }
 
 TEST_F(PgPartmanTest, TestIdTimeSubpartNative) {
-  RunAndAssertTest("test_native/yb_pg_test-id-time-subpart-native.sql");
+  RunAndAssertTest("test_native/yb.port.test-id-time-subpart-native.sql");
 }
 
 TEST_F(PgPartmanTest, TestIdTimeSubpartCustomStartNative) {
-  RunAndAssertTest("test_native/yb_pg_test-id-time-subpart-custom-start-native.sql");
+  RunAndAssertTest("test_native/yb.port.test-id-time-subpart-custom-start-native.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeIdSubpartNative) {
-  RunAndAssertTest("test_native/yb_pg_test-time-id-subpart-native.sql");
+  RunAndAssertTest("test_native/yb.port.test-time-id-subpart-native.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeEpochIdSubpartNative) {
-  RunAndAssertTest("test_native/yb_pg_test-time-epoch-id-subpart-native.sql");
+  RunAndAssertTest("test_native/yb.port.test-time-epoch-id-subpart-native.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeEpochWeeklyNative) {
-  RunAndAssertTest("test_native/yb_pg_test-time-epoch-weekly-native.sql");
+  RunAndAssertTest("test_native/yb.port.test-time-epoch-weekly-native.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeCustom100YearsWeeklyNative) {
-  RunAndAssertTest("test_native/yb_pg_test-time-custom-100years-native.sql");
+  RunAndAssertTest("test_native/yb.port.test-time-custom-100years-native.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeDailyNative) {
-  RunAndAssertTest("test_native/yb_pg_test-time-daily-native.sql");
+  RunAndAssertTest("test_native/yb.port.test-time-daily-native.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeDailyNativeTablespaceTemplate) {
   RunAndAssertTest(
-      "test_native/test_tablespace/yb_pg_test-time-daily-native-tablespace-template.sql");
+      "test_native/test_tablespace/yb.port.test-time-daily-native-tablespace-template.sql");
 }
 
 TEST_F(PgPartmanTest, TestIdProcedureSourceTable) {
-  RunAndAssertTest("test_procedure/yb_pg_test-id-procedure-source-table-part1.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-id-procedure-source-table-part1.sql");
 
   ASSERT_OK(conn_->Execute(
       "CALL partman.partition_data_proc('partman_test.id_taptest_table', p_wait := 0, "
       "p_source_table := 'partman_test.id_taptest_table_source')"));
 
-  RunAndAssertTest("test_procedure/yb_pg_test-id-procedure-source-table-part2.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-id-procedure-source-table-part2.sql");
 
   ASSERT_OK(conn_->Execute("CALL partman.run_maintenance_proc();"));
 
-  RunAndAssertTest("test_procedure/yb_pg_test-id-procedure-source-table-part3.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-id-procedure-source-table-part3.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureEpochWeeklyNative) {
-  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-epoch-weekly-native-part1.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-time-procedure-epoch-weekly-native-part1.sql");
 
   ASSERT_OK(conn_->Execute(
       "CALL partman.partition_data_proc('partman_test.time_taptest_table', p_wait := 0, "
@@ -194,27 +198,27 @@ TEST_F(PgPartmanTest, TestTimeProcedureEpochWeeklyNative) {
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureSourceTable) {
-  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part1.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-time-procedure-source-table-part1.sql");
 
   ASSERT_OK(conn_->Execute(
       "CALL partman.partition_data_proc('partman_test.time_taptest_table', p_wait := 0, "
       "p_source_table := 'partman_test.time_taptest_table_source')"));
 
-  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part2.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-time-procedure-source-table-part2.sql");
 
   ASSERT_OK(conn_->Execute("CALL partman.run_maintenance_proc();"));
 
-  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-source-table-part3.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-time-procedure-source-table-part3.sql");
 }
 
 TEST_F(PgPartmanTest, TestTimeProcedureWeekly) {
-  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-weekly-part1.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-time-procedure-weekly-part1.sql");
 
   ASSERT_OK(
       conn_->Execute("CALL partman.reapply_constraints_proc('partman_test.time_taptest_table', "
                      "p_drop_constraints := true, p_apply_constraints := true)"));
 
-  RunAndAssertTest("test_procedure/yb_pg_test-time-procedure-weekly-part2.sql");
+  RunAndAssertTest("test_procedure/yb.port.test-time-procedure-weekly-part2.sql");
 }
 
 TEST_F(PgPartmanTest, TestIdNonSuperUser) {
@@ -222,7 +226,7 @@ TEST_F(PgPartmanTest, TestIdNonSuperUser) {
 
   std::string owner = "partman_owner";
   InitializeTestCommand(owner);
-  RunAndAssertTest("test_native/test_nonsuperuser/yb_pg_test-id-nonsuperuser-part2.sql");
+  RunAndAssertTest("test_native/test_nonsuperuser/yb.port.test-id-nonsuperuser-part2.sql");
 
   InitializeTestCommand();
   RunAndAssertTest("test_native/test_nonsuperuser/test-nonsuperuser-part3.sql");
@@ -233,7 +237,7 @@ TEST_F(PgPartmanTest, TestTimeHourlyNonSuperUser) {
 
   std::string owner = "partman_basic";
   InitializeTestCommand(owner);
-  RunAndAssertTest("test_native/test_nonsuperuser/yb_pg_test-time-hourly-nonsuperuser-part2.sql");
+  RunAndAssertTest("test_native/test_nonsuperuser/yb.port.test-time-hourly-nonsuperuser-part2.sql");
 
 }
 

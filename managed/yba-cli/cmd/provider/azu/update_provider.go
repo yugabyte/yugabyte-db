@@ -25,7 +25,7 @@ var updateAzureProviderCmd = &cobra.Command{
 	Short:   "Update an Azure YugabyteDB Anywhere provider",
 	Long:    "Update an Azure provider in YugabyteDB Anywhere",
 	Example: `yba provider azure update --name <provider-name> \
-	--hosted-zone-id <hosted-zone-id>`,
+	 --hosted-zone-id <hosted-zone-id>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -254,7 +254,13 @@ var updateAzureProviderCmd = &cobra.Command{
 
 		providerRegions = removeAzureRegions(removeRegions, providerRegions)
 
-		providerRegions = editAzureRegions(editRegions, addZones, editZones, removeZones, providerRegions)
+		providerRegions = editAzureRegions(
+			editRegions,
+			addZones,
+			editZones,
+			removeZones,
+			providerRegions,
+		)
 
 		providerRegions = addAzureRegions(addRegions, addZones, providerRegions)
 
@@ -343,7 +349,7 @@ func init() {
 		"[Optional] Update Azure Network Resource Group.")
 
 	updateAzureProviderCmd.Flags().String("hosted-zone-id", "",
-		"[Optional] Update Hosted Zone ID corresponging to Private DNS Zone.")
+		"[Optional] Update Hosted Zone ID corresponding to Private DNS Zone.")
 
 	updateAzureProviderCmd.Flags().StringArray("add-region", []string{},
 		"[Optional] Add region associated with the Azure provider. "+
@@ -684,7 +690,8 @@ func editAzureImageBundles(
 					if len(imageBundle["ssh-port"]) != 0 {
 						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
 						if err != nil {
-							errMessage := err.Error() + " Using SSH Port as 22\n"
+							errMessage := err.Error() +
+								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 							logrus.Errorln(
 								formatter.Colorize(errMessage, formatter.YellowColor),
 							)
@@ -744,7 +751,8 @@ func addAzureImageBundles(
 
 		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
 		if err != nil {
-			errMessage := err.Error() + " Using SSH Port as 22\n"
+			errMessage := err.Error() +
+				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
 			logrus.Errorln(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)

@@ -1,0 +1,239 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog;
+SET citus.next_shard_id TO 530000;
+SET documentdb.next_collection_id TO 5300;
+SET documentdb.next_collection_index_id TO 5300;
+-- insert a document
+SELECT documentdb_api.create_collection('db', 'queryhashindex');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','queryhashindex');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Create a hash index on the collection.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryhashindex", "indexes": [ { "key" : { "a.b": "hashed" }, "name": "hashIndex" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "0" }, "numIndexesAfter" : { "$numberInt" : "1" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', 'queryhashindex') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                  index_spec_as_bson                                  | index_is_valid 
+---------------------------------------------------------------------
+          5300 |     5301 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : "hashed" }, "name" : "hashIndex" } | t
+(1 row)
+
+SELECT documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "queryhashindex" }') ORDER BY 1;
+                                                                                                                     list_indexes_cursor_first_page                                                                                                                      
+---------------------------------------------------------------------
+ ("{ ""cursor"" : { ""id"" : { ""$numberLong"" : ""0"" }, ""ns"" : ""db.queryhashindex"", ""firstBatch"" : [ { ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""a.b"" : ""hashed"" }, ""name"" : ""hashIndex"" } ] }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",,f,0)
+(1 row)
+
+-- Explain various hash index scenarios.
+BEGIN;
+set local enable_seqscan to off;
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_eq(document, '{ "a.b": 1 }');
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5300_530001 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on "hashIndex"
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_in(document, '{ "a.b": [ 1, 2, true ]}'::bson);
+                                                                             QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5300_530001 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, true ] }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on "hashIndex"
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, true ] }'::documentdb_core.bson)
+(9 rows)
+
+-- these should not use the index.
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_ne(document, '{ "a.b": 1 }');
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_5300_530001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_gt(document, '{ "a.b": 1 }');
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_5300_530001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_gte(document, '{ "a.b": 1 }');
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_5300_530001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_lt(document, '{ "a.b": 1 }');
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_5300_530001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@<) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_lte(document, '{ "a.b": 1 }');
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_5300_530001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(7 rows)
+
+-- null can be pushed down.
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_eq(document, '{ "a.b": null }');
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5300_530001 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : null }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on "hashIndex"
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : null }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_in(document, '{ "a.b": [ 1, 2, null ]}'::bson);
+                                                                             QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5300_530001 collection
+               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, null ] }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on "hashIndex"
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, null ] }'::documentdb_core.bson)
+(9 rows)
+
+-- now insert some documents and run the queries above.
+SELECT documentdb_api.insert_one('db', 'queryhashindex', '{ "a": { "b": 1 } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryhashindex', '{ "a": { "b": 2 } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryhashindex', '{ "a": { "b": 3 } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryhashindex', '{ "a": { "b": "string" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryhashindex', '{ "a": { "b": null } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryhashindex', '{ "a": { "b": false } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryhashindex', '{ "c": 1, "a": "c only field" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'queryhashindex', '{ "a": { "b": {"$undefined" : true } } }'); -- null should also get undefined values
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_eq(document, '{ "a.b": 1 }');
+                 ?column?                  
+---------------------------------------------------------------------
+ { "" : { "b" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_in(document, '{ "a.b": [ 1, 2, true ]}'::bson);
+                 ?column?                  
+---------------------------------------------------------------------
+ { "" : { "b" : { "$numberInt" : "1" } } }
+ { "" : { "b" : { "$numberInt" : "2" } } }
+(2 rows)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_eq(document, '{ "a.b": null }');
+                  ?column?                  
+---------------------------------------------------------------------
+ { "" : { "b" : null } }
+ { "" : "c only field" }
+ { "" : { "b" : { "$undefined" : true } } }
+(3 rows)
+
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'queryhashindex') WHERE bson_dollar_in(document, '{ "a.b": [ 1, 2, null ]}'::bson);
+                  ?column?                  
+---------------------------------------------------------------------
+ { "" : { "b" : { "$numberInt" : "1" } } }
+ { "" : { "b" : { "$numberInt" : "2" } } }
+ { "" : { "b" : null } }
+ { "" : "c only field" }
+ { "" : { "b" : { "$undefined" : true } } }
+(5 rows)
+
+ROLLBACK;

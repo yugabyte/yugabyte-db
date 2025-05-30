@@ -154,7 +154,7 @@
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 
@@ -2266,6 +2266,8 @@ asyncQueueAdvanceTail(void)
 static void
 ProcessIncomingNotify(bool flush)
 {
+	MemoryContext oldcontext;
+
 	/* We *must* reset the flag */
 	notifyInterruptPending = false;
 
@@ -2280,13 +2282,20 @@ ProcessIncomingNotify(bool flush)
 
 	/*
 	 * We must run asyncQueueReadAllNotifications inside a transaction, else
-	 * bad things happen if it gets an error.
+	 * bad things happen if it gets an error.  However, we need to preserve
+	 * the caller's memory context (typically MessageContext).
 	 */
+	oldcontext = CurrentMemoryContext;
+
 	StartTransactionCommand();
 
 	asyncQueueReadAllNotifications();
 
 	CommitTransactionCommand();
+
+	/* Caller's context had better not have been transaction-local */
+	Assert(MemoryContextIsValid(oldcontext));
+	MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * If this isn't an end-of-command case, we must flush the notify messages
@@ -2367,7 +2376,7 @@ AsyncExistsPendingNotify(Notification *n)
  * Add a notification event to a pre-existing pendingNotifies list.
  *
  * Because pendingNotifies->events is already nonempty, this works
- * correctly no matter what GetCurrentMemoryContext() is.
+ * correctly no matter what CurrentMemoryContext is.
  */
 static void
 AddEventToPendingNotifies(Notification *n)

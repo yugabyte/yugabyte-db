@@ -3,9 +3,11 @@ package handlers
 import (
     "apiserver/cmd/server/helpers"
     "apiserver/cmd/server/models"
+
     "encoding/json"
     "fmt"
     "net/http"
+    "os"
     "runtime"
     "sort"
     "strconv"
@@ -142,6 +144,16 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                         numMasters++
                     }
                 }
+        }
+
+        createdOnTsFromConfFileSec, err := c.helper.GetClusterCreationTimestamp()
+        if err != nil {
+            c.logger.Warnf("Failed to get creation timestamp from conf file: %v", err)
+        } else {
+            createdOnTsFromConfFileMicroSec := createdOnTsFromConfFileSec * 1000000
+            if createdOnTsFromConfFileMicroSec < timestamp && createdOnTsFromConfFileMicroSec > 0 {
+                timestamp = createdOnTsFromConfFileMicroSec
+            }
         }
         createdOn := time.UnixMicro(timestamp).Format(time.RFC3339)
         // Less than 3 replicas -> None
@@ -375,6 +387,10 @@ func (c *Container) GetCluster(ctx echo.Context) error {
             smallestVersion = smallestVersionMaster
         }
         numCores := int32(len(reducedNodeList)) * int32(runtime.NumCPU())
+        // Don't count cores for k8s deployments
+        if _, ok := os.LookupEnv("YUGABYTED_UI_K8S"); ok {
+            numCores = 0
+        }
 
         // Get ram limits
         ramProvisionedBytes := float64(0)
@@ -435,4 +451,13 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         },
     }
     return ctx.JSON(http.StatusOK, response)
+}
+
+func (c *Container) GetCreatedOn(ctx echo.Context) error {
+    ts, err := c.helper.GetClusterCreationTimestamp()
+    if err != nil {
+        return ctx.String(http.StatusInternalServerError,
+            fmt.Sprintf("Failed to get cluster creation timestamp: %v", err))
+    }
+    return ctx.String(http.StatusOK, strconv.FormatInt(ts, 10))
 }

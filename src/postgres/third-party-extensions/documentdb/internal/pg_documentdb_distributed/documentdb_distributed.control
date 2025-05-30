@@ -1,0 +1,6 @@
+comment = 'Multi-Node API surface for DocumentDB'
+default_version = '0.102-0'
+module_pathname = '$libdir/pg_documentdb_distributed'
+relocatable = false
+superuser = true
+requires = 'citus, documentdb_core, documentdb'

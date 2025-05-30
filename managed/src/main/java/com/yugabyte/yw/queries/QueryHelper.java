@@ -51,8 +51,8 @@ public class QueryHelper {
       "SELECT stats_reset from pg_stat_statements_info";
   private static final String STAT_RESET_FIELD = "stats_reset";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_1 =
-      "SELECT s.userid::regrole as rolname, d.datname, s.queryid, LEFT(s.query, %d) as query,"
-          + " s.calls, s.rows, s.local_blks_hit, s.local_blks_written, ";
+      "SELECT s.dbid, s.userid, s.userid::regrole as rolname, d.datname, s.queryid, LEFT(s.query,"
+          + " %d) as query, s.calls, s.rows, s.local_blks_hit, s.local_blks_written, ";
   private static final String SLOW_QUERY_STATS_PG11 =
       "s.total_time, s.min_time, s.max_time, s.mean_time, s.stddev_time ";
   private static final String SLOW_QUERY_STATS_PG15 =
@@ -332,23 +332,25 @@ public class QueryHelper {
               }
               String queryID = queryObject.get("queryid").asText();
               String queryStatement = queryObject.get("query").asText();
-              if (!isExcluded(queryStatement, config, supportsLatencyHistogram)) {
+              String databaseName = queryObject.get("datname").asText();
+              if (!isExcluded(queryStatement, config, databaseName)) {
                 if (queryMap.containsKey(queryID)) {
                   // Calculate new query stats
                   ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryID);
                   // Defining values to reuse
                   double X_a = previousQueryObj.get("mean_time").asDouble();
                   double X_b = queryObject.get("mean_time").asDouble();
-                  int n_a = previousQueryObj.get("calls").asInt();
-                  int n_b = queryObject.get("calls").asInt();
+                  long n_a = previousQueryObj.get("calls").asLong();
+                  long n_b = queryObject.get("calls").asLong();
                   double S_a = previousQueryObj.get("stddev_time").asDouble();
                   double S_b = queryObject.get("stddev_time").asDouble();
 
                   double totalTime =
                       previousQueryObj.get("total_time").asDouble()
                           + queryObject.get("total_time").asDouble();
-                  int totalCalls = n_a + n_b;
-                  int rows = previousQueryObj.get("rows").asInt() + queryObject.get("rows").asInt();
+                  long totalCalls = n_a + n_b;
+                  long rows =
+                      previousQueryObj.get("rows").asLong() + queryObject.get("rows").asLong();
                   double minTime =
                       Math.min(
                           previousQueryObj.get("min_time").asDouble(),
@@ -536,14 +538,14 @@ public class QueryHelper {
     return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, randomTServer);
   }
 
-  private boolean isExcluded(
-      String queryStatement, Config config, Boolean supportsLatencyHistogram) {
+  private boolean isExcluded(String queryStatement, Config config, String databaseName) {
     final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
     final List<String> excludedPerfAdvisorQueries = Utils.getScriptQueryStatements();
     return excludedQueries.contains(queryStatement)
         || queryStatement.contains(SLOW_QUERY_STATS_UNLIMITED_SQL_2)
         || queryStatement.contains(LIST_USER_DATABASES_SQL)
-        || excludedPerfAdvisorQueries.contains(queryStatement);
+        || excludedPerfAdvisorQueries.contains(queryStatement)
+        || Util.RESERVED_DBS.contains(databaseName);
   }
 
   private void concatArrayNodes(ArrayNode destination, JsonNode source) {

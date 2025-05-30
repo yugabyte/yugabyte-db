@@ -83,7 +83,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 ## Limitations
 
-- LSN Comparisons Across Slots.
+- Log Sequence Number ([LSN](../using-logical-replication/key-concepts/#lsn-type)) Comparisons Across Slots.
 
     In the case of YugabyteDB, the LSN  does not represent the byte offset of a WAL record. Hence, arithmetic on LSN and any other usages of the LSN making this assumption will not work. Also, currently, comparison of LSN values from messages coming from different replication slots is not supported.
 
@@ -103,7 +103,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - There should be a primary key on the table you want to stream the changes from.
 
-- CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
+- CDC is not supported on tables (both source and target) for xCluster replication. Issues [25371](https://github.com/yugabyte/yugabyte-db/issues/25371) and [15534](https://github.com/yugabyte/yugabyte-db/issues/15534).
 
 - Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations after the replication slot is created. However, you can perform these operations before creating the replication slot without any issues.
 
@@ -116,3 +116,9 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 - Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
 
 - Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. Tracked in issue [24918](https://github.com/yugabyte/yugabyte-db/issues/24918).
+
+- A replication slot should be consumed by at most one consumer at a time. However, there is currently no locking mechanism to enforce this. As a result, you should ensure that multiple consumers do not consume from a slot simultaneously. Tracked in issue [20755](https://github.com/yugabyte/yugabyte-db/issues/20755).
+
+- If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
+
+    To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.

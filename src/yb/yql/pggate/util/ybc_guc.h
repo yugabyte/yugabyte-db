@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <stdbool.h>  // Needed for bool in C.
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -63,6 +64,11 @@ extern bool yb_pushdown_is_not_null;
 extern bool yb_enable_pg_locks;
 
 /*
+ * GUC that toggles whether pg_locks correctly formats and integrates advisory locks info.
+ */
+extern bool yb_pg_locks_integrate_advisory_locks;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;
@@ -91,6 +97,14 @@ extern bool yb_binary_restore;
  * effect.
  */
 extern bool yb_ignore_pg_class_oids;
+
+/*
+ * Guc variable to ignore requests to set relfilenode ids when yb_binary_restore is set.
+ *
+ * If true then calls to pg_catalog.binary_upgrade_set_next_{heap|index}_relfilenode will have no
+ * effect.
+ */
+extern bool yb_ignore_relfilenode_ids;
 
 /*
  * Set to true only for runs with EXPLAIN ANALYZE
@@ -135,9 +149,20 @@ extern bool yb_enable_replica_identity;
 extern bool yb_allow_replication_slot_lsn_types;
 
 /*
+ * Guc variable that allows ordering mode to be specified while creating replication slot
+ */
+extern bool yb_allow_replication_slot_ordering_modes;
+
+/*
  * GUC variable that specifies default replica identity for tables at the time of creation.
  */
 extern char* yb_default_replica_identity;
+
+/*
+ * GUC variable that enable replication slot consumption of consistent changes from a hash range
+ * of table.
+ */
+extern bool yb_enable_consistent_replication_from_hash_range;
 
 /*
  * xcluster consistency level
@@ -160,6 +185,7 @@ extern int yb_xcluster_consistency_level;
  */
 extern uint64_t yb_read_time;
 extern bool yb_is_read_time_ht;
+extern bool yb_disable_catalog_version_check;
 
 /*
  * Allows for customizing the number of rows to be prefetched.
@@ -211,20 +237,21 @@ extern int yb_explicit_row_locking_batch_size;
  * Ease transition to YSQL by reducing read restart errors for new apps.
  *
  * This option doesn't affect SERIALIZABLE isolation level since
- * SERIALIZABLE can't face read restart errors anyway.
+ * SERIALIZABLE can't face read restart errors anyway. Also, does not affect
+ * fast path writes.
  *
  * See the help text for yb_read_after_commit_visibility GUC for more
  * information.
  *
  * XXX: This GUC is meant as a workaround only by relaxing the
- * read-after-commit-visibility guarantee. Ideally,
- * (a) Users should fix their apps to handle read restart errors, or
- * (b) TODO(#22317): YB should use very accurate clocks to avoid read restart
- *     errors altogether.
+ * read-after-commit-visibility guarantee. Ideally, user should
+ * (a) Fix their apps to handle read restart errors
+ * (b) Or use accurate clocks provided by time_source=clockbound
  */
 typedef enum {
   YB_STRICT_READ_AFTER_COMMIT_VISIBILITY = 0,
   YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY = 1,
+  YB_DEFERRED_READ_AFTER_COMMIT_VISIBILITY = 2,
 } YbcReadAfterCommitVisibilityEnum;
 
 /* GUC for the enum above. */
@@ -232,9 +259,25 @@ extern int yb_read_after_commit_visibility;
 
 extern bool yb_allow_block_based_sampling_algorithm;
 
+extern bool yb_allow_separate_requests_for_sampling_stages;
+
 extern bool yb_refresh_matview_in_place;
 
+extern bool yb_disable_auto_analyze;
+
 extern int yb_major_version_upgrade_compatibility;
+
+extern bool yb_upgrade_to_pg15_completed;
+
+extern bool yb_debug_log_catcache_events;
+
+extern bool yb_extension_upgrade;
+
+extern bool yb_mixed_mode_expression_pushdown;
+
+extern bool yb_mixed_mode_saop_pushdown;
+
+extern bool yb_use_internal_auto_analyze_service_conn;
 
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {

@@ -1,4 +1,4 @@
 # src/test/regress/yb_types_numeric_schedule
 # NON-PORTED TESTS ONLY
-test: yb_numeric
-test: yb_oid
+test: yb.orig.numeric
+test: yb.orig.oid

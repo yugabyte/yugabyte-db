@@ -38,7 +38,6 @@
 #include "nodes/plannodes.h"
 #include "nodes/readfuncs.h"
 
-
 /*
  * Macros to simplify reading of different kinds of fields.  Use these
  * wherever possible to reduce the chance for silly typos.  Note that these
@@ -862,14 +861,17 @@ _readNullIfExpr(void)
  * _readScalarArrayOpExpr
  */
 static ScalarArrayOpExpr *
-_readScalarArrayOpExpr(void)
+_readScalarArrayOpExpr()
 {
 	READ_LOCALS(ScalarArrayOpExpr);
 
 	READ_OID_FIELD(opno);
 	READ_OID_FIELD(opfuncid);
-	READ_OID_FIELD(hashfuncid);
-	READ_OID_FIELD(negfuncid);
+	if (GetYbExpressionVersion() != 11)
+	{
+		READ_OID_FIELD(hashfuncid);
+		READ_OID_FIELD(negfuncid);
+	}
 	READ_BOOL_FIELD(useOr);
 	READ_OID_FIELD(inputcollid);
 	READ_NODE_FIELD(args);
@@ -1667,6 +1669,11 @@ ReadCommonPlan(Plan *local_node)
 	READ_NODE_FIELD(initPlan);
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
+	READ_STRING_FIELD(ybHintAlias);
+	READ_UINT_FIELD(ybUniqueId);
+	READ_STRING_FIELD(ybInheritedHintAlias);
+	READ_BOOL_FIELD(ybIsHinted);
+	READ_BOOL_FIELD(ybHasHintedUid);
 }
 
 /*

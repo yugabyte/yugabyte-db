@@ -405,6 +405,9 @@ main(int argc, char **argv)
 		exit(0);
 	}
 
+	/* Initialize hashtable that tracks WAL files protected from removal */
+	keepwal_init();
+
 	findLastCheckpoint(datadir_target, divergerec, lastcommontliIndex,
 					   &chkptrec, &chkpttli, &chkptredo, restore_command);
 	pg_log_info("rewinding from last common checkpoint at %X/%X on timeline %u",
@@ -837,6 +840,7 @@ getTimelineHistory(ControlFileData *controlFile, int *nentries)
 		pg_free(histfile);
 	}
 
+	/* In debugging mode, print what we read */
 	if (debug)
 	{
 		int			i;
@@ -848,10 +852,7 @@ getTimelineHistory(ControlFileData *controlFile, int *nentries)
 		else
 			Assert(false);
 
-		/*
-		 * Print the target timeline history.
-		 */
-		for (i = 0; i < targetNentries; i++)
+		for (i = 0; i < *nentries; i++)
 		{
 			TimeLineHistoryEntry *entry;
 

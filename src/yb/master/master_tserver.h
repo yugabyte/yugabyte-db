@@ -19,6 +19,7 @@
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_fwd.h"
 
 namespace yb::master {
 
@@ -33,7 +34,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
   MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity);
   tserver::TSTabletManager* tablet_manager() override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
-  tablet::TSLocalLockManager* ts_local_lock_manager() const override { return nullptr; }
+  tserver::TSLocalLockManagerPtr ts_local_lock_manager() const override;
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
@@ -53,6 +54,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
+  uint32_t get_oid_cache_invalidations_count() const override { return 0; }
+
   // Get the global catalog versions.
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override;
@@ -64,9 +67,17 @@ class MasterTabletServer : public tserver::TabletServerIf,
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
 
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const override;
+
+  Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list) override;
+
   client::TransactionPool& TransactionPool() override;
 
-  tserver::TServerSharedData& SharedObject() override;
+  ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;
 
   const std::shared_future<client::YBClient*>& client_future() const override;
 
@@ -111,10 +122,22 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   bool SkipCatalogVersionChecks() override;
 
+  void SetYsqlDBCatalogVersions(
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data) override {}
+
+  Result<tserver::YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
+  Status RestartPG() const override {
+    return STATUS(NotSupported, "RestartPG not implemented for masters");
+  }
+  Status KillPg() const override {
+    return STATUS(NotSupported, "KillPg not implemented for masters");
+  }
   const std::string& permanent_uuid() const override;
 
   Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
         const tserver::PgTxnSnapshotLocalId& snapshot_id) override;
+
+  Result<std::string> GetUniverseUuid() const override;
 
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(

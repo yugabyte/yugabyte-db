@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <functional>
 #include <future>
 
 #include "yb/gutil/macros.h"

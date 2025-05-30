@@ -1,0 +1,286 @@
+CREATE SCHEMA regex5;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal,public,regex5;
+SET citus.next_shard_id TO 90000;
+SET documentdb.next_collection_id TO 900;
+SET documentdb.next_collection_index_id TO 900;
+SELECT create_collection('db','regex5');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO ON;
+\i sql/regex5_tests_core.sql
+CREATE OR REPLACE FUNCTION assert_count_regex5(expected_row_count int, query documentdb_core.bson)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $$
+DECLARE
+	returned_row_count int;
+BEGIN
+	SELECT count(*) INTO returned_row_count FROM collection('db','regex5') WHERE document @@ query;
+
+	IF returned_row_count <> expected_row_count THEN
+		RAISE 'query % returned % rows instead of %', query, returned_row_count, expected_row_count;
+	END IF;
+END;
+$$;
+SELECT insert_one('db','regex5', '{"_id": 1, "x": "ayc"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex5', '{"_id": 2, "x": "xValue2"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex5', '{"_id": 3, "x": ["abc", "xyz1"]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex5', '{"_id": 4, "x": ["acd", "xyz23"]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex5', '{"_id": 5, "F1" : "F1_value",  "x": ["first regular expression", "second expression", "third value for x"]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex5', '{"_id": 6, "F1" : "F1_value2"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex5', '{"_id": 7, "F1" : "this is the new value, done"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex5', '{"_id": 8, "F1" : "Giving the flag in the middle of the word \bval\bue\b, done"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','regex5', '{"_id": 9, "F1" : "hi, new y \\yvalue\\y; fine"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+do $$
+DECLARE
+	temp text;
+begin
+	for counter in 1..10 loop
+		SELECT insert_one('db','regex5', '{"filler": "fillerValue"}') into temp;
+   	end loop;
+end
+$$;
+-- DROP PRIMARY KEY
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'regex5');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- When x is non-array
+SELECT assert_count_regex5(1, '{"x": {"$in": [{"$regex" : ".*Yc", "$options": "i"}]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- When x's value is array and regex matches one of the array elements, specifically the first element (3rd record).
+SELECT assert_count_regex5(1, '{"x": {"$in": [{"$regex" : "^.*cd", "$options": ""}]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- When x's value is array and regex matches second element of 3rd record and 3rd element in the 5th record.
+SELECT assert_count_regex5(2, '{"x": {"$in": [{"$regex" : "x.+1", "$options": ""}, {"$regex" : "value .+ x", "$options": ""}]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Without any regex
+SELECT assert_count_regex5(2, '{"x": {"$in": ["acd", "first regular expression"]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Mix of Regex and text
+SELECT assert_count_regex5(2, '{"x": {"$in": [  "second expression", {"$regex" : "xy.1", "$options": ""}  ]  }}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for hasNull (10 filler records and 4 actual records to match)
+SELECT assert_count_regex5(16, '{"x": {"$in": [  "second expression", null, {"$regex" : "xy.1", "$options": ""}  ]  }}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $nin
+SELECT assert_count_regex5(18, '{"x": {"$nin": [{"$regex" : ".*yc", "$options": ""}]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $nin. With one REGEX and one normal string. 
+SELECT assert_count_regex5(18, '{"x": {"$nin": [{"$regex" : ".*b.*c", "$options": ""}, "xyz1", "xValue1"]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $nin. Two documents will match the $nin array.
+SELECT assert_count_regex5(17, '{"x": {"$nin": [{"$regex" : ".*b.*c", "$options": ""}, "xyz23", "xValue1"]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $nin. Single REGEX. 
+SELECT assert_count_regex5(17, '{"x": {"$nin": [{"$regex" : "^a.c", "$options": ""}]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $nin. with null (only null and single null)
+SELECT assert_count_regex5(5, '{"x": {"$nin": [null]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $nin. with null (only null and multiple null)
+SELECT assert_count_regex5(5, '{"x": {"$nin": [null, null]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $nin. with null 
+SELECT assert_count_regex5(3, '{"x": {"$nin": [null, "second expression", {"$regex" : "xy.1", "$options": ""}]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $all. With all REGEX
+SELECT assert_count_regex5(1, '{"x": {"$all": [{"$regex" : "expression", "$options": ""}, {"$regex" : "value .+ x", "$options": ""}]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $all. With one REGEX and one normal string.
+SELECT assert_count_regex5(1, '{"x": {"$all": [{"$regex" : "^.cd", "$options": ""}, "xyz23"]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $all. Empty array
+SELECT assert_count_regex5(0, '{"x": {"$all": []}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $all. Single regex
+SELECT assert_count_regex5(1, '{"x": {"$all": [{"$regex": "^.V.+2$", "$options": ""}]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $all. Single string and no regex
+SELECT assert_count_regex5(1, '{"x": {"$all": ["xValue2"]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $all. with null in the $all array
+SELECT assert_count_regex5(0, '{"x": {"$all": [null, {"$regex": "xValu.+2$", "$options": ""} ]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $all. with only null in the $all array
+SELECT assert_count_regex5(14, '{"x": {"$all": [null]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test for $all. with only null in the $all array (with multiple null)
+SELECT assert_count_regex5(14, '{"x": {"$all": [null, null]}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT assert_count_regex5(4, '{"F1": {"$regex" : "Value", "$options": "i"}}');
+ assert_count_regex5 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+select document from collection('db','regex5') where document @@ '{"F1": {"$regex" : "word \bval\bue\b,", "$options": ""}}';
+                                                 document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "F1" : "Giving the flag in the middle of the word \bval\bue\b, done" }
+(1 row)
+
+select document from collection('db','regex5') where document @@ '{"F1": { "$regularExpression" : { "pattern" : "word \bval\bue\b,", "options" : "" } } }';
+                                                 document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "F1" : "Giving the flag in the middle of the word \bval\bue\b, done" }
+(1 row)
+
+-- Work as word boundary {"F1" : "this is the new value, done"} 
+select document from collection('db','regex5') where document @@ '{"F1": { "$regularExpression" : { "pattern" : "\\bValue\\b", "options" : "i" } } }';
+                                 document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "F1" : "this is the new value, done" }
+(1 row)
+
+-- rec 9
+select document from collection('db','regex5') where document @@ '{"F1": { "$regularExpression" : { "pattern" : "\\\\yValue\\\\y", "options" : "i" } } }';
+                                 document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "F1" : "hi, new y \\yvalue\\y; fine" }
+(1 row)
+
+ROLLBACK;
+SELECT drop_collection('db','regex5');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+DROP SCHEMA regex5 CASCADE;

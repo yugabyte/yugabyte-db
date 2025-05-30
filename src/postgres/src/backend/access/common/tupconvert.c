@@ -21,8 +21,10 @@
 #include "access/tupconvert.h"
 #include "executor/tuptable.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/sysattr.h"
+#include "pg_yb_utils.h"
+
 
 /*
  * The conversion setup routines have the following common API:
@@ -232,10 +234,11 @@ execute_attr_map_slot(AttrMap *attrMap,
  * Perform conversion of bitmap of columns according to the map.
  *
  * The input and output bitmaps are offset by
- * YBGetFirstLowInvalidAttributeNumber to accommodate system cols, like the
+ * FirstLowInvalidHeapAttributeNumber to accommodate system cols, like the
  * column-bitmaps in RangeTblEntry.
  *
- * Note: Postgres uses FirstLowInvalidHeapAttributeNumber.
+ * YB uses YBGetFirstLowInvalidAttributeNumber instead of
+ * FirstLowInvalidHeapAttributeNumber.
  */
 Bitmapset *
 execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols, Relation rel)

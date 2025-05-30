@@ -38,6 +38,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
@@ -92,6 +94,7 @@
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/backup.pb.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
@@ -136,8 +139,8 @@ DEFINE_RUNTIME_bool(skip_flushed_entries_in_first_replayed_segment, true,
             "If applicable, only replay entries that are not flushed to RocksDB or necessary "
             "to bootstrap retryable requests in the first replayed wal segment.");
 
-DEFINE_RUNTIME_bool(use_bootstrap_intent_ht_filter, true,
-                    "Use min replay txn start time filter for bootstrap.");
+DEFINE_NON_RUNTIME_bool(use_bootstrap_intent_ht_filter, true,
+                        "Use min replay txn start time filter for bootstrap.");
 
 DECLARE_int32(retryable_request_timeout_secs);
 
@@ -503,6 +506,11 @@ class TabletBootstrap {
 
     listener_->StatusMessage("Bootstrap starting.");
 
+    const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+    if (wait_state) {
+      wait_state->UpdateAuxInfo({.tablet_id = tablet_id, .method = "LocalBootstrap"});
+    }
+
     if (VLOG_IS_ON(1)) {
       RaftGroupReplicaSuperBlockPB super_block;
       meta_->ToSuperBlock(&super_block);
@@ -528,9 +536,14 @@ class TabletBootstrap {
     const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
 
     if (data_.retryable_requests) {
+      const auto table_type_for_retryable_request_timeout =
+          tablet_->table_type() == PGSQL_TABLE_TYPE ||
+          meta_->table_name() == std::string(tserver::kPgAdvisoryLocksTableName)
+              ? PGSQL_TABLE_TYPE
+              : tablet_->table_type();
       const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
           ? client::SysCatalogRetryableRequestTimeoutSecs()
-          : client::RetryableRequestTimeoutSecs(tablet_->table_type());
+          : client::RetryableRequestTimeoutSecs(table_type_for_retryable_request_timeout);
       data_.retryable_requests->SetRequestTimeout(retryable_request_timeout_secs);
       data_.retryable_requests->SetMetricEntity(tablet_->GetTabletMetricsEntity());
     }
@@ -542,7 +555,7 @@ class TabletBootstrap {
 
     if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
       LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB dump before tablet bootstrap:";
-      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+      tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
     const auto needs_recovery = VERIFY_RESULT(PrepareToReplay());
@@ -557,8 +570,8 @@ class TabletBootstrap {
       RETURN_NOT_OK(FinishBootstrap("No bootstrap required, opened a new log",
                                     rebuilt_log,
                                     rebuilt_tablet));
-      consensus_info->last_id = MinimumOpId();
-      consensus_info->last_committed_id = MinimumOpId();
+      consensus_info->last_id = OpId::Min();
+      consensus_info->last_committed_id = OpId::Min();
       return Status::OK();
     }
 
@@ -578,8 +591,8 @@ class TabletBootstrap {
 
     RETURN_NOT_OK_PREPEND(PlaySegments(consensus_info), "Failed log replay. Reason");
 
-    if (cmeta_->current_term() < consensus_info->last_id.term()) {
-      cmeta_->set_current_term(consensus_info->last_id.term());
+    if (cmeta_->current_term() < consensus_info->last_id.term) {
+      cmeta_->set_current_term(consensus_info->last_id.term);
     }
 
     // Flush the consensus metadata once at the end to persist our changes, if any.
@@ -617,7 +630,7 @@ class TabletBootstrap {
     listener_->StatusMessage(message);
     if (FLAGS_TEST_dump_docdb_after_tablet_bootstrap) {
       LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB debug dump after tablet bootstrap:\n";
-      tablet_->TEST_DocDBDumpToLog(IncludeIntents::kTrue);
+      tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
     *rebuilt_tablet = std::move(tablet_);
@@ -1027,8 +1040,7 @@ class TabletBootstrap {
 
   Status PlayTabletSnapshotRequest(consensus::LWReplicateMsg* replicate_msg) {
     SnapshotOperation operation(tablet_, replicate_msg->mutable_snapshot_request());
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
 
     return operation.Replicated(/* leader_term= */ OpId::kUnknownTerm,
                                 WasPending::kFalse);
@@ -1056,8 +1068,7 @@ class TabletBootstrap {
     }
 
     SplitOperation operation(tablet_, data_.tablet_init_data.tablet_splitter, &split_request);
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
     return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(
         &operation, log_.get(), cmeta_->committed_config());
 
@@ -1073,8 +1084,7 @@ class TabletBootstrap {
   Status PlayCloneOpRequest(consensus::LWReplicateMsg* replicate_msg) {
     CloneOperation operation(
         tablet_, data_.tablet_init_data.tablet_splitter, replicate_msg->mutable_clone_tablet());
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
     // We might be asked to replay CLONE_OP even if it was applied and flushed when
     // FLAGS_force_recover_flushed_frontier is set. ApplyCloneTablet will still succeed in this case
     // because it is a no-op if a clone with the same seq_no is already applied according to the
@@ -1690,8 +1700,8 @@ class TabletBootstrap {
         replay_state_->prev_op_id, replay_state_->committed_op_id);
 
     tablet_->mvcc_manager()->SetLastReplicated(replay_state_->max_committed_hybrid_time);
-    consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
-    consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
+    consensus_info->last_id = replay_state_->prev_op_id;
+    consensus_info->last_committed_id = replay_state_->committed_op_id;
 
     if (data_.retryable_requests) {
       data_.retryable_requests->Clock().Adjust(last_entry_time);
@@ -1724,9 +1734,8 @@ class TabletBootstrap {
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
     WriteOperation operation(tablet_, write);
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    HybridTime hybrid_time(replicate_msg->hybrid_time());
-    operation.set_hybrid_time(hybrid_time);
+    operation.SetupFromReplicateMsg(*replicate_msg);
+    auto hybrid_time = operation.hybrid_time();
 
     auto op_id = operation.op_id();
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
@@ -1805,15 +1814,11 @@ class TabletBootstrap {
       return PlayChangeMetadataRequestDeprecated(replicate_msg);
     }
 
-    // If last_flushed_change_metadata_op_id is valid then new code gets executed
-    // wherein we replay everything.
-    const auto op_id = OpId::FromPB(replicate_msg->id());
-
     // Otherwise play.
     auto* request = replicate_msg->mutable_change_metadata_request();
 
     ChangeMetadataOperation operation(tablet_, log_.get(), request);
-    operation.set_op_id(op_id);
+    operation.SetupFromReplicateMsg(*replicate_msg);
     RETURN_NOT_OK(operation.Prepare(tablet::IsLeaderSide::kFalse));
 
     Status s;
@@ -1853,9 +1858,7 @@ class TabletBootstrap {
     auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_, req);
-
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    operation.set_hybrid_time(HybridTime::FromPB(replicate_msg->hybrid_time()));
+    operation.SetupFromReplicateMsg(*replicate_msg);
 
     Status s = tablet_->Truncate(&operation);
 
@@ -1872,9 +1875,8 @@ class TabletBootstrap {
 
     UpdateTxnOperation operation(
         /* tablet */ nullptr, replicate_msg->mutable_transaction_state());
-    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
-    HybridTime hybrid_time(replicate_msg->hybrid_time());
-    operation.set_hybrid_time(hybrid_time);
+    operation.SetupFromReplicateMsg(*replicate_msg);
+    auto hybrid_time = operation.hybrid_time();
 
     auto op_id = OpId::FromPB(replicate_msg->id());
     tablet_->mvcc_manager()->AddFollowerPending(hybrid_time, op_id);
@@ -2024,8 +2026,6 @@ class TabletBootstrap {
 
   // A way to inject flushed OpIds for regular and intents RocksDBs.
   boost::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
-
-  bool TEST_collect_replayed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
   std::vector<OpId> TEST_replayed_op_ids_;

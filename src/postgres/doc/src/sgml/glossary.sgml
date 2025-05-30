@@ -749,6 +749,11 @@
    </glossdef>
   </glossentry>
 
+  <glossentry>
+   <glossterm>GMT</glossterm>
+   <glosssee otherterm="glossary-utc" />
+  </glossentry>
+
   <glossentry id="glossary-grant">
    <glossterm>Grant</glossterm>
    <glossdef>
@@ -990,12 +995,29 @@
      (just like a <glossterm linkend="glossary-view">view</glossterm>),
      but stores data in the same way that a
      <glossterm linkend="glossary-table">table</glossterm> does. It cannot be
-     modified via <command>INSERT</command>, <command>UPDATE</command>, or
-     <command>DELETE</command> operations.
+     modified via <command>INSERT</command>, <command>UPDATE</command>,
+     <command>DELETE</command>, or <command>MERGE</command> operations.
     </para>
     <para>
      For more information, see
      <xref linkend="sql-creatematerializedview"/>.
+    </para>
+   </glossdef>
+  </glossentry>
+
+  <glossentry id="glossary-merge">
+   <glossterm>Merge</glossterm>
+   <glossdef>
+    <para>
+     An <acronym>SQL</acronym> command used to conditionally add, modify,
+     or remove <glossterm linkend="glossary-tuple">rows</glossterm>
+     in a given <glossterm linkend="glossary-table">table</glossterm>,
+     using data from a source
+     <glossterm linkend="glossary-relation">relation</glossterm>.
+    </para>
+    <para>
+     For more information, see
+     <xref linkend="sql-merge"/>.
     </para>
    </glossdef>
   </glossentry>
@@ -1848,6 +1870,17 @@
    </glossdef>
   </glossentry>
 
+  <glossentry id="glossary-utc">
+   <glossterm>UTC</glossterm>
+   <glossdef>
+    <para>
+     Universal Coordinated Time, the primary global time reference,
+     approximately the time prevailing at the zero meridian of longitude.
+     Often but inaccurately referred to as GMT (Greenwich Mean Time).
+    </para>
+   </glossdef>
+  </glossentry>
+
   <glossentry id="glossary-vacuum">
    <glossterm>Vacuum</glossterm>
    <glossdef>
@@ -2011,7 +2044,8 @@
    <glossterm>WAL writer (process)</glossterm>
    <glossdef>
     <para>
-     A process that writes <glossterm linkend="glossary-wal-record">WAL records</glossterm>
+     An <glossterm linkend="glossary-auxiliary-proc">auxiliary process</glossterm>
+     that writes <glossterm linkend="glossary-wal-record">WAL records</glossterm>
      from <glossterm linkend="glossary-shared-memory">shared memory</glossterm> to
      <glossterm linkend="glossary-wal-file">WAL files</glossterm>.
     </para>

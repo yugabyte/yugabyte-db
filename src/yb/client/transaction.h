@@ -20,6 +20,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "yb/ash/wait_state_fwd.h"
+
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -162,6 +164,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
 
+  // Returns metadata iff the transaction is ready and hasn't failed yet.
+  Result<TransactionMetadata> metadata() const;
+
   std::string ToString() const;
 
   IsolationLevel isolation() const;
@@ -202,6 +207,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // detection of deadlocks spanning advisory locks and row-level locks (same would apply for
   // detection of deadlocks spanning object locks, advisory locks and row locks in future).
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction);
+
+  const ash::WaitStateInfoPtr wait_state();
 
  private:
   class Impl;

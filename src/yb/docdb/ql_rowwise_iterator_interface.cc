@@ -14,14 +14,14 @@
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/common/hybrid_time.h"
-
+#include "yb/dockv/doc_key.h"
 #include "yb/util/result.h"
 
 namespace yb {
 namespace docdb {
 
-Status YQLRowwiseIteratorIf::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) {
-  return Status::OK();
+Result<dockv::SubDocKey> YQLRowwiseIteratorIf::GetSubDocKey(ReadKey read_key) {
+  return dockv::SubDocKey();
 }
 
 Slice YQLRowwiseIteratorIf::GetTupleId() const {

@@ -7,7 +7,7 @@ menu:
   v2024.1:
     identifier: yb-master
     parent: configuration
-    weight: 2450
+    weight: 2000
 type: docs
 ---
 
@@ -188,6 +188,12 @@ Ensure that `enable_ysql` values in `yb-master` configurations match the values 
 {{< /note >}}
 
 Enables the YSQL API when value is `true`.
+
+Default: `true`
+
+##### --ysql_follower_reads_avoid_waiting_for_safe_time
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
 
 Default: `true`
 
@@ -789,7 +795,7 @@ The unique identifier for the cluster.
 
 Default: `""`
 
-##### -- use_private_ip
+##### --use_private_ip
 
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration flags.
 

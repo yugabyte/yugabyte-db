@@ -14,6 +14,8 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	yb_terminated_queries.o \
+	\
 	backend_progress.o \
 	backend_status.o \
 	pgstat.o \

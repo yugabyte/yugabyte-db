@@ -3,6 +3,7 @@ title: Create YugabyteDB universe deployments
 headerTitle: Create universes
 linkTitle: Create universes
 description: Create YugabyteDB universe deployments.
+headcontent: Deploy to the public cloud, a private data center, or Kubernetes
 menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -11,9 +12,17 @@ menu:
 type: indexpage
 ---
 
+{{< page-finder/head text="Deploy YugabyteDB" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../deploy/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-basics/" >}}
+{{< /page-finder/head >}}
+
 YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, and so on, provided by IaaS), logically grouped together to form one distributed database.
 
 A universe includes one primary cluster and, optionally, one read replica cluster. All instances belonging to a cluster run on the same type of cloud provider instance.
+
+For information on modifying or scaling an existing universe, refer to [Modify universe](../manage-deployments/edit-universe/).
 
 {{<index/block>}}
 

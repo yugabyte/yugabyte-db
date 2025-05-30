@@ -78,8 +78,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
         return;
       }
       try (Transaction transaction = DB.beginTransaction()) {
-        releaseMetadata.setFinalizers(
-            Collections.singletonList("finalizer.k8soperator.yugabyte.com"));
+        releaseMetadata.setFinalizers(Collections.singletonList(OperatorUtils.YB_FINALIZER));
         resourceClient.inNamespace(namespace).withName(releaseMetadata.getName()).patch(release);
         ybRelease = com.yugabyte.yw.models.Release.create(version, "LTS");
         List<ReleaseArtifact> artifacts = createReleaseArtifacts(release);
@@ -97,8 +96,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     } else {
       Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
       try {
-        releaseMetadata.setFinalizers(
-            Collections.singletonList("finalizer.k8soperator.yugabyte.com"));
+        releaseMetadata.setFinalizers(Collections.singletonList(OperatorUtils.YB_FINALIZER));
         resourceClient.inNamespace(namespace).withName(releaseMetadata.getName()).patch(release);
         releaseManager.addReleaseWithMetadata(releasePair.getFirst(), releasePair.getSecond());
         gFlagsValidation.addDBMetadataFiles(releasePair.getFirst());

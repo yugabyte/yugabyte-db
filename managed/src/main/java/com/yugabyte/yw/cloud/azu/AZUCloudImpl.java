@@ -322,7 +322,7 @@ public class AZUCloudImpl implements CloudAPI {
 
   /**
    * Method to update existing backend pools, as well as create the missing backend pools. This
-   * methods leads to the creation of the bools on Azure cloud as well The vms that are a part of
+   * methods leads to the creation of the pools on Azure cloud as well The vms that are a part of
    * the backend pool, all need to be a part of the same virtual network in which the existing
    * backend pool is already a part of
    *
@@ -373,7 +373,7 @@ public class AZUCloudImpl implements CloudAPI {
       return backends;
     } catch (Exception exception) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "All nodes added to a load balancer must belong to the same virtualNetwork");
+          BAD_REQUEST, "Error updating backend pools: " + exception.getMessage());
     }
   }
 

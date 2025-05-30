@@ -51,6 +51,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TemplateManager;
@@ -96,12 +97,14 @@ import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import io.prometheus.client.CollectorRegistry;
 import java.security.KeyStore;
+import java.security.Provider;
 import java.security.SecureRandom;
 import java.security.Security;
 import javax.net.ssl.HttpsURLConnection;
@@ -109,8 +112,10 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.DomainValidator;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
+import org.bouncycastle.jsse.provider.BouncyCastleJsseProvider;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.http.url.DefaultUrlResolver;
@@ -132,6 +137,7 @@ import play.Environment;
 public class MainModule extends AbstractModule {
   private final Config config;
   private final String[] TLD_OVERRIDE = {"local"};
+  private final String DEFAULT_OIDC_SCOPE = "openid profile email";
 
   public MainModule(Environment environment, Config config) {
     this.config = config;
@@ -154,8 +160,27 @@ public class MainModule extends AbstractModule {
     }
     install(new TaskTypesModule());
 
-    Security.addProvider(new PemKeyStoreProvider());
-    Security.addProvider(new BouncyCastleProvider());
+    if (!config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      Security.addProvider(new PemKeyStoreProvider());
+    } else {
+      Provider[] providers = Security.getProviders();
+      log.info("Removing all providers configured in JVM (java.security file)");
+      if (providers != null) {
+        for (Provider provider : providers) {
+          // We have to leave SUN provider in place as it is used to get entropy for SecureRandom
+          // We'll have to fugure out how to actually provide a proper entropy source.
+          // See https://github.com/bcgit/bc-java/issues/1285 for more details.
+          if (!provider.getName().equals("SUN")) {
+            Security.removeProvider(provider.getName());
+          }
+        }
+      }
+    }
+    log.info("Adding BC-FIPS providers");
+    Security.setProperty("ssl.KeyManagerFactory.algorithm", "PKIX");
+    Security.setProperty("ssl.TrustManagerFactory.algorithm", "PKIX");
+    Security.insertProviderAt(new BouncyCastleFipsProvider("C:HYBRID;ENABLE{All};"), 1);
+    Security.insertProviderAt(new BouncyCastleJsseProvider("fips:BCFIPS"), 2);
     TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CustomerConfKeys());
@@ -244,6 +269,7 @@ public class MainModule extends AbstractModule {
     bind(YBReconcilerFactory.class).asEagerSingleton();
     bind(ReleasesUtils.class).asEagerSingleton();
     bind(ReleaseContainerFactory.class).asEagerSingleton();
+    bind(SoftwareUpgradeHelper.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();
@@ -278,27 +304,41 @@ public class MainModule extends AbstractModule {
               INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());
         }
       }
-      OidcConfiguration oidcConfiguration = new OidcConfiguration();
-      oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
-      oidcConfiguration.setSecret(config.getString("yb.security.secret"));
-      oidcConfiguration.setScope(config.getString("yb.security.oidcScope"));
-      setProviderMetadata(config, oidcConfiguration);
-      oidcConfiguration.setMaxClockSkew(3600);
-      oidcConfiguration.setResponseType("code");
-      OIDCProviderMetadata metadata = oidcConfiguration.findProviderMetadata();
-      // Retain existing behaviour.
-      if (metadata
-          .getTokenEndpointAuthMethods()
-          .contains(ClientAuthenticationMethod.CLIENT_SECRET_POST)) {
-        oidcConfiguration.setClientAuthenticationMethod(
-            ClientAuthenticationMethod.CLIENT_SECRET_POST);
-      } else if (metadata
-          .getTokenEndpointAuthMethods()
-          .contains(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)) {
-        oidcConfiguration.setClientAuthenticationMethod(
-            ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
+      try {
+        OidcConfiguration oidcConfiguration = new OidcConfiguration();
+        oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
+        oidcConfiguration.setSecret(config.getString("yb.security.secret"));
+        String scope = config.getString("yb.security.oidcScope");
+        // Use default scope if key is accidently set to blank string.
+        if (StringUtils.isBlank(scope)) {
+          scope = DEFAULT_OIDC_SCOPE;
+          log.info(
+              "Using default OIDC scope {} since \"yb.security.oidcScope\" is set as blank.",
+              DEFAULT_OIDC_SCOPE);
+        }
+        oidcConfiguration.setScope(scope);
+        setProviderMetadata(config, oidcConfiguration);
+        oidcConfiguration.setMaxClockSkew(3600);
+        oidcConfiguration.setResponseType("code");
+        OIDCProviderMetadata metadata = oidcConfiguration.findProviderMetadata();
+        // Retain existing behaviour.
+        if (metadata
+            .getTokenEndpointAuthMethods()
+            .contains(ClientAuthenticationMethod.CLIENT_SECRET_POST)) {
+          oidcConfiguration.setClientAuthenticationMethod(
+              ClientAuthenticationMethod.CLIENT_SECRET_POST);
+        } else if (metadata
+            .getTokenEndpointAuthMethods()
+            .contains(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)) {
+          oidcConfiguration.setClientAuthenticationMethod(
+              ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
+        }
+        return new OidcClient(oidcConfiguration);
+      } catch (Exception e) {
+        log.error(
+            "Error while creating OIDC client. SSO login might fail. Please check OIDC config.", e);
+        return new OidcClient();
       }
-      return new OidcClient(oidcConfiguration);
     } else {
       log.warn("Client with empty OIDC configuration because yb.security.type={}", securityType);
       // todo: fail fast instead of relying on log?

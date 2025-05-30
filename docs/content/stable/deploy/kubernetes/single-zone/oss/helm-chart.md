@@ -310,7 +310,7 @@ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 
 ### Readiness probes
 
-Readiness probes provide readiness checks for your Kubernetes deployment. Probes are compatible with both direct Helm deployments and [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides), and work with TLS enabled or restricted authorization environments. Use the probes to ensure pods are ready before being marked as available. The probes verify connectivity using ysqlsh for YSQL and ycqlsh for YCQL.
+Readiness probes provide readiness checks for your Kubernetes deployment. Probes are compatible with both direct Helm deployments and [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides), and work with TLS enabled or restricted authorization environments. Use the probes to ensure pods are ready before being marked as available. The probes verify connectivity using ysqlsh for YSQL and ycqlsh for YCQL.
 
 The following probes are available:
 
@@ -421,6 +421,15 @@ You can upgrade the software on the YugabyteDB cluster with the following comman
 helm repo update
 helm upgrade yb-demo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}} --wait -n yb-demo
 ```
+
+Then finalize the upgrade as follows:
+
+```sh
+kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 promote_auto_flags
+kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 upgrade_ysql
+```
+
+The `upgrade_ysql` command is only needed if YSQL is enabled.
 
 ## Update the configuration of YugabyteDB pods
 

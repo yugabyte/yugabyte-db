@@ -50,7 +50,6 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_bool(cleanup_intents_sst_files);
-DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
@@ -58,7 +57,9 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(TEST_delay_tablet_export_metadata_ms);
+DECLARE_int32(TEST_timeout_non_leader_master_rpcs_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(yb_client_admin_rpc_timeout_sec);
 
 DECLARE_int32(cql_unprepared_stmts_entries_limit);
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
@@ -352,7 +353,8 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
 }
 
 TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_timeout_non_leader_master_rpcs) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_timeout_non_leader_master_rpcs_ms) =
+      FLAGS_yb_client_admin_rpc_timeout_sec * MonoTime::kMillisecondsPerSecond;
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
   ASSERT_OK(session.ExecuteQuery("INSERT INTO t1 (i, j) VALUES (1, 1)"));

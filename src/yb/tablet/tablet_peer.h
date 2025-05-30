@@ -187,7 +187,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
   // Abort active transactions on the tablet after shutdown is initiated.
-  void AbortSQLTransactions() const;
+  void AbortActiveTransactions() const;
 
   Status Shutdown(
       ShouldAbortActiveTransactions should_abort_active_txns,
@@ -393,7 +393,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation>* operation);
 
   // Tells the tablet's log to garbage collect.
-  Status RunLogGC();
+  Status RunLogGC(bool rollover = false);
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().

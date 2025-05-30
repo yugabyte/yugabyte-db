@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_inbound_replication_group_setup_task.h"
 
+#include "yb/client/client.h"
 #include "yb/client/table_info.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
@@ -25,6 +26,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
@@ -62,8 +64,6 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
 
 DECLARE_bool(enable_xcluster_auto_flag_validation);
-
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
 
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
@@ -259,51 +259,60 @@ Status XClusterInboundReplicationGroupSetupTask::FirstStep() {
     RETURN_NOT_OK(GetAutoFlagConfigVersionIfCompatible());
   }
 
-  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
-      !is_alter_replication_) {
+  if (data_.automatic_ddl_mode && !is_alter_replication_) {
     // Ensure sequences_data table has been created.
     // Skip for alter replication as the table should already have been created on initial setup.
     auto local_client = master_.client_future();
     RETURN_NOT_OK(tserver::CreateSequencesDataTable(
         local_client.get(), CoarseMonoClock::now() +
-        MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
+                                MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec)));
   }
 
   ScheduleNextStep(
-      std::bind(
-          &XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension,
-          shared_from(this)),
+      [self = shared_from(this)] { return self->SetupDDLReplicationExtension(); },
       "SetupDDLReplicationExtension");
 
   return Status::OK();
 }
 
 Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() {
+  bool need_to_bootstrap_sequences_data = false;
   if (data_.automatic_ddl_mode) {
     for (const auto& namespace_id : data_.target_namespace_ids) {
       auto namespace_name = VERIFY_RESULT(catalog_manager_.FindNamespaceById(namespace_id))->name();
-      Synchronizer sync;
+      bool is_switchover = xcluster_manager_.IsNamespaceInAutomaticModeSource(namespace_id);
+
       LOG_WITH_PREFIX(INFO) << "Setting up DDL replication extension for namespace " << namespace_id
-                            << " (" << namespace_name << ")";
+                            << " (" << namespace_name << ")"
+                            << (is_switchover ? " as part of a switchover" : "");
+      if (!is_switchover) {
+        // For regular setup cases, we want to clean up any existing state.
+        Synchronizer sync;
+        RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
+            catalog_manager_, namespace_id, sync.AsStdStatusCallback()));
+        RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to drop xCluster DDL replication extension");
+      }
+      // Set up the extension and set our role as a target to prevent writes.
+      Synchronizer sync;
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
-          catalog_manager_, namespace_name, XClusterDDLReplicationRole::kTarget,
-          CoarseMonoClock::now() +
-              MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
+          catalog_manager_, namespace_id, XClusterDDLReplicationRole::kTarget,
           sync.AsStdStatusCallback()));
       RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to setup xCluster DDL replication extension");
+
+      if (!is_switchover) {
+        // ALTERs to add/remove a table, and remove namespace do not reach this function.
+        need_to_bootstrap_sequences_data = true;
+      }
     }
   }
 
-  if (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication &&
-      !is_alter_replication_) {
+  if (need_to_bootstrap_sequences_data) {
     ScheduleNextStep(
-        std::bind(
-            &XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData, shared_from(this)),
+        [self = shared_from(this)] { return self->BootstrapSequencesData(); },
         "BootstrapSequencesData");
   } else {
     ScheduleNextStep(
-        std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
-        "CreateTableTasks");
+        [self = shared_from(this)] { return self->CreateTableTasks(); }, "CreateTableTasks");
   }
   return Status::OK();
 }
@@ -318,8 +327,7 @@ Status XClusterInboundReplicationGroupSetupTask::BootstrapSequencesData() {
       data_.replication_group_id, data_.source_namespace_ids, deadline));
 
   ScheduleNextStep(
-      std::bind(&XClusterInboundReplicationGroupSetupTask::CreateTableTasks, shared_from(this)),
-      "CreateTableTasks");
+      [self = shared_from(this)] { return self->CreateTableTasks(); }, "CreateTableTasks");
   return Status::OK();
 }
 
@@ -371,9 +379,7 @@ void XClusterInboundReplicationGroupSetupTask::TableTaskCompletionCallback(
   }
 
   ScheduleNextStep(
-      std::bind(
-          &XClusterInboundReplicationGroupSetupTask::SetupReplicationAfterProcessingAllTables,
-          shared_from(this)),
+      [self = shared_from(this)] { return self->SetupReplicationAfterProcessingAllTables(); },
       "Process replication group after tables validated");
 }
 
@@ -607,7 +613,7 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateTableListForDbScoped() 
     auto table_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
         catalog_manager_, namespace_id,
         /*include_sequences_data=*/
-        (data_.automatic_ddl_mode && FLAGS_TEST_xcluster_enable_sequence_replication)));
+        data_.automatic_ddl_mode));
 
     std::vector<TableId> missing_tables;
 
@@ -926,7 +932,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
 
     // Double-check schema name here if the previous check was skipped.
     if (is_ysql_table && !has_valid_pgschema_name) {
-      std::string target_schema_name = table_schema_resp.schema().pgschema_name();
+      std::string target_schema_name = table_schema_resp.schema().deprecated_pgschema_name();
       if (target_schema_name != source_schema.SchemaName()) {
         table->clear_table_id();
         continue;

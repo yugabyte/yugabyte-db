@@ -1,0 +1,237 @@
+set search_path to documentdb_api_catalog;
+SET citus.next_shard_id TO 3400000;
+SET documentdb.next_collection_id TO 3400;
+SET documentdb.next_collection_index_id TO 3400;
+SELECT 1 FROM documentdb_api.drop_collection('db', 'bsoexplainnorderby');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'bsoexplainnorderby');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'bsoexplainnorderby');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('bsoexplainnorderby', 'index_2', '{"a.b": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "0" }, "numIndexesAfter" : { "$numberInt" : "1" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', documentdb_distributed_test_helpers.generate_create_index_arg('bsoexplainnorderby', 'index_3', '{"a.b.1": 1}'), true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+set local enable_seqscan to off;
+set local enable_bitmapscan to off;
+set local documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
+set local citus.enable_local_execution TO OFF;
+set local documentdb.forceUseIndexIfAvailable to on;
+\i sql/bson_query_modifier_orderby_tests_explain_core.sql
+set search_path to documentdb_api_catalog, documentdb_core, documentdb_api_internal;
+/* insert paths with nested objects arrays */
+SELECT documentdb_api.insert_one('db','bsoexplainnorderby', '{"_id": 9, "a" : { "b" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsoexplainnorderby', '{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsoexplainnorderby', '{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsoexplainnorderby', '{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsoexplainnorderby', '{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') ORDER BY bson_orderby(document, '{ "a.b": 1 }');
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Seq Scan on documents_3400_3400001 collection
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') ORDER BY bson_orderby(document, '{ "a.b": -1 }') DESC;
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "-1" } }'::documentdb_core.bson)) DESC
+               ->  Seq Scan on documents_3400_3400001 collection
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') ORDER BY bson_orderby(document, '{ "a.b.0": -1 }') DESC;
+                                                            QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b.0" : { "$numberInt" : "-1" } }'::documentdb_core.bson)) DESC
+               ->  Seq Scan on documents_3400_3400001 collection
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') ORDER BY bson_orderby(document, '{ "a.b.1": 1 }');
+                                                         QUERY PLAN                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b.1" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Seq Scan on documents_3400_3400001 collection
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') ORDER BY bson_orderby(document, '{ "a.b": 1 }'), bson_orderby(document, '{ "a.b.0": 1 }');
+                                                                                                           QUERY PLAN                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)), (documentdb_api_catalog.bson_orderby(document, '{ "a.b.0" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Seq Scan on documents_3400_3400001 collection
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') ORDER BY bson_orderby(document, '{ "a.b": 1 }'), bson_orderby(document, '{ "a.b.0": -1 }') DESC;
+                                                                                                              QUERY PLAN                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)), (documentdb_api_catalog.bson_orderby(document, '{ "a.b.0" : { "$numberInt" : "-1" } }'::documentdb_core.bson)) DESC
+               ->  Seq Scan on documents_3400_3400001 collection
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') WHERE document @@ '{ "a.b": { "$gt": 0 } }' ORDER BY bson_orderby(document, '{ "a.b": 1 }');
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Index Scan using index_2 on documents_3400_3400001 collection
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "0" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') WHERE document @@ '{ "a.b.0": { "$gte": 0 } }' ORDER BY bson_orderby(document, '{ "a.b": 1 }');
+                                                           QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Seq Scan on documents_3400_3400001 collection
+                     Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.0" : { "$numberInt" : "0" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') WHERE document @@ '{ "a.b.0": { "$gte": 0 } }' ORDER BY bson_orderby(document, '{ "a.b": 1 }'), bson_orderby(document, '{ "a.b.0": 1 }');
+                                                                                                           QUERY PLAN                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)), (documentdb_api_catalog.bson_orderby(document, '{ "a.b.0" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Seq Scan on documents_3400_3400001 collection
+                     Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.0" : { "$numberInt" : "0" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') WHERE document @@ '{ "a.b.0": { "$gte": 0 } }' ORDER BY bson_orderby(document, '{ "a.b": 1 }'), bson_orderby(document, '{ "a.b.1": 1 }');
+                                                                                                           QUERY PLAN                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)), (documentdb_api_catalog.bson_orderby(document, '{ "a.b.1" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Seq Scan on documents_3400_3400001 collection
+                     Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b.0" : { "$numberInt" : "0" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') WHERE document @@ '{ "a.b": { "$gte": 0 } }' ORDER BY bson_orderby(document, '{ "a.b": 1 }'), bson_orderby(document, '{ "a.b.1": 1 }');
+                                                                                                           QUERY PLAN                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)), (documentdb_api_catalog.bson_orderby(document, '{ "a.b.1" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Index Scan using index_2 on documents_3400_3400001 collection
+                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "0" } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'bsoexplainnorderby') WHERE document @@ '{ "a": { "$gte": { "b": 0 } } }' ORDER BY bson_orderby(document, '{ "a.b": 1 }');
+                                                              QUERY PLAN                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+               ->  Seq Scan on documents_3400_3400001 collection
+                     Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "b" : { "$numberInt" : "0" } } }'::documentdb_core.bson)
+(9 rows)
+
+ROLLBACK;

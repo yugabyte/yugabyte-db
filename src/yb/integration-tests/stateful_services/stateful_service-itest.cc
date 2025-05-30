@@ -52,7 +52,7 @@ class StatefulServiceTest : public MiniClusterTestWithClient<MiniCluster> {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_echo_service_enabled) = true;
-    ASSERT_OK(SET_FLAG(vmodule, "stateful_service*=4"));
+    google::SetVLOGLevel("stateful_service*", 4);
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = kNumTServers;

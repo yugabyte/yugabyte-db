@@ -90,7 +90,7 @@ dockv::KeyEntryValues GetRangeKeyScanSpec(
     // We use kMinPrimitiveValueType instead of kLowest because it compares as higher than
     // kHybridTime in RocksDB.
     range_components.emplace_back(
-        static_cast<dockv::KeyEntryType>(to_underlying(dockv::KeyEntryType::kHybridTime) + 1));
+        static_cast<dockv::KeyEntryType>(std::to_underlying(dockv::KeyEntryType::kHybridTime) + 1));
     if (inclusivities) {
       inclusivities->push_back(true);
     }

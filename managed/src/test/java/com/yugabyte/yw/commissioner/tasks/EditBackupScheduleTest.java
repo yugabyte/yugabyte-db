@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -189,15 +190,47 @@ public class EditBackupScheduleTest extends CommissionerBaseTest {
     BackupScheduleEditParams editParams = new BackupScheduleEditParams(scheduleParams);
     editParams.incrementalBackupFrequency = 86400000L;
     editParams.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
+    editParams.timeBeforeDelete = 259200000L;
+    schedule.setStatus(State.Stopped);
+    schedule.save();
     scheduleParams.applyScheduleEditParams(editParams);
     TaskInfo tInfo = submitTask(scheduleParams, scheduleUUID);
     schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
     scheduleParams = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
     assertEquals(86400000L /* modified */, scheduleParams.incrementalBackupFrequency);
+    assertEquals(259200000 /* modified */, scheduleParams.timeBeforeDelete);
     List<TaskInfo> subTasks = tInfo.getSubTasks();
     List<TaskType> taskTypes =
         subTasks.stream().map(sT -> sT.getTaskType()).collect(Collectors.toList());
     assertTrue(taskTypes.contains(TaskType.SetFlagInMemory));
     assertTrue(taskTypes.contains(TaskType.AnsibleConfigureServers));
+  }
+
+  @Test
+  public void testScheduleStateAfterEdit() {
+    Schedule schedule =
+        createSchedule(100000000L, 86200000L, null /* cron */, false /* enablePITRestore */);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    BackupScheduleEditParams editParams = new BackupScheduleEditParams(scheduleParams);
+    editParams.incrementalBackupFrequency = 86400000L;
+    editParams.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
+    editParams.timeBeforeDelete = 259200000L;
+    schedule.setStatus(State.Stopped);
+    schedule.save();
+    scheduleParams.applyScheduleEditParams(editParams);
+    TaskInfo tInfo = submitTask(scheduleParams, scheduleUUID);
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
+    assertEquals(State.Stopped, schedule.getStatus());
+    // Assert correct prev status is restore after edit.
+    schedule.setStatus(State.Error);
+    schedule.save();
+    assertEquals(State.Stopped, schedule.getPrevStableStatus());
+    editParams.timeBeforeDelete = 3000000000L;
+    scheduleParams.applyScheduleEditParams(editParams);
+    tInfo = submitTask(scheduleParams, scheduleUUID);
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
+    assertEquals(State.Stopped, schedule.getStatus());
   }
 }

@@ -69,7 +69,7 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
 ## Tune latencies
 
-Latency in a multi-region universe depends on the distance and network packet transfer times between the nodes of the universe as well as between the universe and the client. Because the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
+Latency in a multi-region universe depends on the distance and network packet transfer times between the nodes of the universe as well as between the universe and the client. Because the [tablet leader](../../../architecture/key-concepts/#tablet-leader) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
 
 For best performance and lower data transfer costs, you want to minimize transfers between providers and between provider regions. You do this by placing your universe as close to your applications as possible, as follows:
 

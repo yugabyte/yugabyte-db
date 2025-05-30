@@ -74,4 +74,6 @@ std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(
 
 bool DumpHeapSnapshotUnlessThrottled();
 
+SampleOrder GetTCMallocDefaultSampleOrder();
+
 } // namespace yb

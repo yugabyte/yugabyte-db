@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/onprem/instancetypes"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/onprem/instancetype"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/onprem/node"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -31,7 +31,7 @@ func init() {
 	OnpremProviderCmd.Flags().SortFlags = false
 	OnpremProviderCmd.AddCommand(node.NodesCmd)
 	OnpremProviderCmd.AddCommand(createOnpremProviderCmd)
-	OnpremProviderCmd.AddCommand(instancetypes.InstanceTypesCmd)
+	OnpremProviderCmd.AddCommand(instancetype.InstanceTypesCmd)
 	OnpremProviderCmd.AddCommand(listOnpremProviderCmd)
 	OnpremProviderCmd.AddCommand(describeOnpremProviderCmd)
 	OnpremProviderCmd.AddCommand(updateOnpremProviderCmd)
@@ -40,6 +40,6 @@ func init() {
 	OnpremProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe, instance-type and node.",
+				"Required for create, delete, describe, update, instance-type and node.",
 				formatter.GreenColor)))
 }

@@ -173,7 +173,6 @@ constexpr int kNumTablets = 2;
 
 const std::string kKeyspaceName = "my_keyspace";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
-const std::string kPgsqlSchemaName = "my_schema";
 const std::string kPgsqlTableName = "table";
 const std::string kPgsqlTableId = "tableid";
 const std::string kPgsqlNamespaceName = "test_namespace";
@@ -436,7 +435,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     YBSchemaBuilder schema_builder;
     schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
     schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
-    schema_builder.SetSchemaName(kPgsqlSchemaName);
     EXPECT_OK(client_->CreateNamespaceIfNotExists(
         kPgsqlNamespaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
         kNamespaceId));
@@ -2433,9 +2431,8 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   YBSchemaBuilder schema_builder;
   schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
   schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
-  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to use a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
-  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   EXPECT_OK(
       client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL));
@@ -2949,8 +2946,7 @@ class ColocationClientTest: public ClientTest {
     pgwrapper::PgProcessConf pg_process_conf =
         VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
             AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-            pg_ts->server()->GetSharedMemoryFd()));
+            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
     pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
     pg_process_conf.force_disable_log_file = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
@@ -2958,8 +2954,7 @@ class ColocationClientTest: public ClientTest {
     LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
               << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
               << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-    pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf,
-                                                               nullptr /* tserver */);
+    pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
     RETURN_NOT_OK(pg_supervisor_->Start());
 
     pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
@@ -3045,9 +3040,8 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
   YBSchemaBuilder schema_builder;
   schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::INT64);
   schema_builder.AddColumn("value")->Type(DataType::INT64);
-  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to use a schema name to avoid hitting errors
   // in GetTableSchema (part of OpenTable).
-  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   ASSERT_OK(schema_builder.Build(&schema));
 

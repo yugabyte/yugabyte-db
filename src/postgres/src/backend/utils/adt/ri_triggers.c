@@ -54,18 +54,18 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
 #include "catalog/catalog.h"
 #include "catalog/yb_type.h"
+#include "executor/execPartition.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-/* Yugabyte includes */
-#include "executor/execPartition.h"
-
 /*
  * Local definitions
  */
+
 #define RI_MAX_NUMKEYS					INDEX_MAX_KEYS
 
 #define RI_INIT_CONSTRAINTHASHSIZE		64
@@ -357,14 +357,17 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
 	Relation	referenced_rel = NULL;
 
 	/* Get current context, will be helpful during error recovery. */
-	MemoryContext cur_context = GetCurrentMemoryContext();
+	MemoryContext cur_context = CurrentMemoryContext;
 
 	PG_TRY();
 	{
 		ResultRelInfo *pk_part_rri = ExecFindPartition(&mtstate, &pk_root_rri,
 													   proute, pkslot, estate);
 
+		MemoryContext oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
+
 		*leaf_root_conversion_map = ExecGetChildToRootMap(pk_part_rri);
+		MemoryContextSwitchTo(oldcxt);
 
 		if (!using_index)
 			referenced_rel = pk_part_rri->ri_RelationDesc;
@@ -712,7 +715,6 @@ RI_FKey_check(TriggerData *trigdata)
 			querysep = "AND";
 			queryoids[i] = fk_type;
 		}
-
 		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
 		/* Prepare and save the plan */
@@ -844,7 +846,6 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 			querysep = "AND";
 			queryoids[i] = pk_type;
 		}
-
 		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
 		/* Prepare and save the plan */
@@ -1060,6 +1061,7 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 
 	return PointerGetDatum(NULL);
 }
+
 
 /*
  * RI_FKey_cascade_del -
@@ -1555,12 +1557,12 @@ RI_FKey_pk_upd_check_required(Trigger *trigger, Relation pk_rel,
 							  const YbSkippableEntities *yb_skip_entities)
 {
 
-	/* Check if this trigger is already marked as not needing an update */
+	/* YB: Check if this trigger is already marked as not needing an update */
 	if (yb_skip_entities && yb_skip_entities->referenced_fkey_list &&
 		list_member_oid(yb_skip_entities->referenced_fkey_list,
 						trigger->tgconstraint))
 	{
-		elog(DEBUG2, "Skipping trigger constraint %s", trigger->tgname);
+		elog(DEBUG2, "YB: Skipping trigger constraint %s", trigger->tgname);
 		return false;
 	}
 
@@ -1597,12 +1599,12 @@ RI_FKey_fk_upd_check_required(Trigger *trigger, Relation fk_rel,
 							  TupleTableSlot *oldslot, TupleTableSlot *newslot,
 							  const YbSkippableEntities *yb_skip_entities)
 {
-	/* Check if this trigger is marked as not needing an update */
+	/* YB: Check if this trigger is marked as not needing an update */
 	if (yb_skip_entities && yb_skip_entities->referencing_fkey_list &&
 		list_member_oid(yb_skip_entities->referencing_fkey_list,
 						trigger->tgconstraint))
 	{
-		elog(DEBUG2, "Skipping trigger constraint %s", trigger->tgname);
+		elog(DEBUG2, "YB: Skipping trigger constraint %s", trigger->tgname);
 		return false;
 	}
 
@@ -2749,16 +2751,18 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE |
 						   SECURITY_NOFORCE_RLS);
 
+	/* YB: wrap in try-catch */
 	PG_TRY();
 	{
 		/* Finally we can run the query. */
-		spi_result = SPI_execute_snapshot(qplan, vals, nulls, test_snapshot,
-										  crosscheck_snapshot, false, false,
-										  limit);
+		spi_result = SPI_execute_snapshot(qplan,
+										  vals, nulls,
+										  test_snapshot, crosscheck_snapshot,
+										  false, false, limit);
 	}
 	PG_CATCH();
 	{
-		/* Restore UID and security context in case of execution failure */
+		/* YB: Restore UID and security context in case of execution failure */
 		SetUserIdAndSecContext(save_userid, save_sec_context);
 		PG_RE_THROW();
 	}
@@ -3375,7 +3379,8 @@ RI_FKey_trigger_type(Oid tgfoid)
 
 void
 YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
-							  TupleTableSlot *new_slot, EState *estate)
+							  TupleTableSlot *new_slot, EState *estate,
+							  bool is_deferred)
 {
 	YbcPgYBTupleIdDescriptor *descr;
 
@@ -3402,7 +3407,9 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 			null_found = attr->is_null && (attr->attr_num > 0);
 
 		if (!null_found)
-			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr, YBCIsRegionLocal(fk_rel)));
+			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr,
+														   YBCIsRegionLocal(fk_rel),
+														   is_deferred));
 		pfree(descr);
 	}
 }

@@ -259,6 +259,13 @@ pgstat_relation(Relation rel, FunctionCallInfo fcinfo)
 	}
 	else if (rel->rd_rel->relkind == RELKIND_INDEX)
 	{
+		/* see pgstatindex_impl */
+		if (!rel->rd_index->indisvalid)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("index \"%s\" is not valid",
+							RelationGetRelationName(rel))));
+
 		switch (rel->rd_rel->relam)
 		{
 			case BTREE_AM_OID:
@@ -316,7 +323,11 @@ pgstat_heap(Relation rel, FunctionCallInfo fcinfo)
 	pgstattuple_type stat = {0};
 	SnapshotData SnapshotDirty;
 
-	if (rel->rd_rel->relam != HEAP_TABLE_AM_OID)
+	/*
+	 * Sequences always use heap AM, but they don't show that in the catalogs.
+	 */
+	if (rel->rd_rel->relkind != RELKIND_SEQUENCE &&
+		rel->rd_rel->relam != HEAP_TABLE_AM_OID)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("only heap AM is supported")));

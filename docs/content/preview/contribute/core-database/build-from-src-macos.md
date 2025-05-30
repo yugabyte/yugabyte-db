@@ -29,13 +29,6 @@ type: docs
   </li>
 
   <li >
-    <a href="../build-from-src-centos/" class="nav-link">
-      <i class="fa-brands fa-linux" aria-hidden="true"></i>
-      CentOS
-    </a>
-  </li>
-
-  <li >
     <a href="../build-from-src-ubuntu/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu

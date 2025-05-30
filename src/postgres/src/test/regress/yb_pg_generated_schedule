@@ -1,2 +1,2 @@
 # src/test/regress/yb_pg_generated_schedule
-test: yb_pg_generated
+test: yb.port.generated

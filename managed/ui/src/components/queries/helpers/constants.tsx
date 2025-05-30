@@ -34,6 +34,11 @@ export const DURATION_FIELDS: readonly QueryResponseKeys[] = [
   'min_time',
   'stddev_time',
   'total_time',
+  'min_plan_time',
+  'max_plan_time',
+  'mean_plan_time',
+  'stddev_plan_time',
+  'total_plan_time',
   'elapsedMillis'
 ] as const;
 export const DURATION_FIELD_DECIMALS = 2;
@@ -45,3 +50,6 @@ export const QueryType = {
   LIVE: 'liveQuery'
 } as const;
 export type QueryType = typeof QueryType[keyof typeof QueryType];
+
+export const PG_15_VERSION_THRESHOLD_STABLE = '2025.1.0.0-b1';
+export const PG_15_VERSION_THRESHOLD_PREVIEW = '2.25.0.0-b1';

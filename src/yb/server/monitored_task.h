@@ -75,6 +75,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kFlushTablets)
   (kGetSafeTime)
   (kGetTabletSplitKey)
+  (kGetActiveRbsInfo)
   (kPrepareDeleteTransactionTablet)
   (kRemoveServer)
   (kRemoveTableFromTablet)

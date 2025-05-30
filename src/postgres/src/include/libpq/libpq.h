@@ -84,9 +84,7 @@ extern bool pq_buffer_has_data(void);
 extern int	pq_putmessage_v2(char msgtype, const char *s, size_t len);
 extern bool pq_check_connection(void);
 
-extern bool pq_buffer_has_data(void);
-extern int	pq_putbytes(const char *s, size_t len);
-
+/* YB */
 extern int	yb_pq_peekbyte_no_msg_reading_status_check(void);
 
 /*

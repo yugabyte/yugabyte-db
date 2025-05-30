@@ -15,8 +15,12 @@
 
 #include <gmock/gmock.h>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
+
 #include "yb/tserver/tserver_xcluster_context_if.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -32,21 +36,33 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
       (Result<std::optional<HybridTime>>), GetSafeTime, (const NamespaceId& namespace_id),
       (const, override));
 
+  MOCK_METHOD(
+      XClusterNamespaceInfoPB_XClusterRole, GetXClusterRole, (const NamespaceId& namespace_id),
+      (const, override));
+
   MOCK_METHOD(bool, IsReadOnlyMode, (const NamespaceId& namespace_id), (const, override));
+  MOCK_METHOD(
+      bool, IsTargetAndInAutomaticMode, (const NamespaceId& namespace_id), (const, override));
 
   MOCK_METHOD(bool, SafeTimeComputationRequired, (), (const, override));
   MOCK_METHOD(
       bool, SafeTimeComputationRequired, (const NamespaceId& namespace_id), (const, override));
 
   MOCK_METHOD(
-      Status, SetSourceTableMappingForCreateTable,
-      (const YsqlFullTableName& table_name, const PgObjectId& producer_table_id), (override));
+      void, UpdateTargetNamespacesInAutomaticModeSet,
+      (const std::unordered_set<NamespaceId>& target_namespaces_in_automatic_mode), (override));
 
   MOCK_METHOD(
-      void, ClearSourceTableMappingForCreateTable, (const YsqlFullTableName& table_name),
+      Status, SetSourceTableInfoMappingForCreateTable,
+      (const YsqlFullTableName& table_name, const PgObjectId& producer_table_id,
+       ColocationId colocation_id, const HybridTime& backfill_time_opt),
       (override));
   MOCK_METHOD(
-      PgObjectId, GetXClusterSourceTableId, (const YsqlFullTableName& table_name),
+      void, ClearSourceTableInfoMappingForCreateTable, (const YsqlFullTableName& table_name),
+      (override));
+
+  MOCK_METHOD(
+      void, PrepareCreateTableHelper, (const PgCreateTableRequestPB& req, PgCreateTable& helper),
       (const, override));
 };
 

@@ -144,7 +144,7 @@ func (n *NamespaceConfigContext) startSubsection(format string) (*template.Templ
 }
 
 func (n *NamespaceConfigContext) subSection(name string) {
-	n.Output.Write([]byte("\n\n"))
+	n.Output.Write([]byte("\n"))
 	n.Output.Write([]byte(formatter.Colorize(name, formatter.BlueColor)))
 	n.Output.Write([]byte("\n"))
 }

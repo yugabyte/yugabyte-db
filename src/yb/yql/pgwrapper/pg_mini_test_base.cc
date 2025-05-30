@@ -65,12 +65,11 @@ void PgMiniTestBase::SetUp() {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   MiniClusterTestWithClient::SetUp();
 
-  MiniClusterOptions mini_cluster_opt = MiniClusterOptions {
+  MiniClusterOptions mini_cluster_opt = MiniClusterOptions{
       .num_masters = NumMasters(),
       .num_tablet_servers = NumTabletServers(),
       .num_drives = 1,
-      .master_env = env_.get()
-  };
+      .master_env = env_.get()};
   OverrideMiniClusterOptions(&mini_cluster_opt);
   cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
 
@@ -86,8 +85,7 @@ void PgMiniTestBase::SetUp() {
 
   ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
-  StartPgSupervisor(pg_port, pg_ts_idx);
-
+  ASSERT_OK(SetupPGCallbacksAndStartPG(pg_port, pg_ts_idx, mini_cluster_opt.wait_for_pg));
   DontVerifyClusterBeforeNextTearDown();
 
   ASSERT_OK(MiniClusterTestWithClient<MiniCluster>::CreateClient());
@@ -109,6 +107,10 @@ Result<master::CatalogManagerIf*> PgMiniTestBase::catalog_manager() const {
   return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
 }
 
+Result<master::CatalogManager*> PgMiniTestBase::catalog_manager_impl() const {
+  return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
+}
+
 void PgMiniTestBase::EnableYSQLFlags() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
@@ -118,12 +120,12 @@ Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port, size_t 
   auto* pg_ts = cluster_->mini_tablet_server(ts_idx);
   PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
       AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-      pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-      pg_ts->server()->GetSharedMemoryFd()));
+      pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));
 
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  cluster_->SetYsqlHostport(pg_host_port());
 
   return pg_process_conf;
 }
@@ -139,23 +141,47 @@ void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
             << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
 
+  auto pg_ts = cluster_->mini_tablet_server(pg_ts_idx);
+
   BeforePgProcessStart();
-  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, nullptr /* tserver */);
-  ASSERT_OK(pg_supervisor_->Start());
+  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, pg_ts->server());
+  ASSERT_OK(pg_supervisor_->StartAndMaybePause());
+  pg_ts->SetPgServerHandlers(
+      [this] { return StartPostgres(); }, [this] { StopPostgres(); },
+      [this] { return MakeConnSettings(); });
+}
+
+Status PgMiniTestBase::SetupPGCallbacksAndStartPG(
+    uint16_t pg_port, int pg_ts_idx, bool wait_for_pg) {
+  RETURN_NOT_OK(WaitForInitDb(cluster_.get()));
+
+  auto pg_process_conf = VERIFY_RESULT(CreatePgProcessConf(pg_port, pg_ts_idx));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
+
+  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
+            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+
+  BeforePgProcessStart();
+
+  auto pg_ts = cluster_->mini_tablet_server(pg_ts_idx);
+  pg_ts->SetPgServerHandlers(
+      [this] { return StartPostgres(); }, [this] { StopPostgres(); },
+      [this] { return MakeConnSettings(); });
+  return pg_ts->StartPgIfConfigured(tserver::WaitToAcceptPgConnections(wait_for_pg));
 }
 
 Status PgMiniTestBase::RecreatePgSupervisor() {
   pg_supervisor_ = std::make_unique<PgSupervisor>(
-      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port(), /* ts_idx */ 0)),
-      /* tserver */ nullptr);
+      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port(), kPgTsIndex)),
+      cluster_->mini_tablet_server(kPgTsIndex)->server());
   return Status::OK();
 }
 
 Status PgMiniTestBase::RestartCluster() {
-  pg_supervisor_->Stop();
-  RETURN_NOT_OK(cluster_->RestartSync());
-  RETURN_NOT_OK(RecreatePgSupervisor());
-  return pg_supervisor_->Start();
+  // Postgres will get stopped/started when the corresponding tserver is, so no need to
+  // explicitly restart it here.
+  return cluster_->RestartSync();
 }
 
 Status PgMiniTestBase::RestartMaster() {
@@ -165,19 +191,25 @@ Status PgMiniTestBase::RestartMaster() {
   return mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 }
 
+void PgMiniTestBase::StopPostgres() {
+  LOG(INFO) << "Stopping PostgreSQL server";
+  pg_supervisor_->Stop();
+  pg_supervisor_ = nullptr;
+}
+
+Status PgMiniTestBase::StartPostgres() {
+  LOG(INFO) << "Starting PostgreSQL server";
+  RETURN_NOT_OK(RecreatePgSupervisor());
+  return pg_supervisor_->StartAndMaybePause();
+}
+
 Status PgMiniTestBase::RestartPostgres() {
   LOG(INFO) << "Restarting PostgreSQL server";
-  pg_supervisor_->Stop();
-  RETURN_NOT_OK(RecreatePgSupervisor());
-  return pg_supervisor_->Start();
+  StopPostgres();
+  return StartPostgres();
 }
 
 void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}
-
-const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletServer(
-    const MiniCluster::MiniTabletServers& servers) {
-  return RandomElement(servers);
-}
 
 std::vector<tserver::TabletServerOptions> PgMiniTestBase::ExtraTServerOptions() {
   return std::vector<tserver::TabletServerOptions>();

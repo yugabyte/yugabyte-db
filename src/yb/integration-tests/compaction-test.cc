@@ -1835,7 +1835,8 @@ class FullCompactionMonitoringTest : public CompactionTest {
       for (const auto& tablet_peer : tablet_peers) {
         workload_tablet_ptrs.push_back(tablet_peer->shared_tablet());
       }
-      ASSERT_OK(ts_tablet_manager->TriggerAdminCompaction(workload_tablet_ptrs, should_wait));
+      ASSERT_OK(ts_tablet_manager->TriggerAdminCompaction(
+          workload_tablet_ptrs, AdminCompactionOptions{ should_wait }));
     }
   }
 

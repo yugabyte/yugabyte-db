@@ -3132,8 +3132,7 @@ Status VersionSet::Import(const std::string& source_dir,
 
   if (!status.ok()) {
     for (const auto& file : revert_list) {
-      auto delete_status = env_->DeleteFile(file);
-      LOG(ERROR) << "Failed to delete file: " << file << ", status: " << delete_status.ToString();
+      ERROR_NOT_OK(env_->DeleteFile(file), yb::Format("Failed to delete file $0", file));
     }
     return status;
   }

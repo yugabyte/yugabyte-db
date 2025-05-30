@@ -307,7 +307,6 @@ void TestNotOk(T t) {
   const auto LogPrefix = []() -> std::string { return "prefix"; };
   WARN_NOT_OK(t, "boo");
   WARN_WITH_PREFIX_NOT_OK(t, "foo");
-  ERROR_NOT_OK(t, "moo");
 }
 
 } // namespace

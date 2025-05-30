@@ -25,10 +25,18 @@
 @import "./_yb_image.scss";
 @import "./_yb_kapa_ai.scss";
 @import "./_yb_buttons.scss";
+@import "./_yb_page_finder.scss";
 @import "./_yb_page_style.scss";
 @import "./_yb_resources.scss";
 @import "./_yb_tags.scss";
 @import "./_yb_container.scss";
+
+@font-face {
+  font-family: 'SFMonoSemibold';
+  src: url('/fonts/sf-mono/SFMonoSemibold.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
 
 html {
   padding: 0 !important;

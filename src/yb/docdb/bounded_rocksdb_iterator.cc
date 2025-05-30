@@ -17,8 +17,7 @@
 
 #include "yb/rocksdb/db.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 BoundedRocksDbIterator::BoundedRocksDbIterator(
     rocksdb::DB* rocksdb, const rocksdb::ReadOptions& read_opts,
@@ -55,29 +54,15 @@ const rocksdb::KeyValueEntry& BoundedRocksDbIterator::SeekToLast() {
 }
 
 const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Seek(Slice target) {
-  return DoSeek(target, nullptr);
-}
-
-template <class Filter>
-const rocksdb::KeyValueEntry& BoundedRocksDbIterator::DoSeek(Slice target, Filter filter_user_key) {
   if (!key_bounds_->lower.empty() && target.compare(key_bounds_->lower) < 0) {
-    return FilterEntry(DoSeekImpl(key_bounds_->lower, filter_user_key));
+    return FilterEntry(iterator_->Seek(key_bounds_->lower));
   }
 
   if (!key_bounds_->upper.empty() && target.compare(key_bounds_->upper) > 0) {
-    return FilterEntry(DoSeekImpl(key_bounds_->upper, filter_user_key));
+    return FilterEntry(iterator_->Seek(key_bounds_->upper));
   }
 
-  return FilterEntry(DoSeekImpl(target, filter_user_key));
-}
-
-const rocksdb::KeyValueEntry& BoundedRocksDbIterator::DoSeekImpl(Slice target, std::nullptr_t) {
-  return iterator_->Seek(target);
-}
-
-const rocksdb::KeyValueEntry& BoundedRocksDbIterator::DoSeekImpl(
-    Slice target, Slice filter_user_key) {
-  return iterator_->SeekWithNewFilter(target, filter_user_key);
+  return FilterEntry(iterator_->Seek(target));
 }
 
 const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Next() {
@@ -111,10 +96,8 @@ void BoundedRocksDbIterator::UseFastNext(bool value) {
   iterator_->UseFastNext(value);
 }
 
-const rocksdb::KeyValueEntry& BoundedRocksDbIterator::DoSeekWithNewFilter(
-    Slice target, Slice filter_user_key) {
-  return DoSeek(target, filter_user_key);
+void BoundedRocksDbIterator::UpdateFilterKey(Slice user_key_for_filter) {
+  iterator_->UpdateFilterKey(user_key_for_filter);
 }
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

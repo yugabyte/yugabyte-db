@@ -152,6 +152,21 @@ bool MonoDelta::IsNegative() const {
   return nano_delta_ < 0;
 }
 
+std::string MonoDelta::ToPrettyString() const {
+  if (!Initialized()) {
+    return "<uninitialized>";
+  }
+  if (nano_delta_ < MonoTime::kNanosecondsPerMillisecond) {
+    return StringPrintf(
+        "%.3fus", static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMicrosecond);
+  }
+  if (nano_delta_ < MonoTime::kNanosecondsPerSecond) {
+    return StringPrintf(
+        "%.3fms", static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMillisecond);
+  }
+  return ToString();
+}
+
 std::string MonoDelta::ToString() const {
   return Initialized() ? StringPrintf("%.3fs", ToSeconds()) : "<uninitialized>";
 }

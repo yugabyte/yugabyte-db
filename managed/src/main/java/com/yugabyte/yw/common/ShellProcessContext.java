@@ -33,6 +33,8 @@ public class ShellProcessContext {
   boolean logCmdOutput;
   // Executed command is logged with trace level, in case it's set to true. Otherwise info.
   boolean traceLogging;
+  // Use SSH connection only ignoring other connection types.
+  boolean useSshConnectionOnly;
   // Human-readable description for logging.
   String description;
   // Used to track this execution, can be null.

@@ -170,6 +170,8 @@ od_rule_t *od_rules_add(od_rules_t *rules)
 	od_list_append(&rules->rules, &rule->link);
 
 	rule->quantiles = NULL;
+	/* YB */
+	rule->yb_jitter_time = 120;
 	return rule;
 }
 
@@ -1262,6 +1264,10 @@ void od_rules_print(od_rules_t *rules, od_logger_t *logger)
 		od_log(logger, "rules", NULL, NULL,
 		       "  log_query                         %s",
 		       od_rules_yes_no(rule->log_query));
+
+		od_log(logger, "rules", NULL, NULL,
+			   "  yb_jitter_time                    %d",
+			   rule->yb_jitter_time);
 
 		od_log(logger, "rules", NULL, NULL,
 		       "  options:                         %s", "todo");

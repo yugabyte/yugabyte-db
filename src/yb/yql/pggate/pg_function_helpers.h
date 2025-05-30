@@ -115,6 +115,22 @@ Status SetColumnValue(
   return SetColumnValueFromQLValue(column, col_name, row, SetValue(value, datatype));
 }
 
+// Similar to SetColumnValue, but if the column is not found, it does nothing and returns OK.
+template <class T>
+Status TrySetColumnValue(
+    const std::string& col_name, const T& value, const Schema& schema, PgTableRow* row) {
+  auto result = ColumnIndexAndType(col_name, schema);
+  if (!result.ok()) {
+    if (result.status().IsNotFound()) {
+      return Status::OK();
+    }
+    return result.status();
+  }
+  auto [column, _, datatype] = *result;
+
+  return SetColumnValueFromQLValue(column, col_name, row, SetValue(value, datatype));
+}
+
 template <class T>
 Status SetColumnArrayValue(
     const std::string& col_name, const T& value, const Schema& schema, PgTableRow* row) {

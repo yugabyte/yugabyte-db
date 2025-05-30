@@ -210,7 +210,12 @@ const (
 //			(for correct-looking results, tabwidth must correspond
 //			to the tab width in the viewer displaying the result)
 //	flags		formatting control
-func (b *Writer) Init(output io.Writer, minwidth, tabwidth, padding int, padchar byte, flags uint) *Writer {
+func (b *Writer) Init(
+	output io.Writer,
+	minwidth, tabwidth, padding int,
+	padchar byte,
+	flags uint,
+) *Writer {
 	if minwidth < 0 || tabwidth < 0 || padding < 0 {
 		panic("negative minwidth, tabwidth, or padding")
 	}
@@ -599,6 +604,11 @@ func (b *Writer) Write(buf []byte) (n int, err error) {
 
 // NewWriter allocates and initializes a new tabwriter.Writer.
 // The parameters are the same as for the Init function.
-func NewWriter(output io.Writer, minwidth, tabwidth, padding int, padchar byte, flags uint) *Writer {
+func NewWriter(
+	output io.Writer,
+	minwidth, tabwidth, padding int,
+	padchar byte,
+	flags uint,
+) *Writer {
 	return new(Writer).Init(output, minwidth, tabwidth, padding, padchar, flags)
 }

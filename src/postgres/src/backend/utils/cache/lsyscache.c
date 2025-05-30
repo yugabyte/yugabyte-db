@@ -13,8 +13,6 @@
  *	  Eventually, the index information should go through here, too.
  *-------------------------------------------------------------------------
  */
-
-#include "pg_yb_utils.h"
 #include "postgres.h"
 
 #include "access/hash.h"
@@ -51,6 +49,7 @@
 
 /* YB includes */
 #include "catalog/yb_type.h"
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;
@@ -3184,9 +3183,9 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
 	int32		stawidth;
 
 	/*
-	 * This functionality was left disabled even after ANALYZE was implemented.
-	 * This oversight was detected during cost model project. We protect it
-	 * under this feature toggle to prevent regressions.
+	 * YB: This functionality was left disabled even after ANALYZE was
+	 * implemented. This oversight was detected during cost model project. We
+	 * protect it under this feature toggle to prevent regressions.
 	 */
 	if (!yb_enable_base_scans_cost_model)
 		return 0;

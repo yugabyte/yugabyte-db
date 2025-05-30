@@ -171,7 +171,7 @@ void GenericServiceImpl::ReloadCertificates(
     rpc::RpcContext rpc) {
   const auto status = server_->ReloadKeysAndCertificates();
   if (!status.ok()) {
-    LOG(ERROR) << "Reloading certificates failed: " << status;
+    LOG(WARNING) << "Reloading certificates failed: " << status;
     rpc.RespondFailure(status);
     return;
   }

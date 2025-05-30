@@ -1,5 +1,6 @@
 import React, { useState, ReactElement, ReactNode } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import type { FieldValues } from 'react-hook-form';
 import type { DateType } from '@date-io/type';
 import { YBDatePicker } from './YBDatePicker';
 import { InputAdornment, IconButton, StandardTextFieldProps, makeStyles } from '@material-ui/core';
@@ -32,9 +33,10 @@ export type YBDatePickerPropsInput = {
   'variant' | 'color' | 'classes' | 'size' | 'select' | 'FormHelperTextProps' | 'SelectProps'
 >;
 
-type YBDatePickerProps<T> = UseControllerProps<T> & YBDatePickerPropsInput;
+type YBDatePickerProps<T extends FieldValues> = UseControllerProps<T> & YBDatePickerPropsInput;
 
-export const YBDatePickerField = <T,>(props: YBDatePickerProps<T>): ReactElement => {
+export const YBDatePickerField =
+  <T extends FieldValues,>(props: YBDatePickerProps<T>): ReactElement => {
   const {
     name,
     rules,

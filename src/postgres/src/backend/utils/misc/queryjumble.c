@@ -37,7 +37,7 @@
 #include "parser/scansup.h"
 #include "utils/queryjumble.h"
 
-/* YB includes. */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 #define JUMBLE_SIZE				1024	/* query serialization buffer size */

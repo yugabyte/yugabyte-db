@@ -122,7 +122,9 @@ TEST_F(
     auto conn = ASSERT_RESULT(PgConnect());
     auto res = conn.ExecuteFormat("CREATE DATABASE $0", db_name);
     if (!res.ok()) {
-      ASSERT_STR_CONTAINS(res.ToString(), Format("Keyspace '$0' already exists", db_name));
+      ASSERT_THAT(
+          res.ToString(),
+          ::testing::ContainsRegex(Format("('$0'|\"$0\") already exists", db_name)));
     }
   };
 

@@ -52,6 +52,8 @@ unique_key_recheck(PG_FUNCTION_ARGS)
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
 
+	Datum		ybctid;
+
 	/*
 	 * Make sure this is being called as an AFTER ROW trigger.  Note:
 	 * translatable error strings are shared with ri_triggers.c, so resist the
@@ -74,9 +76,15 @@ unique_key_recheck(PG_FUNCTION_ARGS)
 	 * Get the new data that was inserted/updated.
 	 */
 	if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
+	{
 		checktid = trigdata->tg_trigslot->tts_tid;
+		ybctid = trigdata->tg_trigslot->tts_ybctid;
+	}
 	else if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
+	{
 		checktid = trigdata->tg_newslot->tts_tid;
+		ybctid = trigdata->tg_newslot->tts_ybctid;
+	}
 	else
 	{
 		ereport(ERROR,
@@ -173,8 +181,11 @@ unique_key_recheck(PG_FUNCTION_ARGS)
 		 * the row is now dead, because that is the TID the index will know
 		 * about.
 		 */
-		index_insert(indexRel, values, isnull, &checktid, 0,	/* YB_TODO: right thing
-																 * to do? */
+		/*
+		 * YB Note: When adding support for DEFERRABLE unique constraints,
+		 * validate if ybctid argument is correct.
+		 */
+		index_insert(indexRel, values, isnull, &checktid, ybctid,
 					 trigdata->tg_relation, UNIQUE_CHECK_EXISTING,
 					 false, indexInfo, false /* yb_shared_insert */ );
 	}

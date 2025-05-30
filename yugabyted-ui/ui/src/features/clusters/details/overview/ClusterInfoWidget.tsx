@@ -120,7 +120,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
                   {t('clusterDetail.overview.totalvCPU')}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {totalCores}
+                  {totalCores > 0 ? totalCores : t("common.notAvailable")}
                 </Typography>
               </Grid>
               <Grid item xs={4}>

@@ -26,8 +26,31 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
-#include "utils/rowtypes.h"
 #include "utils/typcache.h"
+
+/* YB includes */
+#include "yb/yql/pggate/util/ybc_util.h"
+
+
+/*
+ * structure to cache metadata needed for record I/O
+ */
+typedef struct ColumnIOData
+{
+	Oid			column_type;
+	Oid			typiofunc;
+	Oid			typioparam;
+	bool		typisvarlena;
+	FmgrInfo	proc;
+} ColumnIOData;
+
+typedef struct RecordIOData
+{
+	Oid			record_type;
+	int32		record_typmod;
+	int			ncolumns;
+	ColumnIOData columns[FLEXIBLE_ARRAY_MEMBER];
+} RecordIOData;
 
 /*
  * structure to cache metadata needed for record comparison
@@ -2015,4 +2038,31 @@ hash_record_extended(PG_FUNCTION_ARGS)
 	PG_FREE_IF_COPY(record, 0);
 
 	PG_RETURN_UINT64(result);
+}
+
+Datum
+YbRecordOut(HeapTupleHeader rec, TupleDesc tupdesc)
+{
+	FmgrInfo   *flinfo = palloc0(sizeof(FmgrInfo));
+	RecordIOData *my_extra;
+	size_t		natts = tupdesc->natts;
+
+	flinfo->fn_extra = MemoryContextAlloc(CurrentMemoryContext,
+										  offsetof(RecordIOData, columns) +
+										  natts * sizeof(ColumnIOData));
+	my_extra = (RecordIOData *) flinfo->fn_extra;
+	my_extra->record_type = HeapTupleHeaderGetTypeId(rec);
+	my_extra->record_typmod = HeapTupleHeaderGetTypMod(rec);
+	my_extra->ncolumns = natts;
+	for (size_t i = 0; i < natts; i++)
+	{
+		ColumnIOData *column_info = &my_extra->columns[i];
+		Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+
+		column_info->typiofunc =
+			fmgr_internal_function(YBCGetOutFuncName(att->atttypid));
+		fmgr_info(column_info->typiofunc, &column_info->proc);
+		column_info->column_type = att->atttypid;
+	}
+	return record_out_internal(rec, &tupdesc, flinfo);
 }

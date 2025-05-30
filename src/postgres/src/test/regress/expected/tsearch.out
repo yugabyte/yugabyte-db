@@ -2000,6 +2000,23 @@ to_tsquery('english','Lorem') && phraseto_tsquery('english','ullamcorper urna'),
  <b>Lorem</b> ipsum <b>urna</b>.  Nullam nullam <b>ullamcorper</b> <b>urna</b>
 (1 row)
 
+-- Edge cases with empty query
+SELECT ts_headline('english',
+'', to_tsquery('english', ''));
+NOTICE:  text-search query doesn't contain lexemes: ""
+ ts_headline 
+-------------
+ 
+(1 row)
+
+SELECT ts_headline('english',
+'foo bar', to_tsquery('english', ''));
+NOTICE:  text-search query doesn't contain lexemes: ""
+ ts_headline 
+-------------
+ foo bar
+(1 row)
+
 --Rewrite sub system
 CREATE TABLE test_tsquery (txtkeyword TEXT, txtsample TEXT);
 \set ECHO none
@@ -2532,10 +2549,17 @@ select websearch_to_tsquery('simple', 'abc <-> def');
  'abc' & 'def'
 (1 row)
 
+-- parens are ignored, too
 select websearch_to_tsquery('simple', 'abc (pg or class)');
   websearch_to_tsquery  
 ------------------------
  'abc' & 'pg' | 'class'
+(1 row)
+
+select websearch_to_tsquery('simple', '(foo bar) or (ding dong)');
+      websearch_to_tsquery       
+---------------------------------
+ 'foo' & 'bar' | 'ding' & 'dong'
 (1 row)
 
 -- NOT is ignored in quotes

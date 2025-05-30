@@ -207,6 +207,22 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("sslcert and sslkey are superuser-only"),
 						 errhint("User mappings with the sslcert or sslkey options set may only be created or modified by the superuser.")));
 		}
+		/* YB specific options */
+		else if (strcmp(def->defname, "server_type") == 0)
+		{
+			/*
+			 * This functions is invoked for both CREATE and ALTER SERVER. In
+			 * case of the latter, no context is available to check if the user
+			 * is changing or dropping the server_type.
+			 */
+			if (!yb_is_valid_server_type(defGetString(def)))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid server_type '%s'", defGetString(def)),
+						 errhint("Supported server types: [postgreSQL, yugabyteDB]")));
+			}
+		}
 	}
 
 	PG_RETURN_VOID();
@@ -261,6 +277,9 @@ InitPgFdwOptions(void)
 		 */
 		{"sslcert", UserMappingRelationId, true},
 		{"sslkey", UserMappingRelationId, true},
+
+		/* YB specific options */
+		{"server_type", ForeignServerRelationId, false /* is_libpq_opt */ },
 
 		{NULL, InvalidOid, false}
 	};
@@ -461,8 +480,6 @@ process_pgfdw_appname(const char *appname)
 	const char *p;
 	StringInfoData buf;
 
-	Assert(MyProcPort != NULL);
-
 	initStringInfo(&buf);
 
 	for (p = appname; *p != '\0'; p++)
@@ -492,19 +509,35 @@ process_pgfdw_appname(const char *appname)
 				appendStringInfoString(&buf, application_name);
 				break;
 			case 'c':
-				appendStringInfo(&buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
+				appendStringInfo(&buf, "%" INT64_MODIFIER "x.%x", MyStartTime, MyProcPid);
 				break;
 			case 'C':
 				appendStringInfoString(&buf, cluster_name);
 				break;
 			case 'd':
-				appendStringInfoString(&buf, MyProcPort->database_name);
+				if (MyProcPort)
+				{
+					const char *dbname = MyProcPort->database_name;
+
+					if (dbname)
+						appendStringInfoString(&buf, dbname);
+					else
+						appendStringInfoString(&buf, "[unknown]");
+				}
 				break;
 			case 'p':
 				appendStringInfo(&buf, "%d", MyProcPid);
 				break;
 			case 'u':
-				appendStringInfoString(&buf, MyProcPort->user_name);
+				if (MyProcPort)
+				{
+					const char *username = MyProcPort->user_name;
+
+					if (username)
+						appendStringInfoString(&buf, username);
+					else
+						appendStringInfoString(&buf, "[unknown]");
+				}
 				break;
 			default:
 				/* format error - ignore it */

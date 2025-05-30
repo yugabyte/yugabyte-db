@@ -559,6 +559,8 @@ class KVIter : public Iterator {
     return entry_;
   }
 
+  void UpdateFilterKey(Slice user_key_for_filter) override {}
+
   Status status() const override { return Status::OK(); }
 
  private:

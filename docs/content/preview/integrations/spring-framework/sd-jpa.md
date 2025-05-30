@@ -39,7 +39,7 @@ Add the following dependencies for Spring Data JPA with [YugabyteDB JDBC Driver]
   <dependency>
     <groupId>com.yugabyte</groupId>
     <artifactId>jdbc-yugabytedb</artifactId>
-    <version>42.7.3-yb-1</version>
+    <version>{{< version-driver-java >}}</version>
   </dependency>
 <dependencies>
 ```
@@ -228,7 +228,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
 ### Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 By default, CRUD methods on a JPA repository are transactional. For read operations, the transaction configuration `readOnly` flag is set to true. All others are configured with a plain `@Transactional` so that the default transaction configuration applies.
 

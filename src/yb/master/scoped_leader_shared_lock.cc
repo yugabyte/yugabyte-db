@@ -77,12 +77,13 @@ namespace master {
 ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     CatalogManager* catalog, const char* file_name, int line_number, const char* function_name)
     : catalog_(DCHECK_NOTNULL(catalog)),
-      leader_shared_lock_(catalog->leader_lock_, std::try_to_lock),
+      leader_shared_lock_(catalog->leader_mutex_, std::defer_lock),
       start_(std::chrono::steady_clock::now()),
       file_name_(file_name),
       line_number_(line_number),
       function_name_(function_name) {
-  bool catalog_loaded;
+
+
   {
     // Check if the catalog manager is running.
     std::lock_guard l(catalog_->state_lock_);
@@ -91,60 +92,49 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
           "Catalog manager is not initialized. State: $0", catalog_->state_);
       return;
     }
-    epoch_.leader_term = catalog_->leader_ready_term_;
-    catalog_loaded = catalog_->is_catalog_loaded_;
     epoch_.pitr_count = catalog_->sys_catalog_->pitr_count();
   }
 
-  string uuid = catalog_->master_->fs_manager()->uuid();
+  leader_status_ = Lock();
+}
+
+Status ScopedLeaderSharedLock::Lock() NO_THREAD_SAFETY_ANALYSIS {
+  auto uuid = catalog_->master_->fs_manager()->uuid();
   if (PREDICT_FALSE(catalog_->master_->IsShellMode())) {
     // Consensus and other internal fields should not be checked when in shell mode as they may be
     // in transition.
-    leader_status_ = STATUS_SUBSTITUTE(IllegalState,
+    return STATUS_SUBSTITUTE(IllegalState,
         "Catalog manager of $0 is in shell mode, not the leader.", uuid);
-    return;
   }
 
   // Check if the catalog manager is the leader.
-  ConsensusStatePB cstate;
-  auto consensus_result = catalog_->sys_catalog_->tablet_peer()->GetConsensus();
-  if (consensus_result) {
-    cstate = consensus_result.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  auto consensus_result = VERIFY_RESULT(catalog_->sys_catalog_->tablet_peer()->GetConsensus());
+
+  auto leader_state = consensus_result->GetLeaderState();
+  RETURN_NOT_OK(leader_state.CreateStatus());
+
+  if (PREDICT_FALSE(!leader_shared_lock_.try_lock())) {
+    return STATUS(
+        ServiceUnavailable,
+        "Couldn't acquire leader lock in shared mode, leader still loading catalog tables");
   }
-  if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
-    leader_status_ = STATUS_FORMAT(IllegalState,
-                                   "Not the leader. Local UUID: $0, Consensus state: $1",
-                                   uuid, cstate);
-    return;
-  }
-  // TODO: deduplicate the leadership check above and below (one is committed, one is active).
-  const Status s = consensus_result.get()->CheckIsActiveLeaderAndHasLease();
-  if (!s.ok()) {
-    leader_status_ = s;
-    return;
-  }
-  if (epoch_.leader_term != cstate.current_term()) {
+
+  epoch_.leader_term = catalog_->leader_ready_term_.load();
+  if (epoch_.leader_term != leader_state.term) {
     // Normally we use LeaderNotReadyToServe to indicate that the leader has not replicated its
     // NO_OP entry or the previous leader's lease has not expired yet, and the handling logic is to
     // to retry on the same server.
-    leader_status_ = STATUS_FORMAT(
-        LeaderNotReadyToServe, "$0:leader_ready_term_ = $1; cstate.current_term = $2",
+    return STATUS_FORMAT(
+        LeaderNotReadyToServe, "$0: leader_ready_term_ = $1; current_term = $2",
         (epoch_.leader_term == -1 ? "yb-master leader is initializing" : "Leader term mismatch"),
-        epoch_.leader_term, cstate.current_term());
-    return;
+        epoch_.leader_term, leader_state.term);
   }
-  if (PREDICT_FALSE(!leader_shared_lock_.owns_lock())) {
-    leader_status_ = STATUS_SUBSTITUTE(
-        ServiceUnavailable,
-        "Couldn't get leader_lock_ in shared mode. Leader still loading catalog tables."
-        "leader_ready_term_ = $0; cstate.current_term = $1",
-        epoch_.leader_term, cstate.current_term());
-    return;
+
+  if (catalog_->restoring_sys_catalog_) {
+    return STATUS_SUBSTITUTE(ServiceUnavailable, "Catalog manager is restoring");
   }
-  if (!catalog_loaded) {
-    leader_status_ = STATUS_SUBSTITUTE(ServiceUnavailable, "Catalog manager is not loaded");
-    return;
-  }
+
+  return Status::OK();
 }
 
 ScopedLeaderSharedLock::~ScopedLeaderSharedLock() {

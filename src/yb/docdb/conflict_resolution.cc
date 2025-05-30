@@ -33,7 +33,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/iter_util.h"
-#include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/lock_util.h"
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/dockv/doc_key.h"
@@ -89,9 +89,10 @@ using TransactionConflictInfoMap = std::unordered_map<TransactionId,
                                                       TransactionIdHash>;
 
 Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
-                          const char* reason, tablet::TabletMetrics* tablet_metrics) {
+                          const std::string& reason,
+                          const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics) {
   tablet_metrics->Increment(tablet::TabletCounters::kTransactionConflicts);
-  return (STATUS(TryAgain, Format("$0 conflicts with $1 transaction: $2", our_id, reason, other_id),
+  return (STATUS(TryAgain, Format("$0 conflicts with $1: $2", our_id, reason, other_id),
                  Slice(), TransactionError(TransactionErrorCode::kConflict)));
 }
 
@@ -126,7 +127,7 @@ class ConflictResolverContext {
 
   virtual int64_t GetTxnStartUs() const = 0;
 
-  virtual tablet::TabletMetrics* GetTabletMetrics() = 0;
+  virtual const std::shared_ptr<tablet::TabletMetricsHolder>& GetTabletMetrics() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
@@ -650,12 +651,14 @@ class WaitOnConflictResolver : public ConflictResolver {
       LockBatch* lock_batch,
       uint64_t request_start_us,
       int64_t request_id,
+      bool is_advisory_lock_request,
       CoarseTimePoint deadline)
         : ConflictResolver(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
         wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()),
         trace_(Trace::CurrentTrace()), request_start_us_(request_start_us),
-        request_id_(request_id), deadline_(deadline) {}
+        request_id_(request_id), is_advisory_lock_request_(is_advisory_lock_request),
+        deadline_(deadline) {}
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
@@ -709,7 +712,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         waiter_txn, context_->subtransaction_id(), lock_batch_, waiter_status_tablet,
         serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
-        context_->PgSessionRequestVersion(), deadline_,
+        context_->PgSessionRequestVersion(), is_advisory_lock_request_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -735,7 +738,7 @@ class WaitOnConflictResolver : public ConflictResolver {
         waiter_txn, context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), waiter_status_tablet, serial_no_,
         context_->GetTxnStartUs(), request_start_us_, request_id_,
-        context_->PgSessionRequestVersion(), deadline_,
+        context_->PgSessionRequestVersion(), is_advisory_lock_request_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2)));
     MaybeSetWaitStartTime();
@@ -782,6 +785,7 @@ class WaitOnConflictResolver : public ConflictResolver {
   // Stores the start time of the underlying rpc request that created this resolver.
   uint64_t request_start_us_ = 0;
   const int64_t request_id_;
+  const bool is_advisory_lock_request_;
   CoarseTimePoint deadline_;
 };
 
@@ -904,12 +908,12 @@ class StrongConflictChecker {
   StrongConflictChecker(const TransactionId& transaction_id,
                         HybridTime read_time,
                         ConflictResolver* resolver,
-                        tablet::TabletMetrics* tablet_metrics,
+                        const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
                         KeyBytes* buffer)
       : transaction_id_(transaction_id),
         read_time_(read_time),
         resolver_(*resolver),
-        tablet_metrics_(*tablet_metrics),
+        tablet_metrics_(tablet_metrics),
         buffer_(*buffer)
   {}
 
@@ -928,7 +932,8 @@ class StrongConflictChecker {
           /* iterate_upper_bound = */ nullptr,
           rocksdb::CacheRestartBlockKeys::kFalse);
     }
-    value_iter_.SeekWithNewFilter(intent_key);
+    value_iter_.UpdateFilterKey(intent_key);
+    const auto* entry = &value_iter_.Seek(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -951,16 +956,16 @@ class StrongConflictChecker {
     // change, so it is only directly in conflict with a committed record that deletes or replaces
     // that entire document subtree (similar to a strong intent), so it would have the same exact
     // key as the weak intent (not including hybrid time).
-    while (value_iter_.Valid() &&
+    while (entry->Valid() &&
            (intent_key.starts_with(KeyEntryTypeAsChar::kGroupEnd) ||
-            value_iter_.key().starts_with(intent_key))) {
-      auto existing_key = value_iter_.key();
+            entry->key.starts_with(intent_key))) {
+      auto existing_key = entry->key;
       auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
       if (existing_key.empty() ||
           existing_key[existing_key.size() - 1] != KeyEntryTypeAsChar::kHybridTime) {
         return STATUS_FORMAT(
             Corruption, "Hybrid time expected at end of key: $0",
-            value_iter_.key().ToDebugString());
+            entry->key.ToDebugString());
       }
       if (!strong && existing_key.size() != intent_key.size() + 1) {
         VLOG_WITH_PREFIX(4)
@@ -972,26 +977,27 @@ class StrongConflictChecker {
           << "Check value overwrite, key: " << SubDocKey::DebugSliceToString(intent_key)
           << ", read time: " << read_time_
           << ", doc ht: " << doc_ht.hybrid_time()
-          << ", found key: " << SubDocKey::DebugSliceToString(value_iter_.key())
-          << ", after start: " << (doc_ht.hybrid_time() >= read_time_)
-          << ", value: " << value_iter_.value().ToDebugString();
-      if (doc_ht.hybrid_time() >= read_time_) {
+          << ", found key: " << SubDocKey::DebugSliceToString(entry->key)
+          << ", after start: " << (doc_ht.hybrid_time() > read_time_)
+          << ", value: " << entry->value.ToDebugString();
+      if (doc_ht.hybrid_time() > read_time_) {
         if (conflict_management_policy == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
-          tablet_metrics_.Increment(tablet::TabletCounters::kTransactionConflicts);
+          tablet_metrics_->Increment(tablet::TabletCounters::kTransactionConflicts);
           return STATUS_EC_FORMAT(
               TryAgain, TransactionError(TransactionErrorCode::kConflict),
-              "Conflict with concurrently committed data. Value write after transaction start: "
-              "doc ht ($0) >= read time ($1), key: $2",
-              doc_ht.hybrid_time(), read_time_, SubDocKey::DebugSliceToString(intent_key));
+              "$0 conflict with concurrently committed data. Value write after transaction start: "
+              "doc ht ($1) > read time ($2), key: $3",
+              transaction_id_, doc_ht.hybrid_time(), read_time_,
+              SubDocKey::DebugSliceToString(intent_key));
         }
       }
       buffer_.Reset(existing_key);
       // Already have ValueType::kHybridTime at the end
       buffer_.AppendHybridTime(DocHybridTime::kMin);
-      ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
+      entry = &ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
     }
 
     return value_iter_.status();
@@ -1005,7 +1011,7 @@ class StrongConflictChecker {
   const TransactionId& transaction_id_;
   const HybridTime read_time_;
   ConflictResolver& resolver_;
-  tablet::TabletMetrics& tablet_metrics_;
+  std::shared_ptr<tablet::TabletMetricsHolder> tablet_metrics_;
   KeyBytes& buffer_;
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
@@ -1017,12 +1023,12 @@ class ConflictResolverContextBase : public ConflictResolverContext {
   ConflictResolverContextBase(const DocOperations& doc_ops,
                               HybridTime resolution_ht,
                               int64_t txn_start_us,
-                              tablet::TabletMetrics* tablet_metrics,
+                              const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
                               ConflictManagementPolicy conflict_management_policy)
       : doc_ops_(doc_ops),
         resolution_ht_(resolution_ht),
         txn_start_us_(txn_start_us),
-        tablet_metrics_(*tablet_metrics),
+        tablet_metrics_(tablet_metrics),
         conflict_management_policy_(conflict_management_policy) {
   }
 
@@ -1042,8 +1048,8 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     return txn_start_us_;
   }
 
-  tablet::TabletMetrics* GetTabletMetrics() override {
-    return &tablet_metrics_;
+  const std::shared_ptr<tablet::TabletMetricsHolder>& GetTabletMetrics() override {
+    return tablet_metrics_;
   }
 
   ConflictManagementPolicy GetConflictManagementPolicy() const override {
@@ -1079,7 +1085,10 @@ class ConflictResolverContextBase : public ConflictResolverContext {
       if (our_priority <= their_priority) {
         return MakeConflictStatus(
             our_transaction_id, transaction.id,
-            our_priority == their_priority ? "same priority" : "higher priority",
+            our_priority == their_priority ?
+              Format("same priority transaction (pri: $0)", our_priority) :
+              Format("higher priority transaction (our pri: $0, their pri: $1)",
+                     our_priority, their_priority),
             GetTabletMetrics());
       }
     }
@@ -1098,7 +1107,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 
   bool fetched_metadata_for_transactions_ = false;
 
-  tablet::TabletMetrics& tablet_metrics_;
+  std::shared_ptr<tablet::TabletMetricsHolder> tablet_metrics_;
 
   const ConflictManagementPolicy conflict_management_policy_;
 };
@@ -1106,13 +1115,14 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 // Utility class for ResolveTransactionConflicts implementation.
 class TransactionConflictResolverContext : public ConflictResolverContextBase {
  public:
-  TransactionConflictResolverContext(const DocOperations& doc_ops,
-                                     const LWKeyValueWriteBatchPB& write_batch,
-                                     HybridTime resolution_ht,
-                                     HybridTime read_time,
-                                     int64_t txn_start_us,
-                                     tablet::TabletMetrics* tablet_metrics,
-                                     ConflictManagementPolicy conflict_management_policy)
+  TransactionConflictResolverContext(
+      const DocOperations& doc_ops,
+      const LWKeyValueWriteBatchPB& write_batch,
+      HybridTime resolution_ht,
+      HybridTime read_time,
+      int64_t txn_start_us,
+      const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+      ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
             doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy),
         write_batch_(write_batch),
@@ -1271,13 +1281,13 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
       //
       // In all other cases we have a concrete read time and should conflict with transactions
       // that were committed after this point.
-      if (has_non_lock_conflict && commit_time >= read_time_) {
+      if (has_non_lock_conflict && (commit_time > read_time_ || commit_time == HybridTime::kMax)) {
         if (GetConflictManagementPolicy() == SKIP_ON_CONFLICT) {
           return STATUS(InternalError, "Skip locking since entity was modified by a recent commit",
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
           return MakeConflictStatus(
-            *transaction_id_, transaction_data.id, "committed", GetTabletMetrics());
+            *transaction_id_, transaction_data.id, "committed transaction", GetTabletMetrics());
         }
       }
     }
@@ -1349,11 +1359,12 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
 class OperationConflictResolverContext : public ConflictResolverContextBase {
  public:
-  OperationConflictResolverContext(const DocOperations* doc_ops,
-                                   HybridTime resolution_ht,
-                                   int64_t txn_start_us,
-                                   tablet::TabletMetrics* tablet_metrics,
-                                   ConflictManagementPolicy conflict_management_policy)
+  OperationConflictResolverContext(
+      const DocOperations* doc_ops,
+      HybridTime resolution_ht,
+      int64_t txn_start_us,
+      const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+      ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
             *doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy) {
   }
@@ -1429,22 +1440,24 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 
 } // namespace
 
-Status ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                   const ConflictManagementPolicy conflict_management_policy,
-                                   const LWKeyValueWriteBatchPB& write_batch,
-                                   HybridTime resolution_ht,
-                                   HybridTime read_time,
-                                   int64_t txn_start_us,
-                                   uint64_t request_start_us,
-                                   int64_t request_id,
-                                   const DocDB& doc_db,
-                                   PartialRangeKeyIntents partial_range_key_intents,
-                                   TransactionStatusManager* status_manager,
-                                   tablet::TabletMetrics* tablet_metrics,
-                                   LockBatch* lock_batch,
-                                   WaitQueue* wait_queue,
-                                   CoarseTimePoint deadline,
-                                   ResolutionCallback callback) {
+Status ResolveTransactionConflicts(
+    const DocOperations& doc_ops,
+    const ConflictManagementPolicy conflict_management_policy,
+    const LWKeyValueWriteBatchPB& write_batch,
+    HybridTime resolution_ht,
+    HybridTime read_time,
+    int64_t txn_start_us,
+    uint64_t request_start_us,
+    int64_t request_id,
+    const DocDB& doc_db,
+    PartialRangeKeyIntents partial_range_key_intents,
+    TransactionStatusManager* status_manager,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+    LockBatch* lock_batch,
+    WaitQueue* wait_queue,
+    bool is_advisory_lock_request,
+    CoarseTimePoint deadline,
+    ResolutionCallback callback) {
   DCHECK(resolution_ht.is_valid());
   TRACE_FUNC();
 
@@ -1463,7 +1476,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, request_id, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, is_advisory_lock_request, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
@@ -1476,20 +1489,21 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
   return Status::OK();
 }
 
-Status ResolveOperationConflicts(const DocOperations& doc_ops,
-                                 const ConflictManagementPolicy conflict_management_policy,
-                                 HybridTime intial_resolution_ht,
-                                 int64_t txn_start_us,
-                                 uint64_t request_start_us,
-                                 int64_t request_id,
-                                 const DocDB& doc_db,
-                                 PartialRangeKeyIntents partial_range_key_intents,
-                                 TransactionStatusManager* status_manager,
-                                 tablet::TabletMetrics* tablet_metrics,
-                                 LockBatch* lock_batch,
-                                 WaitQueue* wait_queue,
-                                 CoarseTimePoint deadline,
-                                 ResolutionCallback callback) {
+Status ResolveOperationConflicts(
+    const DocOperations& doc_ops,
+    const ConflictManagementPolicy conflict_management_policy,
+    HybridTime intial_resolution_ht,
+    int64_t txn_start_us,
+    uint64_t request_start_us,
+    int64_t request_id,
+    const DocDB& doc_db,
+    PartialRangeKeyIntents partial_range_key_intents,
+    TransactionStatusManager* status_manager,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+    LockBatch* lock_batch,
+    WaitQueue* wait_queue,
+    CoarseTimePoint deadline,
+    ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
@@ -1504,7 +1518,8 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
         "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, request_id, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, false /* is_advisory_lock_request */,
+        deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same

@@ -18,8 +18,7 @@
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
 
-#include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/master_defaults.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

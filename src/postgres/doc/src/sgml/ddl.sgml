@@ -373,6 +373,12 @@ CREATE TABLE people (
       generated columns in <literal>BEFORE</literal> triggers.
      </para>
     </listitem>
+    <listitem>
+     <para>
+      Generated columns are skipped for logical replication and cannot be
+      specified in a <command>CREATE PUBLICATION</command> column list.
+     </para>
+    </listitem>
    </itemizedlist>
   </para>
  </sect1>
@@ -1154,16 +1160,16 @@ CREATE TABLE posts (
 
    <para>
     A foreign key must reference columns that either are a primary key or
-    form a unique constraint.  This means that the referenced columns always
-    have an index (the one underlying the primary key or unique constraint);
-    so checks on whether a referencing row has a match will be efficient.
-    Since a <command>DELETE</command> of a row from the referenced table
-    or an <command>UPDATE</command> of a referenced column will require
-    a scan of the referencing table for rows matching the old value, it
-    is often a good idea to index the referencing columns too.  Because this
-    is not always needed, and there are many choices available on how
-    to index, declaration of a foreign key constraint does not
-    automatically create an index on the referencing columns.
+    form a unique constraint, or are columns from a non-partial unique index.
+    This means that the referenced columns always have an index to allow
+    efficient lookups on whether a referencing row has a match.  Since a
+    <command>DELETE</command> of a row from the referenced table or an
+    <command>UPDATE</command> of a referenced column will require a scan of
+    the referencing table for rows matching the old value, it is often a good
+    idea to index the referencing columns too.  Because this is not always
+    needed, and there are many choices available on how to index, the
+    declaration of a foreign key constraint does not automatically create an
+    index on the referencing columns.
    </para>
 
    <para>
@@ -1777,7 +1783,8 @@ REVOKE ALL ON accounts FROM PUBLIC;
        view, or other table-like object.
        Also allows use of <command>COPY TO</command>.
        This privilege is also needed to reference existing column values in
-       <command>UPDATE</command> or <command>DELETE</command>.
+       <command>UPDATE</command>, <command>DELETE</command>,
+       or <command>MERGE</command>.
        For sequences, this privilege also allows use of the
        <function>currval</function> function.
        For large objects, this privilege allows the object to be read.
@@ -2252,9 +2259,16 @@ REVOKE ALL ON accounts FROM PUBLIC;
     <primary><type>aclitem</type></primary>
    </indexterm>
    The privileges that have been granted for a particular object are
-   displayed as a list of <type>aclitem</type> entries, where each
-   <type>aclitem</type> describes the permissions of one grantee that
-   have been granted by a particular grantor.  For example,
+   displayed as a list of <type>aclitem</type> entries, each having the
+   format:
+<synopsis>
+<replaceable>grantee</replaceable><literal>=</literal><replaceable>privilege-abbreviation</replaceable><optional><literal>*</literal></optional>...<literal>/</literal><replaceable>grantor</replaceable>
+</synopsis>
+   Each <type>aclitem</type> lists all the permissions of one grantee that
+   have been granted by a particular grantor.  Specific privileges are
+   represented by one-letter abbreviations from
+   <xref linkend="privilege-abbrevs-table"/>, with <literal>*</literal>
+   appended if the privilege was granted with grant option.  For example,
    <literal>calvin=r*w/hobbes</literal> specifies that the role
    <literal>calvin</literal> has the privilege
    <literal>SELECT</literal> (<literal>r</literal>) with grant option
@@ -2568,7 +2582,7 @@ postgres=&gt; table passwd;
 postgres=&gt; set role alice;
 SET
 postgres=&gt; table passwd;
-ERROR:  permission denied for relation passwd
+ERROR:  permission denied for table passwd
 postgres=&gt; select user_name,real_name,home_phone,extra_info,home_dir,shell from passwd;
  user_name | real_name |  home_phone  | extra_info | home_dir    |   shell
 -----------+-----------+--------------+------------+-------------+-----------
@@ -2578,7 +2592,7 @@ postgres=&gt; select user_name,real_name,home_phone,extra_info,home_dir,shell fr
 (3 rows)
 
 postgres=&gt; update passwd set user_name = 'joe';
-ERROR:  permission denied for relation passwd
+ERROR:  permission denied for table passwd
 -- Alice is allowed to change her own real_name, but no others
 postgres=&gt; update passwd set real_name = 'Alice Doe';
 UPDATE 1
@@ -2587,9 +2601,9 @@ UPDATE 0
 postgres=&gt; update passwd set shell = '/bin/xx';
 ERROR:  new row violates WITH CHECK OPTION for "passwd"
 postgres=&gt; delete from passwd;
-ERROR:  permission denied for relation passwd
+ERROR:  permission denied for table passwd
 postgres=&gt; insert into passwd (user_name) values ('xxx');
-ERROR:  permission denied for relation passwd
+ERROR:  permission denied for table passwd
 -- Alice can change her own password; RLS silently prevents updating other rows
 postgres=&gt; update passwd set pwhash = 'abc';
 UPDATE 1
@@ -4071,9 +4085,15 @@ CREATE TABLE measurement_y2008m02 PARTITION OF measurement
 </programlisting>
 
      As an alternative, it is sometimes more convenient to create the
-     new table outside the partition structure, and make it a proper
+     new table outside the partition structure, and attach it as a
      partition later. This allows new data to be loaded, checked, and
      transformed prior to it appearing in the partitioned table.
+     Moreover, the <literal>ATTACH PARTITION</literal> operation requires
+     only <literal>SHARE UPDATE EXCLUSIVE</literal> lock on the
+     partitioned table, as opposed to the <literal>ACCESS
+     EXCLUSIVE</literal> lock that is required by <command>CREATE TABLE
+     ... PARTITION OF</command>, so it is more friendly to concurrent
+     operations on the partitioned table.
      The <literal>CREATE TABLE ... LIKE</literal> option is helpful
      to avoid tediously repeating the parent table's definition:
 
@@ -4091,11 +4111,6 @@ ALTER TABLE measurement_y2008m02 ADD CONSTRAINT y2008m02
 ALTER TABLE measurement ATTACH PARTITION measurement_y2008m02
     FOR VALUES FROM ('2008-02-01') TO ('2008-03-01' );
 </programlisting>
-    </para>
-
-    <para>
-     The <command>ATTACH PARTITION</command> command requires taking a
-     <literal>SHARE UPDATE EXCLUSIVE</literal> lock on the partitioned table.
     </para>
 
     <para>
@@ -4148,7 +4163,7 @@ ALTER TABLE measurement ATTACH PARTITION measurement_y2008m02
 <programlisting>
 CREATE INDEX measurement_usls_idx ON ONLY measurement (unitsales);
 
-CREATE INDEX measurement_usls_200602_idx
+CREATE INDEX CONCURRENTLY measurement_usls_200602_idx
     ON measurement_y2006m02 (unitsales);
 ALTER INDEX measurement_usls_idx
     ATTACH PARTITION measurement_usls_200602_idx;
@@ -4265,7 +4280,9 @@ ALTER INDEX measurement_city_id_logdate_key
         Using <literal>ONLY</literal> to add or drop a constraint on only
         the partitioned table is supported as long as there are no
         partitions.  Once partitions exist, using <literal>ONLY</literal>
-        will result in an error.  Instead, constraints on the partitions
+        will result in an error for any constraints other than
+        <literal>UNIQUE</literal> and <literal>PRIMARY KEY</literal>.
+        Instead, constraints on the partitions
         themselves can be added and (if they are not present in the parent
         table) dropped.
        </para>
@@ -5191,8 +5208,9 @@ DROP TABLE products CASCADE;
   </para>
 
   <para>
-   For user-defined functions, <productname>PostgreSQL</productname> tracks
-   dependencies associated with a function's externally-visible properties,
+   For a user-defined function or procedure whose body is defined as a string
+   literal, <productname>PostgreSQL</productname> tracks
+   dependencies associated with the function's externally-visible properties,
    such as its argument and result types, but <emphasis>not</emphasis> dependencies
    that could only be known by examining the function body.  As an example,
    consider this situation:
@@ -5219,6 +5237,23 @@ CREATE FUNCTION get_color_note (rainbow) RETURNS text AS
    there are also benefits.  The function is still valid in some sense if the
    table is missing, though executing it would cause an error; creating a new
    table of the same name would allow the function to work again.
+  </para>
+
+  <para>
+   On the other hand, for a SQL-language function or procedure whose body
+   is written in SQL-standard style, the body is parsed at function
+   definition time and all dependencies recognized by the parser are
+   stored.  Thus, if we write the function above as
+
+<programlisting>
+CREATE FUNCTION get_color_note (rainbow) RETURNS text
+BEGIN ATOMIC
+  SELECT note FROM my_colors WHERE color = $1;
+END;
+</programlisting>
+
+   then the function's dependency on the <structname>my_colors</structname>
+   table will be known and enforced by <command>DROP</command>.
   </para>
  </sect1>
 

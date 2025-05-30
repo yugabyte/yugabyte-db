@@ -330,7 +330,7 @@ domain_check(Datum value, bool isnull, Oid domainType,
 	DomainIOData *my_extra = NULL;
 
 	if (mcxt == NULL)
-		mcxt = GetCurrentMemoryContext();
+		mcxt = CurrentMemoryContext;
 
 	/*
 	 * We arrange to look up the needed info just once per series of calls,

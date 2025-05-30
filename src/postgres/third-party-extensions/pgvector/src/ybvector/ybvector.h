@@ -26,7 +26,6 @@
 
 #include "access/amapi.h"
 #include "access/yb_scan.h"
-
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "src/vector.h"
@@ -49,6 +48,8 @@ typedef struct YbVectorScanOpaqueData
 } YbVectorScanOpaqueData;
 
 typedef YbVectorScanOpaqueData *YbVectorScanOpaque;
+
+extern void YbHnswInit();
 
 /* ybvector.c */
 extern IndexBuildResult *ybvectorbuild(Relation heap, Relation index,

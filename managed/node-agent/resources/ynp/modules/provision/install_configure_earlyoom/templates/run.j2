@@ -1,0 +1,12 @@
+action=""
+{%- if earlyoom_enable %}
+action=" --enable"
+{%- endif %}
+
+su - {{ yb_user }} -c "mkdir -p {{ yb_home_dir }}/bin && chmod 0755 {{ yb_home_dir }}/bin"
+installer_dir="{{ ynp_dir }}/../../bin"
+{% if cloud_type is defined and cloud_type != '' %}
+    installer_dir="{{ ynp_dir }}/../"
+{% endif %}
+$installer_dir/earlyoom-installer.sh $action --earlyoom_args \
+    "{{ earlyoom_args }}" --yb_home_dir "{{ yb_home_dir }}"

@@ -1,0 +1,117 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 33000;
+SET documentdb.next_collection_id TO 3300;
+SET documentdb.next_collection_index_id TO 3300;
+SELECT documentdb_api.insert_one('db','replaceRootOps','{"_id":"1", "int": 10, "x" : {"y" : [1, 2]}, "a" : { "b" : { "arr": [ "x", 1, 2.0, true ]} } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','replaceRootOps','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','replaceRootOps','{"_id":"3", "boolean": false, "a" : {"x" : "no", "b": {"id": "$_id"}}, "b": "yes", "c": true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- fetch all rows
+SELECT shard_key_value, object_id, document FROM documentdb_api.collection('db', 'replaceRootOps') ORDER BY object_id;
+ shard_key_value |  object_id   |                                                                                                       document                                                                                                       
+---------------------------------------------------------------------
+            3300 | { "" : "1" } | { "_id" : "1", "int" : { "$numberInt" : "10" }, "x" : { "y" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, "a" : { "b" : { "arr" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } } }
+            3300 | { "" : "2" } | { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+            3300 | { "" : "3" } | { "_id" : "3", "boolean" : false, "a" : { "x" : "no", "b" : { "id" : "$_id" } }, "b" : "yes", "c" : true }
+(3 rows)
+
+-- replace by newRoot
+SELECT bson_dollar_replace_root(document, '{ "newRoot": {"myArr": ["$_id", "$a"]}}') FROM documentdb_api.collection('db', 'replaceRootOps');
+                                            bson_dollar_replace_root                                             
+---------------------------------------------------------------------
+ { "myArr" : [ "1", { "b" : { "arr" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } } ] }
+ { "myArr" : [ "2", { "b" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "myArr" : [ "3", { "x" : "no", "b" : { "id" : "$_id" } } ] }
+(3 rows)
+
+SELECT bson_dollar_replace_root(document, '{ "newRoot": {"myArr": ["$_id", "$a"], "2" : { "x" : "$a.b"} }}') FROM documentdb_api.collection('db', 'replaceRootOps');
+                                                                                            bson_dollar_replace_root                                                                                             
+---------------------------------------------------------------------
+ { "myArr" : [ "1", { "b" : { "arr" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } } ], "2" : { "x" : { "arr" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } } }
+ { "myArr" : [ "2", { "b" : { "c" : { "$numberInt" : "3" } } } ], "2" : { "x" : { "c" : { "$numberInt" : "3" } } } }
+ { "myArr" : [ "3", { "x" : "no", "b" : { "id" : "$_id" } } ], "2" : { "x" : { "id" : "$_id" } } }
+(3 rows)
+
+-- Multiple "newRoot". Uses the most recent one.
+SELECT bson_dollar_replace_root(document, '{ "newRoot": {}, "newRoot": {"myArr": ["$_id", "$a"]}}') FROM documentdb_api.collection('db', 'replaceRootOps');
+                                            bson_dollar_replace_root                                             
+---------------------------------------------------------------------
+ { "myArr" : [ "1", { "b" : { "arr" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } } ] }
+ { "myArr" : [ "2", { "b" : { "c" : { "$numberInt" : "3" } } } ] }
+ { "myArr" : [ "3", { "x" : "no", "b" : { "id" : "$_id" } } ] }
+(3 rows)
+
+-- Can't have anything other than "newRoot"
+SELECT bson_dollar_replace_root(document, '{ "newRoot1": {"myArr": ["$_id", "$a"]}}') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  BSON fields '$replaceRoot.newRoot1' is an unknown field
+SELECT bson_dollar_replace_root(document, '{ "newRoot": {"myArr": ["$_id", "$a"]}, "b": "c"}') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  BSON fields '$replaceRoot.b' is an unknown field
+-- 'newRoot' is empty document
+SELECT bson_dollar_replace_root(document, '{ "newRoot": { } }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ bson_dollar_replace_root 
+---------------------------------------------------------------------
+ { }
+ { }
+ { }
+(3 rows)
+
+-- newRoot is required
+SELECT bson_dollar_replace_root(document, '{ }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  BSON field '$replaceRoot.newRoot' is missing but a required field
+SELECT bson_dollar_replace_root(document, '{ "newRoot": 10 }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  'newRoot' expression must evaluate to an object, but resulting value was: 10. Type of resulting value: 'int'.
+SELECT bson_dollar_replace_root(document, '{ "newRoot": "$a" }') FROM documentdb_api.collection('db', 'replaceRootOps');
+                                 bson_dollar_replace_root                                 
+---------------------------------------------------------------------
+ { "b" : { "arr" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+ { "b" : { "c" : { "$numberInt" : "3" } } }
+ { "x" : "no", "b" : { "id" : "$_id" } }
+(3 rows)
+
+SELECT bson_dollar_replace_root(document, '{ "newRoot": "$a.b" }') FROM documentdb_api.collection('db', 'replaceRootOps');
+                            bson_dollar_replace_root                            
+---------------------------------------------------------------------
+ { "arr" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }
+ { "c" : { "$numberInt" : "3" } }
+ { "id" : "$_id" }
+(3 rows)
+
+SELECT bson_dollar_replace_root(document, '{ "newRoot": "$x.y" }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  'newRoot' expression must evaluate to an object, but resulting value was: [ 1, 2 ]. Type of resulting value: 'array'.
+-- newRoot is an operator expression
+SELECT bson_dollar_replace_root(document, '{ "newRoot": { "$isArray" : "$a.b.arr"} }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  'newRoot' expression must evaluate to an object, but resulting value was: true. Type of resulting value: 'bool'.
+SELECT bson_dollar_replace_root(document, '{ "newRoot": { "$literal" : 2.0 } }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  'newRoot' expression must evaluate to an object, but resulting value was: 2. Type of resulting value: 'double'.
+-- if the operator expression references a field which is a field path expression in the original document {"a": {"b": {"id": "$_id"}}}, "$_id" should be treated as a literal.
+SELECT bson_dollar_replace_root(document, '{ "newRoot": { "$mergeObjects":  [ { "dogs": 0, "cats": 0, "birds": 0, "fish": 0 }, "$a.b" ] } }') FROM documentdb_api.collection('db', 'replaceRootOps');
+                                                                                              bson_dollar_replace_root                                                                                               
+---------------------------------------------------------------------
+ { "dogs" : { "$numberInt" : "0" }, "cats" : { "$numberInt" : "0" }, "birds" : { "$numberInt" : "0" }, "fish" : { "$numberInt" : "0" }, "arr" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] }
+ { "dogs" : { "$numberInt" : "0" }, "cats" : { "$numberInt" : "0" }, "birds" : { "$numberInt" : "0" }, "fish" : { "$numberInt" : "0" }, "c" : { "$numberInt" : "3" } }
+ { "dogs" : { "$numberInt" : "0" }, "cats" : { "$numberInt" : "0" }, "birds" : { "$numberInt" : "0" }, "fish" : { "$numberInt" : "0" }, "id" : "$_id" }
+(3 rows)
+
+-- 
+SELECT bson_dollar_replace_root(document, '{ "newRoot": { "$mergeObjects":  [ ["dogs", "cats", "birds", "fish"], "$a.b" ] } }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  $mergeObjects requires object inputs, but input [ "dogs", "cats", "birds", "fish" ] is of type array
+-- negative
+SELECT bson_dollar_replace_root('{}', '{ "newRoot": 1 }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  'newRoot' expression must evaluate to an object, but resulting value was: 1. Type of resulting value: 'int'.
+SELECT bson_dollar_replace_root('{}', '{ "newRoot": "$x" }') FROM documentdb_api.collection('db', 'replaceRootOps');
+ERROR:  'newRoot' expression must evaluate to an object, but resulting value was: : MISSING. Type of resulting value: 'missing'

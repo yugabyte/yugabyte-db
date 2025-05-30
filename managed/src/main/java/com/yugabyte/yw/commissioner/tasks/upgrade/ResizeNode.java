@@ -67,6 +67,19 @@ public class ResizeNode extends UpgradeTaskBase {
     addBasicPrecheckTasks();
   }
 
+  @Override
+  protected boolean isSkipPrechecks() {
+    NodesToApply nodesToApply = calclulateNodesToApply();
+    if (!nodesToApply.applyGFlagsToAllNodes
+        && nodesToApply.instanceChangingNodes.isEmpty()
+        && nodesToApply.tserversToUpgradeGFlags.isEmpty()
+        && nodesToApply.mastersToUpgradeGFlags.isEmpty()
+        && !nodesToApply.justModifyDeviceNodes.isEmpty()) {
+      return true;
+    }
+    return super.isSkipPrechecks();
+  }
+
   private static class NodesToApply {
     LinkedHashSet<NodeDetails> instanceChangingNodes = new LinkedHashSet<>();
     List<NodeDetails> justModifyDeviceNodes = new ArrayList<>();
@@ -236,8 +249,15 @@ public class ResizeNode extends UpgradeTaskBase {
                     .postAction(
                         node -> {
                           // Persist the new instance type in the node details.
-                          node.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(node);
-                          createNodeDetailsUpdateTask(node, false)
+                          String instanceType = userIntent.getInstanceTypeForNode(node);
+                          node.cloudInfo.instance_type = instanceType;
+                          createUpdateUniverseFieldsTask(
+                                  univ -> {
+                                    NodeDetails nodeDetails = univ.getNode(node.nodeName);
+                                    if (nodeDetails != null) {
+                                      nodeDetails.cloudInfo.instance_type = instanceType;
+                                    }
+                                  })
                               .setSubTaskGroupType(
                                   UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
                         })

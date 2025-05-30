@@ -14,7 +14,7 @@ rightNav:
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
 
-To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later. Here are the features that are part of the EPCM mode.
+To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later. The following features are part of EPCM.
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
@@ -107,7 +107,7 @@ Default ascending indexing provides feature compatibility and is the default in 
 
 Configuration parameter: `yb_enable_bitmapscan=true`
 
-Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
+Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing `AND` and `OR` conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
 
 ### Efficient communication between PostgreSQL and DocDB
 

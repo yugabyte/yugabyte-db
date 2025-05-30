@@ -63,7 +63,10 @@ public class EditDrConfigParams extends XClusterConfigTaskBase {
 
             if (taskParams().getPitrParams() != null) {
               createUpdateDrConfigParamsTask(
-                  drConfig.getUuid(), null /* bootstrapParams */, taskParams().getPitrParams());
+                  drConfig.getUuid(),
+                  null /* bootstrapParams */,
+                  taskParams().getPitrParams(),
+                  null /* webhookUrls */);
 
               long pitrRetentionPeriodSec = taskParams().getPitrParams().retentionPeriodSec;
               long pitrSnapshotIntervalSec = taskParams().getPitrParams().snapshotIntervalSec;
@@ -88,7 +91,18 @@ public class EditDrConfigParams extends XClusterConfigTaskBase {
 
             if (taskParams().getBootstrapParams() != null) {
               createUpdateDrConfigParamsTask(
-                  drConfig.getUuid(), taskParams().getBootstrapParams(), null /* pitrParams */);
+                  drConfig.getUuid(),
+                  taskParams().getBootstrapParams(),
+                  null /* pitrParams */,
+                  null /* webhookUrls */);
+            }
+
+            if (taskParams().getWebhookUrls() != null) {
+              createUpdateDrConfigParamsTask(
+                  drConfig.getUuid(),
+                  null /* bootstrapParams */,
+                  null /* pitrParams */,
+                  taskParams().getWebhookUrls());
             }
 
             createSetDrStatesTask(

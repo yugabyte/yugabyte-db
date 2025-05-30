@@ -67,11 +67,13 @@
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 using std::pair;
 using std::string;
 
-using yb::consensus::RaftPeerPB;
 using yb::consensus::RaftConfigPB;
+using yb::consensus::RaftPeerPB;
 using yb::tablet::TabletPeer;
 
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
@@ -135,7 +137,8 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
   return std::make_unique<MiniTabletServer>(fs_roots, fs_roots, rpc_port, *options_result, index);
 }
 
-Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
+Status MiniTabletServer::Start(
+    WaitTabletsBootstrapped wait_tablets_bootstrapped, WaitToAcceptPgConnections wait_for_pg) {
   CHECK(!started_);
   TEST_SetThreadPrefixScoped prefix_se(ToString());
 
@@ -149,7 +152,27 @@ Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped
   RETURN_NOT_OK(Reconnect());
 
   started_ = true;
-  return wait_tablets_bootstrapped ? WaitStarted() : Status::OK();
+  if (wait_tablets_bootstrapped) {
+    RETURN_NOT_OK(WaitStarted());
+  }
+  return StartPgIfConfigured(wait_for_pg);
+}
+
+Status MiniTabletServer::StartPgIfConfigured(WaitToAcceptPgConnections wait_for_pg) {
+  if (!start_pg_) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(start_pg_());
+  RETURN_NOT_OK(server_->StartYSQLLeaseRefresher());
+  if (!wait_for_pg) {
+    return Status::OK();
+  }
+  CHECK(get_pg_conn_settings_) << "Must set get_pg_conn_settings_ function when start_pg_ set";
+  auto settings = get_pg_conn_settings_();
+  settings.dbname = "yugabyte";
+  settings.connect_timeout = 20;
+  VERIFY_RESULT(pgwrapper::PGConnBuilder(settings).Connect());
+  return Status::OK();
 }
 
 string MiniTabletServer::ToString() const { return Format("ts-$0", index_); }
@@ -195,6 +218,9 @@ void MiniTabletServer::Shutdown() {
     tunnel_->Shutdown();
   }
   if (started_) {
+    if (shutdown_pg_) {
+      shutdown_pg_();
+    }
     // Save bind address and port so we can later restart the server.
     opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(
         index_, bound_rpc_addr().port());
@@ -264,15 +290,13 @@ Status MiniTabletServer::CleanTabletLogs() {
     // Nothing to clean.
     return Status::OK();
   }
-  return ForAllTablets(this, [](TabletPeer* tablet_peer) {
-    return tablet_peer->RunLogGC();
-  });
+  return ForAllTablets(this, [](TabletPeer* tablet_peer) { return tablet_peer->RunLogGC(); });
 }
 
-Status MiniTabletServer::Restart() {
+Status MiniTabletServer::Restart(WaitToAcceptPgConnections wait_for_pg) {
   CHECK(started_);
   Shutdown();
-  return Start(WaitTabletsBootstrapped::kFalse);
+  return Start(WaitTabletsBootstrapped::kFalse, wait_for_pg);
 }
 
 Status MiniTabletServer::RestartStoppedServer() {
@@ -310,11 +334,9 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   Schema schema_with_ids = SchemaBuilder(schema).Build();
   auto partition = tablet::CreateDefaultPartition(schema_with_ids);
 
-  auto table_info = std::make_shared<tablet::TableInfo>(
-      consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,
-      table_id, ns_id, table_id, table_type, schema_with_ids, qlexpr::IndexMap(),
-      std::nullopt /* index_info */, 0 /* schema_version */, partition.first, "" /* pg_table_id */,
-      tablet::SkipTableTombstoneCheck::kFalse);
+  auto table_info = tablet::TableInfo::TEST_CreateWithLogPrefix(
+      consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()),
+      table_id, ns_id, table_id, table_type, schema_with_ids, partition.first);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(
       table_info, tablet_id, partition.second, config));
@@ -372,5 +394,13 @@ HybridTime MiniTabletServer::Now() const {
   return server_->clock()->Now();
 }
 
-} // namespace tserver
-} // namespace yb
+void MiniTabletServer::SetPgServerHandlers(
+    std::function<Status(void)> start_pg, std::function<void(void)> shutdown_pg,
+    std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings) {
+  start_pg_ = std::move(start_pg);
+  shutdown_pg_ = std::move(shutdown_pg);
+  get_pg_conn_settings_ = std::move(get_pg_conn_settings);
+}
+
+}  // namespace tserver
+}  // namespace yb

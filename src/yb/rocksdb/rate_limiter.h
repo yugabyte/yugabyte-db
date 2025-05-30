@@ -33,8 +33,9 @@ class RateLimiter {
   virtual ~RateLimiter() {}
 
   // This API allows user to dynamically change rate limiter's bytes per second.
+  // Returns true if the actual bytes per second update happened.
   // REQUIRED: bytes_per_second > 0
-  virtual void SetBytesPerSecond(int64_t bytes_per_second) = 0;
+  virtual yb::Result<bool> SetBytesPerSecond(int64_t bytes_per_second) = 0;
 
   // Request for token to write bytes. If this request can not be satisfied,
   // the call is blocked. Caller is responsible to make sure

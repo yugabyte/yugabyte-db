@@ -40,67 +40,47 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/xcluster_types.h"
-#include "yb/common/constants.h"
-#include "yb/common/entity_ids.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/master/restore_sys_catalog_state.h"
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partition.h"
-#include "yb/common/transaction.h"
+#include "yb/cdc/cdc_service.fwd.h"
+
 #include "yb/client/client_fwd.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/thread_annotations.h"
+
+#include "yb/common/common_types_util.h"
+#include "yb/common/constants.h"
+#include "yb/common/ql_protocol.fwd.h"
+
+#include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_admin.pb.h"
-#include "yb/master/master_backup.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_dcl.fwd.h"
-#include "yb/master/master_defaults.h"
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
-#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_heartbeat.fwd.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_types.h"
-#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_initialization.h"
-#include "yb/master/system_tablet.h"
-#include "yb/master/table_index.h"
-#include "yb/master/tablet_creation_limits.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-#include "yb/master/ysql_tablespace_manager.h"
 
-#include "yb/rpc/rpc.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+
 #include "yb/rpc/scheduler.h"
-#include "yb/server/monitored_task.h"
-#include "yb/tserver/tablet_peer_lookup.h"
 
+#include "yb/server/monitored_task.h"
 #include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/pb_util.h"
-#include "yb/util/promise.h"
-#include "yb/util/random.h"
-#include "yb/util/rw_mutex.h"
-#include "yb/util/status_callback.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/version_tracker.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
 
@@ -133,7 +113,7 @@ class CALL_GTEST_TEST_CLASS_NAME_(MasterPartitionedTest, VerifyOldLeaderStepsDow
 namespace tablet {
 
 struct TableInfo;
-enum RaftGroupStatePB;
+enum RaftGroupStatePB : int;
 
 }
 
@@ -147,17 +127,16 @@ namespace master {
 struct DeferredAssignmentActions;
 struct SysCatalogLoadingState;
 struct KeyRange;
+class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
 class YsqlManagerIf;
 class YsqlManager;
 
 using PlacementId = std::string;
 
-typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
+using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 
-typedef std::unordered_map<TableId, std::vector<TabletInfoPtr>> TableToTabletInfos;
-
-constexpr int32_t kInvalidClusterConfigVersion = 0;
+using TableToTabletInfos = std::unordered_map<TableId, std::vector<TabletInfoPtr>>;
 
 YB_DEFINE_ENUM(
     CDCSDKStreamCreationState,
@@ -212,7 +191,7 @@ struct YsqlTableDdlTxnState;
 //
 // Thread-safe.
 class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContext {
-  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
+  using NamespaceInfoMap = std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo>>;
 
   class NamespaceNameMapper {
    public:
@@ -392,6 +371,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                        rpc::RpcContext* rpc,
                        const LeaderEpoch& epoch);
 
+  Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
+                          RefreshYsqlLeaseResponsePB* resp,
+                          rpc::RpcContext* rpc,
+                          const LeaderEpoch& epoch);
+
   // Get the information about an in-progress truncate operation.
   Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                              IsTruncateTableDoneResponsePB* resp);
@@ -534,9 +518,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
+  bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
-      REQUIRES_SHARED(ddl_txn_verifier_mutex_);
+      REQUIRES(ddl_txn_verifier_mutex_);
 
   void RemoveDdlTransactionState(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
@@ -756,6 +741,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
                                     GetFullUniverseKeyRegistryResponsePB* resp);
 
+  Status GetObjectLockStatus(
+      const GetObjectLockStatusRequestPB* req, GetObjectLockStatusResponsePB* resp);
+
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
@@ -766,6 +754,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ReVerifyChildrenEntriesOnTabletSplit(
       const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
+
+  // Invalidate all the TServer OID caches in this universe.  After this returns, each TServer cache
+  // will be effectively invalidated when that TServer receives a heartbeat response from master.
+  Status InvalidateTserverOidCaches() override;
 
   Result<uint64_t> IncrementYsqlCatalogVersion() override;
 
@@ -779,6 +771,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetYsqlAllDBCatalogVersions(
       bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) override
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+  Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessages(bool use_cache) override
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
@@ -1050,6 +1045,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<TableId> GetColocatedTableId(
       const TablegroupId& tablegroup_id, ColocationId colocation_id) const EXCLUDES(mutex_);
 
+  Result<TableId> GetColocatedTableIdUnlocked(
+      const TablegroupId& tablegroup_id, ColocationId colocation_id) const REQUIRES_SHARED(mutex_);
+
   Result<bool> TableExists(
       const std::string& namespace_name, const std::string& table_name) const EXCLUDES(mutex_);
 
@@ -1070,11 +1068,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
-    leader_lock_.AssertAcquiredForReading();
+    leader_mutex_.AssertAcquiredForReading();
   }
 
   void AssertLeaderLockAcquiredForWriting() const {
-    leader_lock_.AssertAcquiredForWriting();
+    leader_mutex_.AssertAcquiredForWriting();
   }
 
   std::string GenerateId() override {
@@ -1153,9 +1151,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
 
-  PitrCount pitr_count() const override {
-    return sys_catalog_->pitr_count();
-  }
+  PitrCount pitr_count() const override;
 
   // Returns the current valid LeaderEpoch.
   // This function should generally be avoided. RPC handlers that require the LeaderEpoch
@@ -1435,12 +1431,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // On a producer side metadata change, halts replication until Consumer applies the Meta change.
   Status UpdateConsumerOnProducerMetadata(
       const UpdateConsumerOnProducerMetadataRequestPB* req,
-      UpdateConsumerOnProducerMetadataResponsePB* resp,
-      rpc::RpcContext* rpc);
+      UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status InsertHistoricalColocatedSchemaPacking(
+      const xcluster::ReplicationGroupId& replication_group_id, const TablegroupId& tablegroup_id,
+      const ColocationId colocation_id,
+      const std::function<Status(UniverseReplicationInfo&)>& add_historical_schema_fn);
 
   // Wait for replication to drain on CDC streams.
-  typedef std::pair<xrepl::StreamId, TabletId> StreamTabletIdPair;
-  typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
+  using StreamTabletIdPair = std::pair<xrepl::StreamId, TabletId>;
+  using StreamTabletIdHash = boost::hash<StreamTabletIdPair>;
   Status WaitForReplicationDrain(
       const WaitForReplicationDrainRequestPB* req,
       WaitForReplicationDrainResponsePB* resp,
@@ -1448,7 +1448,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::vector<SysUniverseReplicationEntryPB> GetAllXClusterUniverseReplicationInfos();
 
-  typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
+  using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr>>;
 
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
@@ -1581,8 +1581,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetCompactionStatus(
       const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) override;
 
-  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
-      tablet::RaftGroupMetadata* metadata);
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
@@ -1663,11 +1662,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status WriteToSysCatalog(
       SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
-      QLWriteRequestPB::QLStmtType op_type);
+      QLWriteRequestPB_QLStmtType op_type);
 
   Result<TSDescriptorPtr> GetClosestLiveTserver(bool* local_ts = nullptr) const override;
 
   Result<TSDescriptorPtr> LookupTSByUUID(const TabletServerId& tserver_uuid);
+
+  rpc::Scheduler& Scheduler() override;
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1758,9 +1759,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                           const NamespaceId& id,
                           int64_t term) REQUIRES(mutex_);
 
-  void ProcessPendingNamespace(NamespaceId id,
-                               std::vector<scoped_refptr<TableInfo>> template_tables,
-                               TransactionMetadata txn, const LeaderEpoch& epoch);
+  void ProcessPendingNamespace(const NamespaceId& id,
+                               const std::vector<TableInfoPtr>& template_tables,
+                               const TransactionMetadata& txn,
+                               const LeaderEpoch& epoch);
 
   // Called when transaction associated with NS create finishes. Verifies postgres layer present.
   void ScheduleVerifyNamespacePgLayer(TransactionMetadata txn,
@@ -2029,29 +2031,24 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // the server that is over-replicated. A new tablet server can be specified to start an election
   // immediately to become the new leader. If new_leader_ts_uuid is empty, the election will be run
   // following the protocol's default mechanism.
-  void SendLeaderStepDownRequest(
+  Result<std::shared_ptr<AsyncTryStepDown>> ScheduleTryStepDownTask(
       const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
       const std::string& change_config_ts_uuid, bool should_remove, const LeaderEpoch& epoch,
-      const std::string& new_leader_ts_uuid = "");
+      const std::string& reason, const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
-  void SendRemoveServerRequest(
+  Result<std::shared_ptr<AsyncRemoveServerTask>> ScheduleRemoveServerTask(
       const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
-      const std::string& change_config_ts_uuid, const LeaderEpoch& epoch);
+      const std::string& change_config_ts_uuid, const LeaderEpoch& epoch,
+      const std::string& reason);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
-  void SendAddServerRequest(
+  Result<std::shared_ptr<AsyncAddServerTask>> ScheduleAddServerTask(
       const TabletInfoPtr& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
-      const LeaderEpoch& epoch);
-
-  void GetPendingServerTasksUnlocked(const TableId &table_uuid,
-                                     TabletToTabletServerMap *add_replica_tasks_map,
-                                     TabletToTabletServerMap *remove_replica_tasks_map,
-                                     TabletToTabletServerMap *stepdown_leader_tasks)
-      REQUIRES_SHARED(mutex_);
+      const LeaderEpoch& epoch, const std::string& reason);
 
   // Abort creation of 'table': abort all mutation for TabletInfo and
   // TableInfo objects (releasing all COW locks), abort all pending
@@ -2113,9 +2110,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code,
       ManualSplit is_manual_split, const LeaderEpoch& epoch);
 
-  int64_t leader_ready_term() const override EXCLUDES(state_lock_) {
-    std::lock_guard l(state_lock_);
-    return leader_ready_term_;
+  int64_t leader_ready_term() const override {
+    return leader_ready_term_.load();
   }
 
   // Delete tables from internal map by id, if it has no more active tasks and tablets.
@@ -2261,7 +2257,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   UDTypeInfoByNameMap udtype_names_map_ GUARDED_BY(mutex_);
 
   // RedisConfig map: RedisConfigKey -> RedisConfigInfo
-  typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;
+  using RedisConfigInfoMap = std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>>;
   RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
@@ -2331,21 +2327,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // data structures. This is used to "fence" client and tablet server requests
   // that depend on the in-memory state until this master can respond
   // correctly.
-  int64_t leader_ready_term_ GUARDED_BY(state_lock_);
+  std::atomic<int64_t> leader_ready_term_ = -1;
 
-  // This field is set to true when the leader master has completed loading
-  // metadata into in-memory structures. This can happen in two cases presently:
-  // 1. When a new leader is elected
-  // 2. When an existing leader executes a restore_snapshot_schedule
-  // In case (1), the above leader_ready_term_ is sufficient to indicate
-  // the completion of this stage since the new term is only set after load.
-  // However, in case (2), since the before/after term is the same, the above
-  // check will succeed even when load is not complete i.e. there's a small
-  // window when there's a possibility that the master_service sends RPCs
-  // to the leader. This window is after the sys catalog has been restored and
-  // all records have been updated on disk and before it starts loading them
-  // into the in-memory structures.
-  bool is_catalog_loaded_ GUARDED_BY(state_lock_) = false;
+  // This field is set to true when the leader master has is restoring sys catalog.
+  // In this case ScopedLeaderSharedLock cannot be acquired on this master.
+  // So all RPCs that requires this lock will fail.
+  bool restoring_sys_catalog_ GUARDED_BY(leader_mutex_) = false;
 
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for
@@ -2356,7 +2343,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // instead.
   //
   // Always acquire this lock before state_lock_.
-  RWMutex leader_lock_;
+  RWMutex leader_mutex_{RWMutex::Priority::PREFER_WRITING};
 
   // Async operations are accessing some private methods
   // (TODO: this stuff should be deferred and done in the background thread)
@@ -2433,6 +2420,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status CanSupportAdditionalTabletsForTableCreation(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs);
+
+  Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
 
  private:
   friend class yb::master::ClusterLoadBalancer;
@@ -2585,6 +2574,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UDTypeMap& type_map,
       const LeaderEpoch& epoch,
       bool is_clone,
+      bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data);
   Status ImportSnapshotCreateAndWaitForTables(
       const SnapshotInfoPB& snapshot_pb,
@@ -2592,12 +2582,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UDTypeMap& type_map,
       const LeaderEpoch& epoch,
       bool is_clone,
+      bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data,
       CoarseTimePoint deadline);
   Status ImportSnapshotProcessTablets(
-      const SnapshotInfoPB& snapshot_pb,
+      const SnapshotInfoPB& snapshot_pb, bool use_relfilenode,
       ExternalTableSnapshotDataMap* tables_data);
-  void ImportSnapshotRemoveInvalidIndexes(ExternalTableSnapshotDataMap* tables_data);
+  // Removes base and index tables that are invalid from the map. This includes DocDB tables that
+  // are uncommitted in pg layer.
+  void ImportSnapshotRemoveInvalidTables(
+      bool use_relfilenode, ExternalTableSnapshotDataMap* tables_data);
 
   void DeleteNewUDtype(
       const UDTypeId& udt_id, const std::unordered_set<UDTypeId>& type_ids_to_delete);
@@ -2628,32 +2622,49 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       bool is_clone,
       ExternalTableSnapshotData* table_data);
   Status RepartitionTable(
-      scoped_refptr<TableInfo> table,
+      const TableInfoPtr& table,
       ExternalTableSnapshotData* table_data,
       const LeaderEpoch& epoch,
       bool is_clone);
   Status ImportTableEntry(
       const NamespaceMap& namespace_map,
       const UDTypeMap& type_map,
-      const ExternalTableSnapshotDataMap& table_map,
+      const LeaderEpoch& epoch,
+      bool is_clone,
+      bool use_relfilenode,
+      ExternalTableSnapshotDataMap* table_map,
+      ExternalTableSnapshotData* table_data);
+  // Get the restore target table id and add it to table_data by using the backup source table id
+  // and name. Returns a bool whether the table is a colocated parent table. Used in ycql backups
+  // or older ysql backups formats where relfilenode is not preserved.
+  Result<bool> ImportTableEntryByName(
+      const NamespaceId& new_namespace_id,
+      const UDTypeMap& type_map,
+      ExternalTableSnapshotDataMap* table_map,
       const LeaderEpoch& epoch,
       bool is_clone,
       ExternalTableSnapshotData* table_data);
-
+  // Construct the colocation parent table id at restore side in case of the legacy 'colocated'
+  // database at backup side. This code can be deprecated once restoring old backups of legacy
+  // 'colocated' DBs is not supported.
+  Result<TableId> GetRestoreTargetParentTableForLegacyColocatedDb(
+      const NamespaceId& restore_target_namespace_id);
   // Update the colocated user table info to point to the new parent tablet. Add the colocated table
   // to the in-memory vector of table_ids_ of the parent tablet as the tablet is recreated in clone
   // and doesn't have table ids.
   Status UpdateColocatedUserTableInfoForClone(
-      scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
-      const LeaderEpoch& epoch);
+      const TableInfoPtr& table, const TableId& new_parent_table_id,
+      ExternalTableSnapshotData* table_data, const LeaderEpoch& epoch);
   Status PreprocessTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
-  Status ImportTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
+  Status ImportTabletEntry(
+      const SysRowEntry& entry, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map);
 
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, CollectFlags flags);
 
   Result<SysRowEntries> CollectEntriesForSnapshot(
-      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) override;
+      const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
+      IncludeHiddenTables includeHiddenTables = IncludeHiddenTables::kFalse) override;
 
   server::Clock* Clock() override;
 
@@ -2686,7 +2697,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet);
 
   Status RestoreSysCatalog(
-      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+      SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
       Status* complete_status) override;
 
   Status VerifyRestoredObjects(
@@ -2709,8 +2720,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void RemoveHiddenColocatedTableFromTablet(
       const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
       const LeaderEpoch& epoch);
-
-  rpc::Scheduler& Scheduler() override;
 
   int64_t LeaderTerm() override;
 
@@ -2889,6 +2898,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ResetCachedCatalogVersions()
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
+  Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
 
   // Create the global transaction status table if needed (i.e. if it does not exist already).
   Status CreateGlobalTransactionStatusTableIfNeededForNewTable(
@@ -2916,6 +2926,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfo& table_info, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map)
       EXCLUDES(mutex_);
 
+  void MarkTabletAsHiddenPostReload(TabletId tablet, const LeaderEpoch& epoch);
   void MarkTabletAsHidden(
       SysTabletsEntryPB& tablet_pb, const HybridTime& hide_ht,
       const TabletDeleteRetainerInfo& delete_retainer) const;
@@ -2949,6 +2960,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   bool SkipCatalogVersionChecks() override;
 
+  void RemoveNamespaceFromMaps(
+      YQLDatabase db_type, const NamespaceId& ns_id, const NamespaceName& ns_name) EXCLUDES(mutex_);
+
+  void DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -2981,7 +2997,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     // The processed_tables is used to avoid duplicated processing. Currently it is the set of
     // tables for which delete table has already been called. For PITR, we cannot make duplicate
     // delete table calls.
-    std::vector<scoped_refptr<TableInfo>> tables;
+    std::vector<TableInfoPtr> tables;
     std::unordered_set<TableId> processed_tables;
     // Set of tables whose DocDB schema do not change.
     std::unordered_set<TableId> nochange_tables;
@@ -3052,16 +3068,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_map<ReplicationSlotName, xrepl::StreamId> cdcsdk_replication_slots_to_stream_map_
       GUARDED_BY(mutex_);
 
-  typedef std::unordered_map<xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>
-      UniverseReplicationInfoMap;
+  using UniverseReplicationInfoMap =
+      std::unordered_map<xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>;
   UniverseReplicationInfoMap universe_replication_map_ GUARDED_BY(mutex_);
 
   // List of universe ids to universes that must be deleted
   std::deque<xcluster::ReplicationGroupId> universes_to_clear_ GUARDED_BY(mutex_);
 
-  typedef std::unordered_map<
-      xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationBootstrapInfo>>
-      UniverseReplicationBootstrapInfoMap;
+  using UniverseReplicationBootstrapInfoMap = std::unordered_map<
+      xcluster::ReplicationGroupId, scoped_refptr<UniverseReplicationBootstrapInfo>>;
   UniverseReplicationBootstrapInfoMap universe_replication_bootstrap_map_ GUARDED_BY(mutex_);
 
   std::deque<xcluster::ReplicationGroupId> replication_bootstraps_to_clear_ GUARDED_BY(mutex_);
@@ -3100,6 +3115,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // a value.
   uint64_t heartbeat_pg_catalog_versions_cache_fingerprint_
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_) = 0;
+  // Set to nullopt when the value is stale.
+  std::optional<DbOidVersionToMessageListMap> heartbeat_pg_inval_messages_cache_
+    GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
 
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 

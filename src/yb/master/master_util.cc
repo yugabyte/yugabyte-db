@@ -54,7 +54,7 @@ std::string ShortDatabaseType(YQLDatabase db_type) {
     case YQL_DATABASE_PGSQL: return "YSQL";
     case YQL_DATABASE_REDIS: return "YEDIS";
   }
-  return Format("<invalid database type $0>", to_underlying(db_type));
+  return Format("<invalid database type $0>", std::to_underlying(db_type));
 }
 
 namespace master {

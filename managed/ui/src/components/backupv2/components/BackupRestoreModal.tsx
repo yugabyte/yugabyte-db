@@ -48,6 +48,7 @@ import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { handleCACertErrMsg } from '../../customCACerts';
+import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 
 import './BackupRestoreModal.scss';
@@ -122,7 +123,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
         return { value: config.metadata.configUUID, label: labelName };
       })
     : [];
-
+  const interceptBackupLink = useInterceptBackupTaskLinks();
   const restore = useMutation(
     ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) => {
       const isYBCEnabledinTargetUniverse = isYBCEnabledInUniverse(
@@ -157,9 +158,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
         toast.success(
           <span>
             Success. Click &nbsp;
-            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
               here
-            </a>
+            </a>)}
             &nbsp; for task details
           </span>
         );

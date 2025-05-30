@@ -35,6 +35,11 @@ addSbtPlugin("com.github.sbt" % "sbt-jacoco" % "3.4.0")
 
 addSbtPlugin("com.github.sbt" % "sbt-eclipse" % "6.0.0")
 
+// This one allows to check Kamon metrics while running locally.
+// However it causes weird ClassNotFoundException on subsequent runPlatform call
+// Disabling by default
+// addSbtPlugin("io.kamon" % "sbt-kanela-runner-play-3.0" % "2.1.0")
+
 addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "5.0.1")
 addSbtPlugin("net.rouly" % "sbt-openapi-style-validator" % "0.0.4")
 

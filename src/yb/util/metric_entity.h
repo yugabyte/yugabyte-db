@@ -171,7 +171,9 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   Status WriteForPrometheus(PrometheusWriter* writer,
                             const MetricPrometheusOptions& opts);
 
-  const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
+  const MetricMap& TEST_UsageMetricsMap() const NO_THREAD_SAFETY_ANALYSIS {
+    return metric_map_;
+  }
 
   // Mark that the given metric should never be retired until the metric
   // registry itself destructs. This is useful for system metrics such as

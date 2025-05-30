@@ -173,6 +173,10 @@ class HybridTime {
     return value ? HybridTime(value) : HybridTime();
   }
 
+  uint64_t ToPB() const {
+    return *this ? v : 0;
+  }
+
   HybridTimeRepr value() const { return v; }
 
   // Returns this HybridTime if valid, otherwise returns the one provided.
@@ -217,8 +221,9 @@ class HybridTime {
 
   MicrosTime CeilPhysicalValueMicros() const;
 
-  inline int64_t PhysicalDiff(const HybridTime& other) const {
-    return static_cast<int64_t>(GetPhysicalValueMicros() - other.GetPhysicalValueMicros());
+  inline MonoDelta PhysicalDiff(const HybridTime& other) const {
+    return MonoDelta::FromMicroseconds(
+        static_cast<int64_t>(GetPhysicalValueMicros() - other.GetPhysicalValueMicros()));
   }
 
   inline LogicalTimeComponent GetLogicalValue() const {
@@ -292,5 +297,28 @@ inline HybridTime operator "" _usec_ht(unsigned long long microseconds) { // NOL
 } // namespace hybrid_time_literals
 
 using hybrid_time_literals::operator"" _usec_ht;
+
+struct ReadRestartData {
+  HybridTime restart_time;
+  std::string key;
+
+  bool is_valid() const {
+    return restart_time.is_valid();
+  }
+
+  void MakeAtLeast(ReadRestartData rhs) {
+    if (!rhs.restart_time.is_valid()) {
+      return;
+    }
+    if (!restart_time.is_valid() || restart_time < rhs.restart_time) {
+      restart_time = rhs.restart_time;
+      key = rhs.key;
+    }
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(restart_time, key);
+  }
+};
 
 }  // namespace yb

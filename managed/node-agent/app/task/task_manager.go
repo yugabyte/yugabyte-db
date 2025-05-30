@@ -39,15 +39,20 @@ type TaskStatus struct {
 
 // AsyncTask is the interface for a async task.
 type AsyncTask interface {
-	// Handler returns the method to be executed.
-	Handler() util.Handler
+	// Handle is the method to be executed.
+	Handle(context.Context) (*pb.DescribeTaskResponse, error)
 	// CurrentTaskStatus returns the current task status.
+	// Nil can be returned if there is no status streaming for this task.
 	CurrentTaskStatus() *TaskStatus
 	// String returns the identifier for this task.
 	String() string
-	// ResponseConverter returns the converter to convert the Handler result to the RPC response.
-	// It can return nil if the final response is not needed.
-	ResponseConverter() util.RPCResponseConverter
+}
+
+// Handler converts AsyncTask Handle to the executor handler.
+func ToHandler(handle func(context.Context) (*pb.DescribeTaskResponse, error)) util.Handler {
+	return func(ctx context.Context) (any, error) {
+		return handle(ctx)
+	}
 }
 
 // ExitStatus stores the Error (if any) and the exit code of a command.
@@ -161,7 +166,7 @@ func (m *TaskManager) Submit(
 		return fmt.Errorf("Task %s already exists", taskID)
 	}
 	tInfo := i.(*taskInfo)
-	future, err := executor.GetInstance().SubmitTask(bgCtx, asyncTask.Handler())
+	future, err := executor.GetInstance().SubmitTask(bgCtx, ToHandler(asyncTask.Handle))
 	if err != nil {
 		m.taskInfos.Delete(taskID)
 		util.FileLogger().
@@ -203,30 +208,28 @@ func (m *TaskManager) Subscribe(
 			// Task is completed.
 			size := 0
 			m.updateTime(taskID)
-			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
 			callbackData := &TaskCallbackData{State: tInfo.future.State()}
-			callbackData.Info, size = taskStatus.Info.StringWithLen()
-			if size > 0 {
-				// Send the info messages first before any error.
-				err := callback(callbackData)
-				if err != nil {
-					return err
+			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
+			if taskStatus != nil {
+				callbackData.Info, size = taskStatus.Info.StringWithLen()
+				if size > 0 {
+					// Send the info messages first before any error.
+					err := callback(callbackData)
+					if err != nil {
+						return err
+					}
+					taskStatus.Info.Consume(size)
 				}
-				taskStatus.Info.Consume(size)
 			}
 
 			size = 0
-			if taskStatus.ExitStatus.Code == 0 {
-				responseConverter := tInfo.asyncTask.ResponseConverter()
-				if responseConverter != nil {
-					result, err := tInfo.future.Get()
-					if err != nil {
-						return err
-					}
-					response, err := responseConverter(result)
-					if err != nil {
-						return err
-					}
+			if taskStatus == nil || taskStatus.ExitStatus == nil ||
+				taskStatus.ExitStatus.Code == 0 {
+				result, err := tInfo.future.Get()
+				if err != nil {
+					return err
+				}
+				if response, ok := result.(*pb.DescribeTaskResponse); ok {
 					callbackData := &TaskCallbackData{State: tInfo.future.State()}
 					callbackData.RPCResponse = response
 					err = callback(callbackData)
@@ -252,14 +255,16 @@ func (m *TaskManager) Subscribe(
 			// Task is still running.
 			m.updateTime(taskID)
 			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
-			data, size := taskStatus.Info.StringWithLen()
-			if size > 0 {
-				callbackData := &TaskCallbackData{Info: data, State: tInfo.future.State()}
-				err := callback(callbackData)
-				if err != nil {
-					return err
+			if taskStatus != nil {
+				data, size := taskStatus.Info.StringWithLen()
+				if size > 0 {
+					callbackData := &TaskCallbackData{Info: data, State: tInfo.future.State()}
+					err := callback(callbackData)
+					if err != nil {
+						return err
+					}
+					taskStatus.Info.Consume(size)
 				}
-				taskStatus.Info.Consume(size)
 			}
 			time.Sleep(TaskProgressWaitTime)
 		}

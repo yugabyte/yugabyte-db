@@ -82,7 +82,9 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
           TaskType.ReplaceRootVolume,
-          TaskType.AnsibleSetupServer,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
+          TaskType.SetNodeStatus,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
@@ -100,7 +102,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitStartingFromTime,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState,
-          TaskType.UpdateNodeDetails);
+          TaskType.UpdateUniverseFields);
 
   private static final List<TaskType> NODE_VALIDATION_TASKS =
       ImmutableList.of(TaskType.CheckLocale, TaskType.CheckGlibc);
@@ -584,5 +586,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         TaskType.VMImageUpgrade,
         taskParams,
         false);
+    checkUniverseNodesStates(taskParams.getUniverseUUID());
   }
 }

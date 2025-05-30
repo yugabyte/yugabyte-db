@@ -17,6 +17,11 @@ public class AuditLogConfigParams extends UpgradeTaskParams {
   public AuditLogConfig auditLogConfig;
 
   @Override
+  public boolean isKubernetesUpgradeSupported() {
+    return true;
+  }
+
+  @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
     boolean exportEnabled =

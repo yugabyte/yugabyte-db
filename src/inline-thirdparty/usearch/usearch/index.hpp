@@ -2490,6 +2490,9 @@ class index_gt {
         if (!new_nodes || !new_contexts || !new_mutexes)
             return false;
 
+        for (size_t i = 0; i != new_contexts.size(); ++i)
+            new_contexts[i].level_generator.seed(static_cast<unsigned int>(i));
+
         // Move the nodes info, and deallocate previous buffers.
         if (nodes_)
             std::memcpy(new_nodes.data(), nodes_.data(), sizeof(node_t) * size());
@@ -3719,6 +3722,7 @@ class index_gt {
         node = node_t{};
     }
 
+  public:
     inline node_t node_at_(std::size_t idx) const noexcept { return nodes_[idx]; }
     inline neighbors_ref_t neighbors_base_(node_t node) const noexcept { return {node.neighbors_tape()}; }
 
@@ -3731,6 +3735,11 @@ class index_gt {
         return level ? neighbors_non_base_(node, level) : neighbors_base_(node);
     }
 
+    inline auto entry_slot() const {
+      return entry_slot_;
+    }
+
+  private:
     struct node_lock_t {
         nodes_mutexes_t& mutexes;
         std::size_t slot;

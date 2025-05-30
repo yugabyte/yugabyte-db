@@ -39,7 +39,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/util/condition_variable.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_fwd.h"
 

@@ -6,8 +6,11 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.Webhook;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -20,13 +23,15 @@ public class UpdateDrConfigParams extends XClusterConfigTaskBase {
     super(baseTaskDependencies, xClusterUniverseService);
   }
 
-  public static class Params extends XClusterConfigTaskParams {
+  public static class Params extends DrConfigTaskParams {
 
     public UUID drConfigUUID;
 
     // XClusterConfigCreateFormData.BootstrapParams bootstrapParams in re-used.
 
     // DrConfigCreateForm.PitrParams pitrParams is re-used.
+
+    // webhookParams is re-used.
   }
 
   @Override
@@ -37,11 +42,12 @@ public class UpdateDrConfigParams extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(drConfig=%s,bootstrapParams=%s,pitrParams=%s)",
+        "%s(drConfig=%s,bootstrapParams=%s,pitrParams=%s,webhookUrls=%s)",
         super.getName(),
         taskParams().drConfigUUID,
         taskParams().getBootstrapParams(),
-        taskParams().getPitrParams());
+        taskParams().getPitrParams(),
+        taskParams().getWebhookUrls());
   }
 
   @Override
@@ -70,6 +76,19 @@ public class UpdateDrConfigParams extends XClusterConfigTaskBase {
             taskParams().getPitrParams());
         drConfig.setPitrRetentionPeriodSec(taskParams().getPitrParams().retentionPeriodSec);
         drConfig.setPitrSnapshotIntervalSec(taskParams().getPitrParams().snapshotIntervalSec);
+        drConfig.update();
+      }
+
+      if (taskParams().getWebhookUrls() != null) {
+        for (Webhook oldWebhook : drConfig.getWebhooks()) {
+          oldWebhook.delete();
+        }
+        List<Webhook> newWebhooks = new ArrayList<>();
+        for (String webhookUrl : taskParams().getWebhookUrls()) {
+          Webhook newWebhook = new Webhook(drConfig, webhookUrl);
+          newWebhooks.add(newWebhook);
+        }
+        drConfig.setWebhooks(newWebhooks);
         drConfig.update();
       }
 

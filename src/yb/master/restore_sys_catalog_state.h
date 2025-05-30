@@ -54,19 +54,20 @@ class RestoreSysCatalogState {
 
   // Prepare write batch with object changes.
   Status PrepareWriteBatch(
-      const Schema& schema, docdb::SchemaPackingProvider* schema_packing_provider,
-      docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
+      const docdb::DocReadContextPtr& doc_read_context,
+      docdb::SchemaPackingProvider* schema_packing_provider,
+      docdb::DocWriteBatch* write_batch, HybridTime now_ht);
 
   void WriteToRocksDB(
       docdb::DocWriteBatch* write_batch,
-      const docdb::KeyValuePairPB& restore_kv, const yb::HybridTime& write_time,
-      const yb::OpId& op_id, tablet::Tablet* tablet);
+      const docdb::KeyValuePairPB& restore_kv, HybridTime write_time,
+      const OpId& op_id, tablet::Tablet* tablet);
 
   Status ProcessPgCatalogRestores(
       const docdb::DocDB& restoring_db,
       const docdb::DocDB& existing_db,
       docdb::DocWriteBatch* write_batch,
-      const docdb::DocReadContext& doc_read_context,
+      const docdb::DocReadContextPtr& doc_read_context,
       docdb::SchemaPackingProvider* schema_packing_provider,
       const tablet::RaftGroupMetadata* metadata);
 
@@ -140,17 +141,17 @@ class RestoreSysCatalogState {
 
   // Prepare write batch to delete obsolete tablet.
   Status PrepareTabletCleanup(
-      const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
+      const TabletId& id, SysTabletsEntryPB pb, const docdb::DocReadContextPtr& doc_read_context,
       docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch);
 
   // Prepare write batch to delete obsolete table.
   Status PrepareTableCleanup(
-      const TableId& id, SysTablesEntryPB pb, const Schema& schema,
+      const TableId& id, SysTablesEntryPB pb, const docdb::DocReadContextPtr& doc_read_context,
       docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch,
-      const HybridTime& now_ht);
+      HybridTime now_ht);
 
   Status IncrementLegacyCatalogVersion(
-      const docdb::DocReadContext& doc_read_context,
+      const docdb::DocReadContextPtr& doc_read_context,
       docdb::SchemaPackingProvider* schema_packing_provider, const docdb::DocDB& doc_db,
       docdb::DocWriteBatch* write_batch);
 

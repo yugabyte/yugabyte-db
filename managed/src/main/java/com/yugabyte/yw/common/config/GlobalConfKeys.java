@@ -476,7 +476,24 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow CipherTrust KMS",
           "Allow the usage of CipherTrust KMS.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> telemetryAllowLoki =
+      new ConfKeyInfo<>(
+          "yb.telemetry.allow_loki",
+          ScopeType.GLOBAL,
+          "Allow Loki Exporter in Telemetry Provider",
+          "Allow the usage of Loki Exporter in Telemetry Provider.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
+      new ConfKeyInfo<>(
+          "yb.kms.hcv_token_renew_percent",
+          ScopeType.GLOBAL,
+          "Percentage of Hashicorp vault TTL to renew the token after",
+          "HashiCorp Vault tokens expire when their TTL is reached. This setting renews the token"
+              + " after it has used the specified percentage of its original TTL. Default: 70%.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   // TODO() Add metadata
   public static final ConfKeyInfo<Boolean> startMasterOnStopNode =
       new ConfKeyInfo<>(
@@ -913,6 +930,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after disk resize in aws (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> gcpHyperdiskResizeCooldownHours =
+      new ConfKeyInfo<>(
+          "yb.gcp.hyperdisk_resize_cooldown_hours",
+          ScopeType.GLOBAL,
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          "Cooldown after hyperdisk resize in gcp (in hours)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybTmpDirectoryPath =
       new ConfKeyInfo<>(
           "yb.filepaths.tmpDirectory",
@@ -1105,7 +1130,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth enabled",
           "Enables basic authentication for Prometheus web UI/APIs access",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> metricsAuthUsername =
       new ConfKeyInfo<>(
           "yb.metrics.auth_username",
@@ -1113,7 +1138,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth username",
           "Username, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> metricsAuthPassword =
       new ConfKeyInfo<>(
           "yb.metrics.auth_password",
@@ -1121,7 +1146,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Prometheus auth password",
           "Password, used for request authentication against embedded Prometheus",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> forceYbcShutdownDuringUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.force_shutdown",
@@ -1481,6 +1506,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node agent enabler scan interval",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> nodeAgentEnablerRunInstaller =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.run_installer",
+          ScopeType.GLOBAL,
+          "Node Agent Enabler Run Installer",
+          "Enable or disable the background installer in node agent enabler",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> supportBundleDefaultPromDumpRange =
       new ConfKeyInfo<>(
           "yb.support_bundle.default_prom_dump_range",
@@ -1577,14 +1610,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait for GFlag Sync in K8s universe",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> enableYNPProvisioning =
-      new ConfKeyInfo<>(
-          "yb.node_agent.use_ynp_provisioning",
-          ScopeType.GLOBAL,
-          "Use YNP for provisioning",
-          "If enabled use YNP for provisioning",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableMetricsTimezone =
       new ConfKeyInfo<>(
           "yb.ui.metrics.enable_timezone",
@@ -1610,4 +1635,46 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable node agent on provider creation by setting the internal flag in the provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_path_style_access",
+          ScopeType.GLOBAL,
+          "Enable Path Access Style for Amazon S3",
+          "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible"
+              + " storage.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> k8sYbaRestoreSkipDumpFileDelete =
+      new ConfKeyInfo<>(
+          "yb.ha.k8s_restore_skip_dump_file_delete",
+          ScopeType.GLOBAL,
+          "Restore YBA postgres metadata during Yugaware container restart",
+          "Restore YBA postgres metadata during Yugaware container restart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentServerCertExpiryNotice =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server_cert_expiry_notice",
+          ScopeType.GLOBAL,
+          "Node Agent Server Cert Expiry Notice",
+          "Duration to start notifying about expiry before node agent server cert actually expires",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeAgentEnableConfigureServer =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_configure_server",
+          ScopeType.GLOBAL,
+          "Enable Node Agent Configure Server",
+          "Enable or disable server configuration RPCs in node agent. Defaults to ansible if it is"
+              + " disabled.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
+      new ConfKeyInfo<>(
+          "yb.task.enable_task_runtime_info_on_retry",
+          ScopeType.GLOBAL,
+          "Enable Task Runtime Info on Retry",
+          "Use the runtime info from the previously failed task on retry",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

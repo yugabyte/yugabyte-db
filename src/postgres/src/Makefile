@@ -12,6 +12,9 @@ subdir = src
 top_builddir = ..
 include Makefile.global
 
+# YB: TODO(#25892): YB currently has a single way of building postgres, so any
+# non-default subdirs we want to build are added here.  YB should be more
+# flexible and be able to build subdirs at will.
 SUBDIRS = \
 	common \
 	port \
@@ -66,11 +69,13 @@ clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/isolation $@
+	$(MAKE) -C tools/pg_bsd_indent $@
 
 distclean maintainer-clean:
 	$(MAKE) -C test $@
 	$(MAKE) -C tutorial NO_PGXS=1 $@
 	$(MAKE) -C test/isolation $@
+	$(MAKE) -C tools/pg_bsd_indent $@
 	rm -f Makefile.port Makefile.global
 
 

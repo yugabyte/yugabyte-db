@@ -333,6 +333,7 @@ public class UniverseControllerRequestBinder {
         gflagMap = Json.fromJson(formNodeList, Map.class);
       }
     }
+    formNode.set(listType, Json.toJson(gflagMap));
     return gflagMap;
   }
 

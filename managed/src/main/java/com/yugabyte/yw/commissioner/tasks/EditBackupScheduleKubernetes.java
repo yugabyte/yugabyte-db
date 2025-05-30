@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Schedule;
@@ -11,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Slf4j
+@Retryable
 public class EditBackupScheduleKubernetes extends BackupScheduleBaseKubernetes {
 
   @Inject

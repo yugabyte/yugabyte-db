@@ -107,3 +107,9 @@ ALTER INDEX part_attmp_pkey RENAME TO part_attmp_index;
 ALTER INDEX part_attmp1_pkey RENAME TO part_attmp1_index;
 ALTER TABLE part_attmp RENAME TO part_at2tmp;
 ALTER TABLE part_attmp1 RENAME TO part_at2tmp1;
+
+
+create table atacc1 (test int);
+create table atacc2 (test2 int);
+create table atacc3 (test3 int) inherits (atacc1, atacc2);
+alter table atacc3 no inherit atacc2;

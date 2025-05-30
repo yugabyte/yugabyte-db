@@ -37,7 +37,7 @@ export default class InstanceTypeForRegion extends Component {
             Instance <span className="row-head-subscript">IP Address Or Hostname</span>
           </Col>
           <Col lg={3}>
-            Instance ID <span className="row-head-subscript">(Optional)</span>
+            Instance Name <span className="row-head-subscript">(Optional)</span>
           </Col>
         </Row>
         {fields.map((instanceTypeItem, instanceTypeIdx) => (

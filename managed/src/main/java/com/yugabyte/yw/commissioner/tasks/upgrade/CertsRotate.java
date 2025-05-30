@@ -320,14 +320,14 @@ public class CertsRotate extends UpgradeTaskBase {
     Universe universe = Universe.getOrBadRequest(universeUuid);
     if (universe.isYbcEnabled()) {
 
-      createStopYbControllerTasks(nodes.tserversList)
+      createStopYbControllerTasks(nodes.getAllNodes())
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
-      createStartYbcTasks(nodes.tserversList)
+      createStartYbcTasks(nodes.getAllNodes())
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Wait for yb-controller to be responsive on each node.
-      createWaitForYbcServerTask(nodes.tserversList)
+      createWaitForYbcServerTask(nodes.getAllNodes())
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }

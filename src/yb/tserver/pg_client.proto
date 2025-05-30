@@ -23,7 +23,6 @@ import "yb/common/pgsql_protocol.proto";
 import "yb/common/transaction.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
-import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
@@ -50,6 +49,7 @@ service PgClientService {
   rpc FinishTransaction(PgFinishTransactionRequestPB) returns (PgFinishTransactionResponsePB);
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
+  rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
@@ -111,14 +111,6 @@ service PgClientService {
 
   rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
 
-  // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
-  // So GetReplicationSlot should be used everywhere.
-  rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
-      returns (PgGetReplicationSlotStatusResponsePB);
-  // DEPRECATED
-  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
-      returns (PgSetActiveSubTransactionResponsePB);
-
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
@@ -137,6 +129,9 @@ service PgClientService {
   rpc ReleaseAdvisoryLock(PgReleaseAdvisoryLockRequestPB)
       returns (PgReleaseAdvisoryLockResponsePB);
 
+  rpc AcquireObjectLock(PgAcquireObjectLockRequestPB)
+      returns (PgAcquireObjectLockResponsePB);
+
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
 
@@ -145,6 +140,12 @@ service PgClientService {
 
   rpc ClearExportedTxnSnapshots(PgClearExportedTxnSnapshotsRequestPB)
       returns (PgClearExportedTxnSnapshotsResponsePB);
+
+  rpc GetTserverCatalogMessageLists(PgGetTserverCatalogMessageListsRequestPB)
+      returns (PgGetTserverCatalogMessageListsResponsePB);
+
+  rpc SetTserverCatalogMessageList(PgSetTserverCatalogMessageListRequestPB)
+      returns (PgSetTserverCatalogMessageListResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -244,6 +245,7 @@ message PgAlterTableRequestPB {
   bool increment_schema_version = 8;
   PgReplicaIdentityPB replica_identity = 9;
   AshMetadataPB ash_metadata = 10;
+  bool use_regular_transaction_block = 11;
 }
 
 message PgAlterTableResponsePB {
@@ -263,6 +265,7 @@ message PgCreateDatabaseRequestPB {
   string source_owner = 10;
   string target_owner = 11;
   AshMetadataPB ash_metadata = 12;
+  bool use_regular_transaction_block = 13;
 }
 
 message PgCreateDatabaseResponsePB {
@@ -281,6 +284,8 @@ enum PgReplicationSlotSnapshotActionPB {
   REPLICATION_SLOT_NOEXPORT_SNAPSHOT = 1;
   // Client wishes to consume snapshot from the source universe.
   REPLICATION_SLOT_USE_SNAPSHOT = 2;
+  // Client wishes to export snapshot to be used in other session
+  REPLICATION_SLOT_EXPORT_SNAPSHOT = 3;
 }
 
 // proto2 version of the ReplicationSlotLsnType enum from yb/common/common_types.proto
@@ -288,6 +293,13 @@ enum PGReplicationSlotLsnType {
   ReplicationSlotLsnTypePg_UNDEFINED = 0;
   ReplicationSlotLsnTypePg_SEQUENCE = 1;
   ReplicationSlotLsnTypePg_HYBRID_TIME = 2;
+}
+
+// proto2 version of the ReplicationSlotOrderingMode enum from yb/common/common.proto
+enum PGReplicationSlotOrderingMode {
+  ReplicationSlotOrderingModePg_UNDEFINED = 0;
+  ReplicationSlotOrderingModePg_ROW = 1;
+  ReplicationSlotOrderingModePg_TRANSACTION = 2;
 }
 
 message PgCreateReplicationSlotRequestPB {
@@ -298,6 +310,7 @@ message PgCreateReplicationSlotRequestPB {
   string output_plugin_name = 5;
   AshMetadataPB ash_metadata = 6;
   PGReplicationSlotLsnType lsn_type = 7;
+  PGReplicationSlotOrderingMode ordering_mode = 8;
 }
 
 message PgCreateReplicationSlotResponsePB {
@@ -329,6 +342,7 @@ message PgCreateTableRequestPB {
   uint64 session_id = 1;
 
   bool use_transaction = 2;
+  bool use_regular_transaction_block = 26;
   PgObjectIdPB table_id = 3;
   string database_name = 4;
   string table_name = 5;
@@ -383,6 +397,7 @@ message PgCreateTablegroupRequestPB {
   PgObjectIdPB tablespace_id = 4;
 
   AshMetadataPB ash_metadata = 5;
+  bool use_regular_transaction_block = 6;
 }
 
 message PgCreateTablegroupResponsePB {
@@ -415,6 +430,7 @@ message PgDropTableRequestPB {
   PgObjectIdPB table_id = 2;
   bool index = 3;
   AshMetadataPB ash_metadata = 4;
+  bool use_regular_transaction_block = 5;
 }
 
 message PgDropTableResponsePB {
@@ -426,6 +442,7 @@ message PgDropTablegroupRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB tablegroup_id = 2;
   AshMetadataPB ash_metadata = 3;
+  bool use_regular_transaction_block = 4;
 }
 
 message PgDropTablegroupResponsePB {
@@ -435,11 +452,21 @@ message PgDropTablegroupResponsePB {
 message PgGetCatalogMasterVersionRequestPB {
 }
 
+message PgGetXClusterRoleRequestPB {
+  uint32 db_oid = 1;
+  AshMetadataPB ash_metadata = 2;
+}
+
 message PgFinishTransactionRequestPB {
   message DdlModePB {
     // This transaction contains changes to the DocDB schema protobufs.
     bool has_docdb_schema_changes = 1;
     OptionalUint32PB silently_altered_db = 2;
+    // Use transaction block for DDL operations instead of a separate autonomous
+    // DDL transaction.
+    // Set to false if ysql_yb_ddl_transaction_block_enabled is false or if this
+    // is an online schema change operation.
+    bool use_regular_transaction_block = 3;
   }
 
   uint64 session_id = 1;
@@ -456,6 +483,11 @@ message PgFinishTransactionResponsePB {
 message PgGetCatalogMasterVersionResponsePB {
   AppStatusPB status = 1;
   uint64 version = 2;
+}
+
+message PgGetXClusterRoleResponsePB {
+  AppStatusPB status = 1;
+  uint32 xcluster_role = 2;  // Really XClusterNamespaceInfoPB.XClusterRole.
 }
 
 message PgGetDatabaseInfoRequestPB {
@@ -513,6 +545,8 @@ message PgGetLockStatusResponsePB {
 
   // Map of transactions keyed by the host node uuid.
   map<string, TransactionList> transactions_by_node = 3;
+
+  repeated ObjectLockInfoPB object_lock_infos = 4;
 }
 
 message PgGetReplicationSlotRequestPB {
@@ -531,16 +565,6 @@ message PgGetReplicationSlotResponsePB {
 enum ReplicationSlotStatus {
   ACTIVE = 0;
   INACTIVE = 1;
-}
-
-message PgGetReplicationSlotStatusRequestPB {
-  string replication_slot_name = 1;
-}
-
-message PgGetReplicationSlotStatusResponsePB {
-  AppStatusPB status = 1;
-
-  ReplicationSlotStatus replication_slot_status = 2;
 }
 
 message PgListLiveTabletServersRequestPB {
@@ -575,6 +599,7 @@ message PgGetIndexBackfillProgressResponsePB {
 message PgListLiveTabletServersResponsePB {
   AppStatusPB status = 1;
   repeated PgLiveTabletServerPB servers = 2;
+  string universe_uuid = 3;
 }
 
 message PgListReplicationSlotsRequestPB {
@@ -596,6 +621,8 @@ message PgReplicationSlotInfoPB {
   uint64 last_pub_refresh_time = 10;
   string output_plugin_name = 11;
   PGReplicationSlotLsnType yb_lsn_type = 12;
+  uint64 active_pid = 13;
+  bool expired = 14;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -606,11 +633,16 @@ message PgListReplicationSlotsResponsePB {
 message PgOpenTableRequestPB {
   string table_id = 1;
   bool reopen = 2;
-  fixed64 invalidate_cache_time_us = 3;
+
+  // Reserved for invalidate_cache_time_us which was used to invalidate
+  // the tserver table cache
+  reserved 3;
+
   // Allows a hidden table to be opened.
   // Hidden table is a dropped table retained in DocDB for PITR, CLONE, AS-OF.
   bool include_hidden = 4;
   AshMetadataPB ash_metadata = 5;
+  uint64 ysql_catalog_version = 6;
 }
 
 message PgTablePartitionsPB {
@@ -637,6 +669,7 @@ message PgGetTablePartitionListResponsePB {
 
 message PgPollVectorIndexReadyRequestPB {
   string table_id = 1;
+  AshMetadataPB ash_metadata = 2;
 }
 
 message PgPollVectorIndexReadyResponsePB {
@@ -669,6 +702,7 @@ message PgPerformOptionsPB {
   // Replace with IsolationLevel after migration to proto3.
   uint32 isolation = 2;
   bool ddl_mode = 3;
+  bool ddl_use_regular_transaction_block = 25;
   uint64 txn_serial_no = 4;
   uint64 read_time_serial_no = 20;
 
@@ -698,6 +732,8 @@ message PgPerformOptionsPB {
   // - Clamps the read uncertainty window.
   // See the commit desc for more info.
   bool clamp_uncertainty_window = 24;
+
+  bool non_transactional_buffered_write = 26;
 }
 
 message PgPerformRequestPB {
@@ -736,19 +772,6 @@ message PgRollbackToSubTransactionRequestPB {
 }
 
 message PgRollbackToSubTransactionResponsePB {
-  AppStatusPB status = 1;
-}
-
-// DEPRECATED
-message PgSetActiveSubTransactionRequestPB {
-  uint64 session_id = 1;
-  uint32 sub_transaction_id = 2;
-  // Used to create transaction when we did not have one yet.
-  PgPerformOptionsPB options = 3;
-}
-
-// DEPRECATED
-message PgSetActiveSubTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
@@ -933,6 +956,39 @@ message PgGetTserverCatalogVersionInfoResponsePB {
   AppStatusPB status = 1;
   repeated TServerDBCatalogVersionInfo entries = 2;
   uint32 num_entries = 3;
+}
+
+message PgGetTserverCatalogMessageListsRequestPB {
+  uint32 db_oid = 1;
+  // We are only interested in messages associated with ysql_catalog_version + 1 and beyond.
+  // For example, if ysql_catalog_version == x, we will fetch messages x + 1, x + 2, ... x + k
+  // stored in tserver messages queue (with no holes), where k is num_catalog_versions. This
+  // represents the case where PG backend's local catalog version is x and the shared memory
+  // catalog version is x + k. Those messages of catalog version y (y <= x) in the tserver
+  // message queue will be skipped for this request.
+  uint64 ysql_catalog_version = 2;
+  uint32 num_catalog_versions = 3;
+  AshMetadataPB ash_metadata = 4;
+}
+
+message PgGetTserverCatalogMessageListsResponsePB {
+  AppStatusPB status = 1;
+  // Each entry is a list of messages associated with a catalog version. If the request cannot
+  // be fulfilled, entries will be empty. This only happens when the requested sequence does not
+  // exist in the tserver's message queue.
+  repeated TServerDBCatalogMessageListInfo entries = 2;
+}
+
+message PgSetTserverCatalogMessageListRequestPB {
+  uint32 db_oid = 1;
+  bool is_breaking_change = 2;
+  uint64 new_catalog_version = 3;
+  TServerDBCatalogMessageListInfo message_list = 4;
+  AshMetadataPB ash_metadata = 5;
+}
+
+message PgSetTserverCatalogMessageListResponsePB {
+  AppStatusPB status = 1;
 }
 
 message PgWaitForBackendsCatalogVersionRequestPB {
@@ -1174,6 +1230,39 @@ message PgReleaseAdvisoryLockRequestPB {
 }
 
 message PgReleaseAdvisoryLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+enum ObjectLockMode {
+  NO_LOCK = 0;
+  ACCESS_SHARE_LOCK = 1;
+  ROW_SHARE_LOCK = 2;
+  ROW_EXCLUSIVE_LOCK = 3;
+  SHARE_UPDATE_EXCLUSIVE_LOCK = 4;
+  SHARE_LOCK = 5;
+  SHARE_ROW_EXCLUSIVE_LOCK = 6;
+  EXCLUSIVE_LOCK = 7;
+  ACCESS_EXCLUSIVE_LOCK = 8;
+}
+
+message PgAcquireObjectLockRequestPB {
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+
+  message LockOId {
+    uint64 database_oid = 1;
+    uint64 relation_oid = 2;
+    uint64 object_oid = 3;
+    uint64 object_sub_oid = 4;
+  }
+  LockOId lock_oid = 3;
+
+  // Cannot use TableLockType enum due to proto2/3 compatibility issues.
+  ObjectLockMode lock_type = 4;
+  AshMetadataPB ash_metadata = 5;
+}
+
+message PgAcquireObjectLockResponsePB {
   AppStatusPB status = 1;
 }
 

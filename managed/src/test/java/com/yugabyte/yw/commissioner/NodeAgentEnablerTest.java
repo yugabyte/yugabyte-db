@@ -12,7 +12,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
@@ -25,6 +24,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -34,6 +34,9 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.OSType;
+import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -46,6 +49,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -76,6 +80,10 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     customer2 = ModelFactory.testCustomer("customer2");
     provider1 = ModelFactory.awsProvider(customer1);
     provider2 = ModelFactory.awsProvider(customer2);
+    AvailabilityZone.createOrThrow(
+        Region.create(provider1, "region-1", "Region 1", "yb-image-1"), "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(
+        Region.create(provider2, "region-1", "Region 1", "yb-image-1"), "az-1", "AZ 1", "subnet-1");
     universeUuid1 =
         createAwsUniverse(customer1, provider1, "test-universe1", "10.10.10").getUniverseUUID();
     universeUuid01 =
@@ -96,6 +104,9 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     universeTaskBase =
         new TestUniverseTaskBase(
             app.injector().instanceOf(BaseTaskDependencies.class), nodeAgentEnabler);
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.nodeAgentEnablerRunInstaller.getKey(), String.valueOf(true));
   }
 
   @After
@@ -103,6 +114,21 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     if (executorService != null) {
       executorService.shutdownNow();
     }
+  }
+
+  private NodeAgent createNodeAgent(UUID customerUuid, NodeDetails node) {
+    // Output is like Linux x86_64.
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setIp(node.cloudInfo.private_ip);
+    nodeAgent.setName(node.nodeName);
+    nodeAgent.setCustomerUuid(customerUuid);
+    nodeAgent.setOsType(OSType.LINUX);
+    nodeAgent.setArchType(ArchType.AMD64);
+    nodeAgent.setState(State.READY);
+    nodeAgent.setVersion("2024.2.4.0");
+    nodeAgent.setHome("/home/yugabyte/node-agent");
+    nodeAgent.save();
+    return nodeAgent;
   }
 
   private static class TestUniverseTaskBase extends UniverseTaskBase {
@@ -125,10 +151,6 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
       return super.getInstanceOf(clazz);
     }
 
-    public UniverseTaskParams getMockParams() {
-      return (UniverseTaskParams) super.taskParams();
-    }
-
     @Override
     protected RunnableTask getRunnableTask() {
       return runnableTask;
@@ -141,15 +163,14 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
   private Universe createAwsUniverse(
       Customer customer, Provider provider, String name, String ipPrefix) {
     CloudType providerType = Common.CloudType.valueOf(provider.getCode());
-    Region region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "default-key";
     userIntent.replicationFactor = 3;
-    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.regionList =
+        provider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
     userIntent.instanceType = "c3.large";
     userIntent.providerType = providerType;
     userIntent.provider = provider.getUuid().toString();
@@ -273,12 +294,12 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
     assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
     // Node agent is disabled for provider1.
-    when(universeTaskBase.getMockParams().getUniverseUUID()).thenReturn(universeUuid1);
     universeTaskBase.createInstallNodeAgentTasks(
+        Universe.getOrBadRequest(universeUuid1),
         Universe.getOrBadRequest(universeUuid1).getNodes());
     // Node agent is enabled for provider2.
-    when(universeTaskBase.getMockParams().getUniverseUUID()).thenReturn(universeUuid2);
     universeTaskBase.createInstallNodeAgentTasks(
+        Universe.getOrBadRequest(universeUuid2),
         Universe.getOrBadRequest(universeUuid2).getNodes());
     universe1 = Universe.getOrBadRequest(universeUuid1);
     universe2 = Universe.getOrBadRequest(universeUuid2);
@@ -633,5 +654,50 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
       verify(mockNodeAgentInstaller, times(0))
           .install(eq(customer2.getUuid()), eq(universeUuid2), eq(node));
     }
+  }
+
+  @Test
+  public void testSkipInstallNodeAgents() throws Exception {
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.nodeAgentEnablerRunInstaller.getKey(), String.valueOf(false));
+    markUniverses();
+    scanUniverses(true);
+    Universe universe1 = Universe.getOrBadRequest(universeUuid1);
+    Universe universe2 = Universe.getOrBadRequest(universeUuid2);
+    // Installation must not happen because the installer is disabled.
+    for (NodeDetails node : universe1.getNodes()) {
+      verify(mockNodeAgentInstaller, times(0))
+          .install(eq(customer1.getUuid()), eq(universeUuid1), eq(node));
+    }
+    for (NodeDetails node : universe2.getNodes()) {
+      verify(mockNodeAgentInstaller, times(0))
+          .install(eq(customer2.getUuid()), eq(universeUuid2), eq(node));
+    }
+    universe1 = Universe.getOrBadRequest(universeUuid1);
+    universe2 = Universe.getOrBadRequest(universeUuid01);
+    // Field installNodeAgent must still be set.
+    assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
+    assertEquals(true, universe2.getUniverseDetails().installNodeAgent);
+  }
+
+  @Test
+  public void testUpdateMissingNodeAgents() {
+    Universe universe = Universe.getOrBadRequest(universeUuid1);
+    List<NodeDetails> nodes = new ArrayList<>(universe.getNodes());
+    assertEquals(3, nodes.size());
+    createNodeAgent(customer1.getUuid(), nodes.get(0));
+    createNodeAgent(customer1.getUuid(), nodes.get(1));
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(true, universe.getUniverseDetails().nodeAgentMissing);
+    NodeAgent nodeAgent = createNodeAgent(customer1.getUuid(), nodes.get(2));
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(false, universe.getUniverseDetails().nodeAgentMissing);
+    nodeAgent.delete();
+    nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
+    universe = Universe.getOrBadRequest(universeUuid1);
+    assertEquals(true, universe.getUniverseDetails().nodeAgentMissing);
   }
 }

@@ -109,7 +109,7 @@ TEST_F(YbGateTest, EreportErrorCode) {
   ASSERT_EQ(YbgStatusIsError(ybg_status), true);
   // Check the error code
   EXPECT_EQ(YbgStatusGetSqlError(ybg_status),
-            to_underlying(yb::YBPgErrorCode::YB_PG_DIVISION_BY_ZERO));
+            std::to_underlying(yb::YBPgErrorCode::YB_PG_DIVISION_BY_ZERO));
   YbgStatusDestroy(ybg_status);
 }
 

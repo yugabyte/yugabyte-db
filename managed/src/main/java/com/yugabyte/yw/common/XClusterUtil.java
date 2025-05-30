@@ -119,4 +119,23 @@ public class XClusterUtil {
         return XClusterTableConfig.Status.Error;
     }
   }
+
+  public static void ensureYsqlMajorUpgradeIsComplete(
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      Universe sourceUniverse,
+      Universe targetUniverse) {
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(sourceUniverse)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
+              + " universe is in progress.");
+    }
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(targetUniverse)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot configure XCluster/DR config because YSQL major version upgrade on target"
+              + " universe is in progress.");
+    }
+  }
 }

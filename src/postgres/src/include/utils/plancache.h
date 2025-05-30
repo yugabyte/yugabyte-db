@@ -24,13 +24,13 @@
 
 
 /*
- * GUC variable to control how many times a custom plan is chosen over
+ * YB: GUC variable to control how many times a custom plan is chosen over
  * a generic plan unconditionally. See guc.c for details.
  */
 extern int	yb_test_planner_custom_plan_threshold;
 
 /*
- * GUC variable to control whether to prefer a custom plan over a generic
+ * YB: GUC variable to control whether to prefer a custom plan over a generic
  * plan based on the number of partitions pruned.
  */
 extern bool enable_choose_custom_plan_for_partition_pruning;
@@ -96,7 +96,7 @@ extern PGDLLIMPORT int plan_cache_mode;
  * that have no reason to be saved at all.  We therefore support a "oneshot"
  * variant that does no data copying or invalidation checking.  In this case
  * there are no separate memory contexts: the CachedPlanSource struct and
- * all subsidiary data live in the caller's GetCurrentMemoryContext(), and there
+ * all subsidiary data live in the caller's CurrentMemoryContext, and there
  * is no way to free memory short of clearing that entire context.  A oneshot
  * plan is always treated as unsaved.
  *
@@ -144,6 +144,8 @@ typedef struct CachedPlanSource
 	double		total_custom_cost;	/* total cost of custom plans so far */
 	int64		num_custom_plans;	/* # of custom plans included in total */
 	int64		num_generic_plans;	/* # of generic plans */
+
+	/* YB */
 	bool		usesPostgresRel;	/* Does this plan use pg relations */
 	int			yb_generic_num_referenced_rels; /* Num rels referenced by
 												 * generic plan */

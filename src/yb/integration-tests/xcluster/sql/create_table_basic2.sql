@@ -15,30 +15,31 @@
 -- e inherits from c (two-level single inheritance)
 -- f inherits from e (three-level single inheritance)
 --
+
 CREATE TABLE a_star (
 	class		char,
 	a 			int4
 );
 
--- CREATE TABLE b_star (
--- 	b 			text
--- ) INHERITS (a_star);
+CREATE TABLE b_star (
+	b 			text
+) INHERITS (a_star);
 
--- CREATE TABLE c_star (
--- 	c 			name
--- ) INHERITS (a_star);
+CREATE TABLE c_star (
+	c 			name
+) INHERITS (a_star);
 
--- CREATE TABLE d_star (
--- 	d 			float8
--- ) INHERITS (b_star, c_star);
+CREATE TABLE d_star (
+	d 			float8
+) INHERITS (b_star, c_star);
 
--- CREATE TABLE e_star (
--- 	e 			int2
--- ) INHERITS (c_star);
+CREATE TABLE e_star (
+	e 			int2
+) INHERITS (c_star);
 
--- CREATE TABLE f_star (
--- 	f 			polygon
--- ) INHERITS (e_star);
+CREATE TABLE f_star (
+	f 			polygon
+) INHERITS (e_star);
 
 CREATE TABLE aggtest (
 	a 			int2,

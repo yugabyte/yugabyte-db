@@ -69,6 +69,7 @@
 
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/tserver/xcluster_consumer_if.h"

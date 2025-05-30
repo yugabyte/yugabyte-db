@@ -12,22 +12,22 @@
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
   GO_VERSION = "1.20"
-  HUGO_VERSION = "0.125.6"
-  NODE_VERSION = "20"
+  HUGO_VERSION = "0.145.0"
+  NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
   GO_VERSION = "1.20"
-  HUGO_VERSION = "0.125.6"
-  NODE_VERSION = "20"
+  HUGO_VERSION = "0.145.0"
+  NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
   GO_VERSION = "1.20"
-  HUGO_VERSION = "0.125.6"
-  NODE_VERSION = "20"
+  HUGO_VERSION = "0.145.0"
+  NODE_VERSION = "22"
   CXXFLAGS = "-std=c++17"
   RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
@@ -836,8 +836,18 @@
   force = true
 
 [[redirects]]
+  from = "/v2.14/*"
+  to = "https://docs-archive.yugabyte.com/v2.14/"
+  force = true
+
+[[redirects]]
   from = "/v2.16/*"
   to = "https://docs-archive.yugabyte.com/v2.16/"
+  force = true
+
+[[redirects]]
+  from = "/v2.18/*"
+  to = "https://docs-archive.yugabyte.com/v2.18/"
   force = true
 
 # Build an app for orms
@@ -1042,6 +1052,24 @@
   to = "/preview/tutorials/cdc-tutorials/:splat"
   force = true
 
+# CDC was in explore, now in Develop
+[[redirects]]
+  from = "/preview/explore/change-data-capture/using-logical-replication/*"
+  to = "/preview/develop/change-data-capture/using-logical-replication/:splat"
+  force = true
+[[redirects]]
+  from = "/stable/explore/change-data-capture/using-logical-replication/*"
+  to = "/stable/develop/change-data-capture/using-logical-replication/:splat"
+  force = true
+
+[[redirects]]
+  from = "/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
+  to = "/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  force = true
+[[redirects]]
+  from = "/stable/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
+  to = "/stable/develop/change-data-capture/using-yugabytedb-grpc-replication/:splat"
+  force = true
 
 # Redirect older versions of specific sections
 

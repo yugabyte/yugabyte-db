@@ -107,6 +107,8 @@ class Master : public tserver::DbServerBase {
 
   TSManager* ts_manager() const { return ts_manager_.get(); }
 
+  MasterTabletServer* tablet_server() const { return master_tablet_server_.get(); }
+
   CatalogManagerIf* catalog_manager() const;
 
   CatalogManager* catalog_manager_impl() const { return CHECK_NOTNULL(catalog_manager_.get()); }
@@ -218,6 +220,14 @@ class Master : public tserver::DbServerBase {
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
 
+  Status GetTserverCatalogMessageLists(
+      const tserver::GetTserverCatalogMessageListsRequestPB& req,
+      tserver::GetTserverCatalogMessageListsResponsePB *resp) const;
+
+  Status SetTserverCatalogMessageList(
+      uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
+      const std::optional<std::string>& message_list);
+
   Status ReloadKeysAndCertificates() override;
 
   std::string GetCertificateDetails() override;
@@ -225,6 +235,10 @@ class Master : public tserver::DbServerBase {
   void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
 
   const std::string& permanent_uuid() const override;
+
+  void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
+  void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override {}
+  void RegisterPgProcessKiller(std::function<Status(void)> killer) override {}
 
  protected:
   Status RegisterServices();
@@ -264,6 +278,9 @@ class Master : public tserver::DbServerBase {
   // The metric entity for the cluster.
   scoped_refptr<MetricEntity> metric_entity_cluster_;
 
+  // Master's tablet server implementation used to host virtual tables like system.peers.
+  std::unique_ptr<MasterTabletServer> master_tablet_server_;
+
   std::unique_ptr<SysCatalogTable> sys_catalog_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
@@ -293,9 +310,6 @@ class Master : public tserver::DbServerBase {
 
   // The maintenance manager for this master.
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
-
-  // Master's tablet server implementation used to host virtual tables like system.peers.
-  std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
   std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::mutex master_metrics_mutex_;

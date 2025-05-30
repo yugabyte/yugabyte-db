@@ -337,6 +337,10 @@ scan_directory(const char *basedir, const char *subdir, bool sizeonly)
 					strlen(PG_TEMP_FILES_DIR)) == 0)
 			continue;
 
+		/* Skip macOS system files */
+		if (strcmp(de->d_name, ".DS_Store") == 0)
+			continue;
+
 		snprintf(fn, sizeof(fn), "%s/%s", path, de->d_name);
 		if (lstat(fn, &st) < 0)
 			pg_fatal("could not stat file \"%s\": %m", fn);
@@ -384,11 +388,7 @@ scan_directory(const char *basedir, const char *subdir, bool sizeonly)
 			if (!sizeonly)
 				scan_file(fn, segmentno);
 		}
-#ifndef WIN32
 		else if (S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode))
-#else
-		else if (S_ISDIR(st.st_mode) || pgwin32_is_junction(fn))
-#endif
 		{
 			/*
 			 * If going through the entries of pg_tblspc, we assume to operate

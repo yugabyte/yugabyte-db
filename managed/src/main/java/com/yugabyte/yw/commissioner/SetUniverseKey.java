@@ -133,7 +133,11 @@ public class SetUniverseKey {
 
         byte[] keyRef = Base64.getDecoder().decode(activeKey.getUuid().keyRef);
         byte[] keyVal =
-            keyManager.getUniverseKey(u.getUniverseUUID(), activeKey.getConfigUuid(), keyRef);
+            keyManager.getUniverseKey(
+                u.getUniverseUUID(),
+                activeKey.getConfigUuid(),
+                keyRef,
+                activeKey.getEncryptionContext());
         Arrays.stream(u.getMasterAddresses().split(","))
             .map(HostAndPort::fromString)
             .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));

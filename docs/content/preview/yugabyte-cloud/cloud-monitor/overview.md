@@ -16,7 +16,7 @@ Monitor performance metrics for your cluster to ensure the cluster configuration
 
 - The **Overview** tab displays a summary of the cluster infrastructure, along with time series charts of four key performance metrics for all the nodes in the cluster - Operations/sec, Average Latency, CPU Usage, and Disk Usage.
 
-- The **Performance** tab **Metrics** displays a comprehensive array of more specific performance metrics, including for YSQL and YCQL API performance.
+- The **Perf Advisor** tab **Metrics** displays a comprehensive array of more specific performance metrics, including for YSQL and YCQL API performance.
 
 {{< youtube id="Xv4y6wWSHJ8" title="Monitor cluster performance in YugabyteDB Aeon" >}}
 
@@ -45,9 +45,9 @@ The following table describes the metrics available on the **Overview**.
 
 ## Performance metrics
 
-To choose the metrics to display on the **Performance** tab, select **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. To [export metrics](../metrics-export/) to third-party tools, click **Export**. You can additionally view the metrics for specific nodes.
+To choose the metrics to display on the **Perf Advisor** tab, select **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. To [export metrics](../metrics-export/) to third-party tools, click **Export**. You can additionally view the metrics for specific nodes.
 
-The **Performance** tab provides the following metrics in addition to the Overview metrics.
+The **Perf Advisor** tab provides the following metrics in addition to the Overview metrics.
 
 ### YSQL Ops
 

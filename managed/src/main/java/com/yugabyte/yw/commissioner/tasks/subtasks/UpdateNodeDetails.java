@@ -9,6 +9,10 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import javax.inject.Inject;
 
+/**
+ * @deprecated Use {@link #createUpdateUniverseFieldsTask(java.util.function.Consumer)}.
+ */
+@Deprecated
 public class UpdateNodeDetails extends NodeTaskBase {
 
   @Inject

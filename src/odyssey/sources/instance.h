@@ -20,7 +20,7 @@ struct od_instance {
 	od_config_t config;
 	char *orig_argv_ptr;
 	int64_t shutdown_worker_id;
-	struct ConnectionStats *yb_stats; 
+	struct ConnectionStats *yb_stats;
 };
 
 void od_instance_init(od_instance_t *);

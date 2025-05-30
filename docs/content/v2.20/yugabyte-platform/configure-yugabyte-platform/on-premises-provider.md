@@ -9,6 +9,8 @@ menu:
     identifier: on-premises-provider
     parent: set-up-on-premises
     weight: 10
+aliases:
+  - /v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/
 type: docs
 ---
 

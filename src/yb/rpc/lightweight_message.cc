@@ -369,7 +369,7 @@ Status ParseFailed(const char* field_name) {
 }
 
 void SetupLimit(google::protobuf::io::CodedInputStream* in) {
-  in->SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit, 0 /* unused */);
+  in->SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit);
 }
 
 ThreadSafeArena& empty_arena() {

@@ -61,6 +61,12 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (ListUDTypes)
     (ReportYsqlDdlTxnStatus)
     (TruncateTable)
+    (RefreshYsqlLease)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
+    CatalogManager,
+    (GetObjectLockStatus)
   )
 
   void AcquireObjectLocksGlobal(

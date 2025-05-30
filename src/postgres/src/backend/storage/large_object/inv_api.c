@@ -12,8 +12,8 @@
  * quite likely to be in compressed or short format.  We also need to check
  * for NULLs, since initdb will mark loid and pageno but not data as NOT NULL.
  *
- * Note: many of these routines leak memory in GetCurrentMemoryContext(), as indeed
- * does most of the backend code.  We expect that GetCurrentMemoryContext() will
+ * Note: many of these routines leak memory in CurrentMemoryContext, as indeed
+ * does most of the backend code.  We expect that CurrentMemoryContext will
  * be a short-lived context.  Data that must persist across function calls
  * is kept either in CacheMemoryContext (the Relation structs) or in the
  * memory context given to inv_open (for LargeObjectDesc structs).

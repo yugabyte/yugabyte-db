@@ -22,7 +22,6 @@
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
@@ -126,6 +125,16 @@ class PgsqlWriteOperation :
       const PgsqlColumnValuePB& column_value, dockv::PgTableRow* returning_table_row,
       qlexpr::QLExprResult* result, RowPackContext* pack_context);
 
+  // Handle removal of a single vector caused by any reason.
+  Status FillRemovedVectorId(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row, ColumnId column_id);
+  // Handle removal of vectors caused by applying DELETE statement.
+  Status HandleDeletedVectorIds(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row);
+  // Handle removal of vectors caused by applying UPDATE statement.
+  Status HandleUpdatedVectorIds(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row);
+
   const dockv::ReaderProjection& projection() const;
 
   //------------------------------------------------------------------------------------------------
@@ -162,7 +171,7 @@ struct PgsqlReadOperationData {
   const TransactionOperationContext& txn_op_context;
   const YQLStorageIf& ql_storage;
   const ScopedRWOperation& pending_op;
-  VectorIndexPtr vector_index;
+  DocVectorIndexPtr vector_index;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {
@@ -170,9 +179,9 @@ class PgsqlReadOperation : public DocExprExecutor {
   // Construct and access methods.
   PgsqlReadOperation(std::reference_wrapper<const PgsqlReadOperationData> data,
                      WriteBuffer* result_buffer,
-                     HybridTime* restart_read_ht)
+                     ReadRestartData* read_restart_data)
       : data_(data), request_(data_.request), result_buffer_(result_buffer),
-        restart_read_ht_(restart_read_ht) {
+        read_restart_data_(read_restart_data) {
   }
 
   const PgsqlReadRequestPB& request() const { return data_.request; }
@@ -209,6 +218,10 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Result<std::tuple<size_t, bool>> ExecuteSampleBlockBased();
 
+  // Only for backward compatibility with older releases which expect ExecuteSampleBlockBased
+  // to perform both stages for colocated tables in one run.
+  Result<std::tuple<size_t, bool>> DEPRECATED_ExecuteSampleBlockBasedColocated();
+
   void BindReadTimeToPagingState(const ReadHybridTime& read_time);
 
   Status PopulateResultSet(const dockv::PgTableRow& table_row,
@@ -221,7 +234,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
   Result<bool> SetPagingState(
-      YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time);
+      YQLRowwiseIteratorIf* iter, const Schema& schema, const ReadHybridTime& read_time,
+      ReadKey page_from_read_key);
 
   Result<size_t> ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& options);
 
@@ -233,7 +247,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   const PgsqlReadOperationData& data_;
   const PgsqlReadRequestPB& request_;
   WriteBuffer* const result_buffer_;
-  HybridTime* const restart_read_ht_;
+  ReadRestartData* const read_restart_data_;
 
   boost::container::small_vector<dockv::PgWireEncoderEntry, 0x10> target_encoders_;
   PgsqlResponsePB response_;

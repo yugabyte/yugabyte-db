@@ -17,9 +17,7 @@ type: docs
 
 Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
 
-{{<note>}}
-In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. Indexes are not colocated with the base table.
-{{</note>}}
+In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. Unless the index is colocated or copartitioned, the sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed.
 
 Indexes are created in the following format:
 
@@ -37,22 +35,7 @@ The columns that are specified in the [CREATE INDEX](../../../../api/ysql/the-sq
 
 ## Setup
 
-The examples run on any YugabyteDB universe.
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
+{{% explore-setup-single-new %}}
 
 Create a census table as follows:
 

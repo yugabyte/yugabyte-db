@@ -406,7 +406,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     remoteHAConfig.getInstances().stream()
         .sorted(Comparator.comparing(PlatformInstance::getIsLocal).reversed())
         .forEach(i -> i.updateIsLocal(!i.getIsLocal()));
-    // Write out the updated remote config.
+    // Save the local HA config before DB record is replaced in backup-restore during promotion.
     platformReplicationManager.saveLocalHighAvailabilityConfig(remoteHAConfig);
 
     platformReplicationManager.promoteLocalInstance(remoteInstance);

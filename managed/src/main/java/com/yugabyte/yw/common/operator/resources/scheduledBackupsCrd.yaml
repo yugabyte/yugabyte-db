@@ -1,0 +1,123 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: backupschedules.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: backupschedules
+    singular: backupschedule
+    kind: BackupSchedule
+    categories:
+      - all
+      - yugabyte
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: Custom resource definition for YugabyteDB backup schedules.
+          type: object
+          properties:
+            status:
+              type: object
+              description: Schedule status for the backup schedule custom resource.
+              properties:
+                nextBackupTime:
+                  description: Timestamp of the next backup in UTC.
+                  type: string
+                previousBackupTime:
+                  description: Time of the previous backup in UTC.
+                  type: string
+                scheduleUUID:
+                  description: Internal UUID of the backup schedule resource.
+                  type: string
+                state:
+                  description: State of schedule
+                  type: string
+
+            spec:
+              type: object
+              x-kubernetes-validations:
+                - rule: self.schedulingFrequency != 0 || self.cronExpression != ''
+                  message: >
+                    "Either 'schedulingFrequency' must be non-zero or
+                    'cronExpression' must be a non-empty string."
+              properties:
+                backupType:
+                  description: >
+                    Type of backup to be taken.
+                    Allowed values are -
+                    YQL_TABLE_TYPE PGSQL_TABLE_TYPE
+                  type: string
+                  enum:
+                    - YQL_TABLE_TYPE
+                    - PGSQL_TABLE_TYPE
+                  x-kubernetes-validations:
+                  - message: backupType cannot be changed
+                    rule: self == oldSelf
+                storageConfig:
+                  description: >
+                    Storage configuration for the backup,
+                    refers to a storageconfig CR name. Should be in the same namespace
+                    as the backupschedule.
+                  type: string
+                  x-kubernetes-validations:
+                  - message: storageConfig cannot be changed
+                    rule: self == oldSelf
+                universe:
+                  description: >
+                    Name of the universe for which backup is to be taken,
+                    refers to a ybuniverse CR name. Should be in the same namespace
+                    as the backupschedule.
+                  type: string
+                  x-kubernetes-validations:
+                  - message: universe cannot be changed
+                    rule: self == oldSelf
+                tableByTableBackup:
+                  description: Boolean indicating if backup is to be taken table by table.
+                  type: boolean
+                  x-kubernetes-validations:
+                  - message: tableByTableBackup cannot be changed
+                    rule: self == oldSelf
+                keyspace:
+                  description: Name of keyspace to be backed up.
+                  type: string
+                  x-kubernetes-validations:
+                  - message: keyspace cannot be changed
+                    rule: self == oldSelf
+                timeBeforeDelete:
+                  description: Time before backup is deleted from storage in milliseconds.
+                  type: integer
+                  minimum: 0
+                  x-kubernetes-validations:
+                  - message: timeBeforeDelete cannot be changed
+                    rule: self == oldSelf
+                schedulingFrequency:
+                  description: Frequency of full backups in milliseconds.
+                  type: integer
+                  minimum: 3600000
+                cronExpression:
+                  description: Frequency of full backups in cron expression.
+                  type: string
+                  default: ''
+                incrementalBackupFrequency:
+                  description: Frequency of incremental backups in milliseconds
+                  type: integer
+                  minimum: 0
+                enablePointInTimeRestore:
+                  description: Enable Point in time restore for backups created with the schedule
+                  type: boolean
+                  default: false
+                  x-kubernetes-validations:
+                  - message: enablePointInTimeRestore cannot be changed
+                    rule: self == oldSelf
+              required:
+              - keyspace
+              - backupType
+              - storageConfig
+              - universe

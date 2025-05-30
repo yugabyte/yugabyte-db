@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -113,7 +113,10 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   Result<const FetchedEntry&> FetchNext();
 
   const ReadHybridTime& read_time() const override { return read_time_; }
-  Result<HybridTime> RestartReadHt() const override;
+  Result<ReadRestartData> GetReadRestartData() const override;
+
+  MaxSeenHtData ObtainMaxSeenHtCheckpoint() override;
+  void RollbackMaxSeenHt(MaxSeenHtData checkpoint) override;
 
   HybridTime TEST_MaxSeenHt() const;
 
@@ -141,6 +144,8 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // TTL row).
   // Returns HybridTime::kInvalid if no such record was found.
   Result<HybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
+
+  void UpdateFilterKey(Slice user_key_for_filter);
 
   void DebugDump();
 
@@ -310,6 +315,8 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 #endif
   }
 
+  void UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice key);
+
   const ReadHybridTime read_time_;
   const EncodedReadHybridTime encoded_read_time_;
 
@@ -322,7 +329,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   rocksdb::KeyValueEntry regular_entry_;
 
   Status status_;
-  EncodedDocHybridTime max_seen_ht_{DocHybridTime::kMin};
+  MaxSeenHtData max_seen_ht_data_ = {};
 
   // Upperbound for seek. If we see regular or intent record past this bound, it will be ignored.
   Slice upperbound_;

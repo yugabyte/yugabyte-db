@@ -21,12 +21,12 @@ For information on xCluster deployment architecture, replication scenarios, and 
     title="Deploy transactional xCluster"
     body="Set up transactional unidirectional replication."
     href="async-replication-transactional/"
-    icon="fa-light fa-money-from-bracket">}}
+    icon="fa-thin fa-money-from-bracket">}}
 
   {{<index/item
     title="Deploy non-transactional xCluster"
     body="Set up non-transactional unidirectional or bidirectional replication."
     href="async-deployment/"
-    icon="fa-light fa-copy">}}
+    icon="fa-thin fa-copy">}}
 
 {{</index/block>}}

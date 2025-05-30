@@ -17,12 +17,79 @@
 
 #include "yb/util/byte_buffer.h"
 #include "yb/util/random_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
 namespace yb {
 
 using Buffer = ByteBuffer<8>;
+using MemTrackedBuffer = MemTrackedByteBuffer<8>;
+
+TEST(ByteBufferTest, Consumption) {
+  // Ensure for non-mem-tracked buffer we don't waste memory on consumption field.
+  ASSERT_LT(sizeof(Buffer), sizeof(MemTrackedBuffer));
+
+  auto t = MemTracker::CreateTracker("t");
+  auto allocated_bytes_prev = GetTCMallocCurrentAllocatedBytes();
+  auto consumption_prev = t->consumption();
+
+  auto get_allocated_bytes_delta = [&allocated_bytes_prev] {
+    if (IsSanitizer()) {
+      // Can't detect properly under sanitizers, so just make test always pass but still run it
+      // in order to potentially catch sanitizer issues.
+      return int64_t(0);
+    }
+    const auto old_allocated_bytes_prev = allocated_bytes_prev;
+    allocated_bytes_prev = GetTCMallocCurrentAllocatedBytes();
+    return allocated_bytes_prev - old_allocated_bytes_prev;
+  };
+  auto get_consumption_delta = [&consumption_prev, t] {
+    if (IsSanitizer()) {
+      return int64_t(0);
+    }
+    const auto old_consumption_prev = consumption_prev;
+    consumption_prev = t->consumption();
+    return consumption_prev - old_consumption_prev;
+  };
+
+  MemTrackedBuffer buffer(t);
+  if (!IsSanitizer()) {
+    ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+  }
+
+  buffer.append(std::string(777, 'x'));
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+
+  buffer.append(std::string(555, 'x'));
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+
+  auto buffer2 = std::move(buffer);
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+
+  buffer2.assign(std::string(1234, 'x'));
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+
+  MemTrackedBuffer buffer3(t, std::string(9999, 'x'));
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+
+  auto buffer4 = buffer3;
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+
+  MemTrackedBuffer buffer5(t);
+  buffer5 = std::string(5555, 'x');
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+
+  auto buffer6(buffer5);
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+
+  std::string str6(10000, 'x');
+  // Update allocated bytes to account for str6 memory usage which is not tracked by mem tracker.
+  get_allocated_bytes_delta();
+
+  buffer6 = Slice(str6);
+  ASSERT_EQ(get_allocated_bytes_delta(), get_consumption_delta());
+}
 
 TEST(ByteBufferTest, Assign) {
   std::string str = "source_string"s;

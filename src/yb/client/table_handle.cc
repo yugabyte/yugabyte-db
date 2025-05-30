@@ -353,8 +353,8 @@ bool TableIterator::IsFlushStatusOkOrHandleErrors(FlushStatus flush_status) {
   HandleError(flush_status.status);
   if (!error_handler_) {
     for (const auto& error : flush_status.errors) {
-      LOG(ERROR) << "Failed operation: " << error->failed_op().ToString()
-                 << ", status: " << error->status();
+      LOG(WARNING) << "Failed operation: " << error->failed_op().ToString()
+                   << ", status: " << error->status();
     }
   }
   return false;

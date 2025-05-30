@@ -75,6 +75,7 @@ class MonoDelta {
   bool MoreThan(const MonoDelta &rhs) const;
   bool Equals(const MonoDelta &rhs) const;
   bool IsNegative() const;
+  std::string ToPrettyString() const;
   std::string ToString() const;
   double ToSeconds() const;
   double ToMinutes() const;
@@ -199,6 +200,10 @@ class MonoTime {
   // The coarse monotonic time is faster to retrieve, but "only" accurate to within a millisecond or
   // two.  The speed difference will depend on your timer hardware.
   static MonoTime Now();
+
+  static MonoTime NowIf(bool flag) {
+    return flag ? Now() : MonoTime();
+  }
 
   // Return MonoTime equal to farthest possible time into the future.
   static MonoTime Max();

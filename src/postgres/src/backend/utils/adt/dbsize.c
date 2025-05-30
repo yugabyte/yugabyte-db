@@ -430,7 +430,7 @@ calculate_table_size(Relation rel)
 		int32		num_missing_tablets = 0;
 
 		HandleYBStatus(YBCPgGetTableDiskSize(YbGetRelfileNodeId(rel),
-											 YBCGetDatabaseOid(rel), (int64_t *) & size, &num_missing_tablets));
+											 YBCGetDatabaseOid(rel), (int64_t *) &size, &num_missing_tablets));
 		if (num_missing_tablets > 0)
 		{
 			elog(NOTICE,
@@ -517,7 +517,7 @@ pg_table_size(PG_FUNCTION_ARGS)
 
 	relation_close(rel, AccessShareLock);
 
-	/* Return an empty line for relations without size info */
+	/* YB: Return an empty line for relations without size info */
 	if (is_yb_relation && size < 0)
 		PG_RETURN_NULL();
 
@@ -558,7 +558,7 @@ calculate_total_relation_size(Relation rel)
 	 */
 	size = calculate_table_size(rel);
 
-	/* Return -1 size for tables without size info and handle in caller */
+	/* YB: Return -1 size for tables without size info and handle in caller */
 	if (IsYBRelation(rel) && size < 0)
 		return -1;
 
@@ -609,9 +609,13 @@ pg_size_pretty(PG_FUNCTION_ARGS)
 	for (unit = size_pretty_units; unit->name != NULL; unit++)
 	{
 		uint8		bits;
+		uint64		abs_size = size < 0 ? 0 - (uint64) size : (uint64) size;
 
-		/* use this unit if there are no more units or we're below the limit */
-		if (unit[1].name == NULL || Abs(size) < unit->limit)
+		/*
+		 * Use this unit if there are no more units or the absolute size is
+		 * below the limit for the current unit.
+		 */
+		if (unit[1].name == NULL || abs_size < unit->limit)
 		{
 			if (unit->round)
 				size = half_rounded(size);

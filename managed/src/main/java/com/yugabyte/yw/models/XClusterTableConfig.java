@@ -2,9 +2,13 @@
 package com.yugabyte.yw.models;
 
 import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH;
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_ERROR_UNINITIALIZED;
 import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_MISSING_OP_ID;
 import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_MISSING_TABLE;
 import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_SCHEMA_MISMATCH;
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_SOURCE_UNREACHABLE;
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_SYSTEM_ERROR;
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_UNKNOWN_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonGetter;
@@ -75,6 +79,15 @@ public class XClusterTableConfig extends Model {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   @ToString.Include
   private boolean replicationSetupDone;
+
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value =
+          "Time of replication setup, ie, table added to the replication group "
+              + "on the target universe",
+      example = "2022-12-12T13:07:18Z")
+  @JsonIgnore
+  private Date replicationSetupTime;
 
   @ApiModelProperty(
       value = "YbaApi Internal. Whether this table needs bootstrap process for replication setup")
@@ -161,11 +174,20 @@ public class XClusterTableConfig extends Model {
 
   // TODO move API response attributes out of the DB model
   public enum ReplicationStatusError {
+    UNKNOWN_ERROR(REPLICATION_UNKNOWN_ERROR, "Unknown error"),
     MISSING_OP(REPLICATION_MISSING_OP_ID, "Missing op ID"),
     SCHEMA_MISMATCH(REPLICATION_SCHEMA_MISMATCH, "Schema mismatch"),
     MISSING_TABLE(REPLICATION_MISSING_TABLE, "Missing table"),
+    // The following status can happen when the master leader of the target universe has not yet
+    // gathered the status of the replication stream. It can happen when the replication is just
+    // set up or there is a new master leader.
+    ERROR_UNINITIALIZED(REPLICATION_ERROR_UNINITIALIZED, "Uninitialized"),
     AUTO_FLAG_CONFIG_MISMATCH(
-        REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH, "Auto flag config mismatch");
+        REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH, "Auto flag config mismatch"),
+    SOURCE_UNREACHABLE(REPLICATION_SOURCE_UNREACHABLE, "Source unreachable"),
+    SYSTEM_ERROR(REPLICATION_SYSTEM_ERROR, "System error");
+    // REPLICATION_OK and REPLICATION_PAUSED are not included intentionally because they are not
+    // errors.
 
     private final org.yb.CommonTypes.ReplicationErrorPb errorCode;
     private final String message;
@@ -195,6 +217,7 @@ public class XClusterTableConfig extends Model {
     this.setConfig(config);
     this.setTableId(tableId);
     this.setReplicationSetupDone(false);
+    this.setReplicationSetupTime(null);
     this.setNeedBootstrap(false);
     this.setIndexTable(false);
     this.setStatus(Status.Validated);
@@ -237,6 +260,7 @@ public class XClusterTableConfig extends Model {
   public void reset() {
     this.setStatus(XClusterTableConfig.Status.Validated);
     this.setReplicationSetupDone(false);
+    this.setReplicationSetupTime(null);
     this.setStreamId(null);
     this.setBootstrapCreateTime(null);
     this.setRestoreTime(null);

@@ -20,8 +20,6 @@
 DEFINE_test_flag(bool, block_xcluster_checkpoint_namespace_task, false,
     "When enabled XClusterCheckpointNamespaceTask will be blocked");
 
-DECLARE_bool(TEST_xcluster_enable_sequence_replication);
-
 using namespace std::placeholders;
 
 namespace yb::master {
@@ -66,8 +64,7 @@ std::string XClusterCheckpointNamespaceTask::description() const {
 }
 
 Status XClusterCheckpointNamespaceTask::FirstStep() {
-  if (outbound_replication_group_.AutomaticDDLMode() &&
-      FLAGS_TEST_xcluster_enable_sequence_replication) {
+  if (outbound_replication_group_.AutomaticDDLMode()) {
     // Ensure sequences_data table has been created and added to our tables to checkpoint.
     // TODO: Consider making this async  so we don't have to burn a thread waiting.
     RETURN_NOT_OK(outbound_replication_group_.helper_functions_.create_sequences_data_table_func());
@@ -76,7 +73,19 @@ Status XClusterCheckpointNamespaceTask::FirstStep() {
         namespace_id_, sequence_table_alias_id, epoch_));
   }
 
-  return SetupDDLReplicationExtension();
+  ScheduleNextStep([this] { return BumpOidCounter(); }, "BumpOidCounter");
+  return Status::OK();
+}
+
+Status XClusterCheckpointNamespaceTask::BumpOidCounter() {
+  if (outbound_replication_group_.AutomaticDDLMode()) {
+    RETURN_NOT_OK(outbound_replication_group_.helper_functions_
+                      .set_normal_oid_counter_above_all_normal_oids_func(namespace_id_));
+  }
+
+  ScheduleNextStep(
+      [this] { return SetupDDLReplicationExtension(); }, "SetupDDLReplicationExtension");
+  return Status::OK();
 }
 
 Status XClusterCheckpointNamespaceTask::SetupDDLReplicationExtension() {
@@ -87,9 +96,7 @@ Status XClusterCheckpointNamespaceTask::SetupDDLReplicationExtension() {
             &XClusterCheckpointNamespaceTask::SetupDDLReplicationExtensionCallback, this, _1));
   }
 
-  ScheduleNextStep(
-      std::bind(&XClusterCheckpointNamespaceTask::CreateStreams, this), "CreateStreams");
-
+  ScheduleNextStep([this] { return CreateStreams(); }, "CreateStreams");
   return Status::OK();
 }
 
@@ -109,16 +116,14 @@ Status XClusterCheckpointNamespaceTask::PrepareDDLQueueTable(Status status) {
   RETURN_NOT_OK(
       outbound_replication_group_.SetDDLQueueTableIsPartOfInitialBootstrap(namespace_id_, epoch_));
 
-  ScheduleNextStep(
-      std::bind(&XClusterCheckpointNamespaceTask::CreateStreams, this), "CreateStreams");
+  ScheduleNextStep([this] { return CreateStreams(); }, "CreateStreams");
   return Status::OK();
 }
 
 Status XClusterCheckpointNamespaceTask::CreateStreams() {
   RETURN_NOT_OK(
       outbound_replication_group_.CreateStreamsForInitialBootstrap(namespace_id_, epoch_));
-  ScheduleNextStep(
-      std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreams, this), "CheckpointStreams");
+  ScheduleNextStep([this] { return CheckpointStreams(); }, "CheckpointStreams");
   return Status::OK();
 }
 
@@ -132,8 +137,7 @@ Status XClusterCheckpointNamespaceTask::CheckpointStreams() {
   if (!status.ok() && status.IsTryAgain()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to checkpoint streams: " << status << ". Scheduling retry";
     ScheduleNextStepWithDelay(
-        std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreams, this), "CheckpointStreams",
-        GetDelayWithBackoff());
+        [this] { return CheckpointStreams(); }, "CheckpointStreams", GetDelayWithBackoff());
     return Status::OK();
   }
 
@@ -162,8 +166,7 @@ Status XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed(
     LOG_WITH_PREFIX(INFO) << "Failed to checkpoint streams with retryable error: "
                           << result.status() << ". Scheduling retry";
     ScheduleNextStepWithDelay(
-        std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreams, this), "CheckpointStreams",
-        GetDelayWithBackoff());
+        [this] { return CheckpointStreams(); }, "CheckpointStreams", GetDelayWithBackoff());
     return Status::OK();
   }
 
@@ -172,8 +175,7 @@ Status XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed(
     // All tables have been checkpointed and the replication group is now READY.
     Complete();
   } else {
-    ScheduleNextStep(
-        std::bind(&XClusterCheckpointNamespaceTask::CheckpointStreams, this), "CheckpointStreams");
+    ScheduleNextStep([this] { return CheckpointStreams(); }, "CheckpointStreams");
   }
   return Status::OK();
 }

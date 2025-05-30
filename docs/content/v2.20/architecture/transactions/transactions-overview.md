@@ -1,17 +1,14 @@
 ---
-title: Transactions overview
-headerTitle: Transactions overview
-linkTitle: Overview
-description: An overview of transactions work in YugabyteDB.
+title: Fundamentals of Distributed Transactions
+linkTitle: Fundamentals
+description: The fundamental concepts behind distributed transactions
 menu:
   v2.20:
     identifier: architecture-transactions-overview
     parent: architecture-acid-transactions
-    weight: 10
+    weight: 100
 type: docs
 ---
-
-Transactions and strong consistency are a fundamental requirement for any RDBMS. DocDB has been designed for strong consistency. It supports fully distributed atomicity, consistency, isolation, durability (ACID) transactions across rows, multiple tablets, and multiple nodes at any scale. Transactions can span across tables in DocDB.
 
 A transaction is a sequence of operations performed as a single logical unit of work. The intermediate states of the database as a result of applying the operations inside a transaction are not visible to other concurrent transactions, and if a failure occurs that prevents the transaction from completing, then none of the steps affect the database.
 
@@ -41,7 +38,7 @@ YugabyteDB maintains data consistency internally using multi-version concurrency
 
 ### MVCC using hybrid time
 
-YugabyteDB implements MVCC and internally keeps track of multiple versions of values corresponding to the same key (for example, of a particular column in a particular row), as described in [Persistence on top of RocksDB](../../docdb/persistence). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
+YugabyteDB implements MVCC and internally keeps track of multiple versions of values corresponding to the same key (for example, of a particular column in a particular row), as described in [Persistence on top of RocksDB](../../docdb/). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
 
 The timestamp used for MVCC comes from the [hybrid time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks. The hybrid time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value observed, including the current physical time on the server. Multiple aspects of YugabyteDB's transaction model rely on these properties of hybrid time. Consider the following examples:
 

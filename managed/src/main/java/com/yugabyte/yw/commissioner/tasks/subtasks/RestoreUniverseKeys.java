@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager.RestoreKeyResult;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
@@ -40,7 +41,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
   }
 
   // Should we use RPC to get the activeKeyId and then try and see if it matches this key?
-  private byte[] getActiveUniverseKey() {
+  private EncryptionKey getActiveUniverseKey() {
     KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(taskParams().getUniverseUUID());
     if (activeKey == null
         || activeKey.getUuid().keyRef == null
@@ -55,7 +56,8 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
       return null;
     }
 
-    return Base64.getDecoder().decode(activeKey.getUuid().keyRef);
+    return new EncryptionKey(
+        Base64.getDecoder().decode(activeKey.getUuid().keyRef), activeKey.getEncryptionContext());
   }
 
   @Override
@@ -64,7 +66,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
-    byte[] activeKeyRef = null;
+    EncryptionKey activeKeyRef = null;
     try {
       log.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
@@ -93,14 +95,15 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
           ///////////////
           // Restore state of encryption in universe having backup restored into
           ///////////////
-          if (activeKeyRef != null) {
+          if (activeKeyRef != null && activeKeyRef.getKeyBytes() != null) {
             // Ensure the active universe key in YB is set back to what it was
             // before restore flow
             keyManager.sendKeyToMasters(
                 ybService,
                 taskParams().getUniverseUUID(),
                 universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID,
-                activeKeyRef);
+                activeKeyRef.getKeyBytes(),
+                activeKeyRef.getEncryptionContext());
           } else if (client.isEncryptionEnabled().getFirst()) {
             // If there is no active keyRef but encryption is enabled,
             // it means that the universe being restored into was not

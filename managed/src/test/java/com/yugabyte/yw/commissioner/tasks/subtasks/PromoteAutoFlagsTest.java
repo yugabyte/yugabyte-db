@@ -93,7 +93,6 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
                 "uuid",
                 PromoteAutoFlagsResponsePB.newBuilder()
                     .setNewConfigVersion(1)
-                    .setNonRuntimeFlagsPromoted(false)
                     .setError(
                         MasterErrorPB.newBuilder()
                             .setStatus(
@@ -109,7 +108,6 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
                 "uuid",
                 PromoteAutoFlagsResponsePB.newBuilder()
                     .setNewConfigVersion(1)
-                    .setNonRuntimeFlagsPromoted(false)
                     .setError(
                         MasterErrorPB.newBuilder()
                             .setStatus(

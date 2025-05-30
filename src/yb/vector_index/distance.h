@@ -147,7 +147,7 @@ using DistanceFunction = std::function<DistanceResult(const Vector&, const Vecto
 // compute the distance.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 using VertexIdToVectorDistanceFunction =
-    std::function<DistanceResult(VectorId vertex_id, const Vector&)>;
+    std::function<DistanceResult(VectorId vector_id, const Vector&)>;
 
 template<ValidDistanceResultType DistanceResult>
 struct VectorWithDistance {
@@ -169,7 +169,7 @@ struct VectorWithDistance {
     return YB_STRUCT_TO_STRING(vector_id, distance);
   }
 
-  // Sort in lexicographical order of (distance, vertex_id).
+  // Sort in lexicographical order of (distance, vector_id).
   bool operator <(const VectorWithDistance& other) const {
     return distance < other.distance ||
            (distance == other.distance && vector_id < other.vector_id);
@@ -192,6 +192,11 @@ template<ValidDistanceResultType DistanceResult>
 bool operator==(const VectorWithDistance<DistanceResult>& lhs,
                 const VectorWithDistance<DistanceResult>& rhs) {
   return YB_STRUCT_EQUALS(vector_id, distance);
+}
+
+template<ValidDistanceResultType DistanceResult>
+std::ostream& operator<<(std::ostream& out, const VectorWithDistance<DistanceResult>& value) {
+  return out << value.ToString();
 }
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

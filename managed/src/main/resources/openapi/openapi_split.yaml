@@ -12,7 +12,7 @@ info:
   version: v2
 servers:
   - description: API endpoint of YBA server
-    url: '{protocol}://{host_port}'
+    url: '{protocol}://{host_port}/api/v2'
     variables:
       protocol:
         enum:

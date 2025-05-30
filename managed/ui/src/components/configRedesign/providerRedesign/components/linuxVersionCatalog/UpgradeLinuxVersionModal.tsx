@@ -7,7 +7,8 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC } from 'react';
+import { FC, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import clsx from 'clsx';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
@@ -17,15 +18,30 @@ import { find, isEmpty } from 'lodash';
 import * as yup from 'yup';
 import { useMutation } from 'react-query';
 import { Grid, MenuItem, Typography, makeStyles } from '@material-ui/core';
-import { AlertVariant, YBAlert, YBInputField, YBModal, YBSelectField } from '../../../../../redesign/components';
-import { createErrorMessage } from '../../../../../redesign/features/universe/universe-form/utils/helpers';
+import {
+  AlertVariant,
+  YBAlert,
+  YBButton,
+  YBInputField,
+  YBModal,
+  YBSelectField
+} from '../../../../../redesign/components';
+import { useIsTaskNewUIEnabled } from '../../../../../redesign/features/tasks/TaskUtils';
+import { showTaskInDrawer } from '../../../../../actions/tasks';
+import {
+  createErrorMessage,
+  transitToUniverse
+} from '../../../../../redesign/features/universe/universe-form/utils/helpers';
+import { UPGRADE_TYPE } from '../../../../../redesign/features/universe/universe-actions/rollback-upgrade/utils/types';
 import { ClusterType, Universe } from '../../../../../redesign/helpers/dtos';
 import {
   ImageBundle,
-  ImageBundleType
+  ImageBundleType,
+  PRECHECK_UPGRADE_TYPE
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from './LinuxVersionUtils';
 import { upgradeVM } from './VersionCatalogApi';
+import { useInterceptBackupTaskLinks } from '../../../../../redesign/features/tasks/TaskUtils';
 
 interface UpgradeLinuxVersionModalProps {
   visible: boolean;
@@ -74,9 +90,14 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
   onHide,
   universeData
 }) => {
+  const dispatch = useDispatch();
+
   const { t } = useTranslation('translation', {
     keyPrefix: 'linuxVersion.upgradeModal'
   });
+
+  const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
+  const interceptBackupLink = useInterceptBackupTaskLinks();
 
   const allProviders = useSelector((data: any) => data.cloud.providers) ?? [];
 
@@ -84,6 +105,7 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
     control,
     handleSubmit,
     setError,
+    watch,
     formState: { errors }
   } = useForm<UpgradeLinuxVersionModalForm>({
     defaultValues: {
@@ -92,43 +114,59 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
     }
   });
 
+  const targetVersionValue = watch('targetVersion');
+
   const classes = useStyles();
 
   const doUpgradeVM = useMutation(
     ({
       imageBundleUUID,
       nodePrefix,
-      sleepAfterInSeconds
+      sleepAfterInSeconds,
+      runOnlyPrechecks
     }: {
       imageBundleUUID: string;
       nodePrefix: string;
       sleepAfterInSeconds: number;
+      runOnlyPrechecks: boolean;
     }) => {
       return upgradeVM(universeData.universeUUID, {
-        taskType: 'VMImage',
-        upgradeOption: 'Rolling',
+        taskType: PRECHECK_UPGRADE_TYPE.VMIMAGE,
+        upgradeOption: UPGRADE_TYPE.ROLLING,
         imageBundleUUID,
         nodePrefix,
         sleepAfterMasterRestartMillis: sleepAfterInSeconds * 1000,
         sleepAfterTServerRestartMillis: sleepAfterInSeconds * 1000,
-        clusters: universeData?.universeDetails.clusters
+        clusters: universeData?.universeDetails.clusters,
+        runOnlyPrechecks
       });
     },
     {
-      onSuccess: (resp) => {
+      onSuccess: (resp, { runOnlyPrechecks }) => {
         const taskUUID = resp.data.taskUUID;
         toast.success(
           <span>
-            <Trans
-              i18nKey="linuxVersion.upgradeModal.successMsg"
-              components={[
-                <a href={`/tasks/${taskUUID}`} target="_blank" rel="noopener noreferrer">
-                  here
-                </a>
-              ]}
-            ></Trans>
+            {runOnlyPrechecks ? (
+              t('precheckInitiatedMsg', { keyPrefix: 'universeActions' })
+            ) : (
+              <Trans
+                i18nKey="linuxVersion.upgradeModal.successMsg"
+                components={[
+                  interceptBackupLink(
+                    <a href={`/tasks/${taskUUID}`} target="_blank" rel="noopener noreferrer">
+                      here
+                    </a>
+                  )
+                ]}
+              ></Trans>
+            )}
           </span>
         );
+        if (isNewTaskUIEnabled) {
+          dispatch(showTaskInDrawer(taskUUID));
+        } else {
+          transitToUniverse(universeData.universeUUID);
+        }
         onHide();
       },
       onError: (resp: any) => {
@@ -162,6 +200,24 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
         t('sameVersionErrMsg', { image_name: curLinuxImgBundle?.name })
       )
   });
+
+  const handleFormSubmit = (runOnlyPrechecks = false) =>
+    handleSubmit(async (values) => {
+      try {
+        await validationSchema.validate(values);
+        doUpgradeVM.mutateAsync({
+          imageBundleUUID: values.targetVersion!,
+          nodePrefix: universeData.universeDetails.nodePrefix,
+          sleepAfterInSeconds: values.sleepAfterInSeconds,
+          runOnlyPrechecks
+        });
+      } catch (e) {
+        setError('targetVersion', {
+          message: (e as yup.ValidationError)?.message
+        });
+      }
+    });
+
   return (
     <YBModal
       open={visible}
@@ -174,29 +230,43 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
       }}
       overrideWidth={'886px'}
       overrideHeight={'720px'}
-      cancelLabel={t('cancel', { keyPrefix: 'common' })}
-      submitLabel={t('submitLabel')}
-      buttonProps={{
-        primary: {
-          disabled: !isEmpty(errors)
-        }
-      }}
-      onSubmit={() => {
-        handleSubmit(async (values) => {
-          try {
-            await validationSchema.validate(values);
-            doUpgradeVM.mutate({
-              imageBundleUUID: values.targetVersion!,
-              nodePrefix: universeData.universeDetails.nodePrefix,
-              sleepAfterInSeconds: values.sleepAfterInSeconds
-            });
-          } catch (e) {
-            setError('targetVersion', {
-              message: (e as yup.ValidationError)?.message
-            });
-          }
-        })();
-      }}
+      footerAccessory={
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '8px',
+            width: '100%'
+          }}
+        >
+          <YBButton
+            type="button"
+            variant="secondary"
+            data-testid="UpgradeLinuxVersionModal-CancelButton"
+            onClick={onHide}
+          >
+            {t('cancel', { keyPrefix: 'common' })}
+          </YBButton>
+          <YBButton
+            type="button"
+            variant="secondary"
+            disabled={!targetVersionValue}
+            onClick={handleFormSubmit(true)}
+            data-testid="UpgradeLinuxVersionModal-PrecheckButton"
+          >
+            {t('runPrecheckOnlyButton')}
+          </YBButton>
+          <YBButton
+            variant="primary"
+            disabled={!isEmpty(errors) || !targetVersionValue}
+            onClick={handleFormSubmit()}
+            data-testid="UpgradeLinuxVersionModal-UpgradeButton"
+          >
+            {t('submitLabel')}
+          </YBButton>
+        </div>
+      }
     >
       <Grid container>
         <Grid item xs={3} className={classes.versionComp}>
@@ -261,11 +331,11 @@ export const UpgradeLinuxVersionModal: FC<UpgradeLinuxVersionModalProps> = ({
         open
         text={
           <Trans
-          i18nKey={`linuxVersion.upgradeModal.verifyImageText`}
-          components={{
-            b: <b />
-          }}
-        />
+            i18nKey={`linuxVersion.upgradeModal.verifyImageText`}
+            components={{
+              b: <b />
+            }}
+          />
         }
         variant={AlertVariant.Warning}
         className={classes.alert}

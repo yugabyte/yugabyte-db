@@ -23,6 +23,9 @@ namespace server {
 class Clock;
 class GenericServiceProxy;
 class MonitoredTask;
+class RpcServerBase;
+class RunnableMonitoredTask;
+enum class MonitoredTaskState : int;
 
 using ClockPtr = scoped_refptr<Clock>;
 

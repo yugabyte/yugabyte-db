@@ -57,7 +57,7 @@ Status AbstractTablet::HandleQLReadRequest(
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
       ql_storage, read_operation_data, *doc_read_context, pending_op, &resultset,
-      &result->restart_read_ht);
+      &result->read_restart_data);
   TRACE("Done Execute");
   if (!s.ok()) {
     if (s.IsQLError()) {
@@ -83,7 +83,7 @@ Status AbstractTablet::ProcessPgsqlReadRequest(
   const auto& pgsql_read_request = op_data.request;
   // Form a schema of columns that are referenced by this query.
 
-  docdb::PgsqlReadOperation doc_op(op_data, result->rows_data, &result->restart_read_ht);
+  docdb::PgsqlReadOperation doc_op(op_data, result->rows_data, &result->read_restart_data);
 
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute();

@@ -21,8 +21,10 @@
 #include "storage/itemptr.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
-#include "utils/rel.h"
 #include "utils/pg_lsn.h"
+#include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/ruleutils.h"
 #include "utils/varlena.h"
 
 PG_FUNCTION_INFO_V1(gist_page_opaque_info);
@@ -34,29 +36,20 @@ PG_FUNCTION_INFO_V1(gist_page_items_bytea);
 #define ItemPointerGetDatum(X)	 PointerGetDatum(X)
 
 
-Datum
-gist_page_opaque_info(PG_FUNCTION_ARGS)
+static Page verify_gist_page(bytea *raw_page);
+
+/*
+ * Verify that the given bytea contains a GIST page or die in the attempt.
+ * A pointer to the page is returned.
+ */
+static Page
+verify_gist_page(bytea *raw_page)
 {
-	bytea	   *raw_page = PG_GETARG_BYTEA_P(0);
-	TupleDesc	tupdesc;
-	Page		page;
+	Page		page = get_page_from_raw(raw_page);
 	GISTPageOpaque opaq;
-	HeapTuple	resultTuple;
-	Datum		values[4];
-	bool		nulls[4];
-	Datum		flags[16];
-	int			nflags = 0;
-	uint16		flagbits;
-
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to use raw page functions")));
-
-	page = get_page_from_raw(raw_page);
 
 	if (PageIsNew(page))
-		PG_RETURN_NULL();
+		return page;
 
 	/* verify the special space has the expected size */
 	if (PageGetSpecialSize(page) != MAXALIGN(sizeof(GISTPageOpaqueData)))
@@ -76,12 +69,38 @@ gist_page_opaque_info(PG_FUNCTION_ARGS)
 						   GIST_PAGE_ID,
 						   opaq->gist_page_id)));
 
+	return page;
+}
+
+Datum
+gist_page_opaque_info(PG_FUNCTION_ARGS)
+{
+	bytea	   *raw_page = PG_GETARG_BYTEA_P(0);
+	TupleDesc	tupdesc;
+	Page		page;
+	HeapTuple	resultTuple;
+	Datum		values[4];
+	bool		nulls[4];
+	Datum		flags[16];
+	int			nflags = 0;
+	uint16		flagbits;
+
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to use raw page functions")));
+
+	page = verify_gist_page(raw_page);
+
+	if (PageIsNew(page))
+		PG_RETURN_NULL();
+
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
 
 	/* Convert the flags bitmask to an array of human-readable names */
-	flagbits = opaq->flags;
+	flagbits = GistPageGetOpaque(page)->flags;
 	if (flagbits & F_LEAF)
 		flags[nflags++] = CStringGetTextDatum("leaf");
 	if (flagbits & F_DELETED)
@@ -103,7 +122,7 @@ gist_page_opaque_info(PG_FUNCTION_ARGS)
 
 	values[0] = LSNGetDatum(PageGetLSN(page));
 	values[1] = LSNGetDatum(GistPageGetNSN(page));
-	values[2] = Int64GetDatum(opaq->rightlink);
+	values[2] = Int64GetDatum(GistPageGetOpaque(page)->rightlink);
 	values[3] = PointerGetDatum(construct_array(flags, nflags,
 												TEXTOID,
 												-1, false, TYPALIGN_INT));
@@ -120,7 +139,6 @@ gist_page_items_bytea(PG_FUNCTION_ARGS)
 	bytea	   *raw_page = PG_GETARG_BYTEA_P(0);
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	Page		page;
-	GISTPageOpaque opaq;
 	OffsetNumber offset;
 	OffsetNumber maxoff = InvalidOffsetNumber;
 
@@ -131,28 +149,10 @@ gist_page_items_bytea(PG_FUNCTION_ARGS)
 
 	InitMaterializedSRF(fcinfo, 0);
 
-	page = get_page_from_raw(raw_page);
+	page = verify_gist_page(raw_page);
 
 	if (PageIsNew(page))
 		PG_RETURN_NULL();
-
-	/* verify the special space has the expected size */
-	if (PageGetSpecialSize(page) != MAXALIGN(sizeof(GISTPageOpaqueData)))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("input page is not a valid %s page", "GiST"),
-				 errdetail("Expected special size %d, got %d.",
-						   (int) MAXALIGN(sizeof(GISTPageOpaqueData)),
-						   (int) PageGetSpecialSize(page))));
-
-	opaq = GistPageGetOpaque(page);
-	if (opaq->gist_page_id != GIST_PAGE_ID)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("input page is not a valid %s page", "GiST"),
-				 errdetail("Expected %08x, got %08x.",
-						   GIST_PAGE_ID,
-						   opaq->gist_page_id)));
 
 	/* Avoid bogus PageGetMaxOffsetNumber() call with deleted pages */
 	if (GistPageIsDeleted(page))
@@ -204,9 +204,13 @@ gist_page_items(PG_FUNCTION_ARGS)
 	Oid			indexRelid = PG_GETARG_OID(1);
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	Relation	indexRel;
+	TupleDesc	tupdesc;
 	Page		page;
+	uint16		flagbits;
+	bits16		printflags = 0;
 	OffsetNumber offset;
 	OffsetNumber maxoff = InvalidOffsetNumber;
+	char	   *index_columns;
 
 	if (!superuser())
 		ereport(ERROR,
@@ -224,13 +228,34 @@ gist_page_items(PG_FUNCTION_ARGS)
 				 errmsg("\"%s\" is not a %s index",
 						RelationGetRelationName(indexRel), "GiST")));
 
-	page = get_page_from_raw(raw_page);
+	page = verify_gist_page(raw_page);
 
 	if (PageIsNew(page))
 	{
 		index_close(indexRel, AccessShareLock);
 		PG_RETURN_NULL();
 	}
+
+	flagbits = GistPageGetOpaque(page)->flags;
+
+	/*
+	 * Included attributes are added when dealing with leaf pages, discarded
+	 * for non-leaf pages as these include only data for key attributes.
+	 */
+	printflags |= RULE_INDEXDEF_PRETTY;
+	if (flagbits & F_LEAF)
+	{
+		tupdesc = RelationGetDescr(indexRel);
+	}
+	else
+	{
+		tupdesc = CreateTupleDescCopy(RelationGetDescr(indexRel));
+		tupdesc->natts = IndexRelationGetNumberOfKeyAttributes(indexRel);
+		printflags |= RULE_INDEXDEF_KEYS_ONLY;
+	}
+
+	index_columns = pg_get_indexdef_columns_extended(indexRelid,
+													 printflags);
 
 	/* Avoid bogus PageGetMaxOffsetNumber() call with deleted pages */
 	if (GistPageIsDeleted(page))
@@ -248,7 +273,8 @@ gist_page_items(PG_FUNCTION_ARGS)
 		IndexTuple	itup;
 		Datum		itup_values[INDEX_MAX_KEYS];
 		bool		itup_isnull[INDEX_MAX_KEYS];
-		char	   *key_desc;
+		StringInfoData buf;
+		int			i;
 
 		id = PageGetItemId(page, offset);
 
@@ -257,7 +283,7 @@ gist_page_items(PG_FUNCTION_ARGS)
 
 		itup = (IndexTuple) PageGetItem(page, id);
 
-		index_deform_tuple(itup, RelationGetDescr(indexRel),
+		index_deform_tuple(itup, tupdesc,
 						   itup_values, itup_isnull);
 
 		memset(nulls, 0, sizeof(nulls));
@@ -267,9 +293,71 @@ gist_page_items(PG_FUNCTION_ARGS)
 		values[2] = Int32GetDatum((int) IndexTupleSize(itup));
 		values[3] = BoolGetDatum(ItemIdIsDead(id));
 
-		key_desc = BuildIndexValueDescription(indexRel, itup_values, itup_isnull);
-		if (key_desc)
-			values[4] = CStringGetTextDatum(key_desc);
+		if (index_columns)
+		{
+			initStringInfo(&buf);
+			appendStringInfo(&buf, "(%s)=(", index_columns);
+
+			/* Most of this is copied from record_out(). */
+			for (i = 0; i < tupdesc->natts; i++)
+			{
+				char	   *value;
+				char	   *tmp;
+				bool		nq = false;
+
+				if (itup_isnull[i])
+					value = "null";
+				else
+				{
+					Oid			foutoid;
+					bool		typisvarlena;
+					Oid			typoid;
+
+					typoid = tupdesc->attrs[i].atttypid;
+					getTypeOutputInfo(typoid, &foutoid, &typisvarlena);
+					value = OidOutputFunctionCall(foutoid, itup_values[i]);
+				}
+
+				if (i == IndexRelationGetNumberOfKeyAttributes(indexRel))
+					appendStringInfoString(&buf, ") INCLUDE (");
+				else if (i > 0)
+					appendStringInfoString(&buf, ", ");
+
+				/* Check whether we need double quotes for this value */
+				nq = (value[0] == '\0');	/* force quotes for empty string */
+				for (tmp = value; *tmp; tmp++)
+				{
+					char		ch = *tmp;
+
+					if (ch == '"' || ch == '\\' ||
+						ch == '(' || ch == ')' || ch == ',' ||
+						isspace((unsigned char) ch))
+					{
+						nq = true;
+						break;
+					}
+				}
+
+				/* And emit the string */
+				if (nq)
+					appendStringInfoCharMacro(&buf, '"');
+				for (tmp = value; *tmp; tmp++)
+				{
+					char		ch = *tmp;
+
+					if (ch == '"' || ch == '\\')
+						appendStringInfoCharMacro(&buf, ch);
+					appendStringInfoCharMacro(&buf, ch);
+				}
+				if (nq)
+					appendStringInfoCharMacro(&buf, '"');
+			}
+
+			appendStringInfoChar(&buf, ')');
+
+			values[4] = CStringGetTextDatum(buf.data);
+			nulls[4] = false;
+		}
 		else
 		{
 			values[4] = (Datum) 0;

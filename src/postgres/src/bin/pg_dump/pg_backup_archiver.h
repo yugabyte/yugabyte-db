@@ -227,7 +227,8 @@ typedef enum
 
 #define REQ_SCHEMA	0x01		/* want schema */
 #define REQ_DATA	0x02		/* want data */
-#define REQ_SPECIAL	0x04		/* for special TOC entries */
+#define REQ_STATS	0x04
+#define REQ_SPECIAL	0x08		/* for special TOC entries */
 
 struct _archiveHandle
 {
@@ -387,6 +388,10 @@ struct _tocEntry
 	const void *dataDumperArg;	/* Arg for above routine */
 	void	   *formatData;		/* TOC Entry data specific to file format */
 
+	DefnDumperPtr defnDumper;	/* routine to dump definition statement */
+	const void *defnDumperArg;	/* arg for above routine */
+	size_t		defnLen;		/* length of dumped definition */
+
 	/* working state while dumping/restoring */
 	pgoff_t		dataLength;		/* item's data size; 0 if none or unknown */
 	int			reqs;			/* do we need schema and/or data of object
@@ -425,6 +430,8 @@ typedef struct _archiveOpts
 	int			nDeps;
 	DataDumperPtr dumpFn;
 	const void *dumpArg;
+	DefnDumperPtr defnFn;
+	const void *defnArg;
 } ArchiveOpts;
 #define ARCHIVE_OPTS(...) &(ArchiveOpts){__VA_ARGS__}
 /* Called to add a TOC entry */

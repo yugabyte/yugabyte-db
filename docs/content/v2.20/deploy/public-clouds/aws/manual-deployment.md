@@ -50,7 +50,7 @@ This results in 2 VMs each in Availability Zones `us-west-2a`, `us-west-2b`, and
 
 ### Set environment variables
 
-With six nodes prepared, the yb-master process is run on three of these nodes (because RF=3) and yb-tserver is run on all six nodes. To learn more about YugabyteDB's server architecture, see [Universe](../../../../architecture/concepts/universe/).
+With six nodes prepared, the yb-master process is run on three of these nodes (because RF=3) and yb-tserver is run on all six nodes. To learn more about YugabyteDB's server architecture, see [Universe](../../../../architecture/key-concepts/#universe).
 
 These install steps are written in a way that assumes that you are running the install steps from another node from which you can access the above six VMs over `ssh`.
 
@@ -65,6 +65,7 @@ export AZ3_NODES="<ip1> <ip2> ..."
 
 # Version of YugabyteDB you plan to install.
 export YB_VERSION={{<yb-version version="v2.20" format="version">}}
+export YB_VERSION_BUILD={{<yb-version version="v2.20" format="build">}}
 
 # Comma separated list of directories available for YB on each node
 # In this example, it is just 1. But if you have two then the RHS
@@ -316,8 +317,8 @@ for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
-       curl -k -o yugabyte-${YB_VERSION}-linux.tar.gz \
-         https://downloads.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz"; \
+       curl -Lo yugabyte-${YB_VERSION}-linux.tar.gz \
+         https://software.yugabyte.com/releases/${YB_VERSION}/yugabyte-${YB_VERSION_BUILD}-linux-x86_64.tar.gz"; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
        tar xvfz yugabyte-${YB_VERSION}-linux.tar.gz"; \

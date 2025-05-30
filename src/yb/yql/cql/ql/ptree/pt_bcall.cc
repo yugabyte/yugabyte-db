@@ -28,6 +28,7 @@
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ql_processor.h"
 
 DECLARE_bool(cql_revert_to_partial_microsecond_support);
 

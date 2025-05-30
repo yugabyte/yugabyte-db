@@ -936,11 +936,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   // Create the read request.
   YBqlReadOpPtr select_op(table->NewQLSelect());
   QLReadRequestPB *req = select_op->mutable_request();
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->MetadataToPB(req->mutable_ash_metadata());
-  } else {
-    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash)) << "No wait state here.";
-  }
+  ash::WaitStateInfo::CurrentMetadataToPB(req->mutable_ash_metadata());
 
   // Where clause - Hash, range, and regular columns.
   req->set_is_aggregate(tnode->is_aggregate());
@@ -1922,7 +1918,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
   // Go through each ExecContext and process async results.
   bool need_flush = false;
   bool has_restart = false;
-  const MonoTime now = (ql_metrics_ != nullptr) ? MonoTime::Now() : MonoTime();
+  const MonoTime now = MonoTime::NowIf(ql_metrics_ != nullptr);
   for (auto exec_itr = exec_contexts_.begin(); exec_itr != exec_contexts_.end(); ) {
 
     // Set current ExecContext.

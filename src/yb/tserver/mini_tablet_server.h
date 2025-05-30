@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "yb/common/common_fwd.h"
@@ -50,15 +51,20 @@ namespace yb {
 
 class FsManager;
 
+namespace pgwrapper {
+struct PGConnSettings;
+}  // namespace pgwrapper
+
 namespace consensus {
 class RaftConfigPB;
-} // namespace consensus
+}  // namespace consensus
 
 namespace tserver {
 
 class TabletServer;
 
 YB_STRONGLY_TYPED_BOOL(WaitTabletsBootstrapped);
+YB_STRONGLY_TYPED_BOOL(WaitToAcceptPgConnections);
 
 // An in-process tablet server meant for use in test cases.
 class MiniTabletServer {
@@ -91,7 +97,12 @@ class MiniTabletServer {
   // if wait_tablets_bootstrapped=true, then Waits for the tablet
   // server to be fully initialized, including
   // having all its tablets bootstrapped.
-  Status Start(WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue);
+  Status Start(
+      WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue,
+      WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
+
+  Status StartPgIfConfigured(
+      WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
 
   std::string ToString() const;
 
@@ -109,7 +120,7 @@ class MiniTabletServer {
 
   // Stop and start the tablet server on the same RPC and webserver ports. The tserver must be
   // running.
-  Status Restart();
+  Status Restart(WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
   Status RestartStoppedServer();
 
   // Add a new tablet to the test server, use the default consensus configuration.
@@ -155,8 +166,12 @@ class MiniTabletServer {
 
   FsManager& fs_manager() const;
   MetricEntity& metric_entity() const;
-  const MemTrackerPtr& mem_tracker() const;
+  const std::shared_ptr<MemTracker>& mem_tracker() const;
   HybridTime Now() const;
+
+  void SetPgServerHandlers(
+      std::function<Status(void)> start_pg, std::function<void(void)> shutdown_pg,
+      std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings);
 
  private:
   bool started_;
@@ -165,7 +180,11 @@ class MiniTabletServer {
 
   std::unique_ptr<TabletServer> server_;
   std::unique_ptr<Tunnel> tunnel_;
+
+  std::function<Status(void)> start_pg_;
+  std::function<void(void)> shutdown_pg_;
+  std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings_;
 };
 
-} // namespace tserver
+}  // namespace tserver
 } // namespace yb

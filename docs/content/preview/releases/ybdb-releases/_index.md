@@ -19,8 +19,6 @@ cascade:
 | [v2024.2](v2024.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2024.2" release >}} | {{< yb-eol-dates "v2024.2" EOM >}} | {{< yb-eol-dates "v2024.2" EOL >}} |
 | [v2024.1](v2024.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |
 | [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
-| [v2.18](v2.18/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
-| [v2.14](v2.14/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
 
 {{< tip title="YugabyteDB Anywhere release notes have moved" >}}
 Starting with v2.16, the [release notes for YugabyteDB Anywhere](../yba-releases/) have moved to their own page.
@@ -43,9 +41,11 @@ The following stable and preview releases are no longer supported:
 | [v2.23](v2.23/) {{<tags/release/preview>}} | September 13, 2024  | n/a | n/a |
 | [v2.21](v2.21/) {{<tags/release/preview>}} | March 26, 2024 | n/a | n/a |
 | [v2.19](v2.19/) {{<tags/release/preview>}} | June 20, 2023 | n/a | n/a |
-| [v2.17](v2.17/) {{<tags/release/preview>}} | December 8, 2022 | n/a | n/a |
+| [v2.18](end-of-life/v2.18/) {{<tags/release/sts>}} | May 16, 2023 | August 16, 2024 | February 16, 2025 |
+| [v2.17](end-of-life/v2.17/) {{<tags/release/preview>}} | December 8, 2022 | n/a | n/a |
 | [v2.16](end-of-life/v2.16/) {{<tags/release/sts>}} | December 14, 2022 | December 14, 2023 | June 14, 2024 |
-| [v2.15](v2.15/) {{<tags/release/preview>}} | June 27, 2022 | n/a | n/a |
+| [v2.15](end-of-life/v2.15/) {{<tags/release/preview>}} | June 27, 2022 | n/a | n/a |
+| [v2.14](end-of-life/v2.14/) {{<tags/release/lts>}} | July 14, 2022 | July 14, 2024 | January 14, 2025 |
 | [v2.13](end-of-life/v2.13/) {{<tags/release/preview>}} | March 7, 2022 | n/a | n/a |
 | [v2.12](end-of-life/v2.12/) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.11](end-of-life/v2.11/) {{<tags/release/preview>}} | November 22, 2021 | n/a | n/a |

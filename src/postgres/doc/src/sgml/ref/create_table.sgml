@@ -104,7 +104,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
 
 <phrase><replaceable class="parameter">exclude_element</replaceable> in an <literal>EXCLUDE</literal> constraint is:</phrase>
 
-{ <replaceable class="parameter">column_name</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ <replaceable class="parameter">opclass</replaceable> ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ]
+{ <replaceable class="parameter">column_name</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ COLLATE <replaceable class="parameter">collation</replaceable> ] [ <replaceable class="parameter">opclass</replaceable> [ ( <replaceable class="parameter">opclass_parameter</replaceable> = <replaceable class="parameter">value</replaceable> [, ... ] ) ] ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ]
 
 <phrase><replaceable class="parameter">referential_action</replaceable> in a <literal>FOREIGN KEY</literal>/<literal>REFERENCES</literal> constraint is:</phrase>
 
@@ -586,12 +586,24 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
      </para>
 
      <para>
-      Operations such as TRUNCATE which normally affect a table and all of its
+      Operations such as <command>TRUNCATE</command>
+      which normally affect a table and all of its
       inheritance children will cascade to all partitions, but may also be
-      performed on an individual partition.  Note that dropping a partition
-      with <literal>DROP TABLE</literal> requires taking an <literal>ACCESS
-      EXCLUSIVE</literal> lock on the parent table.
+      performed on an individual partition.
      </para>
+
+     <para>
+      Note that creating a partition using <literal>PARTITION OF</literal>
+      requires taking an <literal>ACCESS EXCLUSIVE</literal> lock on the
+      parent partitioned table.  Likewise, dropping a partition
+      with <command>DROP TABLE</command> requires taking
+      an <literal>ACCESS EXCLUSIVE</literal> lock on the parent table.
+      It is possible to use <link linkend="sql-altertable"><command>ALTER
+      TABLE ATTACH/DETACH PARTITION</command></link> to perform these
+      operations with a weaker lock, thus reducing interference with
+      concurrent operations on the partitioned table.
+     </para>
+
     </listitem>
    </varlistentry>
 
@@ -883,8 +895,8 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
      <para>
       This clause creates the column as an <firstterm>identity
       column</firstterm>.  It will have an implicit sequence attached to it
-      and the column in new rows will automatically have values from the
-      sequence assigned to it.
+      and in newly-inserted rows the column will automatically have values
+      from the sequence assigned to it.
       Such a column is implicitly <literal>NOT NULL</literal>.
      </para>
 
@@ -914,9 +926,16 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
      </para>
 
      <para>
-      The optional <replaceable>sequence_options</replaceable> clause can be
-      used to override the options of the sequence.
-      See <xref linkend="sql-createsequence"/> for details.
+      The optional <replaceable>sequence_options</replaceable> clause can
+      be used to override the parameters of the sequence.  The available
+      options include those shown for <xref linkend="sql-createsequence"/>,
+      plus <literal>SEQUENCE NAME <replaceable>name</replaceable></literal>,
+      <literal>LOGGED</literal>, and <literal>UNLOGGED</literal>, which
+      allow selection of the name and persistence level of the
+      sequence.  Without <literal>SEQUENCE NAME</literal>, the system
+      chooses an unused name for the sequence.
+      Without <literal>LOGGED</literal> or <literal>UNLOGGED</literal>,
+      the sequence will have the same persistence level as the table.
      </para>
     </listitem>
    </varlistentry>
@@ -1045,6 +1064,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       no two rows in the table contain overlapping circles
       (see <xref linkend="datatype-geometric"/>) by using the
       <literal>&amp;&amp;</literal> operator.
+      The operator(s) are required to be commutative.
      </para>
 
      <para>
@@ -1053,11 +1073,10 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       appropriate operator class
       (see <xref linkend="indexes-opclass"/>) for the index access
       method <replaceable>index_method</replaceable>.
-      The operators are required to be commutative.
       Each <replaceable class="parameter">exclude_element</replaceable>
-      can optionally specify an operator class and/or ordering options;
-      these are described fully under
-      <xref linkend="sql-createindex"/>.
+      defines a column of the index, so it can optionally specify a collation,
+      an operator class, operator class parameters, and/or ordering options;
+      these are described fully under <xref linkend="sql-createindex"/>.
      </para>
 
      <para>
@@ -1096,10 +1115,11 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       column(s) of some row of the referenced table.  If the <replaceable
       class="parameter">refcolumn</replaceable> list is omitted, the
       primary key of the <replaceable class="parameter">reftable</replaceable>
-      is used.  The referenced columns must be the columns of a non-deferrable
-      unique or primary key constraint in the referenced table.  The user
-      must have <literal>REFERENCES</literal> permission on the referenced table
-      (either the whole table, or the specific referenced columns).  The
+      is used.  Otherwise, the <replaceable class="parameter">refcolumn</replaceable>
+      list must refer to the columns of a non-deferrable unique or primary key
+      constraint or be the columns of a non-partial unique index.  The user
+      must have <literal>REFERENCES</literal> permission on the referenced
+      table (either the whole table, or the specific referenced columns).  The
       addition of a foreign key constraint requires a
       <literal>SHARE ROW EXCLUSIVE</literal> lock on the referenced table.
       Note that foreign key constraints cannot be defined between temporary
@@ -2236,12 +2256,18 @@ CREATE TABLE cities_partdef
   </refsect2>
 
   <refsect2>
-   <title>Foreign-Key Constraint Actions</title>
+   <title>Foreign Key Constraints</title>
 
    <para>
-    The ability to specify column lists in the foreign-key actions
+    The ability to specify column lists in the foreign key actions
     <literal>SET DEFAULT</literal> and <literal>SET NULL</literal> is a
     <productname>PostgreSQL</productname> extension.
+   </para>
+
+   <para>
+    It is a <productname>PostgreSQL</productname> extension that a
+    foreign key constraint may reference columns of a unique index instead of
+    columns of a primary key or unique constraint.
    </para>
   </refsect2>
 

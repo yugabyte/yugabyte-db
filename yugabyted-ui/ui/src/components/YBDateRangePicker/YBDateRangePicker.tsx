@@ -2,13 +2,14 @@ import React, { MouseEvent, ReactElement, useState } from 'react';
 import { format as dateFnSFormat } from 'date-fns';
 import { makeStyles, IconButton, Modal, Fade, Backdrop, Box, Theme } from '@material-ui/core';
 import { useController } from 'react-hook-form';
+import type { FieldValues } from 'react-hook-form';
 import { YBInput, YBInputFieldProps } from '@app/components';
 import { DateRangePicker } from '@app/components/YBDateRangePicker/YBInternalDateRangePickerUtill';
 import CalenderEmpty from '@app/assets/CalenderEmpty.svg';
 import Clear from '@app/assets/Clear.svg';
 import { useTranslation } from 'react-i18next';
 
-export type MuiDateRangePickerProps<T> = YBInputFieldProps<T> & {
+export type MuiDateRangePickerProps<T extends FieldValues> = YBInputFieldProps<T> & {
   clearable?: boolean;
   sameDateSelectable?: boolean;
   defaultDateRange: DateRange;
@@ -42,7 +43,8 @@ const useStyles = makeStyles((theme: Theme) => ({
   }
 }));
 
-export const YBDateRangePicker = <T,>(props: MuiDateRangePickerProps<T>): ReactElement => {
+export const YBDateRangePicker =
+  <T extends FieldValues,>(props: MuiDateRangePickerProps<T>): ReactElement => {
   const classes = useStyles();
   const {
     clearable,

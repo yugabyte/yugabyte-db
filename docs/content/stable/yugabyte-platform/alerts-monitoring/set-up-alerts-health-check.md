@@ -153,6 +153,8 @@ You can define parameters and fine-tune the health check that YugabyteDB Anywher
 
 1. Set the **Callhome Level**.
 
+    YugabyteDB reports universe diagnostics to the Yugabyte diagnostics service every time a new universe gets created, and with every health check. For information on the diagnostic levels and the information collected, refer to [Diagnostics reporting](../../../manage/diagnostics-reporting/). To turn off diagnostic reporting, set the **Callhome level** to **None**.
+
 1. Use the **Health check interval** field to set how often to perform the health check (in minutes).
 
 1. Use the **Active alert notification interval** field to define the notification period (in milliseconds) for resending notifications for active alerts. The default value of 0 means that only one notification is issued for an active alert.

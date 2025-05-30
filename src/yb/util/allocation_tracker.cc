@@ -25,13 +25,13 @@ AllocationTrackerBase::~AllocationTrackerBase() {
 #ifndef NDEBUG
   std::lock_guard lock(mutex_);
   for (auto& pair : objects_) {
-    LOG(ERROR) << "Error of type " << name_ << " not destroyed, id: " << pair.second.second
-               << ", created at: " << pair.second.first;
+    LOG(DFATAL) << "Error of type " << name_ << " not destroyed, id: " << pair.second.second
+                << ", created at: " << pair.second.first;
   }
 #else
   if (count_) {
-    LOG(ERROR) << "Not all objects of type " << name_ << " were destroyed, "
-               << count_ << " objects left";
+    LOG(DFATAL) << "Not all objects of type " << name_ << " were destroyed, "
+                << count_ << " objects left";
   }
 #endif
 }

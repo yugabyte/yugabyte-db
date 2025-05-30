@@ -1,0 +1,627 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 9630000;
+SET documentdb.next_collection_id TO 963000;
+SET documentdb.next_collection_index_id TO 963000;
+-- Insert data
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 1, "airport_id": 10165, "city": "Adak Island", "state": "AK", "name": "Adak", "rule": { "flight_type": "private"} }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 3, "airport_id": 11308, "city": "Dothan", "state": "AL", "name": "Dothan Regional", "rule": { "$or": [ { "origin": "WA"}, {"flight_type": "private"}] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 4, "airport_id": 11778, "city": "Fort Smith", "state": "AR", "name": "Fort Smith Regional", "rule": { "$in": [{"is_emergency": true}, {"is_vip": true}] }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 6, "airport_id": 14689, "city": "Santa Barbara", "state": "CA", "name": "Santa Barbara Municipal", "rule": { "$or": [ {"$and": [{"flight_type": "private"}, {"origin": "CA"}]}, {"$or": [{"is_emergency": true}, {"is_vip": true}]} ] }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 7, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "rule": { "tags": { "$all": ["private", "vip"]}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- positive cases
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AK"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "public"}}}]}');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AK"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "private"}}}]}');
+                                                                                    document                                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "airport_id" : { "$numberInt" : "10165" }, "city" : "Adak Island", "state" : "AK", "name" : "Adak", "rule" : { "flight_type" : "private" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AL"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "public"}}}]}');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AL"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "private"}}}]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AR"}}, { "$inverseMatch": {"path": "rule", "input": {"is_emergency": true}}}]}');
+                                                                                                           document                                                                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "airport_id" : { "$numberInt" : "11778" }, "city" : "Fort Smith", "state" : "AR", "name" : "Fort Smith Regional", "rule" : { "$in" : [ { "is_emergency" : true }, { "is_vip" : true } ] } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "private", "origin": "CA" }}}]}');
+                                                                                                                                                         document                                                                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "airport_id" : { "$numberInt" : "14689" }, "city" : "Santa Barbara", "state" : "CA", "name" : "Santa Barbara Municipal", "rule" : { "$or" : [ { "$and" : [ { "flight_type" : "private" }, { "origin" : "CA" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "public", "origin": "CA" }}}]}');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "public", "origin": "CA", "is_vip": true }}}]}');
+                                                                                                                                                         document                                                                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "airport_id" : { "$numberInt" : "14689" }, "city" : "Santa Barbara", "state" : "CA", "name" : "Santa Barbara Municipal", "rule" : { "$or" : [ { "$and" : [ { "flight_type" : "private" }, { "origin" : "CA" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AR"}}, { "$inverseMatch": {"path": "rule", "input": [{ "flight_type": "private"}, {"is_emergency": true}]}}]}');
+                                                                                                           document                                                                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "airport_id" : { "$numberInt" : "11778" }, "city" : "Fort Smith", "state" : "AR", "name" : "Fort Smith Regional", "rule" : { "$in" : [ { "is_emergency" : true }, { "is_vip" : true } ] } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "WA"}}, { "$inverseMatch": {"path": "rule", "input": { "tags": ["private", "vip"]}}}]}');
+                                                                                             document                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "rule" : { "tags" : { "$all" : [ "private", "vip" ] } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+(1 row)
+
+-- Validate errors
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"pathRule": "rule", "input": {"flight_type": "private"} }}]}');
+ERROR:  unrecognized argument to $inverseMatch: 'pathRule'
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "inputValue": {"flight_type": "private"} }}]}');
+ERROR:  unrecognized argument to $inverseMatch: 'inputValue'
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "", "input": {"flight_type": "private"} }}]}');
+ERROR:  Missing 'path' parameter to $inverseMatch
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": ["flight_type", "private"] }}]}');
+ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [{"flight_type": "private"}, ""] }}]}');
+ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: string
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": [{"path": "rule", "input": [{"flight_type": "private"}, ""] }, {"path": "rule2", "input": {}}]}]}');
+ERROR:  $inverseMatch requires a document as an input instead got: array
+-- insert a document with an invalid query
+SELECT documentdb_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 13442, "city": "Everet", "state": "WA", "name": "Paine Field", "specialRule": { "tags": { "$allValues": ["private", "vip"]}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- any inverseMatch that queries that path should fail
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "specialRule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
+ERROR:  unknown operator: $allValues
+-- if we query "rule" path without defaultResult in the spec it should not match for the Everet airport which doesn't define the rule as the default value is false
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+(1 row)
+
+-- with defaultResult true should return all documents that don't define the path and false shouldn't return them
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }, "defaultResult": true}}]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+ { "_id" : { "$numberInt" : "8" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "specialRule" : { "tags" : { "$allValues" : [ "private", "vip" ] } } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+(1 row)
+
+-- add tests with lookup for RBAC "like" scenarios
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "roles": ["basic"]}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "roles": ["basic", "sales"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "roles": ["admin"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 1, "order": 100, "paid": true, "total": 0, "rule": {"roles": {"$in": ["basic", "sales", "admin"]}}}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 2, "order": 102, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["sales", "admin"]}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','sales','{ "_id": 3, "order": 103, "paid": true, "total": 1000, "rule": {"roles": {"$in": ["admin"]}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 100} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
+                                                        document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 101} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+(2 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 102} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+(3 rows)
+
+-- use from collection instead of lookup (new feature)
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 100}}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 101}}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+(2 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}, {"$project": {"roles": 1, "_id": 0}}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lt": 102 }}}, {"$limit": 1}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+(2 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lte": 102 }}}, {"$limit": 2}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }'); 
+                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_963003_9630006 collection WHERE (documentdb_api_internal.bson_dollar_inverse_match(document, (SELECT documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_963002_9630004 collection_0_1 WHERE (documentdb_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)) LIMIT '1'::bigint)) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_963003_9630006 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '963003'::bigint)
+               Filter: documentdb_api_internal.bson_dollar_inverse_match(collection.document, $1)
+               InitPlan 2 (returns $1)
+                 ->  Result
+                       Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, $0)
+                       InitPlan 1 (returns $0)
+                         ->  Limit
+                               Output: (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson))
+                               ->  Aggregate
+                                     Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson)
+                                     ->  Bitmap Heap Scan on documentdb_data.documents_963002_9630004 collection_0_1
+                                           Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                                           Recheck Cond: (collection_0_1.shard_key_value = '963002'::bigint)
+                                           Filter: (collection_0_1.document OPERATOR(documentdb_api_catalog.@!=) '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson)
+                                           ->  Bitmap Index Scan on _id_
+                                                 Index Cond: (collection_0_1.shard_key_value = '963002'::bigint)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '963003'::bigint)
+(27 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}]}} ], "cursor": {} }'); 
+                                                                                                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_963003_9630006 collection WHERE (documentdb_api_internal.bson_dollar_inverse_match(document, (SELECT documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson) AS document FROM documentdb_data.documents_963002_9630004 collection_0_1 WHERE (documentdb_api_catalog.bson_dollar_ne(collection_0_1.document, '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson) AND (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint)))) AS spec)) AND (shard_key_value OPERATOR(pg_catalog.=) '963003'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documentdb_data.documents_963003_9630006 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '963003'::bigint)
+               Filter: documentdb_api_internal.bson_dollar_inverse_match(collection.document, $1)
+               InitPlan 2 (returns $1)
+                 ->  Result
+                       Output: documentdb_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::documentdb_core.bson, $0)
+                       InitPlan 1 (returns $0)
+                         ->  Aggregate
+                               Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::documentdb_core.bson)
+                               ->  Bitmap Heap Scan on documentdb_data.documents_963002_9630004 collection_0_1
+                                     Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                                     Recheck Cond: (collection_0_1.shard_key_value = '963002'::bigint)
+                                     Filter: (collection_0_1.document OPERATOR(documentdb_api_catalog.@!=) '{ "user_id" : { "$numberInt" : "200" } }'::documentdb_core.bson)
+                                     ->  Bitmap Index Scan on _id_
+                                           Index Cond: (collection_0_1.shard_key_value = '963002'::bigint)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '963003'::bigint)
+(25 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}}} ], "cursor": {} }'); 
+                                              QUERY PLAN                                               
+---------------------------------------------------------------------
+ Bitmap Heap Scan on documentdb_data.documents_963003_9630006 collection
+   Output: document
+   Recheck Cond: (collection.shard_key_value = '963003'::bigint)
+   Filter: bson_dollar_inverse_match(collection.document, '{ "path" : "rule", "input" : {  } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '963003'::bigint)
+(6 rows)
+
+-- test with sharded collections.
+SELECT documentdb_api.shard_collection('invmatch', 'sales', '{"order": "hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.shard_collection('invmatch', 'user_roles', '{"_id": "hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 100} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
+                                                        document                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 101} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+(2 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 102} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
+                                                          document                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+(3 rows)
+
+-- use from collection instead of lookup (new feature)
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 100}}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+(1 row)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 101}}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+(2 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}, {"$project": {"roles": 1, "_id": 0}}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lt": 102 }}}, {"$limit": 1}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+(2 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lte": 102 }}}, {"$limit": 2}]}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}} ], "cursor": {} }');
+                                                                                         document                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
+-- drop and recreate so that it is not sharded and test with group and sort
+SELECT documentdb_api.drop_database('invmatch');
+ drop_database 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 2, "user_id": 101, "role": "admin"}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "role": "basic"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 5, "user_id": 103, "role": "basic"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 3, "user_id": 102, "role": "sales"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 4, "user_id": 100, "role": "sales"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','user_roles','{ "_id": 6, "user_id": 102, "role": "admin"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": "admin"}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": "basic"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": "sales"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": "basic"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": "basic"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ {"$sort": {"order": 1}}, { "$group": { "_id": "$order", "ruleToCreate": {"$push": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$project": {"rule": {"role": {"$arrayToObject": [[[{"$literal": "$in"}, "$ruleToCreate"]]]}}, "_id": 1, "payed": 1}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}}], "cursor": {} }');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "payed" : { "$numberInt" : "25" }, "rule" : { "role" : { "$in" : [ "basic", "basic" ] } } }
+ { "_id" : { "$numberInt" : "102" }, "payed" : { "$numberInt" : "600" }, "rule" : { "role" : { "$in" : [ "admin", "sales", "basic" ] } } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ {"$sort": {"order": 1}}, { "$group": { "_id": "$order", "ruleToCreate": {"$push": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$project": {"rule": {"role": {"$arrayToObject": [[[{"$literal": "$in"}, "$ruleToCreate"]]]}}, "_id": 1, "payed": 1}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}]}}], "cursor": {} }');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "102" }, "payed" : { "$numberInt" : "600" }, "rule" : { "role" : { "$in" : [ "admin", "sales", "basic" ] } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ {"$sort": {"order": 1}}, { "$group": { "_id": "$order", "ruleToCreate": {"$push": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$project": {"rule": {"role": {"$arrayToObject": [[[{"$literal": "$in"}, "$ruleToCreate"]]]}}, "_id": 1, "payed": 1}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 100}}]}}], "cursor": {} }');
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "payed" : { "$numberInt" : "25" }, "rule" : { "role" : { "$in" : [ "basic", "basic" ] } } }
+ { "_id" : { "$numberInt" : "102" }, "payed" : { "$numberInt" : "600" }, "rule" : { "role" : { "$in" : [ "admin", "sales", "basic" ] } } }
+(2 rows)
+
+SELECT documentdb_api.drop_collection('invmatch', 'payments');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 5, "order": 102, "order_total": 1000, "amount": 100, "rule": { "role": "admin"}}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 1, "order": 100, "order_total": 50, "amount": 20, "rule": { "role": "basic"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 2, "order": 102, "order_total": 1000, "amount": 300, "rule": { "role": "sales"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 4, "order": 100, "order_total": 50, "amount": 5, "rule": { "role": "basic"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('invmatch','payments','{ "_id": 3, "order": 102, "order_total": 1000, "amount": 200, "rule": { "role": "admin"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ { "$group": { "_id": "$order", "rule": {"$mergeObjects": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}]}}], "cursor": {} }');
+                                                document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "102" }, "rule" : { "role" : "admin" }, "payed" : { "$numberInt" : "600" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ { "$group": { "_id": "$order", "rule": {"$mergeObjects": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 100}}]}}], "cursor": {} }');
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "rule" : { "role" : "basic" }, "payed" : { "$numberInt" : "25" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ { "$group": { "_id": "$order", "rule": {"$mergeObjects": "$rule"}, "payed": {"$sum": "$amount"}}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}}], "cursor": {} }');
+                                                document                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "rule" : { "role" : "basic" }, "payed" : { "$numberInt" : "25" } }
+ { "_id" : { "$numberInt" : "102" }, "rule" : { "role" : "admin" }, "payed" : { "$numberInt" : "600" } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ {"$sort": {"order": 1}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}}], "cursor": {} }');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "order_total" : { "$numberInt" : "50" }, "amount" : { "$numberInt" : "20" }, "rule" : { "role" : "basic" } }
+ { "_id" : { "$numberInt" : "4" }, "order" : { "$numberInt" : "100" }, "order_total" : { "$numberInt" : "50" }, "amount" : { "$numberInt" : "5" }, "rule" : { "role" : "basic" } }
+ { "_id" : { "$numberInt" : "5" }, "order" : { "$numberInt" : "102" }, "order_total" : { "$numberInt" : "1000" }, "amount" : { "$numberInt" : "100" }, "rule" : { "role" : "admin" } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "order_total" : { "$numberInt" : "1000" }, "amount" : { "$numberInt" : "300" }, "rule" : { "role" : "sales" } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "102" }, "order_total" : { "$numberInt" : "1000" }, "amount" : { "$numberInt" : "200" }, "rule" : { "role" : "admin" } }
+(5 rows)
+
+SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "payments", "pipeline": [ {"$sort": {"order": -1}}, {"$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}}], "cursor": {} }');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "order" : { "$numberInt" : "102" }, "order_total" : { "$numberInt" : "1000" }, "amount" : { "$numberInt" : "100" }, "rule" : { "role" : "admin" } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "order_total" : { "$numberInt" : "1000" }, "amount" : { "$numberInt" : "300" }, "rule" : { "role" : "sales" } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "102" }, "order_total" : { "$numberInt" : "1000" }, "amount" : { "$numberInt" : "200" }, "rule" : { "role" : "admin" } }
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "order_total" : { "$numberInt" : "50" }, "amount" : { "$numberInt" : "20" }, "rule" : { "role" : "basic" } }
+ { "_id" : { "$numberInt" : "4" }, "order" : { "$numberInt" : "100" }, "order_total" : { "$numberInt" : "50" }, "amount" : { "$numberInt" : "5" }, "rule" : { "role" : "basic" } }
+(5 rows)
+
+-- negative cases
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": {}, "input": "$roles"}} ], "cursor": {} }');
+ERROR:  BSON field '$inverseMatch.path' is the wrong type 'object', expected type 'string'
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "", "input": "$roles"}} ], "cursor": {} }');
+ERROR:  Missing 'path' parameter to $inverseMatch
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [true]}} ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": true}} ], "cursor": {} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}, "from": "collection"}} ], "cursor": {} }');
+ERROR:  'input' and 'from' can't be used together in an $inverseMatch stage.
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "collection"}} ], "cursor": {} }');
+ERROR:  'pipeline' argument is required when 'from' is specified in an $inverseMatch stage.
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"rule": "rule"}} ], "cursor": {} }');
+ERROR:  unrecognized argument to $inverseMatch: 'rule'
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "mycoll", "pipeline": []}} ], "cursor": {} }');
+ERROR:  'from' collection: 'invmatch.mycoll' doesn't exist.

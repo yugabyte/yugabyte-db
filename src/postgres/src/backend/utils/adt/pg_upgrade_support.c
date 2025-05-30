@@ -162,6 +162,17 @@ binary_upgrade_set_next_pg_enum_oid(PG_FUNCTION_ARGS)
 }
 
 Datum
+yb_binary_upgrade_set_next_pg_enum_sortorder(PG_FUNCTION_ARGS)
+{
+	float4		enumsortorder = PG_GETARG_FLOAT4(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	yb_binary_upgrade_next_pg_enum_sortorder = enumsortorder;
+
+	PG_RETURN_VOID();
+}
+
+Datum
 binary_upgrade_set_next_pg_authid_oid(PG_FUNCTION_ARGS)
 {
 	Oid			authoid = PG_GETARG_OID(0);

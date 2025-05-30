@@ -1,0 +1,1004 @@
+SET search_path TO documentdb_api_catalog, postgis_public;
+SET citus.next_shard_id TO 167200;
+SET documentdb.next_collection_id TO 16720;
+SET documentdb.next_collection_index_id TO 16720;
+SELECT documentdb_api.create_collection('db', '2dindextest') IS NOT NULL;
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', '2dsphereindextest') IS NOT NULL;
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Test invalid 2d index creation scenarios
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx", "unique": true }]}', true); -- 2d with unique
+ERROR:  Error in specification { "key" : { "a" : "2d" }, "name" : "my_2d_a_idx", "unique" : true } :: caused by :: Index type '2d' does not support the unique option
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d", "b": "2d"}, "name": "my_2d_a_idx" }]}', true); -- Multi 2d
+ERROR:  Error in specification { "key" : { "a" : "2d", "b" : "2d" }, "name" : "my_2d_a_idx" } :: caused by :: can't have 2 geo fields
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d", "b": 1}, "name": "my_2d_a_idx" } ]}', true); -- Multi 2d
+ERROR:  Compound 2d indexes are not supported yet
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"b": 1, "a": "2d"}, "name": "my_2d_a_idx" }]}', true); -- Multi 2d and 2d index is not the first one
+ERROR:  Error in specification { "key" : { "b" : 1, "a" : "2d" }, "name" : "my_2d_a_idx" } :: caused by :: 2d has to be first in index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a.$**": "2d"}, "name": "my_2d_a_idx" }]}', true); -- 2d with wildcard
+ERROR:  Error in specification { "key" : { "a.$**" : "2d" }, "name" : "my_2d_a_idx" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx", "max": -190 } ]}', true); -- 2d with max -170 and min -180 (default)
+ERROR:  Error in specification { "key" : { "a" : "2d" }, "name" : "my_2d_a_idx", "max" : -190 } :: caused by :: region for hash must be valid and have positive area, but [-180, -190] was specified
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx", "min": 190 } ]}', true); -- 2d with min 190 and max 180 (default)
+ERROR:  Error in specification { "key" : { "a" : "2d" }, "name" : "my_2d_a_idx", "min" : 190 } :: caused by :: region for hash must be valid and have positive area, but [190, 180] was specified
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx", "max": 180, "min": 180} ]}', true); -- 2d with min and max equal to 180
+ERROR:  Error in specification { "key" : { "a" : "2d" }, "name" : "my_2d_a_idx", "max" : 180, "min" : 180 } :: caused by :: region for hash must be valid and have positive area, but [180, 180] was specified
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx", "expireAfterSeconds": 20 } ]}', true); -- With TTL
+ERROR:  Creating a 2d index as ttl index is not supported.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d", "b": "text"}, "name": "my_2d_a_idx" } ]}', true); -- 2d with text
+ERROR:  Error in specification { "key" : { "a" : "2d", "b" : "text" }, "name" : "my_2d_a_idx" } :: caused by :: Can't use more than one index plugin for a single index.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d", "b.$**": 1}, "name": "my_2d_a_idx" } ]}', true); -- 2d followed by wildcard
+ERROR:  Error in specification { "key" : { "a" : "2d", "b.$**" : 1 }, "name" : "my_2d_a_idx" } :: caused by :: wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx", "bits": 0 } ]}', true); -- bits 0
+ERROR:  Error in specification { "key" : { "a" : "2d" }, "name" : "my_2d_a_idx", "bits" : 0 } :: caused by :: bits for hash must be > 0 and <= 32, but 0 bits were specified
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx", "bits": 33 } ]}', true); -- bits more than 32
+ERROR:  Error in specification { "key" : { "a" : "2d" }, "name" : "my_2d_a_idx", "bits" : 33 } :: caused by :: bits for hash must be > 0 and <= 32, but 33 bits were specified
+-- Test invalid 2dsphere index creation scenarios
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds_a_idx", "unique": true }]}', true); -- 2dsphere with unique
+ERROR:  Error in specification { "key" : { "a" : "2dsphere" }, "name" : "my_2ds_a_idx", "unique" : true } :: caused by :: Index type '2dsphere' does not support the unique option
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere", "b": 1}, "name": "my_2ds_a_idx" } ]}', true); -- Compound 2dsphere
+ERROR:  Error in specification { "key" : { "a" : "2dsphere", "b" : 1 }, "name" : "my_2ds_a_idx" } :: caused by :: Compound Regular & 2dsphere indexes are not supported yet
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"b": 1, "a": "2dsphere"}, "name": "my_2ds_a_idx" }]}', true); -- Compound 2dsphere with 1 being regular index
+ERROR:  Error in specification { "key" : { "b" : 1, "a" : "2dsphere" }, "name" : "my_2ds_a_idx" } :: caused by :: Compound Regular & 2dsphere indexes are not supported yet
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a.$**": "2dsphere"}, "name": "my_2ds_a_idx" }]}', true); -- 2dsphere with wildcard
+ERROR:  Error in specification { "key" : { "a.$**" : "2dsphere" }, "name" : "my_2ds_a_idx" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds_a_idx", "coarsestIndexedLevel": -1 } ]}', true); -- 2dsphere with coarestIndexedLevel invalid value
+ERROR:  Error in specification { "key" : { "a" : "2dsphere" }, "name" : "my_2ds_a_idx", "coarsestIndexedLevel" : -1 } :: caused by :: coarsestIndexedLevel must be >= 0
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds_a_idx", "finestIndexedLevel": 31 } ]}', true); -- 2dsphere with finestIndexedLevel invalid value
+ERROR:  Error in specification { "key" : { "a" : "2dsphere" }, "name" : "my_2ds_a_idx", "finestIndexedLevel" : 31 } :: caused by :: finestIndexedLevel must be <= 30
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds_a_idx", "coarsestIndexedLevel": 32, "finestIndexedLevel": 30 } ]}', true); -- 2dsphere with finestIndexedLevel invalid value
+ERROR:  Error in specification { "key" : { "a" : "2dsphere" }, "name" : "my_2ds_a_idx", "coarsestIndexedLevel" : 32, "finestIndexedLevel" : 30 } :: caused by :: finestIndexedLevel must be >= coarsestIndexedLevel
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds_a_idx", "expireAfterSeconds": 20 } ]}', true); -- With TTL
+ERROR:  Creating a 2dsphere index as ttl index is not supported.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere", "b": "text"}, "name": "my_2ds_a_idx" } ]}', true); -- 2dsphere with different
+ERROR:  Error in specification { "key" : { "a" : "2dsphere", "b" : "text" }, "name" : "my_2ds_a_idx" } :: caused by :: Can't use more than one index plugin for a single index.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere", "b.$**": 1}, "name": "my_2ds_a_idx" } ]}', true); -- 2dsphere followed by wildcard
+ERROR:  Error in specification { "key" : { "a" : "2dsphere", "b.$**" : 1 }, "name" : "my_2ds_a_idx" } :: caused by :: wildcard indexes do not allow compounding
+-- Test valid 2d & 2dsphere index creation scenarios
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"a": "2d"}, "name": "my_2d_a_idx" }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"b.c": "2d"}, "name": "my_2d_b_c_idx" }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"d": "2d"}, "name": "my_2d_d_idx", "min": -100, "max": 100 }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"e": "2d"}, "name": "my_2d_e_idx", "bits": 32 } ]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dindextest", "indexes": [{"key": {"pfe": "2d"}, "name": "my_2d_pfe_idx", "partialFilterExpression": { "region": { "$eq": "USA" } } }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"a": "2dsphere" }, "name": "my_2ds_a_idx" } ]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"b.c": "2dsphere" }, "name": "my_2ds_bc_idx", "coarsestIndexedLevel": 20 } ]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"c": "2dsphere" }, "name": "my_2ds_c_idx", "coarsestIndexedLevel": 5, "finestIndexedLevel": 25 } ]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"d": "2dsphere" }, "name": "my_2ds_d_idx", "finestIndexedLevel": 25 } ]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"e": "2dsphere", "f": "2dsphere" }, "name": "my_2ds_ef_idx" } ]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsphereindextest", "indexes": [{"key": {"g": "2dsphere", "h": "2dsphere" }, "name": "my_2ds_gh_pfe_idx", "partialFilterExpression": { "region": { "$eq": "USA" } } } ]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '2dindextest') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                                       index_spec_as_bson                                                                        | index_is_valid 
+---------------------------------------------------------------------
+         16720 |    16720 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                                   | t
+         16720 |    16722 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "2d" }, "name" : "my_2d_a_idx" }                                                                                | t
+         16720 |    16723 | { "v" : { "$numberInt" : "2" }, "key" : { "b.c" : "2d" }, "name" : "my_2d_b_c_idx" }                                                                            | t
+         16720 |    16724 | { "v" : { "$numberInt" : "2" }, "key" : { "d" : "2d" }, "name" : "my_2d_d_idx", "min" : { "$numberDouble" : "-100.0" }, "max" : { "$numberDouble" : "100.0" } } | t
+         16720 |    16725 | { "v" : { "$numberInt" : "2" }, "key" : { "e" : "2d" }, "name" : "my_2d_e_idx", "bits" : { "$numberDouble" : "32.0" } }                                         | t
+         16720 |    16726 | { "v" : { "$numberInt" : "2" }, "key" : { "pfe" : "2d" }, "name" : "my_2d_pfe_idx", "partialFilterExpression" : { "region" : { "$eq" : "USA" } } }              | t
+(6 rows)
+
+SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '2dsphereindextest') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                                                                            index_spec_as_bson                                                                                                             | index_is_valid 
+---------------------------------------------------------------------
+         16721 |    16721 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                                                                                                             | t
+         16721 |    16727 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "2dsphere" }, "name" : "my_2ds_a_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" } }                                                                                                  | t
+         16721 |    16728 | { "v" : { "$numberInt" : "2" }, "key" : { "b.c" : "2dsphere" }, "name" : "my_2ds_bc_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" }, "coarsestIndexedLevel" : { "$numberInt" : "20" } }                                             | t
+         16721 |    16729 | { "v" : { "$numberInt" : "2" }, "key" : { "c" : "2dsphere" }, "name" : "my_2ds_c_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" }, "finestIndexedLevel" : { "$numberInt" : "25" }, "coarsestIndexedLevel" : { "$numberInt" : "5" } } | t
+         16721 |    16730 | { "v" : { "$numberInt" : "2" }, "key" : { "d" : "2dsphere" }, "name" : "my_2ds_d_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" }, "finestIndexedLevel" : { "$numberInt" : "25" } }                                                  | t
+         16721 |    16731 | { "v" : { "$numberInt" : "2" }, "key" : { "e" : "2dsphere", "f" : "2dsphere" }, "name" : "my_2ds_ef_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" } }                                                                               | t
+         16721 |    16732 | { "v" : { "$numberInt" : "2" }, "key" : { "g" : "2dsphere", "h" : "2dsphere" }, "name" : "my_2ds_gh_pfe_idx", "partialFilterExpression" : { "region" : { "$eq" : "USA" } }, "2dsphereIndexVersion" : { "$numberInt" : "3" } }             | t
+(7 rows)
+
+-- 2d index strict mode insert restrictions
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": "Hello" } }', NULL);
+                                                                                                                      insert_one                                                                                                                      
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386400285" }, "errmsg" : "location object expected, location array not in correct format" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": true } }', NULL);
+                                                                                                                      insert_one                                                                                                                      
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386400285" }, "errmsg" : "location object expected, location array not in correct format" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": false } }', NULL);
+                                                                                                                      insert_one                                                                                                                      
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386400285" }, "errmsg" : "location object expected, location array not in correct format" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": null } }', NULL);
+                                                                                                                      insert_one                                                                                                                      
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386400285" }, "errmsg" : "location object expected, location array not in correct format" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$undefined" : true } } }', NULL);
+                                                                                                                      insert_one                                                                                                                      
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386400285" }, "errmsg" : "location object expected, location array not in correct format" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberInt": "1" }  } }', NULL);
+                                                                                                     insert_one                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386138141" }, "errmsg" : "geo field only has 1 element" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberLong": "1" }  } }', NULL);
+                                                                                                     insert_one                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386138141" }, "errmsg" : "geo field only has 1 element" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberDouble": "1" }  } }', NULL);
+                                                                                                     insert_one                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386138141" }, "errmsg" : "geo field only has 1 element" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberDecimal": "1" }  } }', NULL);
+                                                                                                     insert_one                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386138141" }, "errmsg" : "geo field only has 1 element" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberInt": "1" }, "y": "Invalid"  } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberInt": "1" }, "y": true  } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberInt": "1" }, "y": false  } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberInt": "1" }, "y": null  } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberInt": "1" }, "y": { "$undefined": true }  } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"a" : { "x": { "$numberInt": "1" }, "y": "Invalid", "z": 10  } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+-- 2dsphere index strict mode insert restriction
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : "Hello" }', NULL);
+                                                                                                                                  insert_one                                                                                                                                   
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } geo element must be an array or object: a : \"Hello\"" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : true }', NULL);
+                                                                                                                                insert_one                                                                                                                                
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } geo element must be an array or object: a : true" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : false }', NULL);
+                                                                                                                                insert_one                                                                                                                                 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } geo element must be an array or object: a : false" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "$numberInt": "1" } }', NULL);
+                                                                                                                              insert_one                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } geo element must be an array or object: a : 1" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "$numberLong": "1" } }', NULL);
+                                                                                                                              insert_one                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } geo element must be an array or object: a : 1" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "$numberDouble": "1" } }', NULL);
+                                                                                                                              insert_one                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } geo element must be an array or object: a : 1" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "$numberDecimal": "1" } }', NULL);
+                                                                                                                              insert_one                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } geo element must be an array or object: a : 1" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "x": 1 } }', NULL); -- Legacy object invalid format
+                                                                                                                          insert_one                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Unknwown GeoJSON type: { \"x\" : 1 }" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "x": 1, "y": "Text" } }', NULL);
+                                                                                                                                   insert_one                                                                                                                                   
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Unknwown GeoJSON type: { \"x\" : 1, \"y\" : \"Text\" }" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [1] }', NULL); -- Legacy array invalid format
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [1, "text"] }', NULL);
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "point"} }', NULL); -- Wrong type case-sensitive
+                                                                                                                               insert_one                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } unknown GeoJSON type: { \"type\" : \"point\" }" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Point"} }', NULL); -- coordinates missing
+                                                                                                                        insert_one                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must be an array or object" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Point", "coords": [1, 2]} }', NULL); -- Invalid 'coords'
+                                                                                                                        insert_one                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must be an array or object" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Point", "coordinates": [1, "hello"]} }', NULL);
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Point", "coordinates": "non-array" } }', NULL);
+                                                                                                                        insert_one                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must be an array or object" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Point", "coordinates": [[1 , 2], [3, 4]] } }', NULL);
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Point", "coordinates": [] } }', NULL);
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Multipoint", "coordinates": [[1 , 2], [3, 4]] } }', NULL); -- Wrong case sensitive type
+                                                                                                                                                      insert_one                                                                                                                                                       
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } unknown GeoJSON type: { \"type\" : \"Multipoint\", \"coordinates\" : [ [ 1, 2 ], [ 3, 4 ] ] }" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPoint", "coordinates": [3, 4] } }', NULL);
+                                                                                                                          insert_one                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON coordinates must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPoint", "coordinates": [[1 , "Hello"], [3, 4]] } }', NULL);
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPoint", "coordinates": "non-array" } }', NULL);
+                                                                                                                                 insert_one                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON coordinates must be an array of coordinates" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPoint", "coordinates": [] } }', NULL);
+                                                                                                                                 insert_one                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } MultiPoint coordinates must have at least 1 element" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Linestring", "coordinates": [[1,2], [3,4]] } }', NULL);
+                                                                                                                                                      insert_one                                                                                                                                                       
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } unknown GeoJSON type: { \"type\" : \"Linestring\", \"coordinates\" : [ [ 1, 2 ], [ 3, 4 ] ] }" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "LineString", "coordinates": "non-array" } }', NULL);
+                                                                                                                                 insert_one                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON coordinates must be an array of coordinates" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "LineString", "coordinates": [[1, 2], [1, 2]] } }', NULL);
+                                                                                                                                            insert_one                                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON LineString must have at least 2 vertices: [ [ 1, 2 ], [ 1, 2 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "LineString", "coordinates": [[1, 2], [1, 2]] } }', NULL);
+                                                                                                                                            insert_one                                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON LineString must have at least 2 vertices: [ [ 1, 2 ], [ 1, 2 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Multilinestring", "coordinates": [] } }', NULL);
+                                                                                                                                                insert_one                                                                                                                                                
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } unknown GeoJSON type: { \"type\" : \"Multilinestring\", \"coordinates\" : [  ] }" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiLineString", "coordinates": [[1,2], [3,4]] } }', NULL);
+                                                                                                                          insert_one                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON coordinates must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiLineString", "coordinates": "non-array" } }', NULL);
+                                                                                                                              insert_one                                                                                                                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } MultiLineString coordinates must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiLineString", "coordinates": [[[1, 2], [1, 2]]] } }', NULL);
+                                                                                                                                            insert_one                                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON LineString must have at least 2 vertices: [ [ 1, 2 ], [ 1, 2 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiLineString", "coordinates": [[[1, 2], [1, 2]]] } }', NULL);
+                                                                                                                                            insert_one                                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON LineString must have at least 2 vertices: [ [ 1, 2 ], [ 1, 2 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiLineString", "coordinates": [] } }', NULL);
+                                                                                                                                    insert_one                                                                                                                                    
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } MultiLineString coordinates must have at least 1 element" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "polygon", "coordinates": [] } }', NULL);
+                                                                                                                                            insert_one                                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } unknown GeoJSON type: { \"type\" : \"polygon\", \"coordinates\" : [  ] }" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [] } }', NULL);
+                                                                                                                  insert_one                                                                                                                   
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Polygon has no loops." } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": "non-array" } }', NULL);
+                                                                                                                          insert_one                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Polygon coordinates must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [1, 2] } }', NULL);
+                                                                                                                                 insert_one                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON coordinates must be an array of coordinates" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[1, 2]] } }', NULL);
+                                                                                                                          insert_one                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON coordinates must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[1, 2]]] } }', NULL);
+                                                                                                                                     insert_one                                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Loop must have at least 3 different vertices: [ [ 1, 2 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[1, 2], [1, 2], [1,3]]] } }', NULL);
+                                                                                                                                  insert_one                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Loop is not closed: [ [ 1, 2 ], [ 1, 2 ], [ 1, 3 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[1, 2], [1, 2], [1,3], [1,2]]] } }', NULL);
+                                                                                                                                                    insert_one                                                                                                                                                    
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Loop must have at least 3 different vertices: [ [ 1, 2 ], [ 1, 2 ], [ 1, 3 ], [ 1, 2 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[1, 1], [1, 5], [3, 4], [0, 3], [1, 1]]] } }', NULL);
+                                                                                                                                                                                 insert_one                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 }  Loop is not valid: [ [1.000000, 1.000000], [1.000000, 5.000000], [3.000000, 4.000000], [0.000000, 3.000000], [1.000000, 1.000000] ] - Edges cross" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [-2, -1], [0, 0]]] } }', NULL); -- self intersecting polygon with 0 geometrical area
+                                                                                                                                                                                  insert_one                                                                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 }  Loop is not valid: [ [0.000000, 0.000000], [-2.000000, -1.000000], [1.000000, 1.000000], [0.000000, 1.000000], [0.000000, 0.000000] ] - Edges cross" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[1, 0], [0, 10], [10, 10], [0, 0], [1, 0]]] } }', NULL); -- self intersecting polygon with non-zero geometrical area
+                                                                                                                                                                                  insert_one                                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 }  Loop is not valid: [ [1.000000, 0.000000], [0.000000, 10.000000], [10.000000, 10.000000], [0.000000, 0.000000], [1.000000, 0.000000] ] - Edges cross" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[0, 0], [0, 80], [80, 80], [80, 0], [0, 0]],[[0, 10], [0, 70], [75, 75], [75, 25], [0, 10]]] } }', NULL); -- hole edge lies on outer ring edge
+                                                                                                                                                                                                                                                                               insert_one                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 }  Secondary loops not contained by first exterior loop - secondary loops must be holes: [ [0.000000, 10.000000], [75.000000, 25.000000], [75.000000, 75.000000], [0.000000, 70.000000], [0.000000, 10.000000] ] first loop: [ [0.000000, 0.000000], [0.000000, 80.000000], [80.000000, 80.000000], [80.000000, 0.000000], [0.000000, 0.000000] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[0, 0], [0, 80], [80, 80], [80, 0], [0, 0]],[[0, 0], [0, 80], [75, 75], [75, 25], [0, 0]]] } }', NULL); -- hole shares an edge with outer ring
+                                                                                                                                                                                                                                                                              insert_one                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 }  Secondary loops not contained by first exterior loop - secondary loops must be holes: [ [0.000000, 0.000000], [75.000000, 25.000000], [75.000000, 75.000000], [0.000000, 80.000000], [0.000000, 0.000000] ] first loop: [ [0.000000, 0.000000], [0.000000, 80.000000], [80.000000, 80.000000], [80.000000, 0.000000], [0.000000, 0.000000] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[0, 0], [0, 80], [80, 80], [80, 0], [0, 0]],[[10, 10], [10, 70], [75, 75], [75, 25], [10, 10]],[[10,20], [10,30], [50, 50], [10, 20]]] } }', NULL); -- 3rd ring edge lies on 2nd ring edge
+                                                                                                                                                                                                                                                                        insert_one                                                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 }  Secondary loops not contained by first exterior loop - secondary loops must be holes: [ [10.000000, 20.000000], [50.000000, 50.000000], [10.000000, 30.000000], [10.000000, 20.000000] ] first loop: [ [10.000000, 10.000000], [75.000000, 25.000000], [75.000000, 75.000000], [10.000000, 70.000000], [10.000000, 10.000000] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[1, 1], [1, 5], [5, 5], [5, 1], [1, 1]], [[0, 0], [0, 6], [6, 6], [6, 0], [0, 0]]] } }', NULL);
+                                                                                                                                                  insert_one                                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Secondary loops not contained by first exterior loop - secondary loops must be holes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Polygon", "coordinates": [[[1, 2], [2, 3], [1, 2], [3, 4], [1, 2]]] } }', NULL);
+                                                                                                                                                         insert_one                                                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Loop is not valid: [ [ 1, 2 ], [ 2, 3 ], [ 1, 2 ], [ 3, 4 ], [ 1, 2 ] ] Duplicate vertices: 0 and 2" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "Multipolygon", "coordinates": [] } }', NULL);
+                                                                                                                                              insert_one                                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } unknown GeoJSON type: { \"type\" : \"Multipolygon\", \"coordinates\" : [  ] }" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [] } }', NULL);
+                                                                                                                                  insert_one                                                                                                                                   
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } MultiPolygon coordinates must have at least 1 element" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": "non-array" } }', NULL);
+                                                                                                                            insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } MultiPolygon coordinates must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [1, 2] } }', NULL);
+                                                                                                                          insert_one                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Polygon coordinates must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [[1, 2]] } }', NULL);
+                                                                                                                                 insert_one                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON coordinates must be an array of coordinates" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [[[1, 2]]] } }', NULL);
+                                                                                                                          insert_one                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeoJSON coordinates must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [[[[1, 2], [1, 2], [1,3]]]] } }', NULL);
+                                                                                                                                  insert_one                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Loop is not closed: [ [ 1, 2 ], [ 1, 2 ], [ 1, 3 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [[[[1, 2], [1, 2], [1,3], [1,2]]]] } }', NULL);
+                                                                                                                                                    insert_one                                                                                                                                                    
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Loop must have at least 3 different vertices: [ [ 1, 2 ], [ 1, 2 ], [ 1, 3 ], [ 1, 2 ] ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [[[[1, 1], [1, 5], [3, 4], [0, 3], [1, 1]]]] } }', NULL);
+                                                                                                                                                                                 insert_one                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 }  Loop is not valid: [ [1.000000, 1.000000], [1.000000, 5.000000], [3.000000, 4.000000], [0.000000, 3.000000], [1.000000, 1.000000] ] - Edges cross" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [[[[1, 1], [1, 5], [5, 5], [5, 1], [1, 1]], [[0, 0], [0, 6], [6, 6], [6, 0], [0, 0]]]] } }', NULL);
+                                                                                                                                                  insert_one                                                                                                                                                  
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Secondary loops not contained by first exterior loop - secondary loops must be holes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : {"type": "MultiPolygon", "coordinates": [[[[1, 2], [2, 3], [1, 2], [3, 4], [1, 2]]]] } }', NULL);
+                                                                                                                                                         insert_one                                                                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Loop is not valid: [ [ 1, 2 ], [ 2, 3 ], [ 1, 2 ], [ 3, 4 ], [ 1, 2 ] ] Duplicate vertices: 0 and 2" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "type": "GeometryCollection", "geometries": {} } }', NULL);
+                                                                                                                               insert_one                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeometryCollection geometries must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "type": "GeometryCollection", "geometries": [] } }', NULL);
+                                                                                                                                     insert_one                                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeometryCollection geometries must have at least 1 element" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "type": "GeometryCollection", "coordinates": [] } }', NULL);
+                                                                                                                               insert_one                                                                                                                               
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } GeometryCollection geometries must be an array" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "type": "GeometryCollection", "geometries": [1, 2] } }', NULL);
+                                                                                                                              insert_one                                                                                                                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Element 0 of \"geometries\" is not an object" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "type": "GeometryCollection", "geometries": [{"type": "Point", "coordinates": [1, 2]}, 2] } }', NULL);
+                                                                                                                              insert_one                                                                                                                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Element 1 of \"geometries\" is not an object" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : { "type": "GeometryCollection", "geometries": [{"type": "Point", "coordinates": ["Hello", 2]}] } }', NULL);
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+-- Multi key failure cases
+SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], "Invalid point" ] } }', NULL);
+                                                                                                                      insert_one                                                                                                                      
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "386400285" }, "errmsg" : "location object expected, location array not in correct format" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], [20, true] ] } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], [20, false] ] } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], [20, null] ] } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], [20, "point"] ] } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], [20, { "$undefined": true }] ] } }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{"b" : [ { "c": [10, 20] }, { "c": { "long": "100", "lat": "100" } }, [ 30, "text"] ] }', NULL);
+                                                                                                                    insert_one                                                                                                                     
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "352583709" }, "errmsg" : "geo values must be 'legacy coordinate pairs' for 2d indexes" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [{"type": "Point", "coordinates": [10, 20]}, {"type": "Point", "coordinates": [10, 20]}] }', NULL); -- This is not supported in mongo as multi key
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [[10, 20], [20, 20]] }', NULL); -- -- This is not supported in mongo as multi key legacy
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [ { "x" : 1, "y" : 1 }, { "x" : 2, "y" : 2 }, { "x" : 3, "y" : 3 } ] }', NULL); -- -- This is not supported in mongo as multi key legacy
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "b" : [ {"c" : {"type": "Point", "coordinates": [10, 20]} }, {"c" : {"type": "Point", "coordinates": ["Text", 20]} } ] }', NULL);
+                                                                                                                            insert_one                                                                                                                            
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "302514205" }, "errmsg" : "Can't extract geo keys { _id: 1 } Point must only contain numeric elements" } ] }
+(1 row)
+
+-- Some case which are valid where the field is either empty object/document or not of type object/document
+-- These cases generate NULL geometries and are not indexed
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 1, "a" : "Hello" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 2, "a" : true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 3, "a" : false }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 4, "a" : 10 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 5, "a" : [] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 6, "a" : { } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 7, "a" : { "$undefined": true } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 8, "a" : [ { }, [ ] ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 9, "a" : { "field": [] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 10, "a" : { "field": { } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 101, "a" : null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', '2dindextest','{ "_id": 102, "b": [{"c": null}, {"c": {"$undefined": true}}]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Valid insertions where 2d geometery index terms are generated
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 11, "a" : [11, 11] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 12, "a" : { "long": 12, "lat": 12 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 13, "a" : [13, 13, 11] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 14, "a" : { "long": 14, "lat": 14, "extra": 1414 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 15, "a" : [ [ 15.1, 15.1 ], [15.2, 15.2] ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 16, "a" : [ [ 16.1, 16.1 ], [16.2, 16.2], { }, [16.3, 16.3], [16.4, 16.4] ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "_id" : 18, "a" : [ [ { "$numberLong": "18" }, { "$numberInt": "18" } ], [ { "$numberDouble": "18.1" }, { "$numberDecimal": "18.2" }] ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Out of boundary check- errors
+SELECT documentdb_api.insert_one('db','2dindextest','{ "d" : [-120, 10] }', NULL);
+                                                                                                          insert_one                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "369360925" }, "errmsg" : "point not in interval of [ -100, 100 ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "d" : [10, 120] }', NULL);
+                                                                                                          insert_one                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "369360925" }, "errmsg" : "point not in interval of [ -100, 100 ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "d" : [ { "$numberDouble": "-100.000001" }, 80] }', NULL);
+                                                                                                          insert_one                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "369360925" }, "errmsg" : "point not in interval of [ -100, 100 ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "d" : [ { "$numberDouble": "80" }, { "$numberDecimal": "100.000001" }] }', NULL);
+                                                                                                          insert_one                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "369360925" }, "errmsg" : "point not in interval of [ -100, 100 ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "d" : [ { "$numberDouble": "-inf" }, { "$numberDecimal": "20" }] }', NULL);
+                                                                                                          insert_one                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "369360925" }, "errmsg" : "point not in interval of [ -100, 100 ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "d" : [ { "$numberDouble": "20" }, { "$numberDecimal": "inf" }] }', NULL);
+                                                                                                          insert_one                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "369360925" }, "errmsg" : "point not in interval of [ -100, 100 ]" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dindextest','{ "d" : [ [10, 20], [-200, 200]] }', NULL);
+                                                                                                          insert_one                                                                                                          
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "369360925" }, "errmsg" : "point not in interval of [ -100, 100 ]" } ] }
+(1 row)
+
+-- NULL values for 2dsphere index
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : { "$undefined": true } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"b": [{"c": null}, {"c": {"$undefined": true}}]}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"z" : "Text" }', NULL); -- index field missing
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Valid GeoJson inserts for 2dsphere indexes
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : [ 5, 10] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : { "x": 5 , "y": 10} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "Point", "coordinates": [5, 10] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "Point", "coordinates": { "x": 5, "y": 10 } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "MultiPoint", "coordinates": [[1 , 2], [3, 4]] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "LineString", "coordinates": [[1,2], [3,4]] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "MultiLineString", "coordinates": [[[1,2], [3,4]]] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "Polygon", "coordinates": [[[1, 2], [1, 2], [1,3], [2, 3], [2, 2], [1, 2]]] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "MultiPolygon", "coordinates": [[[[1, 2], [1, 2], [1,3], [2, 3], [2, 2], [1, 2]]]] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : { "type": "GeometryCollection", "geometries": [{"type": "Point", "coordinates": [1, 2]}] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Valid polygon inserts for 2dsphere index
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "Polygon", "coordinates": [[[0.0, 0.0], [60.0, 0.0], [90.0, 0.0], [0.0, 0.0]]] } }', NULL); -- all points on equator
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "Polygon", "coordinates": [[[0, 0], [0 ,4], [0, 6], [0, 8], [0, 0]]] } }', NULL); -- all points on the same longitude
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "Polygon", "coordinates": [[[-120, 60.0], [0.0, 60.0], [60.0, 60.0], [90.0, 60.0], [-120.0, 60.0]]] } }', NULL); -- all points on same latitude
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"a" : {"type": "Polygon", "coordinates": [[[-120.0, 60], [-60, 60], [0, 60], [120, 60], [-120.0, 60]], [[-120.0, 70], [-60, 70], [0, 70], [120, 70], [-120.0, 70]]] } }', NULL); -- points on a single latitude, polygon going around the earth with similar hole
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Test whether invalid document after valid documents are correctly errored out without OOM
+BEGIN;
+set local enable_seqscan TO on;
+-- Valid and then invalid doc for `a` 2dsphere field
+SELECT documentdb_api.insert_one('db','2dsOOMTest','{ "_id" : 1, "a": [2.1, 2.2] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','2dsOOMTest','{ "_id" : 2, "a": "Text" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- error while building the index and should not OOM
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "2dsOOMTest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds_oom_idx" }]}', true);
+ERROR:  Can't extract geo keys { _id: 2 } geo element must be an array or object: a : "Text"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_16734 ON documentdb_data.documents_16722 USING GIST(documentdb_api_catalog.bson_validate_geography(document, 'a'::text) documentdb_api_catalog.bson_gist_geography_ops_2d( path='a' ) ) WHERE ( documentdb_api_catalog.bson_validate_geography(document, 'a'::text) IS NOT NULL ) "
+ROLLBACK;

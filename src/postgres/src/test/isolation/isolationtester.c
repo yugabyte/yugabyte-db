@@ -142,7 +142,7 @@ main(int argc, char **argv)
 	spec_yyparse();
 	testspec = &parseresult;
 
-	/* Release the scanner memory */
+	/* YB: Release the scanner memory */
 	spec_scanner_finish();
 
 	/* Perform post-parse checking, and fill in linking fields */

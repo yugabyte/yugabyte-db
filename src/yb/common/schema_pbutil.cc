@@ -84,7 +84,7 @@ void SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   SchemaToColocatedTableIdentifierPB(schema, pb->mutable_colocated_table_id());
   SchemaToColumnPBs(schema, pb->mutable_columns(), flags);
   schema.table_properties().ToTablePropertiesPB(pb->mutable_table_properties());
-  pb->set_pgschema_name(schema.SchemaName());
+  pb->set_deprecated_pgschema_name(schema.SchemaName());
 }
 
 Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
@@ -97,8 +97,8 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
   TableProperties table_properties = TableProperties::FromTablePropertiesPB(pb.table_properties());
   RETURN_NOT_OK(schema->Reset(columns, column_ids, table_properties));
 
-  if(pb.has_pgschema_name()) {
-    schema->SetSchemaName(pb.pgschema_name());
+  if (pb.has_deprecated_pgschema_name()) {
+    schema->SetSchemaName(pb.deprecated_pgschema_name());
   }
 
   if (pb.has_colocated_table_id()) {
@@ -126,7 +126,7 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   pb->set_is_static(col_schema.is_static());
   pb->set_is_counter(col_schema.is_counter());
   pb->set_order(col_schema.order());
-  pb->set_sorting_type(to_underlying(col_schema.sorting_type()));
+  pb->set_sorting_type(std::to_underlying(col_schema.sorting_type()));
   pb->set_pg_type_oid(col_schema.pg_type_oid());
   pb->set_marked_for_deletion(col_schema.marked_for_deletion());
   // We only need to process the *hash* primary key here. The regular primary key is set by the

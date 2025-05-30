@@ -13,11 +13,7 @@ type MigrateSchemaTaskInfo struct {
 
     ImportSchema string `json:"import_schema"`
 
-    SuggestionsErrors []ErrorsAndSuggestionsDetails `json:"suggestions_errors"`
-
     CurrentAnalysisReport SchemaAnalysisReport `json:"current_analysis_report"`
 
     AnalysisHistory []SchemaAnalysisReport `json:"analysis_history"`
-
-    SqlObjects []SqlObjectsDetails `json:"sql_objects"`
 }

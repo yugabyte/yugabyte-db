@@ -101,6 +101,14 @@ const (
 	HashicorpVaultAuthNamespaceField = "HC_VAULT_AUTH_NAMESPACE"
 )
 
+// URL scheme
+const (
+	// HTTPURLScheme http scheme
+	HTTPURLScheme = "http"
+	// HTTPSURLScheme https scheme
+	HTTPSURLScheme = "https"
+)
+
 // Minimum YugabyteDB Anywhere versions to support operation
 const (
 
@@ -185,6 +193,18 @@ const (
 	DeleteInProgressBackupState = "DeleteInProgress"
 )
 
+// Scopes of runtime configuration
+const (
+	// UniverseScope scope
+	UniverseScope = "UNIVERSE"
+	// ProviderScope scope
+	ProviderScope = "PROVIDER"
+	// CustomerScope scope
+	CustomerScope = "CUSTOMER"
+	// GlobalScope scope
+	GlobalScope = "GLOBAL"
+)
+
 // ScheduleBackupStates
 const (
 	// DeletingScheduleBackupState state
@@ -249,6 +269,18 @@ const (
 	AbortedTaskStatus = "Aborted"
 )
 
+// Allowed states for support bundle
+const (
+	// RunningSupportBundleState state
+	RunningSupportBundleState = "Running"
+	// AbortedSupportBundleState state
+	AbortedSupportBundleState = "Aborted"
+	// SuccessSupportBundleState state
+	SuccessSupportBundleState = "Success"
+	// FailedSupportBundleState state
+	FailedSupportBundleState = "Failed"
+)
+
 // Allowed states for XCluster Universe Lifecycle
 const (
 	// InitializedXClusterState indicates the XCluster universe is initialized
@@ -265,6 +297,34 @@ const (
 	FailedXClusterState = "Failed"
 )
 
+// Allowed states for XCluster tables
+const (
+	// UnableToFetchXClusterTableState indicates the XCluster table state is unknown
+	UnableToFetchXClusterTableState = "UnableToFetch"
+	// UpdatingXClusterTableState indicates the XCluster table is updating
+	UpdatingXClusterTableState = "Updating"
+	// BootstrappingXClusterTableState indicates the XCluster table is bootstrapping
+	BootstrappingXClusterTableState = "Bootstrapping"
+	// ValidatingXClusterTableState indicates the XCluster table is validating
+	ValidatedXClusterTableState = "Validated"
+	// RunningXClusterTableState indicates the XCluster table is running
+	RunningXClusterTableState = "Running"
+	// FailedXClusterTableState indicates the XCluster table has failed
+	FailedXClusterTableState = "Failed"
+	// ErrorXClusterTableState indicates the XCluster table has encountered an error
+	ErrorXClusterTableState = "Error"
+	// WarningXClusterTableState indicates the XCluster table has a warning
+	WarningXClusterTableState = "Warning"
+	// DroppedFromSourceXClusterTableState indicates the XCluster table has been dropped from source
+	DroppedFromSourceXClusterTableState = "DroppedFromSource"
+	// DroppedFromTargetXClusterTableState indicates the XCluster table has been dropped from target
+	DroppedFromTargetXClusterTableState = "DroppedFromTarget"
+	// ExtraTableOnSourceXClusterTableState indicates the XCluster table is extra on source
+	ExtraTableOnSourceXClusterTableState = "ExtraTableOnSource"
+	// ExtraTableOnTargetXClusterTableState indicates the XCluster table is extra on target
+	ExtraTableOnTargetXClusterTableState = "ExtraTableOnTarget"
+)
+
 // Node operations allowed on universe
 const (
 	// AddNode operation
@@ -277,6 +337,16 @@ const (
 	StopNode = "STOP"
 	// RemoveNode operation
 	RemoveNode = "REMOVE"
+	// DeleteNode operation
+	DeleteNode = "DELETE"
+	// ReplaceNode operation
+	ReplaceNode = "REPLACE"
+	// DecommissionNode operation
+	DecommissionNode = "DECOMMISSION"
+	// HardRebootNode operation
+	HardRebootNode = "HARD_REBOOT"
+	// StartMasterNode operation
+	StartMasterNode = "START_MASTER"
 	// ReprovisionNode operation
 	ReprovisionNode = "REPROVISION"
 	// ReleaseNode operation
@@ -286,6 +356,14 @@ const (
 const (
 	// StorageCustomerConfigType field name to denote in request bodies
 	StorageCustomerConfigType = "STORAGE"
+)
+
+// Cluster Type
+const (
+	// PrimaryCluster of universe
+	PrimaryCluster = "PRIMARY"
+	// ReadReplicaCluster of universe
+	ReadReplicaCluster = "ASYNC"
 )
 
 // Server Type values
@@ -306,6 +384,10 @@ const (
 	EditOperation = "Edit"
 	// SecurityOperation type
 	SecurityOperation = "Security"
+	// PITROperation type
+	PITROperation = "PITR"
+	// SupportBundleOperation type
+	SupportBundleOperation = "SupportBundle"
 )
 
 // Different resource types that are supported in CLI
@@ -399,22 +481,18 @@ const (
 
 // KMSOpType
 const (
-	// EnableKMSOpType type
-	EnableKMSOpType = "ENABLE"
-	// DisableKMSOpType type
-	DisableKMSOpType = "DISABLE"
 	// RotateKMSConfigKMSOpType type
 	RotateKMSConfigKMSOpType = "ROTATE-KMS-CONFIG"
 	// RotateUniverseKeyKMSOpType type
 	RotateUniverseKeyKMSOpType = "ROTATE-UNIVERSE-KEY"
 )
 
-// TLSOpType
+// OpType
 const (
-	// EnableTLSOpType type
-	EnableTLSOpType = "ENABLE"
-	// DisableTLSOpType type
-	DisableTLSOpType = "DISABLE"
+	// EnableOpType type
+	EnableOpType = "ENABLE"
+	// DisableOpType type
+	DisableOpType = "DISABLE"
 )
 
 // ResourceType
@@ -455,6 +533,119 @@ const (
 	NoneServiceState = "NONE"
 )
 
+// AlertState type
+const (
+	// ActiveAlertState type
+	ActiveAlertState = "ACTIVE"
+	// AcknowledgedAlertState type
+	AcknowledgedAlertState = "ACKNOWLEDGED"
+	// SuspendedAlertState type
+	SuspendedAlertState = "SUSPENDED"
+	// ResolvedAlertState type
+	ResolvedAlertState = "RESOLVED"
+)
+
+// AlertSeverity type
+const (
+	// SevereAlertSeverity type
+	SevereAlertSeverity = "SEVERE"
+	// WarningAlertSeverity type
+	WarningAlertSeverity = "WARNING"
+)
+
+// AlertConfigurationTargetType
+const (
+	// UniverseAlertConfigurationTargetType type
+	UniverseAlertConfigurationTargetType = "UNIVERSE"
+	// PlatformAlertConfigurationTargetType type
+	PlatformAlertConfigurationTargetType = "PLATFORM"
+)
+
+// AlertConfigurationDestinationType
+const (
+	// NoDestinationAlertConfigurationDestinationType type
+	NoDestinationAlertConfigurationDestinationType = "NO_DESTINATION"
+	// DefaultDestinationAlertConfigurationDestinationType type
+	DefaultDestinationAlertConfigurationDestinationType = "DEFAULT_DESTINATION"
+	// SelectedDestinationAlertConfigurationDestinationType type
+	SelectedDestinationAlertConfigurationDestinationType = "SELECTED_DESTINATION"
+)
+
+// XClusterConfigType
+const (
+	// BasicXClusterConfigType type
+	BasicXClusterConfigType = "Basic"
+	// TxnXClusterConfigType type
+	TxnXClusterConfigType = "Txn"
+	// DBXClusterConfigType type
+	DBXClusterConfigType = "Db"
+)
+
+// HttpAuthType
+const (
+	// NoAuthHttpAuthType type
+	NoAuthHttpAuthType = "NONE"
+	// BasicHttpAuthType type
+	BasicHttpAuthType = "BASIC"
+	// TokenHttpAuthType type
+	TokenHttpAuthType = "TOKEN"
+)
+
+// AlertChannelTypes
+const (
+	// EmailAlertChannelType type
+	EmailAlertChannelType = "Email"
+	// PagerDutyAlertChannelType type
+	PagerDutyAlertChannelType = "PagerDuty"
+	// SlackAlertChannelType type
+	SlackAlertChannelType = "Slack"
+	// WebhookAlertChannelType type
+	WebhookAlertChannelType = "WebHook"
+)
+
+// SortDirection
+const (
+	// DescSortDirection
+	DescSortDirection = "DESC"
+	// AscSortDirection
+	AscSortDirection = "ASC"
+)
+
+// Group MappingTypes
+const (
+	// OIDCGroupMappingType type
+	OIDCGroupMappingType = "OIDC"
+	// LDAPGroupMappingType type
+	LDAPGroupMappingType = "LDAP"
+)
+
+// GlobalScopeUUID is the UUID for global scope
+const GlobalScopeUUID = "00000000-0000-0000-0000-000000000000"
+
+// LDAP SSL Types
+const (
+	// LdapSSLType - LDAPS
+	LDAPWithSSL = "ldaps"
+	// LdapSSLType - StartTLS
+	LDAPWithStartTLS = "starttls"
+	// LdapSSLType - None
+	LDAPWithoutSSL = "none"
+)
+
+// LDAP TLS Versions
+const (
+	LdapTLSVersion1   = "TLSv1"
+	LdapTLSVersion1_1 = "TLSv1_1"
+	LdapTLSVersion1_2 = "TLSv1_2"
+)
+
+// LDAP Group Search Scopes
+const (
+	LdapGroupSearchScopeObject   = "OBJECT"
+	LdapGroupSearchScopeOneLevel = "ONELEVEL"
+	LdapGroupSearchScopeSubtree  = "SUBTREE"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
@@ -483,6 +674,22 @@ func ErrorReleaseResponseStates() []string {
 // IncompleteReleaseResponseStates return set of states for ongoing tasks
 func IncompleteReleaseResponseStates() []string {
 	return []string{RunningReleaseResponseState, WaitingReleaseResponseState}
+}
+
+// TableStatesInXClusterConfig returns set of states that are valid for tables in xcluster config
+func TableStatesInXClusterConfig() []string {
+	return []string{
+		RunningXClusterTableState,
+		BootstrappingXClusterTableState,
+		ValidatedXClusterTableState,
+		UpdatingXClusterTableState,
+		ErrorXClusterTableState,
+		WarningXClusterTableState,
+		FailedXClusterTableState,
+		UnableToFetchXClusterTableState,
+		DroppedFromSourceXClusterTableState,
+		DroppedFromTargetXClusterTableState,
+	}
 }
 
 // YugabyteDB Anywhere versions >= the minimum listed versions for operations

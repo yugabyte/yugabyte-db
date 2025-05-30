@@ -154,7 +154,8 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   }
 
   private TaskInfo submitTask(XClusterConfig xClusterConfig) {
-    XClusterConfigTaskParams taskParams = new XClusterConfigTaskParams(xClusterConfig);
+    XClusterConfigTaskParams taskParams =
+        new XClusterConfigTaskParams(xClusterConfig, false /* isForced */);
     try {
       UUID taskUUID = commissioner.submit(TaskType.DeleteXClusterConfig, taskParams);
 

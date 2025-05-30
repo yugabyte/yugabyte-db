@@ -12,10 +12,6 @@ menu:
 type: docs
 ---
 
-For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters, you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on.
-
-The more permissions that you can provide, the more YBA can automate.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
@@ -49,6 +45,12 @@ The more permissions that you can provide, the more YBA can automate.
     </a>
   </li>
 </ul>
+
+For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters, you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
+
+{{<tip>}}
+If you can't provide YBA with the necessary permissions, you can still deploy to Azure using an [on-premises provider](../cloud-permissions-nodes/).
+{{</tip>}}
 
 ## Azure
 

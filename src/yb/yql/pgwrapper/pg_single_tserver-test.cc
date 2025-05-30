@@ -34,6 +34,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/range.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/to_stream.h"
@@ -45,23 +46,25 @@
 DEFINE_test_flag(int32, scan_tests_num_rows, 0,
                  "Number of rows to load for various scanning tests, or 0 for default.");
 
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
-DECLARE_uint64(sst_files_soft_limit);
-DECLARE_uint64(sst_files_hard_limit);
+DECLARE_bool(TEST_skip_applying_truncate);
 DECLARE_bool(rocksdb_use_logging_iterator);
+DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
-DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_use_packed_row_v2);
-DECLARE_int64(global_memstore_size_mb_max);
-DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
+DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
-DECLARE_int32(max_prevs_to_avoid_seek);
+DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(txn_max_apply_batch_records);
-DECLARE_bool(TEST_skip_applying_truncate);
-DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(global_memstore_size_mb_max);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(sst_files_hard_limit);
+DECLARE_uint64(sst_files_soft_limit);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -90,15 +93,16 @@ class PgSingleTServerTest : public PgMiniTestBase {
     return 1;
   }
 
-  void SetupColocatedTableAndRunBenchmark(
+  void SetupTableAndRunBenchmark(
       const std::string& create_table_cmd, const std::string& insert_cmd,
       const std::string& select_cmd, int rows, int block_size, int reads, bool compact,
       bool aggregate) {
     auto conn = ASSERT_RESULT(Connect());
+    if (use_colocation_) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION = true", kDatabaseName));
 
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION = true", kDatabaseName));
-
-    conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    }
 
     ASSERT_OK(conn.Execute(create_table_cmd));
 
@@ -252,6 +256,10 @@ class PgSingleTServerTest : public PgMiniTestBase {
     return std::make_pair(block_cache_hit_count, block_cache_miss_count);
   }
 
+  void TestIndexScan(int fetch_column_idx);
+
+  bool use_colocation_ = true;
+
  private:
   std::string colocated_table_id_;
 };
@@ -278,7 +286,7 @@ class PgMiniBigPrefetchTest : public PgSingleTServerTest {
     const std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY)";
     const std::string insert_cmd = "INSERT INTO t SELECT generate_series($0, $1)";
     const std::string select_cmd = select ? "SELECT * FROM t" : "SELECT count(*) FROM t";
-    SetupColocatedTableAndRunBenchmark(
+    SetupTableAndRunBenchmark(
         create_cmd, insert_cmd, select_cmd, rows, block_size, reads, compact,
         /* aggregate = */ !select);
   }
@@ -377,7 +385,7 @@ TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
   const std::string select_cmd = "SELECT * FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate= */ false);
 }
@@ -391,7 +399,7 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_ON_MACOS(HybridTimeFilterDuringCo
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, /* select_cmd= */ "", NumScanRows(), kScanBlockSize,
       FLAGS_TEST_scan_reads, /* compact= */ false, /* aggregate= */ false);
   auto [block_cache_hit_count, block_cache_miss_count] =
@@ -417,21 +425,31 @@ TEST_F_EX(PgSingleTServerTest, ScanWithLowerLimit, PgMiniBigPrefetchTest) {
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
   const std::string select_cmd = "SELECT * FROM t WHERE a > 0";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
-TEST_F_EX(PgSingleTServerTest, IndexScan, PgMiniBigPrefetchTest) {
+void PgSingleTServerTest::TestIndexScan(int fetch_column_idx) {
   constexpr int kNumColumns = 2;
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, false) + ";";
   create_cmd += "CREATE INDEX ON t (c0 ASC);";
   auto insert_cmd = InsertNValuesCommand(kNumColumns - 1);
-  const std::string select_cmd = "SELECT c0 FROM t WHERE c0 > 0";
-  SetupColocatedTableAndRunBenchmark(
+  const std::string select_cmd = Format("SELECT c$0 FROM t WHERE c0 > 0", fetch_column_idx);
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows() / 2, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
+}
+
+TEST_F_EX(PgSingleTServerTest, IndexScan, PgMiniBigPrefetchTest) {
+  use_colocation_ = true;
+  TestIndexScan(0);
+}
+
+TEST_F_EX(PgSingleTServerTest, IndexScanNoColocation, PgMiniBigPrefetchTest) {
+  use_colocation_ = false;
+  TestIndexScan(1);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithCompaction, PgMiniBigPrefetchTest) {
@@ -460,7 +478,7 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
   create_cmd += "value INT, PRIMARY KEY (" + pk + "))";
   insert_cmd += "generate_series($0, $1))";
   const std::string select_cmd = "SELECT value FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -482,7 +500,7 @@ TEST_F_EX(PgSingleTServerTest, ScanBigPK, PgMiniBigPrefetchTest) {
   }
   insert_cmd += ", generate_series($0, $1))";
   const std::string select_cmd = "SELECT k FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -508,7 +526,7 @@ TEST_F_EX(PgSingleTServerTest, ScanComplexPK, PgMiniBigPrefetchTest) {
   create_cmd += "value INT, PRIMARY KEY (" + pk + "))";
   insert_cmd += ")";
   const std::string select_cmd = "SELECT * FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -533,7 +551,7 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
   insert_cmd += insert_cmd_suffix;
   insert_cmd += ")";
   const std::string select_cmd = "SELECT value FROM t";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -544,7 +562,7 @@ TEST_F(PgSingleTServerTest, ScanOneColumn) {
   std::string create_cmd = "CREATE TABLE t (k BIGINT, PRIMARY KEY (k ASC));";
   std::string insert_cmd = "INSERT INTO t (k) VALUES (generate_series($0, $1))";
   const std::string select_cmd = "SELECT k FROM t WHERE k > 0";
-  SetupColocatedTableAndRunBenchmark(
+  SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
@@ -575,7 +593,7 @@ class PgSmallPrefetchTest : public PgSingleTServerTest {
     const std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY)";
     const std::string insert_cmd = "INSERT INTO t SELECT generate_series($0, $1)";
     const std::string select_cmd = "SELECT * from t where a in (SELECT generate_series(1, 10000))";
-    SetupColocatedTableAndRunBenchmark(
+    SetupTableAndRunBenchmark(
         create_cmd, insert_cmd, select_cmd, rows, block_size, reads, /* compact = */ true,
         /* aggregate = */ false);
   }
@@ -871,9 +889,54 @@ class PgFastBackwardScanTest
     // A helper functor to execute a select statement for the test.
     auto fetch_and_validate = [this, &conn, &table_name, with_nulls](
         const std::string& expected_without_nulls, const std::string& expected_with_nulls) {
+      const auto stmt =
+          Format("SELECT c_1, c_5, r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).starts_with("Index Scan Backward"), RuntimeError, "");
+
       return FetchAndValidate(conn,
           Format("SELECT c_1, c_5, r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name),
           with_nulls ? expected_with_nulls : expected_without_nulls);
+    };
+    auto fetch_and_validate_pk_only = [this, &conn, &table_name](const std::string& expected) {
+      const auto stmt = Format("SELECT r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).starts_with("Index Scan Backward"), RuntimeError, "");
+
+      return FetchAndValidate(conn, stmt, expected);
+    };
+    auto fetch_and_validate_pk_max = [this, &conn, &table_name](const std::string& expected) {
+      const auto stmt = Format("SELECT max(r) FROM $0 WHERE h = 1", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).Contains("Index Scan Backward"), RuntimeError, "");
+
+      return FetchAndValidate(conn, stmt, expected);
+    };
+    auto fetch_and_validate_pk_sum = [this, &conn, &table_name](const std::string& expected) {
+      const auto stmt = Format(
+          "SELECT r, sum(h) FROM $0 WHERE h = 1 GROUP BY r ORDER BY r DESC", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).Contains("Index Scan Backward"), RuntimeError, "");
+
+      return FetchAndValidate(conn, stmt, expected, /* num_iterations = */ 2);
+    };
+    auto fetch_and_validate_pk_count = [this, &conn, &table_name](const std::string& expected) {
+      const auto stmt = Format(
+          "SELECT r, count(*) FROM $0 WHERE h = 1 GROUP BY r ORDER BY r DESC", table_name);
+
+      // Make sure the statement is backward scan.
+      const auto explain = VERIFY_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+      SCHECK(Slice(explain).Contains("Index Scan Backward"), RuntimeError, "");
+
+      return FetchAndValidate(conn, stmt, expected, /* num_iterations = */ 2);
     };
 
     // Create table.
@@ -906,6 +969,10 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "1, 5, 3; 1, 5, 2; 1, 5, 1", "NULL, 5, 3; NULL, 5, 2; NULL, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("3; 2; 1"));
+    ASSERT_OK(fetch_and_validate_pk_max("3"));
+    ASSERT_OK(fetch_and_validate_pk_sum("3, 1; 2, 1; 1, 1"));
+    ASSERT_OK(fetch_and_validate_pk_count("3, 1; 2, 1; 1, 1"));
 
     if (intents_usage == IntentsUsage::kMixed) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
@@ -920,6 +987,10 @@ class PgFastBackwardScanTest
         "256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; NULL, 5, 2; 4096, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 2; 1"));
+    ASSERT_OK(fetch_and_validate_pk_max("5"));
+    ASSERT_OK(fetch_and_validate_pk_sum("5, 1; 4, 1; 2, 1; 1, 1"));
+    ASSERT_OK(fetch_and_validate_pk_count("5, 1; 4, 1; 2, 1; 1, 1"));
 
     // Re-insert data for the deleted rows.
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(3), 16383)));
@@ -928,6 +999,10 @@ class PgFastBackwardScanTest
         "256, 260, 5; 256, 260, 4; 16384, 16388, 3; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; 16384, 16388, 3; NULL, 5, 2; 4096, 5, 1"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 3; 2; 1"));
+    ASSERT_OK(fetch_and_validate_pk_max("5"));
+    ASSERT_OK(fetch_and_validate_pk_sum("5, 1; 4, 1; 3, 1; 2, 1; 1, 1"));
+    ASSERT_OK(fetch_and_validate_pk_count("5, 1; 4, 1; 3, 1; 2, 1; 1, 1"));
 
     // Delete the same records again.
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r = 3", table_name));
@@ -935,11 +1010,19 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1",
         "256, 260, 5; 256, 260, 4; NULL, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate_pk_only("5; 4; 2; 1"));
+    ASSERT_OK(fetch_and_validate_pk_max("5"));
+    ASSERT_OK(fetch_and_validate_pk_sum("5, 1; 4, 1; 2, 1; 1, 1"));
+    ASSERT_OK(fetch_and_validate_pk_count("5, 1; 4, 1; 2, 1; 1, 1"));
 
     // Delete records from the intents DB in such way the very first row would be in regular DB.
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r IN (4, 5, 6)", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
     ASSERT_OK(fetch_and_validate("1, 5, 2; 4096, 5, 1", "NULL, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate_pk_only("2; 1"));
+    ASSERT_OK(fetch_and_validate_pk_max("2"));
+    ASSERT_OK(fetch_and_validate_pk_sum("2, 1; 1, 1"));
+    ASSERT_OK(fetch_and_validate_pk_count("2, 1; 1, 1"));
 
     // Insert some data which would be positioned before all the existing rows.
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(0), 65535)));
@@ -947,6 +1030,10 @@ class PgFastBackwardScanTest
     ASSERT_OK(fetch_and_validate(
         "1, 5, 2; 4096, 5, 1; 65536, 65540, 0", "NULL, 5, 2; 4096, 5, 1; 65536, 65540, 0"
     ));
+    ASSERT_OK(fetch_and_validate_pk_only("2; 1; 0"));
+    ASSERT_OK(fetch_and_validate_pk_max("2"));
+    ASSERT_OK(fetch_and_validate_pk_sum("2, 1; 1, 1; 0, 1"));
+    ASSERT_OK(fetch_and_validate_pk_count("2, 1; 1, 1; 0, 1"));
 
     if (intents_usage != IntentsUsage::kRegularOnly) {
       ASSERT_OK(conn.CommitTransaction());
@@ -956,6 +1043,10 @@ class PgFastBackwardScanTest
     ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE h = 1 AND r >= 0", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
     ASSERT_OK(fetch_and_validate("", ""));
+    ASSERT_OK(fetch_and_validate_pk_only(""));
+    ASSERT_OK(fetch_and_validate_pk_max("NULL"));
+    ASSERT_OK(fetch_and_validate_pk_sum(""));
+    ASSERT_OK(fetch_and_validate_pk_count(""));
 
     LOG_WITH_FUNC(INFO) << "Done";
   }
@@ -1830,6 +1921,87 @@ TEST_F(PgSingleTServerTest, BoundedBackwardScanWithLargeTransaction) {
   auto result = ASSERT_RESULT(conn.FetchAllAsString(
       "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
   ASSERT_EQ(result, "1");
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/27031.
+TEST_F(PgSingleTServerTest, BackwardScanOnIndexDescendingColumn) {
+  constexpr int kNumRows = 20;
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create table.
+  ASSERT_OK(conn.Execute("CREATE TABLE test(c1 INT, c2 INT, c3 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON test(c3 DESC, c2 ASC, c1)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, i, null FROM generate_series(1, $0) AS i", kNumRows));
+
+  // Make sure backward scan is triggered.
+  const auto row_number = RandomUniformInt(1, kNumRows);
+  const auto stmt = Format("SELECT c3 FROM test WHERE c2 in ($0) ORDER BY c3", row_number);
+  const auto explain = ASSERT_RESULT(conn.FetchAllAsString("EXPLAIN ANALYZE " + stmt));
+  ASSERT_TRUE(Slice(explain).starts_with("Index Only Scan Backward"));
+
+  const auto result = ASSERT_RESULT(conn.FetchAllAsString(stmt));
+  ASSERT_STR_EQ(ToUpperCase(result), "NULL");
+}
+
+class PgSmallRpcWorkersTest : public PgSingleTServerTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
+
+    PgSingleTServerTest::SetUp();
+  }
+};
+
+TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 10;
+  constexpr int kNumRows = 20;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key BIGINT, k2 BIGINT, value BIGINT, PRIMARY KEY (k2 ASC, key ASC))"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 10;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test (key, k2, value) SELECT i, i, -i FROM generate_series(1, $0) AS i",
+      kNumRows));
+  std::this_thread::sleep_for(1s);
+  ASSERT_OK(cluster_->RestartSync());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 0;
+  std::this_thread::sleep_for(1s);
+  ASSERT_OK(cluster_->FlushTablets());
+  conn = ASSERT_RESULT(Connect());
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT key FROM test WHERE key >= 1 AND value >= -1 ORDER BY k2 DESC"));
+  ASSERT_EQ(result, "1");
+}
+
+TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGINT PRIMARY KEY, value BIGINT)"));
+  ThreadHolder threads;
+  std::atomic<int> key = 0;
+  for (unsigned int i = 0; i != 64; ++i) {
+    threads.AddThread([this, &stop = threads.stop_flag(), &key] {
+      auto new_conn = ASSERT_RESULT(Connect());
+      while (!stop.load()) {
+        auto k = ++key;
+        auto res = new_conn.ExecuteFormat("INSERT INTO test (key, value) VALUES ($0, -$0)", k);
+        if (res.ok()) {
+          continue;
+        }
+        auto msg = res.ToString();
+        ASSERT_TRUE(msg.contains("Invalid column number") ||
+                    msg.contains("marked for deletion in table") ||
+                    msg.contains("schema version mismatch for table")) << res;
+      }
+    });
+  }
+  for (unsigned int i = 0; i != 3; ++i) {
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 BIGINT"));
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
+  }
+  threads.WaitAndStop(1s);
 }
 
 }  // namespace pgwrapper

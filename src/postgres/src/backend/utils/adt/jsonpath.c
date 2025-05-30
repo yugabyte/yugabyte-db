@@ -331,7 +331,8 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 			break;
 		case jpiFilter:
 			argNestingLevel++;
-			switch_fallthrough();
+			/* FALLTHROUGH */
+			yb_switch_fallthrough();
 		case jpiIsUnknown:
 		case jpiNot:
 		case jpiPlus:
@@ -384,9 +385,9 @@ flattenJsonPathParseItem(StringInfo buf, JsonPathParseItem *item,
 					int32	   *ppos;
 					int32		topos;
 					int32		frompos =
-					flattenJsonPathParseItem(buf,
-											 item->value.array.elems[i].from,
-											 nestingLevel, true) - pos;
+						flattenJsonPathParseItem(buf,
+												 item->value.array.elems[i].from,
+												 nestingLevel, true) - pos;
 
 					if (item->value.array.elems[i].to)
 						topos = flattenJsonPathParseItem(buf,
@@ -442,13 +443,16 @@ alignStringInfoInt(StringInfo buf)
 	{
 		case 3:
 			appendStringInfoCharMacro(buf, 0);
-			switch_fallthrough();
+			/* FALLTHROUGH */
+			yb_switch_fallthrough();
 		case 2:
 			appendStringInfoCharMacro(buf, 0);
-			switch_fallthrough();
+			/* FALLTHROUGH */
+			yb_switch_fallthrough();
 		case 1:
 			appendStringInfoCharMacro(buf, 0);
-			switch_fallthrough();
+			/* FALLTHROUGH */
+			yb_switch_fallthrough();
 		default:
 			break;
 	}
@@ -872,7 +876,8 @@ jspInitByBuffer(JsonPathItem *v, char *base, int32 pos)
 		case jpiString:
 		case jpiVariable:
 			read_int32(v->content.value.datalen, base, pos);
-			switch_fallthrough();
+			/* FALLTHROUGH */
+			yb_switch_fallthrough();
 		case jpiNumeric:
 		case jpiBool:
 			v->content.value.data = base + pos;
@@ -982,7 +987,8 @@ jspGetNext(JsonPathItem *v, JsonPathItem *a)
 			   v->type == jpiDouble ||
 			   v->type == jpiDatetime ||
 			   v->type == jpiKeyValue ||
-			   v->type == jpiStartsWith);
+			   v->type == jpiStartsWith ||
+			   v->type == jpiLikeRegex);
 
 		if (a)
 			jspInitByBuffer(a, v->base, v->nextPos);

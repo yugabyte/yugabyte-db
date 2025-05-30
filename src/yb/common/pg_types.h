@@ -14,7 +14,6 @@
 #pragma once
 
 #include "yb/common/entity_ids.h"
-#include "yb/common/schema.h"
 
 #include "yb/util/hash_util.h"
 

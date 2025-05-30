@@ -776,7 +776,8 @@ sub gen_pg_attribute
 				{ name => 'cmin',     type => 'cid' },
 				{ name => 'xmax',     type => 'xid' },
 				{ name => 'cmax',     type => 'cid' },
-				{ name => 'tableoid', type => 'oid' });
+				{ name => 'tableoid', type => 'oid' },
+				{ name => 'ybctid',   type => 'bytea', forcenotnull => 1 });
 			foreach my $attr (@SYS_ATTRS)
 			{
 				$attnum--;

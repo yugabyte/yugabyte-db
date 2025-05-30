@@ -77,6 +77,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -87,7 +88,6 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 namespace yb {
 
 class FsManager;
-class MemTracker;
 class MetricEntity;
 
 namespace server {
@@ -98,16 +98,15 @@ namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
-YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
-  return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
+  return static_cast<FlushFlags>(std::to_underlying(lhs) | std::to_underlying(rhs));
 }
 
 inline FlushFlags operator&(FlushFlags lhs, FlushFlags rhs) {
-  return static_cast<FlushFlags>(to_underlying(lhs) & to_underlying(rhs));
+  return static_cast<FlushFlags>(std::to_underlying(lhs) & std::to_underlying(rhs));
 }
 
 inline bool HasFlags(FlushFlags lhs, FlushFlags rhs) {
@@ -120,6 +119,11 @@ using AddTableListener = std::function<Status(const TableInfo&)>;
 
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
+
+struct AdminCompactionOptions {
+  std::function<void()> compaction_completion_callback;
+  TableIdsPtr vector_index_ids;
+};
 
 struct TabletScopedRWOperationPauses {
   ScopedRWOperationPause blocking_rocksdb_shutdown_start;
@@ -175,6 +179,7 @@ class Tablet : public AbstractTablet,
       const HostPort& pgsql_proxy_bind_address,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
+      bool is_xcluster_target,
       size_t* number_of_rows_processed,
       std::string* backfilled_until);
 
@@ -302,6 +307,9 @@ class Tablet : public AbstractTablet,
   // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
+  // Triggered by a corresponding tablet peer when it has been moved into RUNNING state.
+  Status CompleteStartup();
+
   Status ImportData(const std::string& source_dir);
 
   docdb::ApplyTransactionState ApplyIntents(const TransactionApplyData& data) override;
@@ -334,11 +342,11 @@ class Tablet : public AbstractTablet,
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
-      const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers* frontiers,
+      const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time);
 
   void WriteToRocksDB(
-      const rocksdb::UserFrontiers* frontiers,
+      const rocksdb::UserFrontiers& frontiers,
       rocksdb::WriteBatch* write_batch,
       docdb::StorageDbType storage_db_type);
 
@@ -465,10 +473,10 @@ class Tablet : public AbstractTablet,
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
   // Apply replicated add table operation.
-  Status AddTable(const TableInfoPB& table_info, const OpId& op_id);
+  Status AddTable(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
   Status AddMultipleTables(
-      const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos, const OpId& op_id);
+      const ArenaList<LWTableInfoPB>& table_infos, const OpId& op_id, HybridTime ht);
 
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
@@ -635,13 +643,14 @@ class Tablet : public AbstractTablet,
   // range-based partitions always matches the returned middle key.
   Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
 
-  std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
+  std::string TEST_DocDBDumpStr(
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse);
 
   void TEST_DocDBDumpToContainer(
-      IncludeIntents include_intents, std::unordered_set<std::string>* out);
+      docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out);
 
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
-  void TEST_DocDBDumpToLog(IncludeIntents include_intents);
+  void TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents);
 
   Result<size_t> TEST_CountDBRecords(docdb::StorageDbType db_type);
 
@@ -729,6 +738,10 @@ class Tablet : public AbstractTablet,
     return *snapshots_;
   }
 
+  TabletVectorIndexes& vector_indexes() {
+    return *vector_indexes_;
+  }
+
   SnapshotCoordinator* snapshot_coordinator() {
     return snapshot_coordinator_;
   }
@@ -804,11 +817,7 @@ class Tablet : public AbstractTablet,
   Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
-  Status TriggerAdminFullCompactionIfNeeded();
-  // Triggers an admin full compaction on this tablet with a callback to execute once the compaction
-  // completes.
-  Status TriggerAdminFullCompactionWithCallbackIfNeeded(
-      std::function<void()> on_compaction_completion);
+  Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
 
   bool HasActiveFullCompaction();
 
@@ -963,7 +972,7 @@ class Tablet : public AbstractTablet,
         max_key_length, std::move(callback), colocated_table_id);
   }
 
-  Status AbortSQLTransactions(CoarseTimePoint deadline) const;
+  Status AbortActiveTransactions(CoarseTimePoint deadline) const;
 
   // TODO: Move mutex to private section.
   // Lock used to serialize the creation of RocksDB checkpoints.
@@ -971,15 +980,20 @@ class Tablet : public AbstractTablet,
 
   void CleanupIntentFiles();
 
-  std::optional<google::protobuf::RepeatedPtrField<std::string>> VectorIndexFinishedBackfills();
-
-  bool TEST_HasVectorIndexes() const {
-    return has_vector_indexes_.load();
-  }
-
   void TEST_SleepBeforeApplyIntents(MonoDelta value) {
     TEST_sleep_before_apply_intents_ = value;
   }
+
+  void TEST_SleepBeforeDeleteIntentsFile(MonoDelta value) {
+    TEST_sleep_before_delete_intents_file_ = value;
+  }
+
+  // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
+  // updates both regular db and intents db rate limiter speed.
+  void RefreshCompactFlushRateLimitBytesPerSec();
+  void SetCompactFlushRateLimitBytesPerSec(int64_t bytes_per_sec);
+
+  void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
 
  private:
   friend class Iterator;
@@ -1003,7 +1017,7 @@ class Tablet : public AbstractTablet,
       int64_t batch_idx, // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
-      const rocksdb::UserFrontiers* frontiers);
+      const rocksdb::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
@@ -1036,6 +1050,7 @@ class Tablet : public AbstractTablet,
       size_t row_count) const;
 
   void TriggerManualCompactionSync(rocksdb::CompactionReason reason);
+  void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,
@@ -1050,7 +1065,7 @@ class Tablet : public AbstractTablet,
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
+  Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
@@ -1058,9 +1073,6 @@ class Tablet : public AbstractTablet,
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
-
-  Status TriggerAdminFullCompactionIfNeededHelper(
-      std::function<void()> on_compaction_completion = []() {});
 
   Status GetTabletKeyRanges(
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
@@ -1135,11 +1147,16 @@ class Tablet : public AbstractTablet,
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;
 
+  docdb::EncodedPartitionBounds encoded_partition_bounds_;
+
   // This is for docdb fine-grained locking.
   docdb::SharedLockManager shared_lock_manager_;
 
   // For the block cache and memory manager shared across tablets
   const TabletOptions tablet_options_;
+
+  mutable std::shared_mutex mutable_tablet_options_mutex_;
+  MutableTabletOptions mutable_tablet_options_ GUARDED_BY (mutable_tablet_options_mutex_);
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destructing the RocksDB in-memory instance and read/write
@@ -1205,12 +1222,12 @@ class Tablet : public AbstractTablet,
 
   // Remove advisory lock intents for the given transaction id.
   Status RemoveAdvisoryLocks(const TransactionId& id,
-                             rocksdb::DirectWriteHandler* handler) override;
+                             rocksdb::DirectWriteHandler& handler) override;
 
   // Remove the advisory lock intent with speficied key and intent_types for the given txn id.
   Status RemoveAdvisoryLock(
       const TransactionId& transaction_id, const Slice& key,
-      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler* handler) override;
+      const dockv::IntentTypeSet& intent_types, rocksdb::DirectWriteHandler& handler) override;
 
   // Tries to find intent .SST files that could be deleted and remove them.
   void DoCleanupIntentFiles();
@@ -1231,17 +1248,6 @@ class Tablet : public AbstractTablet,
   Result<rocksdb::Options> CommonRocksDBOptions();
   Status OpenRegularDB(const rocksdb::Options& common_options);
   Status OpenIntentsDB(const rocksdb::Options& common_options);
-  Status OpenVectorIndexes();
-  // Creates vector index for specified index and indexed tables.
-  // allow_inplace_insert is set to true only during initial tablet bootstrap, so nobody should
-  // hold external pointer to vector index list at this moment.
-  Status CreateVectorIndex(
-      const TableInfo& index_table, const TableInfoPtr& indexed_table, bool allow_inplace_insert)
-      REQUIRES(vector_indexes_mutex_);
-  docdb::VectorIndexesPtr VectorIndexesList() const EXCLUDES(vector_indexes_mutex_);
-  Status BackfillVectorIndex(
-      const docdb::VectorIndexPtr& vector_index, const TableInfo& indexed_table, Slice key,
-      HybridTime read_ht);
 
   docdb::HistoryCutoff AllowedHistoryCutoff();
 
@@ -1260,6 +1266,8 @@ class Tablet : public AbstractTablet,
   std::unique_ptr<ThreadPoolToken> cleanup_intent_files_token_;
 
   std::unique_ptr<TabletSnapshots> snapshots_;
+
+  std::unique_ptr<TabletVectorIndexes> vector_indexes_;
 
   SnapshotCoordinator* snapshot_coordinator_ = nullptr;
 
@@ -1302,8 +1310,6 @@ class Tablet : public AbstractTablet,
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
 
-  VectorIndexThreadPoolProvider vector_index_thread_pool_provider_;
-
   simple_spinlock operation_filters_mutex_;
 
   boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);
@@ -1314,17 +1320,12 @@ class Tablet : public AbstractTablet,
 
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
 
-  std::atomic<bool> has_vector_indexes_{false};
-  mutable std::shared_mutex vector_indexes_mutex_;
-  std::unordered_map<TableId, docdb::VectorIndexPtr> vector_indexes_map_
-      GUARDED_BY(vector_indexes_mutex_);
-  docdb::VectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
-
   // Serializes access to setting/revising/releasing CDCSDK retention barriers
   mutable simple_spinlock cdcsdk_retention_barrier_lock_;
   MonoTime cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
   MonoDelta TEST_sleep_before_apply_intents_;
+  MonoDelta TEST_sleep_before_delete_intents_file_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

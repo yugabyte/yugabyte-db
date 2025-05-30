@@ -139,7 +139,7 @@ class BackendsCatalogVersionTS;
 //     its backends satisfy the requested db+ver.  master_ts_ysql_catalog_lease_ms bounds the amount
 //     of time we can be in this uncertain state.  The lease needs to be handled on both sides:
 //     - tserver: block its own backends from functioning when its "lease" with master expires.
-//       TODO(#13369): the blocking is currently not implemented and is required for correctness.
+// TODO(#13369): the blocking is currently not implemented and is required for correctness.
 //     - master: if newly elected as leader, it currently won't know when all tservers have
 //       re-registered.  In other words, it doesn't know all the tservers that exist.  Since there
 //       could always exist a tserver that is network partitioned, the new master must wait the
@@ -387,16 +387,17 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   }
   std::string type_name() const override { return "Backends Catalog Version of TS"; }
   std::string description() const override;
-  MonoTime ComputeDeadline() override;
+  MonoTime ComputeDeadline() const override;
 
   bool SendRequest(int attempt) override;
   void HandleResponse(int attempt) override;
   void UnregisterAsyncTaskCallback() override;
   TabletId tablet_id() const override { return ""; }
 
-  TabletServerId permanent_uuid() const;
-
   std::string LogPrefix() const;
+
+ protected:
+  bool RetryTaskAfterRPCFailure(const Status& status) override;
 
  private:
   // Use a weak ptr because this doesn't own job and job can be destroyed at any moment.

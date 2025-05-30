@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/pg15_upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -23,15 +23,12 @@ namespace yb {
 
 static const MonoDelta kNoDelayBetweenNodes = 0s;
 
-class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
+class YsqlMajorUpgradeRpcsTest : public YsqlMajorUpgradeTestBase {
  public:
   YsqlMajorUpgradeRpcsTest() = default;
 
   void SetUp() override {
-    Pg15UpgradeTestBase::SetUp();
-    if (Test::IsSkipped()) {
-      return;
-    }
+    TEST_SETUP_SUPER(YsqlMajorUpgradeTestBase);
 
     CHECK_OK(CreateSimpleTable());
   }
@@ -39,6 +36,10 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
  protected:
   master::MasterAdminProxy GetMasterAdminProxy() {
     return master::MasterAdminProxy(cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>());
+  }
+
+  master::MasterDdlProxy GetMasterDdlProxy() {
+    return master::MasterDdlProxy(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>());
   }
 
   void AsyncStartYsqlMajorUpgrade(
@@ -59,6 +60,44 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
     master::RollbackYsqlMajorCatalogVersionRequestPB req;
     GetMasterAdminProxy().RollbackYsqlMajorCatalogVersionAsync(
         req, &resp, &rpc, [&latch]() { latch.CountDown(); });
+  }
+
+  Result<std::vector<std::string>> GetTableIds(const std::string& table_name) {
+    master::ListTablesRequestPB req;
+    master::ListTablesResponsePB resp;
+    req.set_name_filter(table_name);
+
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+
+    CHECK_OK(GetMasterDdlProxy().ListTables(req, &resp, &controller));
+
+    std::vector<std::string> table_ids;
+    for (const auto& table : resp.tables()) {
+      if (table.name() == table_name) {
+        table_ids.push_back(table.id());
+      }
+    }
+
+    return table_ids;
+  }
+
+  Result<std::string> GetNamespaceId(const std::string& namespace_name) {
+    master::ListNamespacesRequestPB req;
+    master::ListNamespacesResponsePB resp;
+
+    rpc::RpcController controller;
+    controller.set_timeout(10s);
+
+    CHECK_OK(GetMasterDdlProxy().ListNamespaces(req, &resp, &controller));
+
+    for (const auto& ns : resp.namespaces()) {
+      if (ns.name() == namespace_name)
+        return ns.id();
+    }
+
+    return STATUS_FORMAT(
+        IllegalState, "Unable to find namespace $0", namespace_name);
   }
 
   // Waits for the catalog upgrade to finish and completes the rest of the upgrade with validation
@@ -107,8 +146,7 @@ class YsqlMajorUpgradeRpcsTest : public Pg15UpgradeTestBase {
   Status ValidateYsqlMajorUpgradeCatalogStateViaYbAdmin(
       master::YsqlMajorCatalogUpgradeState state) {
     std::string output;
-    RETURN_NOT_OK(
-        cluster_->CallYbAdmin({"get_ysql_major_version_catalog_upgrade_state"}, 10min, &output));
+    RETURN_NOT_OK(cluster_->CallYbAdmin({"get_ysql_major_version_catalog_state"}, 10min, &output));
 
     switch (state) {
       case master::YSQL_MAJOR_CATALOG_UPGRADE_UNINITIALIZED:
@@ -278,7 +316,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.
 // Disabling in debug builds since this test times out on it.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(MasterCrashDuringUpgrade)) {
+TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade)) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto master_leader = cluster_->GetLeaderMaster();
 
@@ -423,21 +461,89 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CleanupPreviousCatalog) {
   ASSERT_OK(WaitForPreviousVersionCatalogDeletion());
 }
 
-class YsqlMajorUpgradeYbAdminTest : public Pg15UpgradeTestBase {
+TEST_F(YsqlMajorUpgradeRpcsTest, TestTableIds) {
+  const auto kPgClass = "pg_class";
+  const auto kUnversioned = "30008000";
+  const auto kPg15Version = "30008001";
+
+  const auto validate_simple_table_id = [&]() {
+    const auto kSimpleTableIds = ASSERT_RESULT(GetTableIds(kSimpleTableName));
+    ASSERT_EQ(kSimpleTableIds.size(), 1);
+    ASSERT_STR_CONTAINS(kSimpleTableIds[0], kUnversioned);
+  };
+
+  const auto validate_catalog_table_id = [&](std::vector<std::string> expected_versions) -> void {
+    const auto kPgClassIds = ASSERT_RESULT(GetTableIds(kPgClass));
+
+    for (const auto& pg_class_id : kPgClassIds) {
+      if (expected_versions.size() < 2) {
+        ASSERT_STR_CONTAINS(pg_class_id, expected_versions[0]);
+      } else { // expect either version
+        if (!pg_class_id.contains(kUnversioned) && !pg_class_id.contains(kPg15Version)) {
+          throw STATUS_FORMAT(
+              IllegalState, "Found table ID with unexpected version: $0", pg_class_id);
+        }
+      }
+    }
+  };
+
+  ASSERT_NO_FATALS(validate_simple_table_id());
+  ASSERT_NO_FATALS(validate_catalog_table_id({kUnversioned}));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_NO_FATALS(validate_simple_table_id());
+  ASSERT_NO_FATALS(validate_catalog_table_id({kUnversioned, kPg15Version}));
+
+  ASSERT_OK(CompleteUpgradeAndValidate());
+  ASSERT_NO_FATALS(validate_simple_table_id());
+  ASSERT_NO_FATALS(validate_catalog_table_id({kPg15Version}));
+}
+
+TEST_F(YsqlMajorUpgradeRpcsTest, TestNamespaceIds) {
+  std::map<std::string, std::string> db_ids {
+    std::make_pair("template0", std::string()),
+    std::make_pair("template1", std::string()),
+    std::make_pair("postgres", std::string())};
+
+  for (auto& db_id : db_ids)
+    db_id.second = ASSERT_RESULT(GetNamespaceId(db_id.first));
+
+  const auto validate_namespace_ids = [&]() {
+    for (const auto& db_id : db_ids)
+      ASSERT_EQ(ASSERT_RESULT(GetNamespaceId(db_id.first)), db_id.second);
+  };
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_NO_FATALS(validate_namespace_ids());
+  ASSERT_OK(CompleteUpgradeAndValidate());
+  ASSERT_NO_FATALS(validate_namespace_ids());
+}
+
+class YsqlMajorUpgradeYbAdminTest : public YsqlMajorUpgradeTestBase {
  public:
   YsqlMajorUpgradeYbAdminTest() = default;
 
  protected:
   Status PerformYsqlMajorCatalogUpgrade() override {
-    return cluster_->CallYbAdmin({"ysql_major_version_catalog_upgrade"}, 10min);
+    return cluster_->CallYbAdmin({"upgrade_ysql_major_version_catalog"}, 10min);
   }
 
+  Status FinalizeYsqlMajorCatalogUpgrade() override {
+    return cluster_->CallYbAdmin({"finalize_ysql_major_version_catalog"}, 10min);
+  }
+
+  Status FinalizeUpgrade() override { return cluster_->CallYbAdmin({"finalize_upgrade"}, 10min); }
+
   Status RollbackYsqlMajorCatalogVersion() override {
-    return cluster_->CallYbAdmin({"rollback_ysql_major_version_upgrade"}, 10min);
+    return cluster_->CallYbAdmin({"rollback_ysql_major_version_catalog"}, 10min);
   }
 };
 
-TEST_F(YsqlMajorUpgradeYbAdminTest, Upgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
+TEST_F(YsqlMajorUpgradeYbAdminTest, Upgrade) {
+  ASSERT_OK(TestUpgradeWithSimpleTable());
+  // Finalize should be idempotent.
+  ASSERT_OK(FinalizeUpgrade());
+}
 
 TEST_F(YsqlMajorUpgradeYbAdminTest, Rollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
 

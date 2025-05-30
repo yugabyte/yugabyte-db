@@ -5,6 +5,7 @@
 
 use strict;
 use warnings;
+use Config;
 use PostgreSQL::Test::Utils;
 use Test::More;
 
@@ -53,6 +54,10 @@ sub run_test
 	append_to_file
 	  "$test_standby_datadir/tst_standby_dir/standby_subdir/standby_file4",
 	  "in standby4";
+	# Skip testing .DS_Store files on macOS to avoid risk of side effects
+	append_to_file
+	  "$test_standby_datadir/tst_standby_dir/.DS_Store",
+	  "macOS system file" unless ($Config{osname} eq 'darwin');
 
 	mkdir "$test_primary_datadir/tst_primary_dir";
 	append_to_file "$test_primary_datadir/tst_primary_dir/primary_file1",
@@ -78,6 +83,19 @@ sub run_test
 		},
 		$test_primary_datadir);
 	@paths = sort @paths;
+
+	# File::Find converts backslashes to slashes in the newer Perl
+	# versions. To support all Perl versions, do the same conversion
+	# for Windows before comparing the paths.
+	if ($windows_os)
+	{
+		for my $filename (@paths)
+		{
+			$filename =~ s{\\}{/}g;
+		}
+		$test_primary_datadir =~ s{\\}{/}g;
+	}
+
 	is_deeply(
 		\@paths,
 		[

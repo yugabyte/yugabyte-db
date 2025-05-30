@@ -24,12 +24,9 @@
 
 #include "postgres.h"
 
-#include "ybvector.h"
-
 #include "access/genam.h"
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
-#include "c.h"
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_type.h"
@@ -43,6 +40,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "ybvector.h"
 
 typedef struct {
 	/* Settings */
@@ -80,8 +78,13 @@ bindVectorIndexOptions(YbcPgStatement handle,
 	Assert(indexTupleDesc->natts == 1);
 
 	/* Assuming vector is the first att */;
-	options.dimensions = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
-	Assert(options.dimensions > 0);
+	int dims = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
+	if (dims < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("column does not have dimensions")));
+
+	options.dimensions = dims;
 	options.attnum = indexInfo->ii_IndexAttrNumbers[0];
 
 	YBCPgCreateIndexSetVectorOptions(handle, &options);
@@ -263,7 +266,9 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	/* Require column to have dimensions to be indexed */
 	if (buildstate->dimensions < 0)
-		elog(ERROR, "column does not have dimensions");
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("column does not have dimensions")));
 
 	buildstate->reltuples = 0;
 	buildstate->indtuples = 0;
@@ -274,7 +279,7 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	buildstate->collation = index->rd_indcollation[0];
 
-	buildstate->tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	buildstate->tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
 											   "ann build temporary context",
 											   ALLOCSET_DEFAULT_SIZES);
 }
@@ -348,7 +353,7 @@ ybvectorWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 		MemoryContextSwitchTo(oldCtx);
 	}
 
-	writeCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	writeCtx = AllocSetContextCreate(CurrentMemoryContext,
 									 "Ybvector write temporary context",
 									 ALLOCSET_DEFAULT_SIZES);
 

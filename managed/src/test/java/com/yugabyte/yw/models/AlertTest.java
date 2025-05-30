@@ -373,6 +373,11 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.CUSTOMER_UUID.labelName(),
             definition.getCustomerUUID().toString());
+    AlertLabel customerNameLabel =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.CUSTOMER_NAME.labelName(),
+            definition.getLabelValue(KnownAlertLabels.CUSTOMER_NAME));
     AlertLabel universeUuidLabel =
         new AlertLabel(
             alert,
@@ -446,6 +451,7 @@ public class AlertTest extends FakeDBApplication {
         alert.getLabels(),
         containsInAnyOrder(
             customerUuidLabel,
+            customerNameLabel,
             universeUuidLabel,
             universeNameLabel,
             nodePrefixLabel,

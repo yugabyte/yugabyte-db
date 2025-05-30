@@ -23,6 +23,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -182,16 +183,17 @@ AsyncRpc::AsyncRpc(
 AsyncRpc::~AsyncRpc() {
   if (trace_) {
     if (trace_->must_print()) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-                << "us. Trace:";
+      LOG(INFO)
+          << ToString() << " took " << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString()
+          << ". Trace:";
       trace_->DumpToLogInfo(true);
     } else {
       const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
       if (print_trace_every_n > 0) {
         bool was_printed = false;
         YB_LOG_EVERY_N(INFO, print_trace_every_n)
-            << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-            << "us. Trace:" << Trace::SetTrue(&was_printed);
+            << ToString() << " took " << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString()
+            << ". Trace:" << Trace::SetTrue(&was_printed);
         if (was_printed)
           trace_->DumpToLogInfo(true);
       }
@@ -242,7 +244,6 @@ void AsyncRpc::Finished(const Status& status) {
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
     }
-
   }
   if (tablet_invoker_.Done(&new_status)) {
     if (tablet().is_split() ||
@@ -402,11 +403,10 @@ template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     const AsyncRpcData& data, YBConsistencyLevel consistency_level)
     : AsyncRpc(data, consistency_level) {
+  // TODO(#26139): this set_allocated_* call is not safe.
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->MetadataToPB(req_.mutable_ash_metadata());
-  }
+  ash::WaitStateInfo::CurrentMetadataToPB(req_.mutable_ash_metadata());
   const ConsistentReadPoint* read_point = batcher_->read_point();
   bool has_read_time = false;
   if (read_point) {
@@ -442,7 +442,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
 
 template <class Req, class Resp>
 AsyncRpcBase<Req, Resp>::~AsyncRpcBase() {
-  req_.release_tablet_id();
+  (void) req_.release_tablet_id();
 }
 
 template <class Req, class Resp>
@@ -469,10 +469,21 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
   auto restart_read_time = ReadHybridTime::FromRestartReadTimePB(resp_);
   if (restart_read_time) {
     auto read_point = batcher_->read_point();
+    auto tablet_id = req_.tablet_id();
+    HybridTime original_read_time;
     if (read_point) {
-      read_point->RestartRequired(req_.tablet_id(), restart_read_time);
+      original_read_time = read_point->GetReadTime(tablet_id).read;
+      read_point->RestartRequired(tablet_id, restart_read_time);
     }
-    Failed(STATUS(TryAgain, Format("Restart read required at: $0", restart_read_time), Slice(),
+    auto leader_uuid = tablet().current_leader_uuid();
+    auto table_name = table()->name().ToString();
+    auto key = resp_.restart_read_key();
+    Failed(STATUS(TryAgain,
+                  Format("restart_read_time: $0, original_read_time: $1"
+                         ", table: $2, tablet: $3, leader_uuid: $4, key: $5",
+                         restart_read_time, original_read_time,
+                         table_name, tablet_id, leader_uuid, key),
+                  Slice(),
                   TransactionError(TransactionErrorCode::kReadRestartRequired)));
     return false;
   }
@@ -599,7 +610,10 @@ template <class Repeated>
 void ReleaseOps(Repeated* repeated) {
   auto size = repeated->size();
   if (size) {
-    repeated->ExtractSubrange(0, size, nullptr);
+    // ExtractSubrange with nullptr for last argument will hit debug assertion, probably due to
+    // unsafety with arenas. We don't use arenas here, so it's not an issue, and
+    // UnsafeArenaExtractSubrange provides the same behavior (but without DCHECK).
+    repeated->UnsafeArenaExtractSubrange(0, size, nullptr);
   }
 }
 
@@ -836,6 +850,7 @@ void ReadRpc::CallRemoteMethod() {
   TRACE_TO(trace, "SendRpcToTserver");
   ADOPT_TRACE(trace.get());
 
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   tablet_invoker_.proxy()->ReadAsync(
     req_, &resp_, PrepareController(), std::bind(&ReadRpc::Finished, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
@@ -913,6 +928,7 @@ Status ReadRpc::SwapResponses() {
 }
 
 void ReadRpc::NotifyBatcher(const Status& status) {
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::NotifyBatcher", &resp_);
   batcher_->ProcessReadResponse(*this, status);
 }
 

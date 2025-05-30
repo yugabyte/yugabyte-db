@@ -17,6 +17,7 @@
 #include "access/htup_details.h"
 #include "access/xlog.h"
 #include "access/xlogprefetcher.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_type.h"
 #include "common/ip.h"
@@ -34,6 +35,7 @@
 
 /* YB includes */
 #include "commands/progress.h"
+#include "commands/yb_cmds.h"
 #include "inttypes.h"
 #include "pg_yb_utils.h"
 #include "utils/uuid.h"
@@ -490,8 +492,6 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		cmdtype = PROGRESS_COMMAND_BASEBACKUP;
 	else if (pg_strcasecmp(cmd, "COPY") == 0)
 		cmdtype = PROGRESS_COMMAND_COPY;
-	else if (pg_strcasecmp(cmd, "CREATE INDEX") == 0)
-		cmdtype = PROGRESS_COMMAND_CREATE_INDEX;
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -500,7 +500,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 	InitMaterializedSRF(fcinfo, 0);
 
 	/*
-	 * Fetch stats for in-progress concurrent create indexes that aren't
+	 * YB: Fetch stats for in-progress concurrent create indexes that aren't
 	 * captured in the local backend entry from master. We avoid reading these
 	 * stats while constructing the local backend entry in
 	 * pg_read_current_stats() in order to avoid extraneous RPCs to master
@@ -542,6 +542,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		/*
 		 * Report values for only those backends which are running the given
 		 * command.
+		 *
+		 * YB: for COPY, report even if the command finished.
 		 */
 		if (!beentry || (beentry->st_progress_command != cmdtype &&
 						 beentry->st_progress_command != PROGRESS_COMMAND_COPY))
@@ -590,7 +592,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		}
 
 		/*
-		 * Set the columns of pg_stat_progress_create_index that are unused
+		 * YB: Set the columns of pg_stat_progress_create_index that are unused
 		 * in YB to null.
 		 */
 		if (IsYugaByteEnabled() && cmdtype == PROGRESS_COMMAND_CREATE_INDEX)
@@ -622,6 +624,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 	}
 
+	/* YB */
 	if (index_progress)
 		pfree(index_progress);
 
@@ -648,6 +651,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 	YbcPgSessionTxnInfo *txn_infos = NULL;
 
+	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
+	size_t		yb_numreplicationslots = 0;
+
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
 		txn_infos = (YbcPgSessionTxnInfo *)
@@ -664,6 +670,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		yb_txn_rpc_timestamp = GetCurrentTimestamp();
 		HandleYBStatus(YBCPgActiveTransactions(txn_infos, num_backends));
 	}
+
+	if (IsYugaByteEnabled())
+		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	/* 1-based index */
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
@@ -735,6 +744,23 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			values[16] = TransactionIdGetDatum(local_beentry->backend_xmin);
 		else
 			nulls[16] = true;
+
+		if (IsYugaByteEnabled())
+		{
+			int			slotno;
+
+			for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
+			{
+				YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+
+				if (slot->active_pid == beentry->st_procpid)
+				{
+					values[16] = slot->xmin;
+					nulls[16] = false;
+					break;
+				}
+			}
+		}
 
 		/* Values only available to role member or pg_read_all_stats */
 		if (HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
@@ -1016,7 +1042,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		nulls[YB_BACKEND_XID_COL] = true;
 
 		/*
-		 * The activity_start_timestamp is updated at the start of every
+		 * YB: The activity_start_timestamp is updated at the start of every
 		 * query. When the query start timestamp is later (greater) than the
 		 * timestamp of the RPC above, this indicates that the data in the RPC
 		 * is out-of-date. In such cases, we skip printing the transaction ID.
@@ -1339,6 +1365,60 @@ yb_pg_stat_get_backend_catalog_version(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 }
 
+/*
+ * Returns a record of (datid, local_catalog_version) about the backend
+ * with the specified process ID if the backend has both a valid datid
+ * (OidIsValid) and a local_catalog_version (> 0), or one record for each
+ * such valid backend in the system if NULL is specified.
+ */
+Datum
+yb_pg_stat_get_backend_local_catalog_version(PG_FUNCTION_ARGS)
+{
+	int			pid = PG_ARGISNULL(0) ? InvalidPid : PG_GETARG_INT32(0);
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	int			num_backends = pgstat_fetch_stat_numbackends();
+	int			i;
+
+	InitMaterializedSRF(fcinfo, 0);
+
+	/* 1-based index */
+	for (i = 1; i <= num_backends; i++)
+	{
+		PgBackendStatus *beentry;
+		LocalPgBackendStatus *local_beentry = pgstat_fetch_stat_local_beentry(i);
+
+		if (!local_beentry)
+			continue;
+
+		beentry = &local_beentry->backendStatus;
+		if (pid != InvalidPid && beentry->st_procpid != pid)
+			continue;
+
+		/*
+		 * ash has version but also has STATE_UNDEFINED, we do not want to
+		 * have a PG background worker to hold off garbage collection of
+		 * tserver invalidation messages.
+		 */
+		if (beentry->st_state == STATE_UNDEFINED)
+			continue;
+
+		/* datid and local_catalog_version are available to all callers */
+		if (beentry->st_databaseid == InvalidOid ||
+			beentry->yb_st_catalog_version.version == 0)
+			continue;
+
+		/* for each row */
+		Datum		values[2];
+		bool		nulls[2];
+
+		values[0] = ObjectIdGetDatum(beentry->st_databaseid);
+		values[1] = UInt64GetDatum(beentry->yb_st_catalog_version.version);
+		nulls[0] = false;
+		nulls[1] = false;
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+	}
+	return (Datum) 0;
+}
 
 Datum
 pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
@@ -1360,82 +1440,6 @@ pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(result);
 }
 
-
-/*
- * For this function, there exists a corresponding entry in pg_proc which dictates the input and schema of the output row.
- * This is used in a different manner from other methods like pgstat_get_backend_activity_start which will be called individually
- * in parallel. This method will return the rows in batched format all at once. Note that {i,o,o,o} in pg_proc means that for the
- * corresponding entry at the same index, it is an input if labeled i but output (represented by o) otherwise.
- */
-Datum
-yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
-{
-#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not " \
-						"allowed in this context")));
-
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
-#ifdef YB_TODO
-	/* Yugabyte needs new implementation for stats */
-	Oid			db_oid = PG_ARGISNULL(0) ? -1 : PG_GETARG_OID(0);
-	size_t		num_queries = 0;
-	PgStat_YBStatQueryEntry *queries = pgstat_fetch_ybstat_queries(db_oid, &num_queries);
-
-	for (size_t i = 0; i < num_queries; i++)
-	{
-		if (has_privs_of_role(GetUserId(), queries[i].st_userid) ||
-			is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS) ||
-			IsYbDbAdminUser(GetUserId()))
-		{
-			Datum		values[PG_YBSTAT_TERMINATED_QUERIES_COLS];
-			bool		nulls[PG_YBSTAT_TERMINATED_QUERIES_COLS];
-
-			MemSet(values, 0, sizeof(values));
-			MemSet(nulls, 0, sizeof(nulls));
-
-			values[0] = ObjectIdGetDatum(queries[i].database_oid);
-			values[1] = Int32GetDatum(queries[i].backend_pid);
-			values[2] = CStringGetTextDatum(queries[i].query_string);
-			values[3] = CStringGetTextDatum(queries[i].termination_reason);
-			values[4] = TimestampTzGetDatum(queries[i].activity_start_timestamp);
-			values[5] = TimestampTzGetDatum(queries[i].activity_end_timestamp);
-
-			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-		}
-		else
-			continue;
-	}
-#endif
-
-	tuplestore_donestoring(tupstore);
-
-	return (Datum) 0;
-}
 
 Datum
 pg_stat_get_db_xact_commit(PG_FUNCTION_ARGS)
@@ -2351,13 +2355,17 @@ pg_stat_reset_shared(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-/* Reset a single counter in the current database */
+/*
+ * Reset a statistics for a single object, which may be of current
+ * database or shared across all databases in the cluster.
+ */
 Datum
 pg_stat_reset_single_table_counters(PG_FUNCTION_ARGS)
 {
 	Oid			taboid = PG_GETARG_OID(0);
+	Oid			dboid = (IsSharedRelation(taboid) ? InvalidOid : MyDatabaseId);
 
-	pgstat_reset(PGSTAT_KIND_RELATION, MyDatabaseId, taboid);
+	pgstat_reset(PGSTAT_KIND_RELATION, dboid, taboid);
 
 	PG_RETURN_VOID();
 }

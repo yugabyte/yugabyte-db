@@ -188,7 +188,6 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 		resetwal_bin = "pg_resetxlog\" -n";
 	else
 		resetwal_bin = "pg_resetwal\" -n";
-
 	snprintf(cmd, sizeof(cmd), "\"%s/%s \"%s\"",
 			 cluster->bindir,
 			 live_check ? "pg_controldata\"" : resetwal_bin,

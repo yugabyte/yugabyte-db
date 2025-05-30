@@ -48,7 +48,7 @@ The output is effectively the plan tree followed by a summary of timing and coun
   - _Time_: The total time taken by the request from the view point of the client as reported by ysqlsh. This includes _Planning_ and _Execution_ times along with the client to server latency.
 - **Distributed Storage Counters**: YugabyteDB adds specific counters related to the distributed execution of the query to the summary when the [DIST](../../../api/ysql/the-sql-language/statements/perf_explain/#dist) option is specified. Some of them are:
   - _Storage Table Read Requests_: Number of RPC round-trips made to the local [YB-TServer](../../../architecture/yb-tserver) for main table scans.
-  - _Storage Table Rows Scanned_: The total number of rows visited in tables to identify the final resultset.
+  - _Storage Table Rows Scanned_: The total number of rows visited in tables to identify the final result set.
   - _Storage Table Writes_ : Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on a non-indexed table.
   - _Storage Index Rows Scanned_: The total number of rows visited in indexes to identify the final result set.
   - _Storage Index Writes_ : Number of requests issued to the local [YB-TServer](../../../architecture/yb-tserver) to perform inserts/deletes/updates on an index.
@@ -123,7 +123,7 @@ You should see an output similar to the following:
  Storage Execution Time: 0.971 ms
 ```
 
-From line 3, you can see that an index scan was done on the table (via `Index Scan`) using the primary key `kvstore_pkey` to retrive one row (via `rows=1`). The `Storage Rows Scanned: 1` indicates that as only one row was looked up, this was an optimal execution.
+From line 3, you can see that an index scan was done on the table (via `Index Scan`) using the primary key `kvstore_pkey` to retrieve one row (via `rows=1`). The `Storage Rows Scanned: 1` indicates that as only one row was looked up, this was an optimal execution.
 
 Fetch the key for a given value:
 
@@ -207,7 +207,7 @@ If you run the same fetch by value query, you should see an output similar to th
  Storage Execution Time: 0.965 ms
 ```
 
-Notice that the operation has become an `Index Only Scan` instead of the `Index Scan` as before. Only one row has been scanned (via `Storage Rows Scanned: 1`) as only the index row was scanned (via `Storage Index Rows Scanned: 1`). The exection time has now been lowered to `1.117 ms`, a 40% improvement over previous execution.
+Notice that the operation has become an `Index Only Scan` instead of the `Index Scan` as before. Only one row has been scanned (via `Storage Rows Scanned: 1`) as only the index row was scanned (via `Storage Index Rows Scanned: 1`). The execution time has now been lowered to `1.117 ms`, a 40% improvement over previous execution.
 
 ## Optimizing for ordering
 

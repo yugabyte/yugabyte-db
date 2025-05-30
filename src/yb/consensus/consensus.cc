@@ -47,11 +47,6 @@ std::string LeaderElectionData::ToString() const {
   return YB_STRUCT_TO_STRING(mode, originator_uuid, pending_commit, must_be_committed_opid);
 }
 
-ConsensusBootstrapInfo::ConsensusBootstrapInfo()
-  : last_id(MinimumOpId()),
-    last_committed_id(MinimumOpId()) {
-}
-
 LeaderStatus Consensus::GetLeaderStatus(bool allow_stale) const {
   return GetLeaderState(allow_stale).status;
 }

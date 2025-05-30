@@ -257,7 +257,9 @@ export const MetricName = {
   TSERVER_ASYNC_REPLICATION_LAG: 'tserver_async_replication_lag_micros',
   CONSUMER_SAFE_TIME_LAG: 'consumer_safe_time_lag',
   CONSUMER_SAFE_TIME_SKEW: 'consumer_safe_time_skew',
+  CONSUMER_REPLICATION_ERROR_COUNT: 'xcluster_consumer_replication_error_count',
   ASYNC_REPLICATION_SENT_LAG: 'async_replication_sent_lag',
+  CDC_SERVICE_GET_CHANGES_THROUGHPUT_MBPS: 'cdc_service_get_changes_throughput_mbps',
   DISK_USAGE: 'disk_usage',
   HA_BACKUP_LAG: 'yba_ha_backup_lag',
   HA_LAST_BACKUP_SIZE: 'yba_ha_last_backup_size_mb'
@@ -332,7 +334,7 @@ export const XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN = /[\s_*<>?|"\0]/;
  */
 export const TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD = '2.17.3.0-b1';
 
-export const DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE = '2024.1.1.0-b48';
+export const DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_STABLE = '2024.1.3.0-b104';
 export const DB_SCOPED_XCLUSTER_VERSION_THRESHOLD_PREVIEW = '2.23.0.0-b393';
 
 export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =

@@ -58,7 +58,7 @@
       return BOOST_PP_CAT(EnumType, _Name)(value); \
     } else { \
       return ::yb::Format("<unknown " BOOST_PP_STRINGIZE(EnumType) " : $0>", \
-          ::yb::to_underlying(value)); \
+          ::std::to_underlying(value)); \
     } \
   } \
   inline std::string ToString(EnumType value) { \

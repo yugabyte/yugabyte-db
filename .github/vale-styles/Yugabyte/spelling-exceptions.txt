@@ -13,6 +13,7 @@ allowlisting
 allowlists
 anonymization
 anonymized
+Anonymizer
 Ansible
 Anthos
 Apdex
@@ -299,6 +300,8 @@ hotfix
 hotfixed
 hotfixes
 hotfixing
+hotspot
+hotspots
 http
 https
 Hudi
@@ -307,7 +310,7 @@ idempotence
 idmapper
 Iglu
 Immer
-inclusivity
+indexpage
 Ingress
 initdb
 initializer
@@ -351,6 +354,7 @@ Klar
 Knative
 Kramdown
 Kroki
+Kube
 Kubecost
 kubectl
 Kubernetes
@@ -446,6 +450,7 @@ offboarded
 offboarding
 offboards
 Okta
+Ollama
 OmniAuth
 onboarding
 OpenID
@@ -463,7 +468,11 @@ pgAdmin
 pgaudit
 PgBouncer
 pgLoader
+pgvector
+pg_hint_plan
+pg_stat_activity
 pg_stat_statements
+pg_stats
 pg_cron
 pg_recvlogical
 Phabricator
@@ -476,6 +485,7 @@ Pipfiles
 Piwik
 plaintext
 Poedit
+pollers
 polyfill
 polyfills
 pooler

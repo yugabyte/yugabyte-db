@@ -40,7 +40,7 @@ public class NodeInstanceHandler {
               runnableTask.getTaskUUID(),
               CustomerTask.TargetType.Node,
               CustomerTask.TaskType.Update,
-              nodeInstance.getNodeName());
+              nodeInstance.getInstanceName());
         };
 
     // Decommissioned -> Free.

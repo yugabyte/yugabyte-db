@@ -6,9 +6,9 @@
 # - DROP
 # - (Future) ALTER
 ####################################################################################################
-test: yb_tablegroup
-test: yb_tablegroup_permissions
-test: yb_tablegroup_dml
-test: yb_tablegroup_alter
-test: yb_tablegroup_colocation_id
-test: yb_tablegroup_partitioned_table
+test: yb.orig.tablegroup
+test: yb.orig.tablegroup_permissions
+test: yb.orig.tablegroup_dml
+test: yb.orig.tablegroup_alter
+test: yb.orig.tablegroup_colocation_id
+test: yb.orig.tablegroup_partitioned_table

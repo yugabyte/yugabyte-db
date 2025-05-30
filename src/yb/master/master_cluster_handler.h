@@ -12,7 +12,11 @@
 //
 #pragma once
 
-#include "yb/master/catalog_manager.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_fwd.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/status.h"
 

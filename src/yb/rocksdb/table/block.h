@@ -228,10 +228,6 @@ class BlockIter final : public InternalIterator {
     return restart_index_;
   }
 
-  ScanForwardResult ScanForward(
-      const Comparator* user_key_comparator, const Slice& upperbound,
-      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
-
  private:
   // It is required to store at least one entry, even in case if restart block caching is off.
   static constexpr const size_t kRestartBlockCacheMinSize = 1;

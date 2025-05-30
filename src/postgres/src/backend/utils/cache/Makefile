@@ -14,6 +14,8 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS = \
 	yb_inheritscache.o \
+	yb_tuplecache.o \
+	\
 	attoptcache.o \
 	catcache.o \
 	evtcache.o \
@@ -27,7 +29,6 @@ OBJS = \
 	spccache.o \
 	syscache.o \
 	ts_cache.o \
-	typcache.o \
-	yb_tuplecache.o
+	typcache.o
 
 include $(top_srcdir)/src/backend/common.mk

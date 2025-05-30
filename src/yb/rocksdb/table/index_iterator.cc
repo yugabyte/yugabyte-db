@@ -67,21 +67,19 @@ class UserKeyIterator : public Iterator {
     if (prop == nullptr) {
       return STATUS(InvalidArgument, "prop is nullptr");
     }
-    return STATUS(InvalidArgument, "Undentified property.");
-  }
-
-  bool ScanForward(
-      Slice upperbound, KeyFilterCallback* key_filter_callback,
-      ScanCallback* scan_callback) override {
-    LOG(FATAL) << "UserIterator::ScanForward is not supported.";
+    return STATUS(InvalidArgument, "Undentified property");
   }
 
   void RevalidateAfterUpperBoundChange() override {
-    LOG(FATAL) << "UserIterator::RevalidateAfterUpperBoundChange is not supported.";
+    LOG(FATAL) << "UserIterator::RevalidateAfterUpperBoundChange is not supported";
   }
 
   void UseFastNext(bool value) override {
-    LOG(FATAL) << "UserIterator::UseFastNext is not supported.";
+    LOG(FATAL) << "UserIterator::UseFastNext is not supported";
+  }
+
+  void UpdateFilterKey(Slice user_key_for_filter) override {
+    LOG(FATAL) << "UserIterator::UpdateFilterKey is not supported";
   }
 
  private:

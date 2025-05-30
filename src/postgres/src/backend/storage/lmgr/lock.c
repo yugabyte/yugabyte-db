@@ -50,7 +50,9 @@
 #include "utils/ps_status.h"
 #include "utils/resowner_private.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 /* This configuration variable is used to set the lock table size */
 int			max_locks_per_xact; /* set by guc.c */
@@ -186,18 +188,6 @@ static int	FastPathLocalUseCount = 0;
  * released.
  */
 static bool IsRelationExtensionLockHeld PG_USED_FOR_ASSERTS_ONLY = false;
-
-/*
- * Flag to indicate if the page lock is held by this backend.  We don't
- * acquire any other heavyweight lock while holding the page lock except for
- * relation extension.  However, these locks are never taken in reverse order
- * which implies that page locks will also never participate in the deadlock
- * cycle.
- *
- * Similar to relation extension, page locks are also held for a short
- * duration, so imposing such a restriction won't hurt.
- */
-static bool IsPageLockHeld PG_USED_FOR_ASSERTS_ONLY = false;
 
 /* Macros for manipulating proc->fpLockBits */
 #define FAST_PATH_BITS_PER_SLOT			3
@@ -389,6 +379,17 @@ static void LockRefindAndRelease(LockMethod lockMethodTable, PGPROC *proc,
 static void GetSingleProcBlockerStatusData(PGPROC *blocked_proc,
 										   BlockedProcsData *data);
 
+static YbcObjectLockId
+GetYBObjectLockId(const LOCKTAG *locktag)
+{
+	return (YbcObjectLockId)
+	{
+		.db_oid = locktag->locktag_field1,
+			.relation_oid = locktag->locktag_field2,
+			.object_oid = locktag->locktag_field3,
+			.object_sub_oid = locktag->locktag_field4,
+	};
+}
 
 /*
  * InitLocks -- Initialize the lock manager's data structures.
@@ -592,11 +593,17 @@ DoLockModesConflict(LOCKMODE mode1, LOCKMODE mode2)
 }
 
 /*
- * LockHeldByMe -- test whether lock 'locktag' is held with mode 'lockmode'
- *		by the current transaction
+ * LockHeldByMeExtended -- test whether lock 'locktag' is held by the current
+ *		transaction
+ *
+ * Returns true if current transaction holds a lock on 'tag' of mode
+ * 'lockmode'.  If 'orstronger' is true, a stronger lockmode is also OK.
+ * ("Stronger" is defined as "numerically higher", which is a bit
+ * semantically dubious but is OK for the purposes we use this for.)
  */
-bool
-LockHeldByMe(const LOCKTAG *locktag, LOCKMODE lockmode)
+static bool
+LockHeldByMeExtended(const LOCKTAG *locktag,
+					 LOCKMODE lockmode, bool orstronger)
 {
 	LOCALLOCKTAG localtag;
 	LOCALLOCK  *locallock;
@@ -612,7 +619,35 @@ LockHeldByMe(const LOCKTAG *locktag, LOCKMODE lockmode)
 										  (void *) &localtag,
 										  HASH_FIND, NULL);
 
-	return (locallock && locallock->nLocks > 0);
+	if (locallock && locallock->nLocks > 0)
+		return true;
+
+	if (orstronger)
+	{
+		LOCKMODE	slockmode;
+
+		for (slockmode = lockmode + 1;
+			 slockmode <= MaxLockMode;
+			 slockmode++)
+		{
+			if (LockHeldByMeExtended(locktag, slockmode, false))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+bool
+LockHeldByMe(const LOCKTAG *locktag, LOCKMODE lockmode)
+{
+	return LockHeldByMeExtended(locktag, lockmode, false);
+}
+
+bool
+LockOrStrongerHeldByMe(const LOCKTAG *locktag, LOCKMODE lockmode)
+{
+	return LockHeldByMeExtended(locktag, lockmode, true);
 }
 
 #ifdef USE_ASSERT_CHECKING
@@ -645,7 +680,11 @@ LockHasWaiters(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, signaling logic is executed
+		 * on the tserver side. And when object locking is disabled, we revert
+		 * back to older behavior of skipping the signal.
+		 */
 		return false;
 	}
 
@@ -756,12 +795,6 @@ LockAcquire(const LOCKTAG *locktag,
 			bool sessionLock,
 			bool dontWait)
 {
-	if (!YBIsPgLockingEnabled())
-	{
-		/* Locking is handled separately by YugaByte. */
-		return LOCKACQUIRE_OK;
-	}
-
 	return LockAcquireExtended(locktag, lockmode, sessionLock, dontWait,
 							   true, NULL);
 }
@@ -803,7 +836,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		HandleYBStatus(YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode));
 		return LOCKACQUIRE_OK;
 	}
 
@@ -904,13 +937,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 * lock more than once but that case won't reach here.
 	 */
 	Assert(!IsRelationExtensionLockHeld);
-
-	/*
-	 * We don't acquire any other heavyweight lock while holding the page lock
-	 * except for relation extension.
-	 */
-	Assert(!IsPageLockHeld ||
-		   (locktag->locktag_type == LOCKTAG_RELATION_EXTEND));
 
 	/*
 	 * Prepare to emit a WAL record if acquisition of this lock needs to be
@@ -1360,10 +1386,10 @@ SetupLockInTable(LockMethod lockMethodTable, PGPROC *proc,
 }
 
 /*
- * Check and set/reset the flag that we hold the relation extension/page lock.
+ * Check and set/reset the flag that we hold the relation extension lock.
  *
  * It is callers responsibility that this function is called after
- * acquiring/releasing the relation extension/page lock.
+ * acquiring/releasing the relation extension lock.
  *
  * Pass acquired as true if lock is acquired, false otherwise.
  */
@@ -1373,9 +1399,6 @@ CheckAndSetLockHeld(LOCALLOCK *locallock, bool acquired)
 #ifdef USE_ASSERT_CHECKING
 	if (LOCALLOCK_LOCKTAG(*locallock) == LOCKTAG_RELATION_EXTEND)
 		IsRelationExtensionLockHeld = acquired;
-	else if (LOCALLOCK_LOCKTAG(*locallock) == LOCKTAG_PAGE)
-		IsPageLockHeld = acquired;
-
 #endif
 }
 
@@ -1501,11 +1524,9 @@ LockCheckConflicts(LockMethod lockMethodTable,
 	}
 
 	/*
-	 * The relation extension or page lock conflict even between the group
-	 * members.
+	 * The relation extension lock conflict even between the group members.
 	 */
-	if (LOCK_LOCKTAG(*lock) == LOCKTAG_RELATION_EXTEND ||
-		(LOCK_LOCKTAG(*lock) == LOCKTAG_PAGE))
+	if (LOCK_LOCKTAG(*lock) == LOCKTAG_RELATION_EXTEND)
 	{
 		PROCLOCK_PRINT("LockCheckConflicts: conflicting (group)",
 					   proclock);
@@ -1819,7 +1840,11 @@ MarkLockClear(LOCALLOCK *locallock)
 {
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, tserver catalog cache is
+		 * refreshed on exclusive lock release path. When disabled, we revert
+		 * to older behavior of ignoring it.
+		 */
 		return;
 	}
 
@@ -2010,7 +2035,11 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, YB releases all object
+		 * locks on transaction finish. When disbaled, we revert to older
+		 * behavior of skipping all object lock/release operations.
+		 */
 		return true;
 	}
 
@@ -2222,7 +2251,11 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, we release all object locks
+		 * on transaction finish. When disbaled, we revert back to older
+		 * behavior of skipping all object lock/release operations.
+		 */
 		return;
 	}
 
@@ -2304,6 +2337,16 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 			else
 				locallock->numLockOwners = 0;
 		}
+
+#ifdef USE_ASSERT_CHECKING
+
+		/*
+		 * Tuple locks are currently held only for short durations within a
+		 * transaction. Check that we didn't forget to release one.
+		 */
+		if (LOCALLOCK_LOCKTAG(*locallock) == LOCKTAG_TUPLE && !allLocks)
+			elog(WARNING, "tuple lock held at commit");
+#endif
 
 		/*
 		 * If the lock or proclock pointers are NULL, this lock was taken via
@@ -2495,7 +2538,10 @@ LockReleaseSession(LOCKMETHODID lockmethodid)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27120): Propagate call to tserver once support for session
+		 * object locking is enabled.
+		 */
 		return;
 	}
 
@@ -2528,7 +2574,11 @@ LockReleaseCurrentOwner(LOCALLOCK **locallocks, int nlocks)
 {
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27156): In YB, locks are managed at the tserver. Figure out
+		 * a mechanism to acheive the same functionality as below when object
+		 * locking feature is enabled.
+		 */
 		return;
 	}
 
@@ -2630,7 +2680,13 @@ LockReassignCurrentOwner(LOCALLOCK **locallocks, int nlocks)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * When object locking in YB is enabled, object locks are tied to a
+		 * docdb transaction. There is no way to reassign locks, will need
+		 * some rework if we deem this to be necessary at some point. When
+		 * disbaled, we revert back to older behavior of skipping all object
+		 * lock/release operations.
+		 */
 		return;
 	}
 
@@ -2983,7 +3039,12 @@ GetLockConflicts(const LOCKTAG *locktag, LOCKMODE lockmode, int *countp)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27119): When object locking is enabled in YB, we could still
+		 * return an empty set if the upstream code calls the tserver with the
+		 * intended lock mode to wait on. When disabled, we revert back to
+		 * older behavior of skipping all object lock/release operations.
+		 */
 		vxids = (VirtualTransactionId *)
 			palloc0(sizeof(VirtualTransactionId));
 		vxids[0].backendId = InvalidBackendId;
@@ -3313,7 +3374,7 @@ CheckForSessionAndXactLocks(void)
 	/* Create a local hash table keyed by LOCKTAG only */
 	hash_ctl.keysize = sizeof(LOCKTAG);
 	hash_ctl.entrysize = sizeof(PerLockTagEntry);
-	hash_ctl.hcxt = GetCurrentMemoryContext();
+	hash_ctl.hcxt = CurrentMemoryContext;
 
 	lockhtab = hash_create("CheckForSessionAndXactLocks table",
 						   256, /* arbitrary initial size */
@@ -3391,7 +3452,11 @@ AtPrepare_Locks(void)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27156): In YB, locks are managed at the tserver. Figure out
+		 * a mechanism to acheive the same functionality as below when object
+		 * locking feature is enabled.
+		 */
 		return;
 	}
 
@@ -4549,7 +4614,10 @@ VirtualXactLockTableInsert(VirtualTransactionId vxid)
 {
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * Immaterial of whether object locking is enabled in YB or not, we
+		 * don't acquire locks on any shared memory structures.
+		 */
 		return;
 	}
 	Assert(VirtualTransactionIdIsValid(vxid));
@@ -4580,7 +4648,10 @@ VirtualXactLockTableCleanup(void)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * Immaterial of whether object locking is enabled in YB or not, we
+		 * don't acquire locks on any shared memory structures.
+		 */
 		return;
 	}
 
@@ -4687,7 +4758,10 @@ VirtualXactLock(VirtualTransactionId vxid, bool wait)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * Immaterial of whether object locking is enabled in YB or not, we
+		 * don't acquire locks on any shared memory structures.
+		 */
 		return false;
 	}
 
@@ -4807,7 +4881,10 @@ LockWaiterCount(const LOCKTAG *locktag)
 
 	if (!YBIsPgLockingEnabled())
 	{
-		/* Locking is handled separately by YugaByte. */
+		/*
+		 * TODO(#27156): In YB, locks are managed at the tserver. Figure out
+		 * if this function needs to be supported at the first place.
+		 */
 		return 0;
 	}
 

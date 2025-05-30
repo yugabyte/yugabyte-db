@@ -26,8 +26,10 @@
 
 using namespace std::literals;
 
-DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_int32(yb_client_admin_rpc_timeout_sec);
+DECLARE_int32(TEST_timeout_non_leader_master_rpcs_ms);
 DECLARE_bool(TEST_use_custom_varz);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
 namespace yb::pgwrapper {
 
@@ -38,10 +40,13 @@ class PgMasterFailoverTest : public PgMiniTestBase {
   void SetUp() override {
     // We need the following to be able to run yb-controller with internal mini cluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
+    // Bump up ysql lease ttl to avoid lease losses failing backups.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 60 * 1000;
     PgMiniTestBase::SetUp();
   }
   void ElectNewLeaderAfterShutdown();
   void TestNonRespondingMaster(WaitForTS wait_for_ts);
+
  public:
   size_t NumMasters() override {
     return 3;
@@ -108,8 +113,8 @@ void PgMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
     CHECK_OK(cluster_->StartYbControllerServers());
   }
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_timeout_non_leader_master_rpcs) = true;
-  tools::TmpDirProvider tmp_dir;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_timeout_non_leader_master_rpcs_ms) =
+      FLAGS_yb_client_admin_rpc_timeout_sec * MonoTime::kMillisecondsPerSecond;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test"));
@@ -120,6 +125,7 @@ void PgMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
   LOG(INFO) << "Old leader: " << peer->permanent_uuid();
   ASSERT_OK(StepDown(peer, /* new_leader_uuid */ std::string(), ForceStepDown::kTrue));
   ASSERT_OK(WaitFor([this, peer]() -> Result<bool> {
+    LOG(INFO) << "Getting new leader";
     auto leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
     if (leader->permanent_uuid() != peer->permanent_uuid()) {
       LOG(INFO) << "New leader: " << leader->permanent_uuid();
@@ -135,6 +141,7 @@ void PgMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
     }, 10s, "Wait all TServers to be registered"));
   }
 
+  tools::TmpDirProvider tmp_dir;
   Status status = Status::OK();
   std::vector<std::string> args = {"--backup_location", tmp_dir / "backup", "--no_upload",
                                    "--keyspace",        "ysql.test",        "create"};

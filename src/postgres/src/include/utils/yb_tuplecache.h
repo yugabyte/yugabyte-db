@@ -23,6 +23,7 @@
 #define YB_TUPLECACHE_H
 
 #include "postgres.h"
+
 #include "nodes/pg_list.h"
 #include "utils/hsearch.h"
 #include "utils/rel.h"

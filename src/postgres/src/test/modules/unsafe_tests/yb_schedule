@@ -1,1 +1,1 @@
-test: yb_pg_rolenames
+test: yb.port.rolenames

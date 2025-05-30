@@ -24,6 +24,16 @@ namespace rpc {
 class StrandTask : public MPSCQueueEntry<StrandTask>, public ThreadPoolTask {
  protected:
   ~StrandTask() = default;
+ private:
+  friend void SetNext(StrandTask* entry, StrandTask* next) {
+    entry->next_ = next;
+  }
+
+  friend StrandTask* GetNext(const StrandTask* entry) {
+    return entry->next_;
+  }
+
+  StrandTask* next_ = nullptr;
 };
 
 template <class F>

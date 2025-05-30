@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -44,9 +45,12 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
     super(baseTaskDependencies);
   }
 
+  @JsonDeserialize(converter = Params.Converter.class)
   public static class Params extends UniverseDefinitionTaskParams {
     public UUID clusterUUID;
     public Boolean isForceDelete = false;
+
+    public static class Converter extends BaseConverter<Params> {}
   }
 
   public Params params() {
@@ -185,6 +189,11 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       getRunnableTask().addSubTaskGroup(volumeDeletes);
       getRunnableTask().addSubTaskGroup(namespaceDeletes);
 
+      // Delete old PDB policy for the universe.
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(true /* deletePDB */);
+      }
+
       // Remove the cluster entry from the universe db entry.
       createDeleteClusterFromUniverseTask(params().clusterUUID)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
@@ -193,8 +202,10 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-      // Update PDB policy for the universe.
-      createPodDisruptionBudgetPolicyTask(false /* deletePDB */, true /* reCreatePDB */);
+      // Create new PDB policy for the universe.
+      if (universe.getUniverseDetails().useNewHelmNamingStyle) {
+        createPodDisruptionBudgetPolicyTask(false /* deletePDB */);
+      }
 
       // Update the swamper target file.
       createSwamperTargetUpdateTask(false /* removeFile */);

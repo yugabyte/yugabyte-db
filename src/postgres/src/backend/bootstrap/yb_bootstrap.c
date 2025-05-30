@@ -23,27 +23,24 @@
 
 #include "postgres.h"
 
-#include "miscadmin.h"
-#include "catalog/pg_attribute.h"
-#include "access/sysattr.h"
-#include "catalog/pg_class.h"
-#include "catalog/pg_type.h"
-#include "commands/dbcommands.h"
-#include "catalog/pg_database.h"
-#include "commands/yb_cmds.h"
-#include "catalog/yb_type.h"
-
-#include "catalog/catalog.h"
 #include "access/htup_details.h"
-#include "utils/relcache.h"
-#include "utils/rel.h"
+#include "access/sysattr.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_attribute.h"
+#include "catalog/pg_class.h"
+#include "catalog/pg_database.h"
+#include "catalog/pg_type.h"
+#include "catalog/yb_type.h"
+#include "commands/dbcommands.h"
+#include "commands/yb_cmds.h"
 #include "executor/tuptable.h"
 #include "executor/ybExpr.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
-
+#include "miscadmin.h"
 #include "parser/parser.h"
+#include "pg_yb_utils.h"
+#include "utils/rel.h"
+#include "utils/relcache.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 static void
 YBCAddSysCatalogColumn(YbcPgStatement yb_stmt,

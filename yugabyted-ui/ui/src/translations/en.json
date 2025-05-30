@@ -54,10 +54,11 @@
       "loadingText": "Loading ...",
       "sendFeedback": "Send feedback",
       "joinSlack": "Join our Slack community",
+      "visitGithub": "Visit our Github repo",
       "apply": "Apply",
       "multiEntryFieldLabel": "Mutiple entries can be separated by `whitespace` or `,`",
       "multiEntryHitEnter": "Hit enter to confirm.",
-      "notAvailable": "n/a",
+      "notAvailable": "N/A",
       "learnMore": "Learn more",
       "removeInvalidEntries": "Remove invalid entries",
       "noAccess": {
@@ -657,6 +658,7 @@
       "last12hours": "Last 12 Hours",
       "last24hours": "Last 24 Hours",
       "last7days": "Last 7 Days",
+      "xCluster": "xCluster",
       "charts": {
         "operations": "Operations/Sec",
         "read": "Read",
@@ -761,16 +763,15 @@
         "gettingStarted": {
           "tryYugabyteVoyager": "Wondering how to load data into your cluster? Try our data migration application <0>{{voyagerText}}</0>, designed to move data to YugabyteDB quickly and securely.",
           "getStartedSteps": {
-              "createCluster": "Create a cluster",
-              "createClusterDesc": "Create a YugabyteDB cluster to get started",
-              "loadCluster": "Load data into your cluster",
-              "loadClusterDesc": "Migrate your databases into the cluster using <0>{{migrationLink}}</0>",
-              "ybVoyager": "YugabyteDB Voyager →",
-              "header": "Get Started",
-              "outOfSteps": " of 2 Done"
-            }
+            "createCluster": "Create a cluster",
+            "createClusterDesc": "Create a YugabyteDB cluster to get started",
+            "loadCluster": "Load data into your cluster",
+            "loadClusterDesc": "Migrate your databases into the cluster using <0>{{migrationLink}}</0>",
+            "ybVoyager": "YugabyteDB Voyager →",
+            "header": "Get Started",
+            "outOfSteps": " of 2 Done"
+          }
         }
-
       },
       "tables": {
         "numTables": "{{count}} Table",
@@ -910,7 +911,7 @@
         "complete": "Complete",
         "notStarted": "Not started yet",
         "todo": "To do",
-        "inProgress":"In progress",
+        "inProgress": "In progress",
         "noMigrations": "No migrations available",
         "refreshing": "Refreshing",
         "getStarted": "Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Managed, YugabyteDB Anywhere, and the core open source database, YugabyteDB.",
@@ -994,13 +995,23 @@
           "assessMigrationLearn": "Learn more about migration assessment",
           "summary": {
             "heading": "Summary",
+            "voyagerVersion": "Voyager Version",
             "migrationComplexity": "Migration Complexity",
+            "migrationComplexityExplanation": "Migration Complexity Explanation",
             "estimatedDataMigrationTime": "Estimated Data Migration Time",
             "unavailable": "Summary unavailable",
-            "complexityTooltipEasy": "This migration is rated as <bold>Easy</bold>, as it requires <bold>0-20 manual schema changes</bold> and <bold>0 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
-            "complexityTooltipMedium": "This migration is rated as <bold>Medium</bold>, as it requires <bold>>20 manual schema changes</bold> and/or <bold>1-5 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
-            "complexityTooltipHard": "This migration is rated as <bold>Hard</bold>, as it requires <bold>>5 manual app changes</bold>. More details can be found in the <bold>Recommendations</bold> section.",
             "complexityLearn": "Learn more about how migration complexity is calculated"
+          },
+          "impactLevels": {
+            "title": "<strong>Impact Levels:</strong>",
+            "level1": "<strong>Level 1:</strong> Resolutions are available with minimal effort.",
+            "level2": "<strong>Level 2:</strong> Resolutions are available requiring moderate effort.",
+            "level3": "<strong>Level 3:</strong> Resolutions may not be available or are complex.",
+            "Level1": "Level 1",
+            "Level2": "Level 2",
+            "Level3": "Level 3",
+            "allImpacts": "All Impacts",
+            "allObjectTypes": "All Object Types"
           },
           "sourceEnv": {
             "heading": "Source Environment",
@@ -1072,9 +1083,14 @@
               "size": "Size",
               "sharded": "Sharded"
             },
+            "notes": {
+              "heading": "Notes"
+            },
             "schemaChanges": {
-              "heading": "Recommended Schema Changes",
+              "heading": "Recommended Changes",
               "objectType": "Object Type",
+              "objectTypeColon": "Object Type : ",
+              "description": "Description",
               "automaticDDLImportTooltip": "SQL objects that can be imported into YugabyteDB without DDL changes.",
               "manualRefactoringTooltip": "Number of DDL statements requiring manual refactoring.",
               "invalidObjectCountTooltip": "Invalid object count requiring manual refactoring.",
@@ -1088,14 +1104,22 @@
               "function": "Functin",
               "allIssueTypes": "All Issue Types",
               "issue": "Issue",
+              "issueName": "Issue Name",
+              "impact": "Impact",
+              "category": "Category",
               "issueType": "Issue Type",
               "occurrences": "Occurrences",
               "objectName": "Object Name : ",
               "previewSqlStatement": "Preview SQL Statement/Object",
               "workaround": "Workaround",
               "linkToDocs": "Link to docs",
+              "linkToGithub": "Link to Github issue",
               "notAvailable": "N/A",
-              "issueDetails": "Issue Details"
+              "issueDetails": "Issue Details",
+              "targetDBVersion": "Target Database Version : ",
+              "targetDBVersionTooltip": "Problems reported are according to target DB version.",
+              "minVersionsFixedIn": "Minimum Versions Fixed In",
+              "minVersionsFixedInTooltip": "This column shows the minimum target database versions where the issue is resolved."
             }
           },
           "refactoring": {
@@ -1125,10 +1149,14 @@
             "details": {
               "heading": "Unsupported Data Type: {{datatype}}",
               "search": "Search",
+              "key": "Key",
+              "value": "Value",
               "searchPlaceholder": "Search DDL",
               "acknowledged": "Acknowledged",
               "any": "Any",
               "issueType": "Issue Type",
+              "suggestion": "Suggestion",
+              "minVersionsFixedIn": "Minimum Versions Fixed In",
               "sqlStatement": "SQL Statement",
               "fileName": "File Name",
               "searchBy": "SEARCH BY",
@@ -1735,7 +1763,37 @@
           "name": "Name"
         }
       },
-      "noShellForVpc": "Cloud Shell is not available for clusters with VPC peering at this time."
+      "noShellForVpc": "Cloud Shell is not available for clusters with VPC peering at this time.",
+      "xcluster": {
+        "xcluster": "xCluster",
+        "xclusterReplications": "xCluster Replications",
+        "outboundReplications": "Outbound Replications",
+        "inboundReplications": "Inbound Replications",
+        "noInboundFound": "No inbound replication groups found",
+        "targetClusterNodeIPS": "Target Universe IPs",
+        "kibps": "KiBps",
+        "sourceClusterNodeIPS": "Source Universe IPs",
+        "tablesInvolvedInReplication": "Tables Involved In Replication",
+        "noOutboundFound": "No outbound replication groups found",
+        "tableUUID": "Table UUID",
+        "tableName": "Table Name",
+        "database": "Database",
+        "isCheckpointing": "Is Checkpointing?",
+        "is_part_of_initial_bootstrap": "Is Part of Initial Bootstrap?",
+        "async_replication_committed_lag_micros": "Committed Replication Lag (µs)",
+        "async_replication_sent_lag_micros": "Sent Replication Lag (µs)",
+        "replicationGroupId": "Replication Group ID",
+        "currentClusterLeaderIPAddress": "Current Leader IP",
+        "state": "State",
+        "sourceLeaderHost": "Source Leader Host",
+        "targetUniverseUUID": "Target Universe UUID",
+        "streamID": "Stream ID",
+        "noTablesInNamespace": "No Tables Found in this Namespace",
+        "sourceUniverseUUID": "Source Universe UUID",
+        "targetCluster": "Target Cluster",
+        "sourceCluster": "Source Cluster",
+        "replicationList": "Replication List"
+      }
     },
     "clusters": {
       "addClusterCopy": "Add Cluster",
@@ -2312,6 +2370,28 @@
       "startTimestamp": "Start Timestamp",
       "startTimestampNotSet": "Timestamp not set",
       "alive": "Alive"
-    }
+    },
+    "popups": {
+      "join_slack": {
+        "message_title": "Join our Open Source Community",
+        "message_text": "Join over 10,000 YugabyteDB open-source community members on Slack and explore the power of distributed Postgres!",
+        "link_text": "Click here"
+      },
+      "github_star": {
+        "message_text": "Check out YugabyteDB on GitHub and bookmark the project to see future updates.",
+        "message_title": "Star YugabyteDB on GitHub",
+        "link_text": "Click here"
+      },
+      "claim_tshirt": {
+        "message_text": "You have earned a limited edition YugabyteDB t-shirt! Click below to claim.",
+        "message_title": "Exclusive YugabyteDB Swag",
+        "link_text": "Click here"
+      },
+      "g2_review": {
+        "message_text": "Discover why users love YugabyteDB and take a few minutes to write a product review on G2.",
+        "message_title": "Review YugabyteDB on G2",
+        "link_text": "Click here"
+      }
+    }    
   }
 }

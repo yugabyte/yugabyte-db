@@ -15,6 +15,7 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_rpc.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 
@@ -25,8 +26,10 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/master/master_replication.pb.h"
 
@@ -100,7 +103,7 @@ XClusterOutputClient::XClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
     const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
     ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
-    rocksdb::RateLimiter* rate_limiter)
+    bool is_ddl_queue_client, rocksdb::RateLimiter* rate_limiter)
     : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       xcluster_poller_(xcluster_poller),
       consumer_tablet_info_(consumer_tablet_info),
@@ -108,6 +111,7 @@ XClusterOutputClient::XClusterOutputClient(
       local_client_(local_client),
       use_local_tserver_(use_local_tserver),
       is_automatic_mode_(is_automatic_mode),
+      is_ddl_queue_client_(is_ddl_queue_client),
       all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
       rate_limiter_(rate_limiter) {
   const auto& consumer_table_id = consumer_tablet_info.table_id;
@@ -192,6 +196,7 @@ void XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponseP
     done_processing_ = false;
     processed_record_count_ = 0;
     record_count_ = poller_resp->records_size();
+    ddl_queue_commit_times_.clear();
     ResetWriteInterface(&write_strategy_);
   }
 
@@ -262,6 +267,9 @@ Status XClusterOutputClient::ProcessChangesStartingFromIndex(int start) {
           RSTATUS_DCHECK(
               !IsSequencesDataTablet(), IllegalState,
               "WAL of a sequences_data tablet unexpectedly contains an apply op");
+          RSTATUS_DCHECK(
+              !is_ddl_queue_client_, IllegalState,
+              "Found a non-local apply record for a ddl_queue client");
           RETURN_NOT_OK(ProcessRecordForTabletRange(record, all_tablets_result_));
           break;
         default: {
@@ -365,6 +373,10 @@ bool XClusterOutputClient::UseLocalTserver() {
   return use_local_tserver_ && !FLAGS_TEST_xcluster_force_remote_tserver;
 }
 
+bool XClusterOutputClient::IsColocatedTableStream() {
+  return IsColocationParentTableId(consumer_tablet_info_.table_id);
+}
+
 bool XClusterOutputClient::IsSequencesDataTablet() {
   return db_oid_write_sequences_to_.has_value();
 }
@@ -398,6 +410,9 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
 Status XClusterOutputClient::ProcessRecord(
     const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record) {
   ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
+  if (is_ddl_queue_client_ && record.operation() == cdc::CDCRecordPB::APPLY) {
+    ddl_queue_commit_times_.insert(HybridTime(record.transaction_state().commit_hybrid_time()));
+  }
   for (const auto& tablet_id : tablet_ids) {
     SCHECK(!IsOffline(), Aborted, "$0$1", LogPrefix(), "xCluster output client went offline");
 
@@ -634,41 +649,15 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
         "XCluster schema mismatch. No matching schema for producer schema $0 with version $1",
         req.schema().DebugString(), producer_schema_version);
     LOG_WITH_PREFIX(WARNING) << msg << ": " << status;
-    if (resp.error().code() == TabletServerErrorPB::MISMATCHED_SCHEMA) {
-      // For automatic DDL replication, we need to insert this packing schema into the historical
-      // set of schemas - this will allow us to correctly map packing schema versions until the
-      // replicated DDL is run via ddl_queue.
-      if (is_automatic_mode_) {
-        // Also pass the latest schema version so that we don't repeatedly insert the same schema.
-        if (!resp.has_latest_schema_version()) {
-          STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(
-              ReplicationErrorPb::REPLICATION_SYSTEM_ERROR,
-              STATUS(IllegalState, "Missing latest schema version in response"));
-          return;
-        }
-        std::optional<ColocationId> colocation_id_opt = std::nullopt;
-        if (req.schema().has_colocated_table_id() &&
-            req.schema().colocated_table_id().colocation_id() != kColocationIdNotSet) {
-          colocation_id_opt = std::make_optional(req.schema().colocated_table_id().colocation_id());
-        }
-        auto s = client::XClusterClient(local_client_)
-                     .InsertPackedSchemaForXClusterTarget(
-                         consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version(),
-                         colocation_id_opt);
 
-        if (s.ok()) {
-          VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "
-                              << req.schema().ShortDebugString();
-          // Can now retry creating the schema version mapping.
-          tserver::GetCompatibleSchemaVersionRequestPB new_req(req);
-          UpdateSchemaVersionMapping(&new_req);
-          return;
-        }
-
-        LOG_WITH_PREFIX(WARNING) << "Failed to insert schema for automatic DDL replication: " << s;
-        STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR, s);
-        return;
-      }
+    if (replication_error == ReplicationErrorPb::REPLICATION_MISSING_TABLE && is_automatic_mode_ &&
+        IsColocatedTableStream()) {
+      HandleNewHistoricalColocatedSchema(req, colocation_id, producer_schema_version);
+      return;
+    }
+    if (resp.error().code() == TabletServerErrorPB::MISMATCHED_SCHEMA && is_automatic_mode_) {
+      HandleNewSchemaPacking(req, resp, colocation_id);
+      return;
     }
     STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(replication_error, status);
     return;
@@ -679,6 +668,13 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
     return;
   }
 
+  HandleNewCompatibleSchemaVersion(
+      resp.compatible_schema_version(), producer_schema_version, req.schema(), colocation_id);
+}
+
+void XClusterOutputClient::HandleNewCompatibleSchemaVersion(
+    uint32 compatible_schema_version, SchemaVersion producer_schema_version,
+    const SchemaPB new_schema, ColocationId colocation_id) {
   // Compatible schema version found, update master with the mapping and update local cache also
   // as there could be some delay in propagation from master to all the
   // XClusterConsumer/XClusterPollers.
@@ -687,7 +683,7 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
   master::UpdateConsumerOnProducerMetadataResponsePB response;
   Status s = local_client_.UpdateConsumerOnProducerMetadata(
       producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, meta,
-      colocation_id, producer_schema_version, resp.compatible_schema_version(), &response);
+      colocation_id, producer_schema_version, compatible_schema_version, &response);
   if (!s.ok()) {
     HandleError(s);
     return;
@@ -706,8 +702,8 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
     }
     // Log the response from master.
     LOG_WITH_FUNC(INFO) << Format(
-        "Received response: $0 for schema: $1 on producer tablet $2",
-        response.DebugString(), req.schema().DebugString(), producer_tablet_info_.tablet_id);
+        "Received response: $0 for schema: $1 on producer tablet $2", response.DebugString(),
+        new_schema.DebugString(), producer_tablet_info_.tablet_id);
     DCHECK(schema_version_map);
     auto resp_schema_versions = response.schema_versions();
     (*schema_version_map)[resp_schema_versions.current_producer_schema_version()] =
@@ -729,6 +725,75 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
 
   // MetaOps should be the last ones in a batch, so we should be done at this point.
   HandleResponse();
+}
+
+void XClusterOutputClient::HandleNewHistoricalColocatedSchema(
+    const GetCompatibleSchemaVersionRequestPB& req, ColocationId colocation_id,
+    SchemaVersion producer_schema_version) {
+  DCHECK(is_automatic_mode_);
+  // For automatic DDL replication, we need to process colocated tables that haven't yet been
+  // created. We can't pause and wait for the table to get created as this causes a deadlock
+  // (this stream would be waiting for the table to get created, and ddl_queue stream would be
+  // waiting for this stream to catch up to its safe time).
+  // Instead, we store any new schemas we get prior to the table's creation in the replication
+  // group via InsertHistoricalColocatedSchemaPacking.
+  // Then when we create the table, we insert those historical schemas and bump up the table's
+  // schema to be past that.
+  auto resp_res = client::XClusterClient(local_client_)
+                      .InsertHistoricalColocatedSchemaPacking(
+                          producer_tablet_info_, consumer_tablet_info_, colocation_id,
+                          producer_schema_version, req.schema());
+  if (resp_res.ok()) {
+    VLOG_WITH_PREFIX(2) << "Inserted historical schema for automatic DDL replication: "
+                        << req.schema().ShortDebugString()
+                        << " resp: " << resp_res->ShortDebugString();
+
+    HandleNewCompatibleSchemaVersion(
+        resp_res->last_compatible_consumer_schema_version(), producer_schema_version, req.schema(),
+        colocation_id);
+    return;
+  }
+
+  LOG_WITH_PREFIX(WARNING) << "Failed to insert historical schema for automatic DDL replication: "
+                           << resp_res.status();
+  STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(
+      ReplicationErrorPb::REPLICATION_SYSTEM_ERROR, resp_res.status());
+}
+
+void XClusterOutputClient::HandleNewSchemaPacking(
+    const GetCompatibleSchemaVersionRequestPB& req,
+    const GetCompatibleSchemaVersionResponsePB& resp, ColocationId colocation_id) {
+  DCHECK(is_automatic_mode_);
+  // For automatic DDL replication, we need to insert this packing schema into the historical
+  // set of schemas - this will allow us to correctly map packing schema versions until the
+  // replicated DDL is run via ddl_queue.
+
+  // Also pass the latest schema version so that we don't repeatedly insert the same schema.
+  if (!resp.has_latest_schema_version()) {
+    STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(
+        ReplicationErrorPb::REPLICATION_SYSTEM_ERROR,
+        STATUS(IllegalState, "Missing latest schema version in response"));
+    return;
+  }
+  std::optional<ColocationId> colocation_id_opt =
+      colocation_id == kColocationIdNotSet ? std::nullopt : std::make_optional(colocation_id);
+  auto s = client::XClusterClient(local_client_)
+               .InsertPackedSchemaForXClusterTarget(
+                   consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version(),
+                   colocation_id_opt);
+
+  if (s.ok()) {
+    VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "
+                        << req.schema().ShortDebugString();
+    // Can now retry creating the schema version mapping.
+    tserver::GetCompatibleSchemaVersionRequestPB new_req(req);
+    UpdateSchemaVersionMapping(&new_req);
+    return;
+  }
+
+  LOG_WITH_PREFIX(WARNING) << "Failed to insert schema for automatic DDL replication: " << s;
+  STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR, s);
+  return;
 }
 
 void XClusterOutputClient::DoWriteCDCRecordDone(
@@ -781,8 +846,8 @@ void XClusterOutputClient::HandleError(const Status& s) {
     LOG_WITH_PREFIX(WARNING) << "Retrying applying replicated record for consumer tablet: "
                              << consumer_tablet_info_.tablet_id << ", reason: " << s;
   } else {
-    LOG_WITH_PREFIX(ERROR) << "Error while applying replicated record: " << s
-                           << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
+    LOG_WITH_PREFIX(WARNING) << "Error while applying replicated record: " << s
+                             << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   }
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
@@ -806,9 +871,11 @@ void XClusterOutputClient::HandleResponse() {
   if (response.status.ok()) {
     response.last_applied_op_id = op_id_;
     response.processed_record_count = processed_record_count_;
+    response.ddl_queue_commit_times = std::move(ddl_queue_commit_times_);
   }
   op_id_ = consensus::MinimumOpId();
   processed_record_count_ = 0;
+  ddl_queue_commit_times_ = {};
 
   xcluster_poller_->ApplyChangesCallback(std::move(response));
 }
@@ -826,10 +893,10 @@ std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
     const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
     ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver, bool is_automatic_mode,
-    rocksdb::RateLimiter* rate_limiter) {
+    bool is_ddl_queue_client, rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(
       xcluster_poller, consumer_tablet_info, producer_tablet_info, local_client, thread_pool, rpcs,
-      use_local_tserver, is_automatic_mode, rate_limiter);
+      use_local_tserver, is_automatic_mode, is_ddl_queue_client, rate_limiter);
 }
 
 }  // namespace tserver

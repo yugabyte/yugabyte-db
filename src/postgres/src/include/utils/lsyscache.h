@@ -184,7 +184,6 @@ extern const struct SubscriptRoutines *getSubscriptingRoutines(Oid typid,
 extern Oid	getBaseType(Oid typid);
 extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
 extern int32 get_typavgwidth(Oid typid, int32 typmod);
-extern float4 yb_get_attdistinctcount(Oid relid, AttrNumber attnum);
 extern int32 get_attavgwidth(Oid relid, AttrNumber attnum);
 extern bool get_attstatsslot(AttStatsSlot *sslot, HeapTuple statstuple,
 							 int reqkind, Oid reqop, int flags);
@@ -199,6 +198,9 @@ extern Oid	get_index_column_opclass(Oid index_oid, int attno);
 extern bool get_index_isreplident(Oid index_oid);
 extern bool get_index_isvalid(Oid index_oid);
 extern bool get_index_isclustered(Oid index_oid);
+
+/* YB */
+extern float4 yb_get_attdistinctcount(Oid relid, AttrNumber attnum);
 
 #define type_is_array(typid)  (get_element_type(typid) != InvalidOid)
 /* type_is_array_domain accepts both plain arrays and domains over arrays */

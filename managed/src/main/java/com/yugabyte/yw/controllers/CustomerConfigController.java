@@ -8,6 +8,8 @@ import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
@@ -56,12 +58,16 @@ public class CustomerConfigController extends AuthenticatedController {
 
   private final CustomerConfigService customerConfigService;
   private final CloudUtilFactory cloudUtilFactory;
+  private final StorageUtilFactory storageUtilFactory;
 
   @Inject
   public CustomerConfigController(
-      CustomerConfigService customerConfigService, CloudUtilFactory cloudUtilFactory) {
+      CustomerConfigService customerConfigService,
+      CloudUtilFactory cloudUtilFactory,
+      StorageUtilFactory storageUtilFactory) {
     this.customerConfigService = customerConfigService;
     this.cloudUtilFactory = cloudUtilFactory;
+    this.storageUtilFactory = storageUtilFactory;
   }
 
   @Inject Commissioner commissioner;
@@ -240,6 +246,28 @@ public class CustomerConfigController extends AuthenticatedController {
   })
   public Result list(UUID customerUUID) {
     return PlatformResults.withData(customerConfigService.listForUI(customerUUID));
+  }
+
+  @ApiOperation(
+      value = "List all backup dirs within a customer configurations",
+      response = String.class,
+      responseContainer = "List",
+      nickname = "getListOfYbaBackupDirsCustomerConfig")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result listYbaBackupDirs(UUID customerUUID, UUID configUUID) {
+    CustomerConfig customerConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
+    if (customerConfig.getType() != CustomerConfig.ConfigType.STORAGE) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can only list YBA backup directories for storage configurations.");
+    }
+    StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
+
+    return PlatformResults.withData(storageUtil.getYbaBackupDirs(customerConfig.getDataObject()));
   }
 
   @ApiOperation(

@@ -12,12 +12,12 @@
 // under the License.
 
 #include "yb/tools/yb-admin-test-base.h"
-#include "yb/util/flags.h"
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/table_info.h"
 
 #include "yb/master/master_backup.proxy.h"
@@ -30,15 +30,16 @@
 #include "yb/tools/yb-admin_util.h"
 
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/client/table_alterer.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);

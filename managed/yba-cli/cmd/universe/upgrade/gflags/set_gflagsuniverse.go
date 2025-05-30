@@ -72,12 +72,18 @@ var setGflagsUniverseCmd = &cobra.Command{
 			}
 
 		}
-		err = util.ConfirmCommand(
-			fmt.Sprintf("Are you sure you want to upgrade Gflags %s: %s",
-				util.UniverseType, universeName),
-			viper.GetBool("force"))
+		dryRun, err := cmd.Flags().GetBool("dry-run")
 		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if !dryRun {
+			err = util.ConfirmCommand(
+				fmt.Sprintf("Are you sure you want to upgrade Gflags %s: %s",
+					util.UniverseType, universeName),
+				viper.GetBool("force"))
+			if err != nil {
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -97,6 +103,17 @@ var setGflagsUniverseCmd = &cobra.Command{
 				formatter.RedColor,
 			))
 		}
+
+		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
+		if primaryCluster == (ybaclient.Cluster{}) {
+			err := fmt.Errorf(
+				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
+			)
+			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		}
+
+		primaryUserIntent := primaryCluster.GetUserIntent()
+		version := primaryUserIntent.GetYbSoftwareVersion()
 
 		var cliSpecificGFlags []util.SpecificGFlagsCLIOutput
 
@@ -126,6 +143,47 @@ var setGflagsUniverseCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
+		skipValidations, err := cmd.Flags().GetBool("skip-validations")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		if !skipValidations {
+			errors := validateGFlags(
+				authAPI,
+				universeName,
+				universeUUID,
+				version,
+				cliSpecificGFlags,
+			)
+			if len(errors) > 0 {
+				errMessage := "Error validating gflags:"
+				for _, err := range errors {
+					errMessage = fmt.Sprintf("%s\n%s", errMessage, err)
+				}
+				errMessage = fmt.Sprintf(
+					"%s\nPlease review them and try again. "+
+						"If you still wish to proceed, you can bypass validations by adding the --skip-validations flag.\n",
+					errMessage,
+				)
+				logrus.Fatal(formatter.Colorize(errMessage, formatter.RedColor))
+			}
+		}
+
+		dryRun, err := cmd.Flags().GetBool("dry-run")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		if dryRun {
+			logrus.Infof(
+				"Dry run for universe %s (%s) gflags is complete\n",
+				formatter.Colorize(universeName, formatter.GreenColor),
+				universeUUID,
+			)
+			return
+		}
+
 		specificGFlags := make([]ybaclient.SpecificGFlags, 0)
 		for _, gflagStructure := range cliSpecificGFlags {
 			gflags := gflagStructure.SpecificGFlags
@@ -147,13 +205,16 @@ var setGflagsUniverseCmd = &cobra.Command{
 			specificGFlags = append(specificGFlags, specificGFlag)
 		}
 
-		for i := 0; i < len(clusters); i++ {
-			clusterUserIntent := clusters[i].GetUserIntent()
-			clusterType := clusters[i].GetClusterType()
-			clusterUUID := clusters[i].GetUuid()
-			for _, gflags := range cliSpecificGFlags {
-				isClusterInRequestBodyWIthValidUUID := false
-				if strings.Compare(strings.ToUpper(clusterType), strings.ToUpper(gflags.ClusterType)) == 0 {
+		for _, gflags := range cliSpecificGFlags {
+			isClusterInRequestBodyWithValidUUID := false
+			for i := 0; i < len(clusters); i++ {
+				clusterUserIntent := clusters[i].GetUserIntent()
+				clusterType := clusters[i].GetClusterType()
+				clusterUUID := clusters[i].GetUuid()
+				if strings.Compare(
+					strings.ToUpper(clusterType),
+					strings.ToUpper(gflags.ClusterType),
+				) == 0 {
 					if strings.Compare(clusterUUID, gflags.ClusterUUID) == 0 {
 						logrus.Debugf(
 							"Updating specific gflags for cluster %s (%s)\n",
@@ -161,17 +222,17 @@ var setGflagsUniverseCmd = &cobra.Command{
 							clusterType)
 						clusterUserIntent.SetSpecificGFlags(specificGFlags[i])
 						clusters[i].SetUserIntent(clusterUserIntent)
-						isClusterInRequestBodyWIthValidUUID = true
+						isClusterInRequestBodyWithValidUUID = true
 					}
 				}
-				if !isClusterInRequestBodyWIthValidUUID {
-					logrus.Fatal(
-						formatter.Colorize(
-							"Cluster "+gflags.ClusterUUID+" ("+gflags.ClusterType+
-								")"+" not found in universe\n",
-							formatter.RedColor,
-						))
-				}
+			}
+			if !isClusterInRequestBodyWithValidUUID {
+				logrus.Fatal(
+					formatter.Colorize(
+						"Cluster "+gflags.ClusterUUID+" ("+gflags.ClusterType+
+							")"+" not found in universe\n",
+						formatter.RedColor,
+					))
 			}
 		}
 
@@ -244,5 +305,8 @@ func init() {
 		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
 	setGflagsUniverseCmd.Flags().Int32("delay-between-tservers",
 		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+
+	setGflagsUniverseCmd.Flags().Bool("dry-run", false,
+		"[Optional] Only validate the input and do not actually set the GFlags.")
 
 }

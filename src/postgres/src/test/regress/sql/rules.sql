@@ -1034,13 +1034,24 @@ insert into rules_src values(22,23), (33,default);
 select * from rules_src;
 select * from rules_log;
 create rule r4 as on delete to rules_src do notify rules_src_deletion;
-\d+ rules_src
 
 --
 -- Ensure an aliased target relation for insert is correctly deparsed.
 --
 create rule r5 as on insert to rules_src do instead insert into rules_log AS trgt SELECT NEW.* RETURNING trgt.f1, trgt.f2;
 create rule r6 as on update to rules_src do instead UPDATE rules_log AS trgt SET tag = 'updated' WHERE trgt.f1 = new.f1;
+
+--
+-- Check deparse disambiguation of INSERT/UPDATE/DELETE targets.
+--
+create rule r7 as on delete to rules_src do instead
+  with wins as (insert into int4_tbl as trgt values (0) returning *),
+       wupd as (update int4_tbl trgt set f1 = f1+1 returning *),
+       wdel as (delete from int4_tbl trgt where f1 = 0 returning *)
+  insert into rules_log AS trgt select old.* from wins, wupd, wdel
+  returning trgt.f1, trgt.f2;
+
+-- check display of all rules added above
 \d+ rules_src
 
 --
@@ -1053,6 +1064,23 @@ create rule rr as on update to rule_t1 do instead UPDATE rule_dest trgt
   WHERE trgt.f1 = new.f1 RETURNING new.*;
 \d+ rule_t1
 drop table rule_t1, rule_dest;
+
+--
+-- Test implicit LATERAL references to old/new in rules
+--
+CREATE TABLE rule_t1(a int, b text DEFAULT 'xxx', c int);
+CREATE VIEW rule_v1 AS SELECT * FROM rule_t1;
+CREATE RULE v1_ins AS ON INSERT TO rule_v1
+  DO ALSO INSERT INTO rule_t1
+  SELECT * FROM (SELECT a + 10 FROM rule_t1 WHERE a = NEW.a) tt;
+CREATE RULE v1_upd AS ON UPDATE TO rule_v1
+  DO ALSO UPDATE rule_t1 t
+  SET c = tt.a * 10
+  FROM (SELECT a FROM rule_t1 WHERE a = OLD.a) tt WHERE t.a = tt.a;
+INSERT INTO rule_v1 VALUES (1, 'a'), (2, 'b');
+UPDATE rule_v1 SET b = upper(b);
+SELECT * FROM rule_t1;
+DROP TABLE rule_t1 CASCADE;
 
 --
 -- check alter rename rule
@@ -1267,6 +1295,55 @@ MERGE INTO rule_merge2 t USING (SELECT 1 AS a) s
 		DELETE
 	WHEN NOT MATCHED THEN
 		INSERT VALUES (s.a, '');
+
+-- test deparsing
+CREATE TABLE sf_target(id int, data text, filling int[]);
+
+CREATE FUNCTION merge_sf_test()
+ RETURNS void
+ LANGUAGE sql
+BEGIN ATOMIC
+ MERGE INTO sf_target t
+   USING rule_merge1 s
+   ON (s.a = t.id)
+WHEN MATCHED
+   AND (s.a + t.id) = 42
+   THEN UPDATE SET data = repeat(t.data, s.a) || s.b, id = length(s.b)
+WHEN NOT MATCHED
+   AND (s.b IS NOT NULL)
+   THEN INSERT (data, id)
+   VALUES (s.b, s.a)
+WHEN MATCHED
+   AND length(s.b || t.data) > 10
+   THEN UPDATE SET data = s.b
+WHEN MATCHED
+   AND s.a > 200
+   THEN UPDATE SET filling[s.a] = t.id
+WHEN MATCHED
+   AND s.a > 100
+   THEN DELETE
+WHEN MATCHED
+   THEN DO NOTHING
+WHEN NOT MATCHED
+   AND s.a > 200
+   THEN INSERT DEFAULT VALUES
+WHEN NOT MATCHED
+   AND s.a > 100
+   THEN INSERT (id, data) OVERRIDING USER VALUE
+   VALUES (s.a, DEFAULT)
+WHEN NOT MATCHED
+   AND s.a > 0
+   THEN INSERT
+   VALUES (s.a, s.b, DEFAULT)
+WHEN NOT MATCHED
+   THEN INSERT (filling[1], id)
+   VALUES (s.a, s.a);
+END;
+
+\sf merge_sf_test
+
+DROP FUNCTION merge_sf_test;
+DROP TABLE sf_target;
 
 --
 -- Test enabling/disabling

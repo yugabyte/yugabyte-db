@@ -77,9 +77,6 @@
 /* Define to 1 if you have the `backtrace_symbols' function. */
 #undef HAVE_BACKTRACE_SYMBOLS
 
-/* Define to 1 if you have the `BIO_get_data' function. */
-#undef HAVE_BIO_GET_DATA
-
 /* Define to 1 if you have the `BIO_meth_new' function. */
 #undef HAVE_BIO_METH_NEW
 
@@ -152,6 +149,10 @@
 /* Define to 1 if you have the declaration of `sigwait', and to 0 if you
    don't. */
 #undef HAVE_DECL_SIGWAIT
+
+/* Define to 1 if you have the declaration of `strchrnul', and to 0 if you
+   don't. */
+#undef HAVE_DECL_STRCHRNUL
 
 /* Define to 1 if you have the declaration of `strlcat', and to 0 if you
    don't. */
@@ -514,17 +515,14 @@
 /* Define to 1 if you have spinlocks. */
 #undef HAVE_SPINLOCKS
 
-/* Define to 1 if stdbool.h conforms to C99. */
-#undef HAVE_STDBOOL_H
+/* Define to 1 if you have the `SSL_CTX_set_num_tickets' function. */
+#undef HAVE_SSL_CTX_SET_NUM_TICKETS
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
 
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
-
-/* Define to 1 if you have the `strchrnul' function. */
-#undef HAVE_STRCHRNUL
 
 /* Define to 1 if you have the `strerror_r' function. */
 #undef HAVE_STRERROR_R
@@ -718,14 +716,14 @@
 /* Define to 1 if you have the `writev' function. */
 #undef HAVE_WRITEV
 
+/* Define to 1 if you have the `X509_get_signature_info' function. */
+#undef HAVE_X509_GET_SIGNATURE_INFO
+
 /* Define to 1 if you have the `X509_get_signature_nid' function. */
 #undef HAVE_X509_GET_SIGNATURE_NID
 
 /* Define to 1 if the assembler supports X86_64's POPCNTQ instruction. */
 #undef HAVE_X86_64_POPCNTQ
-
-/* Define to 1 if the system has the type `_Bool'. */
-#undef HAVE__BOOL
 
 /* Define to 1 if your compiler understands __builtin_bswap16. */
 #undef HAVE__BUILTIN_BSWAP16

@@ -146,7 +146,7 @@ Status HostPort::RemoveAndGetHostPortList(
       out.str(master_server_addr);
       out.str(" ");
     }
-    LOG(ERROR) << out.str();
+    LOG(DFATAL) << out.str();
 
     return STATUS_SUBSTITUTE(NotFound,
                              "Cannot find $0 in addresses: $1",

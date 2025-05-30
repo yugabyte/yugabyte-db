@@ -24,7 +24,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "yb_ash.h"
+#include "postgres.h"
 
 #include <arpa/inet.h>
 
@@ -35,6 +35,7 @@
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
@@ -49,17 +50,17 @@
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
-
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
 /* The number of columns in different versions of the view */
 #define ACTIVE_SESSION_HISTORY_COLS_V1 12
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
+#define ACTIVE_SESSION_HISTORY_COLS_V4 15
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
@@ -106,7 +107,8 @@ static int	yb_ash_cb_max_entries(void);
 static void YbAshSetQueryId(uint64 query_id);
 static void YbAshResetQueryId(uint64 query_id);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
-									  int query_location);
+									  int query_location,
+									  bool is_sensitive_stmt);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
 static bool YbAshNestedQueryIdStackPush(uint64 query_id);
@@ -183,8 +185,9 @@ YbAshInit(void)
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] =
-		YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	query_id_stack.query_ids[0] = MyProc->isBackgroundWorker
+		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
+		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	query_id_stack.num_query_ids_not_pushed = 0;
 }
 
@@ -319,7 +322,8 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 					queryDesc->plannedstmt->queryId :
 					yb_ash_utility_query_id(queryDesc->sourceText,
 											queryDesc->plannedstmt->stmt_len,
-											queryDesc->plannedstmt->stmt_location));
+											queryDesc->plannedstmt->stmt_location,
+											false /* is_sensitive_stmt */ ));
 		YbAshSetQueryId(query_id);
 	}
 
@@ -436,11 +440,16 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	{
 		if (yb_enable_ash)
 		{
+			/*
+			 * UTILITY statements can have password tokens that require
+			 * redaction
+			 */
 			query_id = (pstmt->queryId != 0 ?
 						pstmt->queryId :
 						yb_ash_utility_query_id(queryString,
 												pstmt->stmt_len,
-												pstmt->stmt_location));
+												pstmt->stmt_location,
+												true /* is_sensitive_stmt */ ));
 			YbAshSetQueryId(query_id);
 		}
 		++nested_level;
@@ -624,11 +633,10 @@ YbAshSetMetadataForBgworkers(void)
  * from pg_stat_statements.
  */
 static uint64
-yb_ash_utility_query_id(const char *query, int query_len, int query_location)
-{
-	const char *redacted_query;
-	int			redacted_query_len;
+yb_ash_utility_query_id(const char *query, int query_len, int query_location,
+						bool is_sensitive_stmt)
 
+{
 	Assert(query != NULL);
 
 	if (query_location >= 0)
@@ -657,11 +665,17 @@ yb_ash_utility_query_id(const char *query, int query_len, int query_location)
 	while (query_len > 0 && scanner_isspace(query[query_len - 1]))
 		query_len--;
 
-	/* Use the redacted query for checking purposes. */
-	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
+	/*
+	 * Use the redacted query for checking purposes.
+	 * The query string may include multiple statements, so consider only the
+	 * substring that we are interested in for redaction. Note that the
+	 * substring in question does not contain a semi-colon at the end.
+	 */
+	if (is_sensitive_stmt)
+		query = YbGetRedactedQueryString(pnstrdup(query, query_len), &query_len);
 
-	return DatumGetUInt64(hash_any_extended((const unsigned char *) redacted_query,
-											redacted_query_len, 0));
+	return DatumGetUInt64(hash_any_extended((const unsigned char *) query,
+											query_len, 0));
 }
 
 static void
@@ -911,7 +925,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	int			i;
 	static int	ncols = 0;
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V3)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V4)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
@@ -1033,6 +1047,10 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V3)
 			values[j++] = ObjectIdGetDatum(metadata->database_id);
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V4)
+			values[j++] =
+				UInt32GetDatum(YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
@@ -1273,7 +1291,7 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 							   "wait_event_component,wait_event_class,wait_event,"
 							   "top_level_node_id,query_id,pid,"
 							   "client_node_ip,wait_event_aux,sample_weight,"
-							   "wait_event_type,ysql_dbid\n");
+							   "wait_event_type,ysql_dbid,wait_event_code\n");
 
 	for (int i = 0; i < total_elements_to_dump; ++i)
 	{
@@ -1301,13 +1319,14 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 
 		/* Top level node id */
 		PrintUuidToBuffer(output_buffer, sample->top_level_node_id);
-		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d\n",
+		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d,%d\n",
 						 (int64) sample->metadata.query_id,
 						 sample->metadata.pid,
 						 client_node_ip,
 						 sample->aux_info,
 						 sample->sample_weight,
 						 pgstat_get_wait_event_type(sample->encoded_wait_event_code),
-						 sample->metadata.database_id);
+						 sample->metadata.database_id,
+						 YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
 	}
 }

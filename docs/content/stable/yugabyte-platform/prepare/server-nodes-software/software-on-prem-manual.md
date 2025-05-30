@@ -73,12 +73,12 @@ For each node VM, perform the following:
 After you have provisioned the nodes, you can proceed to [Add instances to the on-prem provider](../../../configure-yugabyte-platform/on-premises-nodes/#add-instances).
 
 {{<note title="Root-level systemd or cron">}}
-The following instructions use user-level systemd to provide the necessary access to system resources. Versions prior to v2.20 use root-level systemd or cron. If you have previously provisioned nodes for this provider using either root-level systemd or cron, you should use the same steps, as all nodes in a provider need to be provisioned in the same way. For instructions on provisioning using root-level systemd or cron, see the [instructions for v2.18](/v2.18/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
+The following instructions use user-level systemd to provide the necessary access to system resources. Versions prior to v2.20 use root-level systemd or cron. If you have previously provisioned nodes for this provider using either root-level systemd or cron, you should use the same steps, as all nodes in a provider need to be provisioned in the same way. For instructions on provisioning using root-level systemd or cron, see the [instructions for v2.18](https://docs-archive.yugabyte.com/v2.18/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 {{</note>}}
 
 ## Verify the python version installed on the node
 
-Verify that Python 3.5-3.8 is installed on the node. v3.6 is recommended.
+Verify that Python 3.5-3.9 is installed on the node. v3.6 is recommended.
 
 In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one. For example:
 

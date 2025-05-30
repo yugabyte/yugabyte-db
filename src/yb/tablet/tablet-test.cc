@@ -71,11 +71,11 @@ namespace tablet {
 DEFINE_NON_RUNTIME_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");
 
-static_assert(static_cast<int>(to_underlying(TableType::YQL_TABLE_TYPE)) ==
-                  to_underlying(client::YBTableType::YQL_TABLE_TYPE),
+static_assert(static_cast<int>(std::to_underlying(TableType::YQL_TABLE_TYPE)) ==
+                  std::to_underlying(client::YBTableType::YQL_TABLE_TYPE),
               "Numeric code for YQL_TABLE_TYPE table type must be consistent");
-static_assert(static_cast<int>(to_underlying(TableType::REDIS_TABLE_TYPE)) ==
-                  to_underlying(client::YBTableType::REDIS_TABLE_TYPE),
+static_assert(static_cast<int>(std::to_underlying(TableType::REDIS_TABLE_TYPE)) ==
+                  std::to_underlying(client::YBTableType::REDIS_TABLE_TYPE),
               "Numeric code for REDIS_TABLE_TYPE table type must be consistent");
 
 template<class SETUP>

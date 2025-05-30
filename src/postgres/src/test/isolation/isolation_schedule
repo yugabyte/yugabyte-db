@@ -36,6 +36,9 @@ test: fk-partitioned-2
 test: fk-snapshot
 test: eval-plan-qual
 test: eval-plan-qual-trigger
+test: inplace-inval
+test: intra-grant-inplace
+test: intra-grant-inplace-db
 test: lock-update-delete
 test: lock-update-traversal
 test: inherit-temp
@@ -50,6 +53,7 @@ test: merge-insert-update
 test: merge-delete
 test: merge-update
 test: merge-match-recheck
+test: merge-join
 test: delete-abort-savept
 test: delete-abort-savept-2
 test: aborted-keyrevoke
@@ -107,3 +111,4 @@ test: cluster-conflict-partition
 test: truncate-conflict
 test: serializable-parallel
 test: serializable-parallel-2
+test: serializable-parallel-3

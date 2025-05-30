@@ -84,7 +84,7 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
-DECLARE_int32(cdc_max_stream_intent_records);
+DECLARE_uint64(cdc_max_stream_intent_records);
 DECLARE_bool(enable_single_record_update);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
@@ -132,6 +132,12 @@ DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
 DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
 DECLARE_bool(cdc_disable_sending_composite_values);
 DECLARE_bool(cdc_use_byte_threshold_for_vwal_changes);
+DECLARE_bool(ysql_enable_pg_export_snapshot);
+DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
+DECLARE_uint64(cdcsdk_update_restart_time_interval_secs);
+DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_bool(save_index_into_wal_segments);
+DECLARE_bool(TEST_skip_process_apply);
 
 namespace yb {
 
@@ -243,12 +249,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
-  Status WriteRows(
+  static Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       const vector<string>& optional_cols_name = {},
       pgwrapper::PGConn* conn = nullptr);
 
-  Status WriteRowsWithConn(
+  static Status WriteRowsWithConn(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
       pgwrapper::PGConn* conn = nullptr,
       const vector<string>& optional_cols_name = {});
@@ -518,7 +524,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t session_id = kVWALSessionId1);
+      const uint64_t session_id = kVWALSessionId1,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -532,7 +539,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetAllPendingChangesResponse> GetAllPendingTxnsFromVirtualWAL(
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
       bool init_virtual_wal, const uint64_t session_id = kVWALSessionId1,
-      bool allow_sending_feedback = true);
+      bool allow_sending_feedback = true,
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -565,7 +573,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      const uint64_t& session_id = kVWALSessionId1);
+      uint64_t session_id = kVWALSessionId1);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -808,6 +816,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void TestCreateReplicationSlotWithLsnType(const std::string lsn_type);
 
   void TestCreateReplicationSlotWithLsnTypeParam(const std::string lsn_type);
+
+  void TestCreateReplicationSlotWithOrderingMode(const std::string ordering_mode);
+
+  void TestCreateReplicationSlotWithOrderingModeParam(
+      const ReplicationSlotOrderingMode ordering_mode);
 
   void TestTableIdAndPkInCDCRecords(bool colocated_db);
 

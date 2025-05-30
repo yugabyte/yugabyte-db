@@ -12,12 +12,14 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.Test;
 
 public class GFlagsUtilTest extends FakeDBApplication {
@@ -295,5 +297,166 @@ public class GFlagsUtilTest extends FakeDBApplication {
         equalTo(
             ImmutableMap.of(
                 "flag1", "2", "flag2", "2", "flag3", "abc", "ysql_pg_conf_csv", "abc=def")));
+  }
+
+  @Test
+  public void testSpecificGflagsMerge() {
+    // Create the base specific gflags.
+    SpecificGFlags baseSpecificGFlags = new SpecificGFlags();
+
+    // Add gflag groups.
+    List<GFlagGroup.GroupName> gflagGroups1 = new ArrayList<>();
+    // gflagGroups1.add(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY);
+    baseSpecificGFlags.setGflagGroups(gflagGroups1);
+
+    // Add per process flags.
+    Map<String, String> master1 = new HashMap<>();
+    master1.put("flag1", "1");
+    master1.put("flag2", "2");
+    // Map<String, String> tserver1 = new HashMap<>();
+    SpecificGFlags.PerProcessFlags perProcessFlags1 = new SpecificGFlags.PerProcessFlags();
+    perProcessFlags1.value = new HashMap<>();
+    perProcessFlags1.value.put(ServerType.MASTER, new HashMap<>(master1));
+    baseSpecificGFlags.setPerProcessFlags(perProcessFlags1);
+
+    // Add per az flags.
+    UUID azUUID1 = UUID.randomUUID();
+
+    Map<UUID, PerProcessFlags> perAzFlags1 = new HashMap<>();
+    perAzFlags1.put(azUUID1, perProcessFlags1);
+    baseSpecificGFlags.setPerAZ(perAzFlags1);
+
+    // Create the extra specific gflags.
+    SpecificGFlags extraSpecificGFlags = new SpecificGFlags();
+
+    // Add gflag groups.
+    List<GFlagGroup.GroupName> gflagGroups2 = new ArrayList<>();
+    gflagGroups2.add(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY);
+    extraSpecificGFlags.setGflagGroups(gflagGroups2);
+
+    // Add per process flags.
+    Map<String, String> master2 = new HashMap<>();
+    master2.put("flag2", "a");
+    master2.put("flag3", "b");
+    master2.put("flag4", "c");
+    Map<String, String> tserver2 = new HashMap<>();
+    tserver2.put("flag3", "d");
+    tserver2.put("flag4", "e");
+    tserver2.put("flag5", "f");
+    SpecificGFlags.PerProcessFlags perProcessFlags2 = new SpecificGFlags.PerProcessFlags();
+    perProcessFlags2.value = new HashMap<>();
+    perProcessFlags2.value.put(ServerType.MASTER, new HashMap<>(master2));
+    perProcessFlags2.value.put(ServerType.TSERVER, new HashMap<>(tserver2));
+    extraSpecificGFlags.setPerProcessFlags(perProcessFlags2);
+
+    // Add per az flags.
+    UUID azUUID2 = UUID.randomUUID();
+
+    Map<UUID, PerProcessFlags> perAzFlags2 = new HashMap<>();
+    perAzFlags2.put(azUUID1, perProcessFlags2);
+    perAzFlags2.put(azUUID2, perProcessFlags1);
+    extraSpecificGFlags.setPerAZ(perAzFlags2);
+
+    // Combine and check.
+    SpecificGFlags finalSpecificGFlags =
+        SpecificGFlags.combine(baseSpecificGFlags, extraSpecificGFlags);
+
+    // Validate the gflag groups.
+    assertEquals(baseSpecificGFlags.getGflagGroups().size(), 0);
+    assertEquals(extraSpecificGFlags.getGflagGroups().size(), 1);
+    assertEquals(finalSpecificGFlags.getGflagGroups().size(), 1);
+    assertEquals(
+        finalSpecificGFlags.getGflagGroups().get(0),
+        GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY);
+
+    // Validate the per process groups.
+    // Check that the base flags don't change.
+    assertEquals(baseSpecificGFlags.getPerProcessFlags().value.size(), 1);
+    assertEquals(baseSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER).size(), 2);
+    // Check that the extra flags don't change.
+    assertEquals(extraSpecificGFlags.getPerProcessFlags().value.size(), 2);
+    assertEquals(extraSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER).size(), 3);
+    assertEquals(extraSpecificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER).size(), 3);
+    // Check the final per process master flags.
+    assertEquals(finalSpecificGFlags.getPerProcessFlags().value.size(), 2);
+    assertEquals(finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER).size(), 4);
+    assertEquals(
+        finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER).get("flag1"), "1");
+    assertEquals(
+        finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER).get("flag2"), "a");
+    assertEquals(
+        finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER).get("flag3"), "b");
+    assertEquals(
+        finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER).get("flag4"), "c");
+    // Check the final per process tserver flags.
+    assertEquals(finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER).size(), 3);
+    assertEquals(
+        finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER).get("flag3"), "d");
+    assertEquals(
+        finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER).get("flag4"), "e");
+    assertEquals(
+        finalSpecificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER).get("flag5"), "f");
+
+    // Validate the per az flags.
+    // Check that the base flags don't change.
+    assertEquals(baseSpecificGFlags.getPerAZ().size(), 1);
+    assertEquals(baseSpecificGFlags.getPerAZ().get(azUUID1).value.size(), 1);
+    assertEquals(baseSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.MASTER).size(), 2);
+
+    // Check that the extra flags don't change.
+    assertEquals(extraSpecificGFlags.getPerAZ().size(), 2);
+    // Check that the az1 flags are same.
+    assertEquals(extraSpecificGFlags.getPerAZ().get(azUUID1).value.size(), 2);
+    assertEquals(
+        extraSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.MASTER).size(), 3);
+    assertEquals(
+        extraSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.TSERVER).size(), 3);
+    // Check that the az2 flags are same.
+    assertEquals(extraSpecificGFlags.getPerAZ().get(azUUID2).value.size(), 1);
+    assertEquals(
+        extraSpecificGFlags.getPerAZ().get(azUUID2).value.get(ServerType.MASTER).size(), 2);
+
+    // Check the final gflags.
+    assertEquals(finalSpecificGFlags.getPerAZ().size(), 2);
+    // Check the az1 master gflags.
+    assertEquals(finalSpecificGFlags.getPerAZ().get(azUUID1).value.size(), 2);
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.MASTER).size(), 4);
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.MASTER).get("flag1"), "1");
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.MASTER).get("flag2"), "a");
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.MASTER).get("flag3"), "b");
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.MASTER).get("flag4"), "c");
+    // Check the az1 tserver gflags.
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.TSERVER).size(), 3);
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.TSERVER).get("flag3"),
+        "d");
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.TSERVER).get("flag4"),
+        "e");
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID1).value.get(ServerType.TSERVER).get("flag5"),
+        "f");
+    // Check the az2 master gflags.
+    assertEquals(finalSpecificGFlags.getPerAZ().get(azUUID2).value.size(), 1);
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID2).value.get(ServerType.MASTER).size(), 2);
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID2).value.get(ServerType.MASTER).get("flag1"), "1");
+    assertEquals(
+        finalSpecificGFlags.getPerAZ().get(azUUID2).value.get(ServerType.MASTER).get("flag2"), "2");
+    // Check the az2 tserver gflags not present.
+    assertFalse(finalSpecificGFlags.getPerAZ().get(azUUID2).value.containsKey(ServerType.TSERVER));
+
+    // This checks the number of fields present in the SpecificGflags class. If this number
+    // increases, then the developer needs to accomodate that in the `SpecificGFlags.combine()`
+    // function, update this UT, and increase this count here. This is just so that we don't miss
+    // combining the objects in the future when we add new child fields to this class.
+    assertEquals(finalSpecificGFlags.getClass().getDeclaredFields().length, 4);
   }
 }

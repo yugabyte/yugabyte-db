@@ -397,7 +397,8 @@ Notice that this:
 ```plpgsql
 select max(cardinality(path)) from top_down_paths;
 ```
-returns the value _4_ for the present example. This means that `path[5]` returns `NULL`—as would, for example, `path[6]`, `path[17]`, and `path[42]`. When such a query is issued programmatically, you can determine the maximum path cardinality and build the `ORDER BY	` clause to have just the necessary and sufficient number of terms. Alternatively, for simpler code, you could write it with a number of terms that exceeds your best estimate of the maximum cardinality of the arrays that your program will have to deal with, ensuring safety with a straightforward test of the actual maximum cardinality.
+
+returns the value _4_ for the present example. This means that `path[5]` returns `NULL`—as would, for example, `path[6]`, `path[17]`, and `path[42]`. When such a query is issued programmatically, you can determine the maximum path cardinality and build the `ORDER BY` clause to have just the necessary and sufficient number of terms. Alternatively, for simpler code, you could write it with a number of terms that exceeds your best estimate of the maximum cardinality of the arrays that your program will have to deal with, ensuring safety with a straightforward test of the actual maximum cardinality.
 
 ## Pretty-printing the top-down depth-first report of paths
 

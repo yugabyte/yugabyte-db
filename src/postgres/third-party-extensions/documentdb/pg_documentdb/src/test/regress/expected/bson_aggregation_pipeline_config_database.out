@@ -1,0 +1,103 @@
+SET search_path TO documentdb_api,documentdb_core;
+SET documentdb.next_collection_id TO 7000;
+SET documentdb.next_collection_index_id TO 7000;
+-- these run the default commands used by sh.status().
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "version", "projection": { } }');
+           document           
+------------------------------
+ { "shardingEnabled" : true }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "databases", "projection": { }, "sort": { "name": 1 } }');
+ document 
+----------
+(0 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "collections", "projection": { }, "sort": { "name": 1 } }');
+ document 
+----------
+(0 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "chunks", "projection": { } }');
+ document 
+----------
+(0 rows)
+
+-- create 1 db 2 colls.
+SELECT documentdb_api.create_collection('test', 'my_coll1');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('test', 'my_coll2');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "databases", "projection": { }, "sort": { "name": 1 } }');
+ document 
+----------
+(0 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "collections", "projection": { }, "sort": { "name": 1 } }');
+ document 
+----------
+(0 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "chunks", "projection": { } }');
+ document 
+----------
+(0 rows)
+
+-- add second db
+SELECT documentdb_api.create_collection('test2', 'my_coll1');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "databases", "projection": { }, "sort": { "name": 1 } }');
+ document 
+----------
+(0 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "collections", "projection": { }, "sort": { "name": 1 } }');
+ document 
+----------
+(0 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "chunks", "projection": { } }');
+ document 
+----------
+(0 rows)
+
+-- now shard mycoll1
+SELECT documentdb_api.shard_collection('test2', 'my_coll1', '{ "nameValue": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "databases", "projection": { }, "sort": { "name": 1 } }');
+                 document                  
+-------------------------------------------
+ { "_id" : "test2", "partitioned" : true }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "collections", "projection": { }, "sort": { "name": 1 } }');
+                                       document                                       
+--------------------------------------------------------------------------------------
+ { "_id" : "test2.my_coll1", "key" : { "nameValue" : "hashed" }, "noBalance" : true }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('config', '{ "find": "chunks", "projection": { } }');
+                                                                           document                                                                           
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ns" : "test2.my_coll1", "shard" : "defaultShard", "min" : { "$numberLong" : "-9223372036854775808" }, "max" : { "$numberLong" : "9223372036854775807" } }
+(1 row)
+

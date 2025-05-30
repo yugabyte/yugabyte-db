@@ -41,6 +41,7 @@
 #include "pg_yb_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
+
 /*
  * The hash table in which prepared queries are stored. This is
  * per-backend: query plans are not shared between backends.
@@ -186,12 +187,12 @@ ExecuteQuery(ParseState *pstate,
 		elog(ERROR, "EXECUTE does not support variable-result cached plans");
 
 	/*
-	 * If the planner found a pg relation in this plan, set the appropriate
+	 * YB: If the planner found a pg relation in this plan, set the appropriate
 	 * flag for the execution txn.
 	 */
 	if (entry->plansource->usesPostgresRel)
 	{
-		SetTxnWithPGRel();
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 	}
 
 	/* Evaluate parameters, if any */

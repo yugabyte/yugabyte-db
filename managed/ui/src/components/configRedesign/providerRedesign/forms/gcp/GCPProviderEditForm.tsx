@@ -916,8 +916,8 @@ const constructProviderPayload = async (
     sshPrivateKeyContent = formValues.sshPrivateKeyContentText;
   }
 
-  // Note: Backend expects `useHostVPC` to be true for both host instance VPC and specified VPC for
-  //       backwards compatability reasons.
+  // Note: Backend expects `useHostVPC` to be true for both host instance VPC and existing VPC for
+  //       backwards compatibility reasons.
   const vpcConfig =
     formValues.vpcSetupType === VPCSetupType.HOST_INSTANCE
       ? {
@@ -925,7 +925,7 @@ const constructProviderPayload = async (
         }
       : formValues.vpcSetupType === VPCSetupType.EXISTING
       ? {
-          useHostVPC: true, // Must be sent as true for backwards compatability.
+          useHostVPC: true,
           destVpcId: formValues.destVpcId
         }
       : formValues.vpcSetupType === VPCSetupType.NEW
@@ -964,6 +964,17 @@ const constructProviderPayload = async (
     sshUser,
     ...unexposedProviderDetailFields
   } = providerConfig.details;
+  const {
+    useHostVPC,
+    destVpcId,
+    useHostCredentials,
+    gceApplicationCredentials,
+    gceApplicationCredentialsPath,
+    gceProject,
+    sharedVPCProject,
+    ybFirewallTags,
+    ...unexposedProviderCloudInfoFields
+  } = cloudInfo.gcp;
   return {
     code: ProviderCode.GCP,
     name: formValues.providerName,
@@ -973,6 +984,7 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.GCP]: {
+          ...unexposedProviderCloudInfoFields,
           ...vpcConfig,
           ...(formValues.editCloudCredentials
             ? {
@@ -1005,6 +1017,9 @@ const constructProviderPayload = async (
           providerConfig,
           regionFormValues.code
         );
+
+        const { ybImage, instanceTemplate, ...unexposedRegionCloudInfoFields } =
+          existingRegion?.details.cloudInfo.gcp ?? {};
         return {
           ...existingRegion,
           code: regionFormValues.code,
@@ -1012,6 +1027,7 @@ const constructProviderPayload = async (
             ...existingRegion?.details,
             cloudInfo: {
               [ProviderCode.GCP]: {
+                ...unexposedRegionCloudInfoFields,
                 ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage }),
                 ...(regionFormValues.instanceTemplate && {
                   instanceTemplate: regionFormValues.instanceTemplate

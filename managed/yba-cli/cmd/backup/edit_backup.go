@@ -51,7 +51,8 @@ var editBackupCmd = &cobra.Command{
 
 		if cmd.Flags().Changed("time-before-delete-in-ms") {
 			logrus.Debugf("Updating time-before-delete-in-ms")
-			timeBeforeDeleteFromPresentInMillis, err := cmd.Flags().GetInt64("time-before-delete-in-ms")
+			timeBeforeDeleteFromPresentInMillis, err := cmd.Flags().
+				GetInt64("time-before-delete-in-ms")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -123,7 +124,7 @@ var editBackupCmd = &cobra.Command{
 
 		var limit int32 = 10
 		var offset int32 = 0
-		backupAPIDirection := "DESC"
+		backupAPIDirection := util.DescSortDirection
 		backupAPISort := "createTime"
 
 		backupAPIQuery := ybaclient.BackupPagedApiQuery{
@@ -137,7 +138,12 @@ var editBackupCmd = &cobra.Command{
 		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 		r, response, err := backupListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Edit - Describe Backup")
+			errMessage := util.ErrorFromHTTPResponse(
+				response,
+				err,
+				"Backup",
+				"Edit - Describe Backup",
+			)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -151,7 +157,7 @@ var editBackupCmd = &cobra.Command{
 
 func init() {
 	editBackupCmd.Flags().SortFlags = false
-	editBackupCmd.Flags().String("uuid", "",
+	editBackupCmd.Flags().StringP("uuid", "u", "",
 		"[Required] The UUID of the backup to be edited.")
 	editBackupCmd.MarkFlagRequired("uuid")
 	editBackupCmd.Flags().Int64("time-before-delete-in-ms", 0,

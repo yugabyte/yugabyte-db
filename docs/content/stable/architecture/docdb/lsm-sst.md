@@ -1,5 +1,5 @@
 ---
-title: Log structured merge(LSM) tree and Sorted string table (SST)
+title: Log structured merge (LSM) tree and Sorted string table (SST)
 headerTitle: LSM tree and Sorted string tables (SST)
 linkTitle: LSM & SST
 description: Internals of how an LSM creates and manages SSTs.

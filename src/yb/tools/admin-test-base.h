@@ -34,13 +34,22 @@ class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
  public:
   // Figure out where the admin tool is.
   std::string GetAdminToolPath() const;
+  std::string GetTSCliToolPath() const;
 
   std::string GetMasterAddresses() const;
+  std::string GetTServerAddress(int idx = 0) const;
 
   template <class... Args>
   Result<std::string> CallAdmin(Args&&... args) {
     return CallAdminVec(ToStringVector(
         GetAdminToolPath(), "-master_addresses", GetMasterAddresses(),
+        std::forward<Args>(args)...));
+  }
+
+  template <class... Args>
+  Result<std::string> CallTSCli(Args&&... args) {
+    return CallAdminVec(ToStringVector(
+        GetTSCliToolPath(), "-server_address", GetTServerAddress(),
         std::forward<Args>(args)...));
   }
 

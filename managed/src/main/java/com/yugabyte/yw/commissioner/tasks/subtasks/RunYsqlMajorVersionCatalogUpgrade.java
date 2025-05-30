@@ -4,11 +4,16 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.models.Universe;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
 public class RunYsqlMajorVersionCatalogUpgrade extends YsqlMajorUpgradeServerTaskBase {
+
+  private final RuntimeConfGetter runtimeConfGetter;
 
   public static class Params extends YsqlMajorUpgradeServerTaskBase.Params {}
 
@@ -18,8 +23,10 @@ public class RunYsqlMajorVersionCatalogUpgrade extends YsqlMajorUpgradeServerTas
   }
 
   @Inject
-  protected RunYsqlMajorVersionCatalogUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected RunYsqlMajorVersionCatalogUpgrade(
+      BaseTaskDependencies baseTaskDependencies, RuntimeConfGetter runtimeConfGetter) {
     super(baseTaskDependencies);
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   @Override
@@ -44,7 +51,12 @@ public class RunYsqlMajorVersionCatalogUpgrade extends YsqlMajorUpgradeServerTas
         log.info("Starting YSQL major version catalog upgrade");
         startYsqlMajorCatalogUpgrade();
       }
-      waitForCatalogUpgradeToFinish();
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      int maxAttempts =
+          runtimeConfGetter
+              .getConfForScope(universe, UniverseConfKeys.waitAttemptsForMajorCatalogUpgrade)
+              .intValue();
+      waitForCatalogUpgradeToFinish(maxAttempts);
     } catch (Exception e) {
       log.error("Error running ysql major version catalog upgrade: ", e);
       throw new RuntimeException(e);

@@ -58,22 +58,25 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/async_rbs_info_task.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -86,11 +89,13 @@
 
 #include "yb/tablet/tablet_types.pb.h"
 
+#include "yb/tserver/remote_bootstrap_info.h"
+
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/hash_util.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
-#include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
@@ -112,13 +117,16 @@ DEFINE_RUNTIME_uint32(leaderless_tablet_alert_delay_secs, 2 * 60,
     "From master's view, if the tablet doesn't have a valid leader for this amount of seconds, "
     "alert it as a leaderless tablet.");
 
+DEFINE_test_flag(int32, sleep_before_reporting_lb_ui_ms, 0,
+                 "Sleep before reporting tasks in the load balancer UI, to give tasks a chance to "
+                 "complete.");
+
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
-
 DECLARE_string(webserver_ca_certificate_file);
-
 DECLARE_string(webserver_certificate_file);
-
 DEPRECATE_FLAG(uint64, master_maximum_heartbeats_without_lease, "12_2023");
+
+using namespace std::chrono_literals;
 
 namespace yb {
 
@@ -1205,7 +1213,7 @@ void MasterPathHandlers::HandleAllTables(
       if (result.ok()) {
         table_row[kYsqlOid] = std::to_string(*result);
       } else {
-        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+        LOG(WARNING) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
 
       const auto& schema = table_locked->schema();
@@ -1214,11 +1222,13 @@ void MasterPathHandlers::HandleAllTables(
         has_colocated_tables[table_cat] = true;
       }
 
-      auto colocated_tablet = table->GetColocatedUserTablet();
-      if (colocated_tablet) {
-        const auto parent_table = colocated_tablet->table();
-        table_row[kParentOid] = GetParentTableOid(parent_table);
-        has_tablegroups[table_cat] = true;
+      if (table->IsSecondaryTable() && !table_locked->is_vector_index()) {
+        auto colocated_tablets = table->GetTablets();
+        if (colocated_tablets.ok()) {
+          const auto parent_table = colocated_tablets->front()->table();
+          table_row[kParentOid] = GetParentTableOid(parent_table);
+          has_tablegroups[table_cat] = true;
+        }
       }
     } else if (table_cat == kParentTable) {
       // Colocated parent table.
@@ -1231,7 +1241,7 @@ void MasterPathHandlers::HandleAllTables(
     }
 
     // System tables and colocated user tables do not have size info
-    if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
+    if (table_cat != kSystemTable && !table->IsSecondaryTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
@@ -1395,7 +1405,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
       if (result.ok()) {
         table_row.ysql_oid = std::to_string(*result);
       } else {
-        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+        LOG(WARNING) << "Failed to get OID of '" << table_uuid << "' ysql table";
       }
 
       const auto& schema = table_locked->schema();
@@ -1403,10 +1413,12 @@ void MasterPathHandlers::HandleAllTablesJSON(
         table_row.colocation_id = Format("$0", schema.colocated_table_id().colocation_id());
       }
 
-      auto colocated_tablet = table->GetColocatedUserTablet();
-      if (colocated_tablet) {
-        const auto parent_table = colocated_tablet->table();
-        table_row.parent_oid = GetParentTableOid(parent_table);
+      if (table->IsSecondaryTable() && !table_locked->is_vector_index()) {
+        auto colocated_tablets = table->GetTablets();
+        if (colocated_tablets.ok()) {
+          const auto parent_table = colocated_tablets->front()->table();
+          table_row.parent_oid = GetParentTableOid(parent_table);
+        }
       }
     } else if (table_cat == kParentTable) {
       // Colocated parent table.
@@ -1414,7 +1426,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
     }
 
     // System tables and colocated user tables do not have size info.
-    if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
+    if (table_cat != kSystemTable && !table->IsSecondaryTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
       auto tablets_result = table->GetTablets();
       if (!tablets_result) continue;
@@ -3031,6 +3043,8 @@ void MasterPathHandlers::HandleXCluster(
           Format("Group: $0", outbound_replication_group.replication_group_id));
 
       output << "<pre class=\"prettyprint\">" << "state: " << outbound_replication_group.state;
+      output << "\nddl_mode: "
+             << (outbound_replication_group.automatic_ddl_mode ? "automatic" : "semi-automatic");
       if (!outbound_replication_group.target_universe_info.empty()) {
         output << "\ntarget_universe_info: " << outbound_replication_group.target_universe_info;
       }
@@ -3135,13 +3149,79 @@ void MasterPathHandlers::HandleVersionInfoDump(
   jw.Protobuf(version_info);
 }
 
+namespace {
+void RenderRbsInfo(
+    CatalogManagerIf* cm,
+    const std::unordered_map<TabletServerId, tserver::GetActiveRbsInfoResponsePB>& responses,
+    HtmlPrintHelper& html_print_helper, std::stringstream* output) {
+
+  // Render the RBS info.
+  auto rbs_info_table = html_print_helper.CreateTablePrinter(
+      "Ongoing Remote Bootstraps",
+      {"Tablet ID", "Namespace.Table", "Source TServer UUID", "Destination TServer UUID",
+       "Progress"});
+  for (auto& [dest_uuid, response] : responses) {
+    for (auto& rbs_info : response.rbs_infos()) {
+      auto tablet_info_result = cm->GetTabletInfo(rbs_info.tablet_id());
+      std::string table_desc = "Not found";
+      if (tablet_info_result.ok()) {
+        table_desc = Format(
+            "$0.$1", (*tablet_info_result)->table()->namespace_name(),
+            (*tablet_info_result)->table()->name());
+      }
+      rbs_info_table.AddRow(
+          rbs_info.tablet_id(), table_desc, rbs_info.source_ts_uuid(),
+          dest_uuid, GetRemoteBootstrapProgressMessage(rbs_info));
+    }
+  }
+  rbs_info_table.Print();
+}
+} // namespace
+
 void MasterPathHandlers::HandleLoadBalancer(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
+  HtmlPrintHelper html_print_helper(*output);
+
+  *output << "<h1>Cluster Balancer</h1>\n";
+
+  *output << "<h2>Ongoing Remote Bootstraps</h2>\n";
+  auto rbs_info = FetchRbsInfo(master_, 5s /* timeout */);
+  RenderRbsInfo(master_->catalog_manager(), rbs_info, html_print_helper, output);
+
+  auto activity_info = master_->catalog_manager()->load_balancer()->GetLatestActivityInfo();
+  if (FLAGS_TEST_sleep_before_reporting_lb_ui_ms > 0) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_sleep_before_reporting_lb_ui_ms));
+  }
+
+  *output << "<h2>Last Run Summary</h2>\n";
+
+  // TODO(asrivastava): Display LB bottlenecks here.
+  *output << "<h3>Warnings Summary</h3>\n";
+  *output << "Warnings are grouped by type (warnings for different tables / tablets are summed):\n";
+  auto warnings_summary_table = html_print_helper.CreateTablePrinter(
+      "Warnings Summary", {"Example Warning", "Count of similar messages"});
+  for (const auto& warning : activity_info.GetWarningsSummary()) {
+    warnings_summary_table.AddRow(warning.example_message, warning.count);
+  }
+  warnings_summary_table.Print();
+
+  *output << "<h3>Tasks Summary</h3>\n";
+  *output << "Tasks are grouped by type and state (tasks for different tablets are summed):\n";
+  auto tasks_summary_table = html_print_helper.CreateTablePrinter(
+      "Tasks Summary",
+      {"Example description", "Task state", "Count", "Example status (if complete)"});
+  for (const auto& [type_and_state, aggregated] : activity_info.GetTasksSummary()) {
+    auto& [_, state] = type_and_state;
+    tasks_summary_table.AddRow(
+        aggregated.example_description, state, aggregated.count,
+        MonitoredTask::IsStateTerminal(state) ? aggregated.example_status : "");
+  }
+  tasks_summary_table.Print();
+
+  *output << "<h2>Tablet Distribution</h2>\n";
   auto descs = master_->ts_manager()->GetAllDescriptors();
-
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
-
   auto tserver_tree_result = CalculateTServerTree(-1 /* max_table_count */);
   if (!tserver_tree_result.ok()) {
     *output << "<div class='alert alert-warning'>"
@@ -3220,6 +3300,20 @@ void MasterPathHandlers::HandleStatefulServicesJson(
   jw.EndObject();
 }
 
+void MasterPathHandlers::HandleObjectLocksPage(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  auto ts_local_lock_manager = master_->catalog_manager_impl()
+                                      ->object_lock_info_manager()
+                                      ->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    output << "<h2>Could not locate the object lock manager...</h2>\n";
+    return;
+  }
+  ts_local_lock_manager->DumpLocksToHtml(output);
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   const bool is_styled = true;
   const bool is_on_nav_bar = true;
@@ -3272,6 +3366,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   RegisterLeaderOrRedirect(
       server, "/stateful-services", "Stateful Services",
       &MasterPathHandlers::HandleStatefulServices, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/ObjectLockManager", "Object Lock Manager",
+      &MasterPathHandlers::HandleObjectLocksPage, is_styled);
 
   // JSON Endpoints
   RegisterLeaderOrRedirect(
@@ -3397,7 +3495,7 @@ string MasterPathHandlers::RegistrationToHtml(
 Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
-    if (table->IsColocatedUserTable()) {
+    if (table->IsSecondaryTable()) {
       // will be taken care of by colocated parent table
       continue;
     }
@@ -3441,7 +3539,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
   if (max_table_count != -1) {
     int count = 0;
     for (const auto& table : tables) {
-      if (!table->IsUserCreated() || table->IsColocatedUserTable()) {
+      if (!table->IsUserCreated() || table->IsSecondaryTable()) {
         continue;
       }
 
@@ -3454,7 +3552,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
   }
 
   for (const auto& table : tables) {
-    if (!table->IsUserCreated() || table->IsColocatedUserTable()) {
+    if (!table->IsUserCreated() || table->IsSecondaryTable()) {
       // only display user created tables that are not colocated.
       continue;
     }

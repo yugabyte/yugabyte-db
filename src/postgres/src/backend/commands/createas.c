@@ -51,7 +51,7 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 
-/*  YB includes. */
+/* YB includes */
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 
@@ -597,12 +597,12 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	if (!myState->into->skipData)
 	{
 		/*
-		 * if we are creating and inserting into a temporary table,
+		 * YB: if we are creating and inserting into a temporary table,
 		 * we must use PG transaction codepaths as well
 		 */
 		if (myState->rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
 			IsYugaByteEnabled())
-			SetTxnWithPGRel();
+			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 
 		if (IsYBRelation(myState->rel))
 		{

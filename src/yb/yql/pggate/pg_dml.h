@@ -73,6 +73,9 @@ class PgDml : public PgStatement {
   // Bind prefetch size to the current vector index search.
   Status ANNSetPrefetchSize(int32_t prefetch_size);
 
+  // Set HNSW read options.
+  Status HnswSetReadOptions(int ef_search);
+
   // Bind the whole table.
   Status BindTable();
 

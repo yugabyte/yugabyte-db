@@ -60,6 +60,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
@@ -79,8 +80,11 @@ import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
-import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
+import io.yugabyte.operator.v1alpha1.YBUniverseStatus;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.time.temporal.ChronoUnit;
@@ -97,10 +101,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
+@Slf4j
 public class ModelFactory {
 
   /*
@@ -127,7 +133,7 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email) {
-    return testUser(customer, email, Users.Role.Admin);
+    return testUser(customer, email, Users.Role.SuperAdmin);
   }
 
   public static Users testUser(Customer customer, Users.Role role) {
@@ -135,23 +141,30 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email, Users.Role role) {
-    return Users.create(email, "password", role, customer.getUuid(), false);
+    Users user = Users.create(email, "password", role, customer.getUuid(), false);
+    Role newRbacRole = Role.get(customer.getUuid(), role.name());
+
+    // Now add the role binding for the above user.
+    ResourceGroup resourceGroup =
+        ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), user);
+    // Create a single role binding for the user.
+    RoleBinding createdRoleBinding =
+        RoleBinding.create(user, RoleBindingType.System, newRbacRole, resourceGroup);
+
+    log.info(
+        "Created new system role binding for user '{}' (email '{}') of new customer '{}', "
+            + "with role '{}' (name '{}'), and default role binding '{}'.",
+        user.getUuid(),
+        user.getEmail(),
+        customer.getUuid(),
+        newRbacRole.getRoleUUID(),
+        newRbacRole.getName(),
+        createdRoleBinding.toString());
+    return user;
   }
 
   public static Users testSuperAdminUserNewRbac(Customer customer) {
-    // Create test user.
-    Users testUser =
-        Users.create(
-            "test@customer.com", "password", Users.Role.SuperAdmin, customer.getUuid(), false);
-    // Create all built in roles.
-    R__Sync_System_Roles.syncSystemRoles();
-    Role testSuperAdminRole = Role.getOrBadRequest(customer.getUuid(), "SuperAdmin");
-    // Need to define all available resources in resource group as default.
-    ResourceGroup resourceGroup =
-        ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), testUser);
-    // Create a single role binding for the user with super admin role.
-    RoleBinding.create(testUser, RoleBindingType.System, testSuperAdminRole, resourceGroup);
-    return testUser;
+    return testUser(customer, "test@customer.com", Users.Role.SuperAdmin);
   }
 
   /*
@@ -221,6 +234,18 @@ public class ModelFactory {
         "Test Universe", UUID.randomUUID(), customerId, Common.CloudType.aws, null, rootCA);
   }
 
+  public static Universe createUniverse(String universeName, long customerId, boolean useSystemd) {
+    return createUniverse(
+        universeName,
+        UUID.randomUUID(),
+        customerId,
+        Common.CloudType.aws,
+        null,
+        UUID.randomUUID(),
+        true,
+        useSystemd);
+  }
+
   public static Universe createUniverse(String universeName, long customerId) {
     return createUniverse(universeName, UUID.randomUUID(), customerId, Common.CloudType.aws);
   }
@@ -266,6 +291,19 @@ public class ModelFactory {
       PlacementInfo pi,
       UUID rootCA,
       boolean enableYbc) {
+    return createUniverse(
+        universeName, universeUUID, customerId, cloudType, pi, rootCA, enableYbc, true);
+  }
+
+  public static Universe createUniverse(
+      String universeName,
+      UUID universeUUID,
+      long customerId,
+      Common.CloudType cloudType,
+      PlacementInfo pi,
+      UUID rootCA,
+      boolean enableYbc,
+      boolean useSystemd) {
     Customer c = Customer.get(customerId);
     // Custom setup a default AWS provider, can be overridden later.
     List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
@@ -277,6 +315,7 @@ public class ModelFactory {
     userIntent.provider = p.getUuid().toString();
     userIntent.providerType = cloudType;
     userIntent.ybSoftwareVersion = "2.17.0.0-b1";
+    userIntent.useSystemd = useSystemd;
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUUID);
     params.nodeDetailsSet = new HashSet<>();
@@ -488,13 +527,22 @@ public class ModelFactory {
 
   public static Schedule createScheduleBackup(
       UUID customerUUID, UUID universeUUID, UUID configUUID) {
+    return createScheduleBackup(customerUUID, universeUUID, configUUID, TaskType.BackupUniverse);
+  }
+
+  public static Schedule createScheduleBackup(
+      UUID customerUUID, UUID universeUUID, UUID configUUID, TaskType taskType) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;
     params.setUniverseUUID(universeUUID);
     params.setKeyspace("foo");
     params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
-    return Schedule.create(customerUUID, params, TaskType.BackupUniverse, 1000, null);
+    return Schedule.create(customerUUID, params, taskType, 1000, null);
+  }
+
+  public static ScheduleTask createScheduleTask(UUID taskUUID, UUID scheduleUUID) {
+    return ScheduleTask.create(taskUUID, scheduleUUID);
   }
 
   public static CustomerConfig setCallhomeLevel(Customer customer, String level) {
@@ -564,10 +612,10 @@ public class ModelFactory {
             .generateUUID();
     if (universe != null) {
       alertDefinition.setLabels(
-          MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels());
+          MetricLabelsBuilder.create().fromUniverse(customer, universe).getDefinitionLabels());
     } else {
       alertDefinition.setLabels(
-          MetricLabelsBuilder.create().appendSource(customer).getDefinitionLabels());
+          MetricLabelsBuilder.create().fromCustomer(customer).getDefinitionLabels());
     }
     alertDefinition.save();
     return alertDefinition;
@@ -857,6 +905,7 @@ public class ModelFactory {
     userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
     userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.useSystemd = true;
 
     UniverseUpdater updater =
         u -> {
@@ -1106,5 +1155,45 @@ public class ModelFactory {
     CreateTablespaceParams params = new CreateTablespaceParams();
     params.tablespaceInfos = Collections.singletonList(tsi);
     return params;
+  }
+
+  // Operator resource objects
+
+  public static YBUniverse createYbUniverse(Provider provider) {
+    return createYbUniverse("test-universe", provider);
+  }
+
+  public static YBUniverse createYbUniverse(String univName, Provider provider) {
+    YBUniverse universe = new YBUniverse();
+    ObjectMeta metadata = new ObjectMeta();
+    metadata.setName(univName);
+    metadata.setNamespace("test-namespace");
+    metadata.setUid(UUID.randomUUID().toString());
+    metadata.setGeneration((long) 123);
+    YBUniverseStatus status = new YBUniverseStatus();
+    YBUniverseSpec spec = new YBUniverseSpec();
+    List<String> zones = new ArrayList<>();
+    zones.add("one");
+    zones.add("two");
+    spec.setYbSoftwareVersion("2.21.0.0-b1");
+    spec.setNumNodes(1L);
+    spec.setZoneFilter(zones);
+    spec.setReplicationFactor((long) 1);
+    spec.setEnableYSQL(true);
+    spec.setEnableYCQL(false);
+    spec.setEnableNodeToNodeEncrypt(false);
+    spec.setEnableClientToNodeEncrypt(false);
+    spec.setYsqlPassword(null);
+    spec.setYcqlPassword(null);
+    spec.setProviderName(provider.getName());
+    io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo deviceInfo =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo();
+    deviceInfo.setVolumeSize(10L);
+    spec.setDeviceInfo(deviceInfo);
+
+    universe.setMetadata(metadata);
+    universe.setStatus(status);
+    universe.setSpec(spec);
+    return universe;
   }
 }

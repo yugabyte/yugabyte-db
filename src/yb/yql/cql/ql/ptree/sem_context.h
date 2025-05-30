@@ -24,7 +24,7 @@
 
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
-#include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/yql/cql/ql/ql_fwd.h"
 
 namespace yb {
 namespace ql {

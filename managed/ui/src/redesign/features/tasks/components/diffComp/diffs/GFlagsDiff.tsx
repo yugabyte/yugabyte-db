@@ -47,7 +47,7 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
     };
 
     // Create the diff cards for the master and tserver GFlags.
-    beforeData?.gflags?.master?.forEach((diff) => {
+    beforeData?.gflags?.master?.forEach((diff, index) => {
       cards.masterGFlags.push(
         <DiffCard
           ref={(ref) => this.cardRefs?.push({ current: ref })}
@@ -61,6 +61,7 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
             title: (diff.new as unknown) as string
           }}
           operation={getGFlagOperation(diff)}
+          key={index}
         />
       );
     });

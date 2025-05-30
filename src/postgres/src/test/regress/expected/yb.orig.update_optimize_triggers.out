@@ -1,0 +1,392 @@
+SET yb_fetch_row_limit TO 1024;
+SET yb_explain_hide_non_deterministic_fields TO true;
+SET yb_update_num_cols_to_compare TO 50;
+SET yb_update_max_cols_size_to_compare TO 10240;
+-- This test requires the t-server preview/auto flag 'ysql_yb_update_optimizations_infra' to be enabled.
+CREATE OR REPLACE FUNCTION musical_chair() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  -- Increment a specifc column based on the modulo of the row supplied
+  RAISE NOTICE 'Musical chairs invoked with h = %', NEW.h;
+  IF OLD.h % 4 = 0 THEN
+    NEW.h = NEW.h + 40;
+  ELSIF OLD.h % 4 = 1 THEN
+    NEW.v1 = NEW.v1 + 1;
+  ELSIF OLD.h % 4 = 2 THEN
+    NEW.v2 = NEW.v2 + 1;
+  ELSE
+    NEW.v3 = NEW.v3 + 1;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+-- CREATE a table that contains the columns specified in the above function.
+DROP TABLE IF EXISTS mchairs_table;
+NOTICE:  table "mchairs_table" does not exist, skipping
+CREATE TABLE mchairs_table (h INT PRIMARY KEY, v1 INT, v2 INT, v3 INT);
+INSERT INTO mchairs_table (SELECT i, i, i, i FROM generate_series(1, 12) AS i);
+-- Create some indexes to test the behavior of the updates
+CREATE INDEX NONCONCURRENTLY mchairs_v1_v2 ON mchairs_table (v1 ASC, v2 DESC);
+CREATE INDEX NONCONCURRENTLY mchairs_v3 ON mchairs_table (v3 HASH);
+-- Add the trigger that plays musical chairs with the above table
+CREATE TRIGGER mchairs_table_trigger BEFORE UPDATE ON mchairs_table FOR EACH ROW EXECUTE FUNCTION musical_chair();
+-- The value of v1 should be incremented twice, index v1_v2 should be updated.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 + 1 WHERE h = 1;
+NOTICE:  Musical chairs invoked with h = 1
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(12 rows)
+
+-- The value of v1 should be updated again, indexes v1_v2, v3 should be updated.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h, v3 = v3 + 1 WHERE h = 1;
+NOTICE:  Musical chairs invoked with h = 1
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 4
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 5
+ Storage Flush Requests: 1
+(12 rows)
+
+-- Multi-row scenario affecting 4 successive rows exactly with 4 flushes.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h, v1 = v1, v2 = v3, v3 = v2 WHERE h > 8 AND h <= 12;
+NOTICE:  Musical chairs invoked with h = 11
+NOTICE:  Musical chairs invoked with h = 12
+NOTICE:  Musical chairs invoked with h = 9
+NOTICE:  Musical chairs invoked with h = 10
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
+         Storage Filter: ((h > 8) AND (h <= 12))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 12
+         Storage Table Write Requests: 5
+         Storage Index Write Requests: 10
+         Storage Flush Requests: 3
+ Trigger mchairs_table_trigger: calls=4
+ Storage Read Requests: 1
+ Storage Rows Scanned: 12
+ Storage Write Requests: 15
+ Storage Flush Requests: 4
+(13 rows)
+
+-- Validate the updates
+SELECT * FROM mchairs_table ORDER BY h;
+ h  | v1 | v2 | v3 
+----+----+----+----
+  1 |  4 |  1 |  2
+  2 |  2 |  2 |  2
+  3 |  3 |  3 |  3
+  4 |  4 |  4 |  4
+  5 |  5 |  5 |  5
+  6 |  6 |  6 |  6
+  7 |  7 |  7 |  7
+  8 |  8 |  8 |  8
+  9 | 10 |  9 |  9
+ 10 | 10 | 11 | 10
+ 11 | 11 | 11 | 12
+ 52 | 12 | 12 | 12
+(12 rows)
+
+-- The decrement of v1 should be offset by the before row trigger. No indexes
+-- should be updated.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 - 1 WHERE h = 1;
+NOTICE:  Musical chairs invoked with h = 1
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(11 rows)
+
+-- Same as above but for the primary key
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 40, v1 = v1 + 1 WHERE h = 4;
+NOTICE:  Musical chairs invoked with h = -36
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 4)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(12 rows)
+
+-- A subtle variation of the above to test the scenario that the decrement of
+-- h is applied on the value of h that is returned by the before row trigger.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 1, v1 = v1 + 1 WHERE h = 4;
+NOTICE:  Musical chairs invoked with h = 3
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 4)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 4
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 6
+ Storage Flush Requests: 1
+(12 rows)
+
+-- Multi-row scenario.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 - 1, v2 = v2 - 1, v3 = v3 - 1 WHERE h > 4 AND h <= 8;
+NOTICE:  Musical chairs invoked with h = 5
+NOTICE:  Musical chairs invoked with h = 6
+NOTICE:  Musical chairs invoked with h = 7
+NOTICE:  Musical chairs invoked with h = 8
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
+         Storage Filter: ((h > 4) AND (h <= 8))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 12
+         Storage Table Write Requests: 5
+         Storage Index Write Requests: 14
+         Storage Flush Requests: 3
+ Trigger mchairs_table_trigger: calls=4
+ Storage Read Requests: 1
+ Storage Rows Scanned: 12
+ Storage Write Requests: 19
+ Storage Flush Requests: 4
+(13 rows)
+
+-- Again, validate the updates
+SELECT * FROM mchairs_table ORDER BY h;
+ h  | v1 | v2 | v3 
+----+----+----+----
+  1 |  4 |  1 |  2
+  2 |  2 |  2 |  2
+  3 |  3 |  3 |  3
+  5 |  5 |  4 |  4
+  6 |  5 |  6 |  5
+  7 |  6 |  6 |  7
+  9 | 10 |  9 |  9
+ 10 | 10 | 11 | 10
+ 11 | 11 | 11 | 12
+ 43 |  6 |  4 |  4
+ 48 |  7 |  7 |  7
+ 52 | 12 | 12 | 12
+(12 rows)
+
+DROP TABLE mchairs_table;
+---
+--- Test to validate the behavior of after row triggers that are conditional on
+--- specific columns (AFTER UPDATE OF <col-list>).
+---
+DROP TABLE IF EXISTS t_simple;
+NOTICE:  table "t_simple" does not exist, skipping
+CREATE TABLE t_simple (h INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE INDEX NONCONCURRENTLY ON t_simple (v1);
+CREATE INDEX NONCONCURRENTLY ON t_simple (v2, v3);
+INSERT INTO t_simple (SELECT i, i, i, i, i FROM generate_series(1, 10) AS i);
+CREATE OR REPLACE FUNCTION update_v1() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'update_v1 invoked with v1 = % where h = %', NEW.v1, NEW.h;
+	NEW.v1 = NEW.v1 + 1;
+	RETURN NEW;
+END;
+$$;
+CREATE OR REPLACE FUNCTION notice_v1_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'New value of v1 = % where h = %', NEW.v1, NEW.h;
+	RETURN NEW;
+END;
+$$;
+CREATE OR REPLACE FUNCTION update_v2() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'update_v2 invoked with v2 = % where h = %', NEW.v2, NEW.h;
+	NEW.v2 = NEW.v2 + 1;
+	RETURN NEW;
+END;
+$$;
+CREATE OR REPLACE FUNCTION notice_v2_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	RAISE NOTICE 'New value of v2 = % where h = %',  NEW.v2, NEW.h;
+	RETURN NEW;
+END;
+$$;
+CREATE TRIGGER after_update_v1 AFTER UPDATE OF v1 ON t_simple FOR EACH ROW EXECUTE FUNCTION notice_v1_update();
+CREATE TRIGGER after_update_v2 AFTER UPDATE OF v2 ON t_simple FOR EACH ROW EXECUTE FUNCTION notice_v2_update();
+-- Appropriate AFTER ROW triggers fire when columns are mentioned in the SET clause.
+UPDATE t_simple SET v1 = v1 + 1 WHERE h = 1;
+NOTICE:  New value of v1 = 2 where h = 1
+UPDATE t_simple SET v1 = v1 + 1, v2 = v2 + 1 WHERE h = 2;
+NOTICE:  New value of v1 = 3 where h = 2
+NOTICE:  New value of v2 = 3 where h = 2
+-- It shouldn't matter that the columns are unmodified by the query. If they are
+-- in the set clause, appropriate triggers should fire.
+UPDATE t_simple SET v2 = v2 WHERE h = 3;
+NOTICE:  New value of v2 = 3 where h = 3
+UPDATE t_simple SET v1 = v2, v2 = v1 WHERE h = 4;
+NOTICE:  New value of v1 = 4 where h = 4
+NOTICE:  New value of v2 = 4 where h = 4
+-- AFTER ROW triggers do not fire in any of the cases below.
+UPDATE t_simple SET v3 = v3 + 1 WHERE h = 5;
+UPDATE t_simple SET v4 = v1, v3 = v2 WHERE h = 6;
+UPDATE t_simple SET h = h + 10 WHERE h > 9;
+CREATE TRIGGER update_v1 BEFORE UPDATE ON t_simple FOR EACH ROW EXECUTE FUNCTION update_v1();
+CREATE TRIGGER update_v2 BEFORE UPDATE ON t_simple FOR EACH ROW EXECUTE FUNCTION update_v2();
+UPDATE t_simple SET v3 = v3 + 1 WHERE h = 7;
+NOTICE:  update_v1 invoked with v1 = 7 where h = 7
+NOTICE:  update_v2 invoked with v2 = 7 where h = 7
+UPDATE t_simple SET v4 = v1 + 1 WHERE h = 8;
+NOTICE:  update_v1 invoked with v1 = 8 where h = 8
+NOTICE:  update_v2 invoked with v2 = 8 where h = 8
+UPDATE t_simple SET h = h + 10, v4 = v4 + 1 WHERE h = 9;
+NOTICE:  update_v1 invoked with v1 = 9 where h = 19
+NOTICE:  update_v2 invoked with v2 = 9 where h = 19
+-- AFTER ROW triggers should fire in the following cases even though the
+-- BEFORE ROW triggers nullify the modification.
+UPDATE t_simple SET v1 = v1 - 1 WHERE h = 1;
+NOTICE:  update_v1 invoked with v1 = 1 where h = 1
+NOTICE:  update_v2 invoked with v2 = 1 where h = 1
+NOTICE:  New value of v1 = 2 where h = 1
+UPDATE t_simple SET v2 = 2 WHERE h = 2;
+NOTICE:  update_v1 invoked with v1 = 3 where h = 2
+NOTICE:  update_v2 invoked with v2 = 2 where h = 2
+NOTICE:  New value of v2 = 3 where h = 2
+UPDATE t_simple SET v1 = v2 - 1, v2 = v1 - 1 WHERE h = 3;
+NOTICE:  update_v1 invoked with v1 = 2 where h = 3
+NOTICE:  update_v2 invoked with v2 = 2 where h = 3
+NOTICE:  New value of v1 = 3 where h = 3
+NOTICE:  New value of v2 = 3 where h = 3
+UPDATE t_simple SET v1 = h, v2 = v1 WHERE h IN (4, 5, 6);
+NOTICE:  update_v1 invoked with v1 = 5 where h = 5
+NOTICE:  update_v2 invoked with v2 = 5 where h = 5
+NOTICE:  update_v1 invoked with v1 = 6 where h = 6
+NOTICE:  update_v2 invoked with v2 = 6 where h = 6
+NOTICE:  update_v1 invoked with v1 = 4 where h = 4
+NOTICE:  update_v2 invoked with v2 = 4 where h = 4
+NOTICE:  New value of v1 = 6 where h = 5
+NOTICE:  New value of v2 = 6 where h = 5
+NOTICE:  New value of v1 = 7 where h = 6
+NOTICE:  New value of v2 = 7 where h = 6
+NOTICE:  New value of v1 = 5 where h = 4
+NOTICE:  New value of v2 = 5 where h = 4
+SELECT * FROM t_simple ORDER BY h;
+ h  | v1 | v2 | v3 | v4 
+----+----+----+----+----
+  1 |  2 |  2 |  1 |  1
+  2 |  4 |  3 |  2 |  2
+  3 |  3 |  3 |  3 |  3
+  4 |  5 |  5 |  4 |  4
+  5 |  6 |  6 |  6 |  5
+  6 |  7 |  7 |  6 |  6
+  7 |  8 |  8 |  8 |  7
+  8 |  9 |  9 |  8 |  9
+ 19 | 10 | 10 |  9 | 10
+ 20 | 10 | 10 | 10 | 10
+(10 rows)
+
+---
+--- Test to validate the behavior of statement triggers.
+---
+CREATE OR REPLACE FUNCTION update_statement_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	-- Should be all NULLs
+	RAISE NOTICE 'statement trigger (%) invoked with row = %', TG_ARGV[0], NEW;
+	RETURN NULL;
+END;
+$$;
+CREATE TRIGGER before_update_statement BEFORE UPDATE ON t_simple FOR EACH STATEMENT EXECUTE FUNCTION update_statement_trigger('BEFORE');
+-- No AFTER ROW triggers should fire.
+UPDATE t_simple SET v3 = v3 - 1 WHERE h = 4;
+NOTICE:  statement trigger (BEFORE) invoked with row = <NULL>
+NOTICE:  update_v1 invoked with v1 = 5 where h = 4
+NOTICE:  update_v2 invoked with v2 = 5 where h = 4
+-- Appropriate AFTER ROW triggers should fire.
+CREATE TRIGGER after_update_statement_v1_v2 AFTER UPDATE OF v1, v2 ON t_simple FOR EACH STATEMENT EXECUTE FUNCTION update_statement_trigger('AFTER v1, v2');
+UPDATE t_simple SET v1 = v1 + 1 WHERE h = 5;
+NOTICE:  statement trigger (BEFORE) invoked with row = <NULL>
+NOTICE:  update_v1 invoked with v1 = 7 where h = 5
+NOTICE:  update_v2 invoked with v2 = 6 where h = 5
+NOTICE:  New value of v1 = 8 where h = 5
+NOTICE:  statement trigger (AFTER v1, v2) invoked with row = <NULL>
+UPDATE t_simple SET v1 = v2, v2 = v1 WHERE h = 6;
+NOTICE:  statement trigger (BEFORE) invoked with row = <NULL>
+NOTICE:  update_v1 invoked with v1 = 7 where h = 6
+NOTICE:  update_v2 invoked with v2 = 7 where h = 6
+NOTICE:  New value of v1 = 8 where h = 6
+NOTICE:  New value of v2 = 8 where h = 6
+NOTICE:  statement trigger (AFTER v1, v2) invoked with row = <NULL>
+UPDATE t_simple SET v1 = 7, v2 = 7, v3 = 7 WHERE h = 7;
+NOTICE:  statement trigger (BEFORE) invoked with row = <NULL>
+NOTICE:  update_v1 invoked with v1 = 7 where h = 7
+NOTICE:  update_v2 invoked with v2 = 7 where h = 7
+NOTICE:  New value of v1 = 8 where h = 7
+NOTICE:  New value of v2 = 8 where h = 7
+NOTICE:  statement trigger (AFTER v1, v2) invoked with row = <NULL>
+UPDATE t_simple SET h = h + 10, v4 = v4 + 1 WHERE h = 8;
+NOTICE:  statement trigger (BEFORE) invoked with row = <NULL>
+NOTICE:  update_v1 invoked with v1 = 9 where h = 18
+NOTICE:  update_v2 invoked with v2 = 9 where h = 18
+-- Test the behavior of triggers when multiple rows are involved.
+UPDATE t_simple SET v1 = v2 - 1, v2 = v3 - 1, v3 = v1 - 1 WHERE h > 7;
+NOTICE:  statement trigger (BEFORE) invoked with row = <NULL>
+NOTICE:  update_v1 invoked with v1 = 9 where h = 19
+NOTICE:  update_v2 invoked with v2 = 8 where h = 19
+NOTICE:  update_v1 invoked with v1 = 9 where h = 18
+NOTICE:  update_v2 invoked with v2 = 7 where h = 18
+NOTICE:  update_v1 invoked with v1 = 9 where h = 20
+NOTICE:  update_v2 invoked with v2 = 9 where h = 20
+NOTICE:  New value of v1 = 10 where h = 19
+NOTICE:  New value of v2 = 9 where h = 19
+NOTICE:  New value of v1 = 10 where h = 18
+NOTICE:  New value of v2 = 8 where h = 18
+NOTICE:  New value of v1 = 10 where h = 20
+NOTICE:  New value of v2 = 10 where h = 20
+NOTICE:  statement trigger (AFTER v1, v2) invoked with row = <NULL>
+SELECT * FROM t_simple ORDER BY h;
+ h  | v1 | v2 | v3 | v4 
+----+----+----+----+----
+  1 |  2 |  2 |  1 |  1
+  2 |  4 |  3 |  2 |  2
+  3 |  3 |  3 |  3 |  3
+  4 |  6 |  6 |  3 |  4
+  5 |  8 |  7 |  6 |  5
+  6 |  8 |  8 |  6 |  6
+  7 |  8 |  8 |  7 |  7
+ 18 | 10 |  8 |  9 | 10
+ 19 | 10 |  9 |  9 | 10
+ 20 | 10 | 10 |  9 | 10
+(10 rows)
+

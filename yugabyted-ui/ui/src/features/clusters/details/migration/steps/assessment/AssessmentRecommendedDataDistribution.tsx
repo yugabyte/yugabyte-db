@@ -69,7 +69,7 @@ export const RecommendedDataDistribution: FC<RecommendedDataDistributionProps> =
                 e.stopPropagation();
               }}
             >
-            {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
+              {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
             </YBButton>
           </Box>}
         defaultExpanded
@@ -79,63 +79,65 @@ export const RecommendedDataDistribution: FC<RecommendedDataDistributionProps> =
           <Grid container spacing={4}>
             <Grid item xs={12}>
               <Typography variant="h5">
-                {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution." +
-                    "colocated")}
+                {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution.colocated")}
               </Typography>
             </Grid>
             <Grid item xs={6}>
               <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
                 <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution." +
-                      "tables")}
-                </Typography>
-                {colocatedTableCount}
-              </Box>
-            </Grid>
-            <Grid item xs={6}>
-              <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution." +
-                      "size")}
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution.tables")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {typeof colocatedTotalSize === "number"
-                    ? getMemorySizeUnits(colocatedTotalSize)
-                    : colocatedTotalSize}
+                  {colocatedTableCount}
                 </Typography>
               </Box>
             </Grid>
+            {colocatedTotalSize ? (
+              <Grid item xs={6}>
+                <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+                  <Typography variant="subtitle2" className={classes.label}>
+                    {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution.size")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {typeof colocatedTotalSize === "number"
+                      ? getMemorySizeUnits(colocatedTotalSize)
+                      : colocatedTotalSize}
+                  </Typography>
+                </Box>
+              </Grid>
+            ) : null}
           </Grid>
-          <Divider orientation="vertical" className={classes.dividerVertical} flexItem/>
+          <Divider orientation="vertical" className={classes.dividerVertical} flexItem />
           <Grid container spacing={4}>
             <Grid item xs={12}>
               <Typography variant="h5">
-                {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution." +
-                    "sharded")}
+                {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution.sharded")}
               </Typography>
             </Grid>
             <Grid item xs={6}>
               <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
                 <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution." +
-                      "tables")}
-                </Typography>
-                {shardedTableCount}
-              </Box>
-            </Grid>
-            <Grid item xs={6}>
-              <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution." +
-                      "size")}
+                  {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution.tables")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {typeof shardedTotalSize === "number"
-                    ? getMemorySizeUnits(shardedTotalSize)
-                    : shardedTotalSize}
+                  {shardedTableCount}
                 </Typography>
               </Box>
             </Grid>
+            {shardedTotalSize ? (
+              <Grid item xs={6}>
+                <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+                  <Typography variant="subtitle2" className={classes.label}>
+                    {t("clusterDetail.voyager.planAndAssess.recommendation.dataDistribution.size")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {typeof shardedTotalSize === "number"
+                      ? getMemorySizeUnits(shardedTotalSize)
+                      : shardedTotalSize}
+                  </Typography>
+                </Box>
+              </Grid>
+            ) : null}
           </Grid>
         </Box>
       </YBAccordion>

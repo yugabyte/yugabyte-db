@@ -1,0 +1,303 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 66100;
+SET documentdb.next_collection_id TO 6610;
+SET documentdb.next_collection_index_id TO 6610;
+-- insert double
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : 3.0 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : 5.0 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : -1.0 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- string
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : "Hell" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : "hell" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : "hello world" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : "Actual string" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- object
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "a": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "b": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "ba": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "c": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- array
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : [ 1, 2, 3 ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : [ true, "string", 2.0 ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- binary
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$binary": { "base64": "VGhpcyBpcyBhIHN0cmluZw==", "subType": "00" }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$binary": { "base64": "QSBxdWljayBicm93biBmb3g=", "subType": "00" }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- object_id
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$oid": "000102030405060708090A0B" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$oid": "0102030405060708090A0B0C" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- bool
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : false }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- date
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$date": { "$numberLong": "123" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$date": { "$numberLong": "5192" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$date": { "$numberLong": "-200" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$date": { "$numberLong": "1647277893736" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- null
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- regex
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$regularExpression": { "pattern": "^foo$", "options": "gi" }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$regularExpression": { "pattern": "^foo$", "options": "" }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$regularExpression": { "pattern": "bar$", "options": "g" }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- int32
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$numberInt": "25" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$numberInt": "13486" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$numberInt": "-25" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- int64
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$numberLong": "25" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$numberLong": "13486" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$numberLong": "-25" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- timestamp
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$timestamp": { "t": 256, "i": 1 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$timestamp": { "t": 256, "i": 25 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$timestamp": { "t": 200, "i": 10 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$timestamp": { "t": 200, "i": 80 }} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- minkey, maxkey
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$minKey": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bsontypetests', '{ "a" : { "$maxKey": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- These type comparison don't work.
+-- Decimal128
+-- these types don't have an extended json representation
+-- Javascript
+-- Javascript with scope
+-- Symbol
+-- DBPointer
+SELECT document -> 'a' FROM documentdb_api.collection('db', 'bsontypetests') ORDER BY document -> 'a', object_id;
+                                       ?column?                                       
+---------------------------------------------------------------------
+ { "" : { "$minKey" : 1 } }
+ { "" : null }
+ { "" : { "$numberInt" : "-25" } }
+ { "" : { "$numberLong" : "-25" } }
+ { "" : { "$numberDouble" : "-1.0" } }
+ { "" : { "$numberDouble" : "3.0" } }
+ { "" : { "$numberDouble" : "5.0" } }
+ { "" : { "$numberInt" : "25" } }
+ { "" : { "$numberLong" : "25" } }
+ { "" : { "$numberInt" : "13486" } }
+ { "" : { "$numberLong" : "13486" } }
+ { "" : "Actual string" }
+ { "" : "Hell" }
+ { "" : "hell" }
+ { "" : "hello world" }
+ { "" : { "a" : { "$numberInt" : "1" } } }
+ { "" : { "b" : { "$numberInt" : "1" } } }
+ { "" : { "ba" : { "$numberInt" : "1" } } }
+ { "" : { "c" : { "$numberInt" : "1" } } }
+ { "" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "" : [ true, "string", { "$numberDouble" : "2.0" } ] }
+ { "" : { "$binary" : { "base64" : "VGhpcyBpcyBhIHN0cmluZw==", "subType" : "00" } } }
+ { "" : { "$binary" : { "base64" : "QSBxdWljayBicm93biBmb3g=", "subType" : "00" } } }
+ { "" : { "$oid" : "000102030405060708090a0b" } }
+ { "" : { "$oid" : "0102030405060708090a0b0c" } }
+ { "" : false }
+ { "" : true }
+ { "" : { "$date" : { "$numberLong" : "-200" } } }
+ { "" : { "$date" : { "$numberLong" : "123" } } }
+ { "" : { "$date" : { "$numberLong" : "5192" } } }
+ { "" : { "$date" : { "$numberLong" : "1647277893736" } } }
+ { "" : { "$timestamp" : { "t" : 200, "i" : 10 } } }
+ { "" : { "$timestamp" : { "t" : 200, "i" : 80 } } }
+ { "" : { "$timestamp" : { "t" : 256, "i" : 1 } } }
+ { "" : { "$timestamp" : { "t" : 256, "i" : 25 } } }
+ { "" : { "$regularExpression" : { "pattern" : "^foo$", "options" : "" } } }
+ { "" : { "$regularExpression" : { "pattern" : "^foo$", "options" : "i" } } }
+ { "" : { "$regularExpression" : { "pattern" : "bar$", "options" : "" } } }
+ { "" : { "$maxKey" : 1 } }
+(39 rows)
+

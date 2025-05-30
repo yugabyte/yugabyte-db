@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import java.io.File;
 import java.io.IOException;
@@ -288,62 +289,99 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
     Map<String, String> config =
         ImmutableMap.of("KUBECONFIG", getStringValue(getKubeConfigNode(k8sInfo)));
 
-    JsonNode clusterIssuerNode = k8sInfo.get("certManagerClusterIssuer");
-    if (clusterIssuerNode != null) {
-      try {
-        if (!kubernetesManagerFactory
-            .getManager()
-            .resourceExists(
-                config,
-                "clusterissuers.cert-manager.io",
-                getStringValue(clusterIssuerNode),
-                null)) {
-          validationErrors.put(
-              getJsonPath(clusterIssuerNode), "ClusterIssuer doesn't exist in the cluster");
-        }
-      } catch (RuntimeException e) {
-        if (e.getMessage().contains("error: the server doesn't have a resource type")) {
-          validationErrors.put(
-              getJsonPath(clusterIssuerNode),
-              "Cluster doesn't have ClusterIssuer resource type, ensure cert-manager is installed");
-        } else if (e.getMessage().contains("Error from server (Forbidden): clusterissuers")) {
-          log.warn("Unable to validate cert-manager ClusterIssuer: {}", e.getMessage());
-        } else {
-          throw e;
+    JsonNode issuerKindNode = k8sInfo.get("certManagerIssuerKind");
+    JsonNode issuerNameNode = k8sInfo.get("certManagerIssuerName");
+    JsonNode issuerGroupNode = k8sInfo.get("certManagerIssuerGroup");
+    if (issuerKindNode == null && issuerNameNode != null) {
+      validationErrors.put(
+          getJsonPath(issuerKindNode), "Issuer kind must be provided when using Cert Manager");
+    }
+    if (issuerKindNode != null && issuerNameNode == null) {
+      validationErrors.put(
+          getJsonPath(issuerNameNode), "Issuer name must be provided when using Cert Manager");
+    }
+    if (issuerKindNode == null && issuerNameNode == null) {
+      // If both are not provided, then try filling from deprecated fields.
+      JsonNode clusterIssuerNode = k8sInfo.get("certManagerClusterIssuer");
+      if (clusterIssuerNode != null) {
+        issuerKindNode = Json.newObject().put("value", WellKnownIssuerKind.CLUSTER_ISSUER);
+        issuerNameNode = clusterIssuerNode;
+      } else {
+        JsonNode issuerNode = k8sInfo.get("certManagerIssuer");
+        if (issuerNode != null) {
+          issuerKindNode = Json.newObject().put("value", WellKnownIssuerKind.ISSUER);
+          issuerNameNode = issuerNode;
         }
       }
     }
-
-    JsonNode issuerNode = k8sInfo.get("certManagerIssuer");
-    if (issuerNode != null) {
-      JsonNode namespaceNode = k8sInfo.get("kubeNamespace");
-      if (namespaceNode == null) {
-        validationErrors.put(
-            getJsonPath(issuerNode), "Namespace must be provided when using Issuer");
-        return;
+    if (issuerKindNode != null && issuerNameNode != null) {
+      String issuerGroup =
+          issuerGroupNode != null ? getStringValue(issuerGroupNode) : "cert-manager.io";
+      String issuerKind = getStringValue(issuerKindNode);
+      String fullResourceKind = issuerKind + "." + issuerGroup;
+      if (isNamespaceScoped(issuerKind)) {
+        JsonNode namespaceNode = k8sInfo.get("kubeNamespace");
+        if (namespaceNode == null) {
+          validationErrors.put(
+              getJsonPath(issuerNameNode), "Namespace must be provided when using Issuer");
+          return;
+        }
+        validateIssuerExists(
+            config, issuerNameNode, fullResourceKind, namespaceNode, validationErrors);
+      } else {
+        validateClusterIssuerExists(config, issuerNameNode, fullResourceKind, validationErrors);
       }
-      try {
-        String namespace = getStringValue(namespaceNode);
-        if (!kubernetesManagerFactory
-            .getManager()
-            .resourceExists(
-                config, "issuers.cert-manager.io", getStringValue(issuerNode), namespace)) {
-          validationErrors.put(
-              getJsonPath(issuerNode), "Issuer doesn't exist in the " + namespace + " namespace");
-        }
-      } catch (RuntimeException e) {
-        if (e.getMessage().contains("error: the server doesn't have a resource type")) {
-          validationErrors.put(
-              getJsonPath(issuerNode),
-              "Cluster doesn't have Issuer resource type, ensure cert-manager is installed");
-        } else if (e.getMessage().contains("Error from server (NotFound): namespaces")) {
-          validationErrors.put(
-              getJsonPath(namespaceNode), "Namespace doesn't exist in the cluster");
-        } else if (e.getMessage().contains("Error from server (Forbidden): issuers")) {
-          log.warn("Unable to validate cert-manager Issuer: {}", e.getMessage());
-        } else {
-          throw e;
-        }
+    }
+  }
+
+  private void validateIssuerExists(
+      Map<String, String> config,
+      JsonNode issuerNameNode,
+      String issuerKind,
+      JsonNode namespaceNode,
+      SetMultimap<String, String> validationErrors) {
+    try {
+      String namespace = getStringValue(namespaceNode);
+      if (!kubernetesManagerFactory
+          .getManager()
+          .resourceExists(config, issuerKind, getStringValue(issuerNameNode), namespace)) {
+        validationErrors.put(
+            getJsonPath(issuerNameNode), "Issuer doesn't exist in the " + namespace + " namespace");
+      }
+    } catch (RuntimeException e) {
+      if (e.getMessage().contains("error: the server doesn't have a resource type")) {
+        validationErrors.put(
+            getJsonPath(issuerNameNode), "Cluster doesn't have " + issuerKind + " resource type");
+      } else if (e.getMessage().contains("Error from server (NotFound): namespaces")) {
+        validationErrors.put(getJsonPath(namespaceNode), "Namespace doesn't exist in the cluster");
+      } else if (e.getMessage().contains("Error from server (Forbidden)")) {
+        log.warn("Unable to validate cert-manager Issuer: {}", e.getMessage());
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  private void validateClusterIssuerExists(
+      Map<String, String> config,
+      JsonNode issuerNameNode,
+      String issuerKind,
+      SetMultimap<String, String> validationErrors) {
+    try {
+      if (!kubernetesManagerFactory
+          .getManager()
+          .resourceExists(config, issuerKind, getStringValue(issuerNameNode), null)) {
+        validationErrors.put(
+            getJsonPath(issuerNameNode), "ClusterIssuer doesn't exist in the cluster");
+      }
+    } catch (RuntimeException e) {
+      if (e.getMessage().contains("error: the server doesn't have a resource type")) {
+        validationErrors.put(
+            getJsonPath(issuerNameNode), "Cluster doesn't have " + issuerKind + " resource type");
+      } else if (e.getMessage().contains("Error from server (Forbidden)")) {
+        log.warn("Unable to validate cert-manager ClusterIssuer: {}", e.getMessage());
+      } else {
+        throw e;
       }
     }
   }
@@ -374,5 +412,19 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
     // A new or modified kubeconfig is preferred
     // i.e. kubeConfigContent
     return k8sInfo.getOrDefault("kubeConfigContent", k8sInfo.get("kubeConfig"));
+  }
+
+  /*Check if the provided kind is Namespace scoped or cluster scoped
+   * Namespace scoped: Issuer, AWSPCAIssuer
+   * Cluster scoped: ClusterIssuer, AWSPCAClusterIssuer
+   */
+  private boolean isNamespaceScoped(String issuerKind) {
+    if (WellKnownIssuerKind.ISSUER.equals(issuerKind)) {
+      return true;
+    }
+    if (WellKnownIssuerKind.CLUSTER_ISSUER.equals(issuerKind)) {
+      return false;
+    }
+    return !issuerKind.toLowerCase().contains("cluster");
   }
 }

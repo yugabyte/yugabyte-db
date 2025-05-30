@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,21 +13,20 @@
 
 #pragma once
 
+#include <functional>
 #include <map>
 
-namespace yb {
+#include "yb/util/status_fwd.h"
 
-template <class Object>
-class SharedMemoryObject;
-
-namespace tserver {
+namespace yb::tserver {
 
 class TServerSharedData;
-typedef SharedMemoryObject<TServerSharedData> TServerSharedObject;
+class SharedMemoryManager;
 
 struct CatalogVersionInfo;
 // Use ordered map to make computing fingerprint of the map easier.
 using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
 
-} // namespace tserver
-} // namespace yb
+using CertificateReloader = std::function<Status(void)>;
+
+} // namespace yb::tserver

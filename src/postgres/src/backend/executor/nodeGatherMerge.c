@@ -156,7 +156,7 @@ ExecInitGatherMerge(GatherMerge *node, EState *estate, int eflags)
 		{
 			SortSupport sortKey = gm_state->gm_sortkeys + i;
 
-			sortKey->ssup_cxt = GetCurrentMemoryContext();
+			sortKey->ssup_cxt = CurrentMemoryContext;
 			sortKey->ssup_collation = node->collations[i];
 			sortKey->ssup_nulls_first = node->nullsFirst[i];
 			sortKey->ssup_attno = node->sortColIdx[i];

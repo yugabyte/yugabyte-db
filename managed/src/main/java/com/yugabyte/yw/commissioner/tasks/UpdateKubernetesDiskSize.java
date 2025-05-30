@@ -99,6 +99,7 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
         createResizeDiskTask(
             universe.getName(),
             placement,
+            cluster.uuid,
             masterAddresses,
             newIntent,
             isReadOnlyCluster,
@@ -108,9 +109,6 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
             tserverDiskSizeChanged,
             masterDiskSizeChanged,
             usePreviousGflagsChecksum);
-
-        // persist the changes to the universe
-        createPersistResizeNodeTask(cluster.userIntent, cluster.uuid);
       }
 
       // Marks update of this universe as a success only if all the tasks before it

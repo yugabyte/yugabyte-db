@@ -10,8 +10,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: initdb (PostgreSQL) 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-09-24 23:19+0000\n"
-"PO-Revision-Date: 2022-10-20 09:05+0200\n"
+"POT-Creation-Date: 2025-02-16 20:22+0000\n"
+"PO-Revision-Date: 2023-05-24 19:23+0200\n"
 "Last-Translator: Carlos Chapi <carloswaldo@babelruins.org>\n"
 "Language-Team: PgSQL-es-Ayuda <pgsql-es-ayuda@lists.postgresql.org>\n"
 "Language: es\n"
@@ -92,33 +92,33 @@ msgstr "memoria agotada\n"
 msgid "cannot duplicate null pointer (internal error)\n"
 msgstr "no se puede duplicar un puntero nulo (error interno)\n"
 
-#: ../../common/file_utils.c:87 ../../common/file_utils.c:451
+#: ../../common/file_utils.c:86 ../../common/file_utils.c:446
 #, c-format
 msgid "could not stat file \"%s\": %m"
 msgstr "no se pudo hacer stat al archivo «%s»: %m"
 
-#: ../../common/file_utils.c:166 ../../common/pgfnames.c:48
+#: ../../common/file_utils.c:161 ../../common/pgfnames.c:48
 #, c-format
 msgid "could not open directory \"%s\": %m"
 msgstr "no se pudo abrir el directorio «%s»: %m"
 
-#: ../../common/file_utils.c:200 ../../common/pgfnames.c:69
+#: ../../common/file_utils.c:195 ../../common/pgfnames.c:69
 #, c-format
 msgid "could not read directory \"%s\": %m"
 msgstr "no se pudo leer el directorio «%s»: %m"
 
-#: ../../common/file_utils.c:232 ../../common/file_utils.c:291
-#: ../../common/file_utils.c:365
+#: ../../common/file_utils.c:227 ../../common/file_utils.c:286
+#: ../../common/file_utils.c:360
 #, c-format
 msgid "could not open file \"%s\": %m"
 msgstr "no se pudo abrir el archivo «%s»: %m"
 
-#: ../../common/file_utils.c:303 ../../common/file_utils.c:373
+#: ../../common/file_utils.c:298 ../../common/file_utils.c:368
 #, c-format
 msgid "could not fsync file \"%s\": %m"
 msgstr "no se pudo sincronizar (fsync) archivo «%s»: %m"
 
-#: ../../common/file_utils.c:383
+#: ../../common/file_utils.c:378
 #, c-format
 msgid "could not rename file \"%s\" to \"%s\": %m"
 msgstr "no se pudo renombrar el archivo de «%s» a «%s»: %m"
@@ -222,12 +222,12 @@ msgstr "el proceso hijo fue terminado por una señal %d: %s"
 msgid "child process exited with unrecognized status %d"
 msgstr "el proceso hijo terminó con código no reconocido %d"
 
-#: ../../port/dirmod.c:221
+#: ../../port/dirmod.c:247
 #, c-format
 msgid "could not set junction for \"%s\": %s\n"
 msgstr "no se pudo definir un junction para «%s»: %s\n"
 
-#: ../../port/dirmod.c:298
+#: ../../port/dirmod.c:324
 #, c-format
 msgid "could not get junction for \"%s\": %s\n"
 msgstr "no se pudo obtener junction para «%s»: %s\n"
@@ -397,7 +397,7 @@ msgstr "Ingrésela nuevamente: "
 #: initdb.c:1441
 #, c-format
 msgid "Passwords didn't match.\n"
-msgstr "Las constraseñas no coinciden.\n"
+msgstr "Las contraseñas no coinciden.\n"
 
 #: initdb.c:1465
 #, c-format
@@ -463,7 +463,6 @@ msgstr ""
 
 #: initdb.c:2105
 #, c-format
-#| msgid "current database's encoding is not supported with this provider"
 msgid "The encoding you selected (%s) is not supported with the ICU provider."
 msgstr "La codificación que seleccionó (%s) no está soportada con el proveedor ICU."
 
@@ -776,7 +775,7 @@ msgstr "  proveedor:    %s\n"
 #: initdb.c:2367
 #, c-format
 msgid "  ICU locale:  %s\n"
-msgstr "  Locale IC:    %s\n"
+msgstr "  Locale ICU:   %s\n"
 
 #: initdb.c:2368
 #, c-format
@@ -797,7 +796,6 @@ msgstr ""
 
 #: initdb.c:2385
 #, c-format
-#| msgid "The default database encoding has accordingly been set to \"%s\".\n"
 msgid "The default database encoding has been set to \"%s\".\n"
 msgstr "La codificación por omisión ha sido definida a «%s».\n"
 

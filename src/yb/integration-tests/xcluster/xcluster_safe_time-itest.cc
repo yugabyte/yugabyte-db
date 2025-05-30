@@ -364,6 +364,8 @@ TEST_F(XClusterSafeTimeTest, SafeTimeInTableDoesNotGoBackwards) {
     ASSERT_GT(safe_ht, low_safe_time);
   }
   ASSERT_OK(table_scan_status);
+
+  sync_point_instance->DisableProcessing();
 }
 
 // Make sure safe time computation is not affected by the yb-master leader lease loss.

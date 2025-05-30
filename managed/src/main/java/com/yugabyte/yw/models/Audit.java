@@ -224,6 +224,9 @@ public class Audit extends Model {
     @EnumValue("Import")
     Import,
 
+    @EnumValue("Attach")
+    Attach,
+
     @EnumValue("Pause")
     Pause,
 
@@ -596,11 +599,11 @@ public class Audit extends Model {
     @EnumValue("Edit Image Bundle")
     EditImageBundle,
 
-    @EnumValue("Export")
-    Export,
+    @EnumValue("Detach")
+    Detach,
 
-    @EnumValue("Delete Universe Metadata")
-    DeleteMetadata,
+    @EnumValue("Delete Attach/Detach Metadata")
+    DeleteAttachDetachMetadata,
 
     @EnumValue("Unlock Universe")
     Unlock,
@@ -612,7 +615,10 @@ public class Audit extends Model {
     UpdateProxyConfig,
 
     @EnumValue("Clone Namespace")
-    CloneNamespace
+    CloneNamespace,
+
+    @EnumValue("Update Additional Services State")
+    UpdateAdditionalServicesState
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
@@ -747,6 +753,11 @@ public class Audit extends Model {
           BAD_REQUEST, "Task " + taskUUID + " does not belong to customer " + customerUUID);
     }
     return entry;
+  }
+
+  public void updateAdditionalDetails(JsonNode additionalDetails) {
+    this.additionalDetails = additionalDetails;
+    this.update();
   }
 
   public static List<Audit> getAllUserEntries(UUID userUUID) {

@@ -18,6 +18,7 @@ import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { BACKUP_API_TYPES } from '../common/IBackup';
 import { createPITRConfig, getNameSpaces } from '../common/PitrAPI';
+import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import { AllowedTasks, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
@@ -57,6 +58,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
   onHide
 }) => {
   const queryClient = useQueryClient();
+  const interceptBackupLink = useInterceptBackupTaskLinks();
 
   const { data: nameSpaces, isLoading } = useQuery(
     [universeUUID, 'namespaces'],
@@ -74,9 +76,9 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
         toast.success(
           <span>
             Point-in-time recovery is being enabled for {variables.keyspaceName}. Click &nbsp;
-            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
               here
-            </a>
+            </a>)}
             &nbsp; for task details.
           </span>
         );

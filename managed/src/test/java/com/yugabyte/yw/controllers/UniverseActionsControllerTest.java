@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -271,5 +272,33 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     u = Universe.getOrBadRequest(u.getUniverseUUID());
     assertEquals(false, u.getUniverseDetails().updateInProgress);
     assertEquals(true, u.getUniverseDetails().updateSucceeded);
+  }
+
+  @Test
+  public void testUniverseUpdateAdditionalServices() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.UpdateOOMServiceState);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getId());
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/update_additional_services";
+    AdditionalServicesStateData state = new AdditionalServicesStateData();
+    state.setEarlyoomConfig(new AdditionalServicesStateData.EarlyoomConfig());
+    JsonNode body = Json.toJson(state);
+    Result result = doRequestWithBody("PUT", url, body);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(
+        th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpdateOOMServiceState)));
+    assertAuditEntry(1, customer.getUuid());
   }
 }

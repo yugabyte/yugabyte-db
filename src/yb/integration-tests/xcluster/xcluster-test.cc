@@ -1805,7 +1805,7 @@ TEST_P(XClusterTest, BiDirectionalWrites) {
 
 TEST_P(XClusterTest, BiDirectionalWritesWithLargeBatches) {
   // Simulate large batches by dropping FLAGS_consensus_max_batch_size_bytes to limit the size of
-  // the batches we read in GetChanges / ReadReplicatedMessagesForCDC.
+  // the batches we read in GetChanges / ReadReplicatedMessagesForXCluster.
   // We want to test that we don't get stuck if an entire batch messages read are all filtered out
   // (currently we only filter out external writes) and the checkpoint isn't updated.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 1_KB;

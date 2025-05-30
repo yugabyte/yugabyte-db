@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
@@ -37,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
@@ -136,7 +139,6 @@ public class NodeUniverseManager extends DevopsBase {
       String ybHomeDir,
       List<String> sourceNodeFiles,
       String targetLocalFile) {
-    universeLock.acquireLock(universe.getUniverseUUID());
     String filesListFilePath = "", remoteFilesListPath = "";
     try {
       filesListFilePath = createTempFileWithSourceFiles(sourceNodeFiles);
@@ -177,7 +179,6 @@ public class NodeUniverseManager extends DevopsBase {
       }
     } finally {
       FileUtils.deleteQuietly(new File(filesListFilePath));
-      universeLock.releaseLock(universe.getUniverseUUID());
     }
   }
 
@@ -186,13 +187,66 @@ public class NodeUniverseManager extends DevopsBase {
     copyFileFromNode(node, universe, remoteFile, localFile, DEFAULT_CONTEXT);
   }
 
+  /**
+   * Download the given set of root files in a compress archive called root_files.tar.gz to the
+   * target local path.
+   *
+   * @param paths Absolute paths to the root files.
+   */
+  public void downloadRootFiles(
+      UUID customerUUID,
+      NodeDetails node,
+      Universe universe,
+      Set<String> paths,
+      String targetLocalPath) {
+    String nodeTmpDir = getRemoteTmpDir(node, universe);
+    Provider provider =
+        Provider.get(
+            customerUUID,
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    ShellProcessContext context =
+        ShellProcessContext.builder().sshUser(provider.getDetails().sshUser).build();
+
+    // Check if we have sudo access.
+    List<String> cmds = new ArrayList<>(Arrays.asList("sudo", "-v"));
+    if (!runCommand(node, universe, cmds, context).processErrors().isSuccess()) {
+      log.warn(
+          "SSH user {} doesn't have sudo access on node {}. Unable to download root files.",
+          provider.getDetails().sshUser,
+          node.getNodeName());
+      return;
+    }
+
+    log.info(
+        "Downloading the following root files: {} from node {}.",
+        paths.toString(),
+        node.getNodeName());
+
+    // Collect all files in a compressed archive in the tmp dir.
+    cmds = new ArrayList<>(Arrays.asList("sudo", "tar", "-czhf"));
+    String pathToTar = nodeTmpDir + "/root_files.tar.gz";
+    cmds.add(pathToTar);
+    cmds.addAll(paths);
+    runCommand(node, universe, cmds, context).processErrors();
+
+    downloadNodeFile(node, universe, "/", List.of(pathToTar), targetLocalPath);
+
+    // Delete tar from tmp dir on node.
+    cmds = new ArrayList<>(Arrays.asList("sudo", "rm"));
+    cmds.add(pathToTar);
+    runCommand(node, universe, cmds, context).processErrors();
+  }
+
   public void copyFileFromNode(
       NodeDetails node,
       Universe universe,
       String remoteFile,
       String localFile,
       ShellProcessContext context) {
-    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    Optional<NodeAgent> optional =
+        context.isUseSshConnectionOnly()
+            ? Optional.empty()
+            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       nodeActionRunner.copyFile(optional.get(), remoteFile, localFile, DEFAULT_CONTEXT);
     } else {
@@ -244,7 +298,10 @@ public class NodeUniverseManager extends DevopsBase {
       String targetFile,
       String permissions,
       ShellProcessContext context) {
-    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    Optional<NodeAgent> optional =
+        context.isUseSshConnectionOnly()
+            ? Optional.empty()
+            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       nodeActionRunner.uploadFile(optional.get(), sourceFile, targetFile, permissions, context);
     } else {
@@ -271,7 +328,10 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runCommand(
       NodeDetails node, Universe universe, List<String> command, ShellProcessContext context) {
-    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    Optional<NodeAgent> optional =
+        context.isUseSshConnectionOnly()
+            ? Optional.empty()
+            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       return nodeActionRunner.runCommand(optional.get(), command, context);
     }
@@ -332,7 +392,10 @@ public class NodeUniverseManager extends DevopsBase {
       String localScriptPath,
       List<String> params,
       ShellProcessContext context) {
-    Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+    Optional<NodeAgent> optional =
+        context.isUseSshConnectionOnly()
+            ? Optional.empty()
+            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       return nodeActionRunner.runScript(optional.get(), localScriptPath, params, context);
     }
@@ -448,6 +511,18 @@ public class NodeUniverseManager extends DevopsBase {
       return localNodeUniverseManager.runYsqlCommand(
           node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled);
     }
+    return runYsqlBatchCommands(
+        node, universe, dbName, List.of(ysqlCommand), timeoutSec, authEnabled, cpEnabled);
+  }
+
+  public ShellResponse runYsqlBatchCommands(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      List<String> ysqlCommands,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
@@ -478,15 +553,17 @@ public class NodeUniverseManager extends DevopsBase {
       bashCommand.add("-d");
       bashCommand.add(dbName);
     }
-    bashCommand.add("-c");
-    // Escaping double quotes and $ at first.
-    String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
-    escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
-    // Escaping single quotes after for non k8s deployments.
-    if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
-      escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+    for (var ysqlCommand : ysqlCommands) {
+      bashCommand.add("-c");
+      // Escaping double quotes and $ at first.
+      String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+      escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
+      // Escaping single quotes after for non k8s deployments.
+      if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
+        escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+      }
+      bashCommand.add("\"" + escapedYsqlCommand + "\"");
     }
-    bashCommand.add("\"" + escapedYsqlCommand + "\"");
     String bashCommandStr = String.join(" ", bashCommand);
     command.add(bashCommandStr);
     Map<String, String> valsToRedact = new HashMap<>();
@@ -526,7 +603,7 @@ public class NodeUniverseManager extends DevopsBase {
     return "/tmp";
   }
 
-  private Optional<NodeAgent> maybeGetNodeAgent(
+  public Optional<NodeAgent> maybeGetNodeAgent(
       Universe universe, NodeDetails node, boolean checkJavaClient) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
@@ -582,18 +659,20 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
     } else if (cloudType != Common.CloudType.unknown) {
-      UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-      Provider provider = Provider.getOrBadRequest(providerUUID);
-      AccessKey accessKey =
-          AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       // No need to check the feature flag as this is not for java client.
       Optional<NodeAgent> optional =
-          maybeGetNodeAgent(universe, node, false /*check feature flag*/);
+          context.isUseSshConnectionOnly()
+              ? Optional.empty()
+              : maybeGetNodeAgent(universe, node, false /*check feature flag*/);
       if (optional.isPresent()) {
         NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");
         getNodeAgentClient().addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
-      } else {
+      } else if (!StringUtils.isEmpty(cluster.userIntent.accessKeyCode)) {
+        UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+        Provider provider = Provider.getOrBadRequest(providerUUID);
+        AccessKey accessKey =
+            AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
         String sshPort = provider.getDetails().sshPort.toString();
         UUID imageBundleUUID =
             Util.retreiveImageBundleUUID(
@@ -623,6 +702,11 @@ public class NodeUniverseManager extends DevopsBase {
         if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
           commandArgs.add("--ssh2_enabled");
         }
+      } else {
+        String errMsg =
+            "No remote connection method is available to the node " + node.cloudInfo.private_ip;
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
       if (StringUtils.isNotBlank(context.getSshUser())) {
         commandArgs.add("--user");

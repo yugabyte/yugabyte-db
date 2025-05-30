@@ -177,25 +177,13 @@ bool CanAbortTransaction(const Status& status,
                          const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
-  // 2. When running a transaction with READ COMMITTED isolation where the current subtransaction
-  //    id is not at the default value, and we face a kConflict/kReadRestart error. This is because
-  //    YB PG backend retries kConflict and kReadRestart errors for READ COMMITTED isolation by
-  //    restarting statements instead of the whole transaction if the statment is in a transactional
-  //    block. Else it restarts the whole transaction, in which case we can abort the current one.
-  //
-  //    See 'IsInTransactionBlock' function in src/postgres/src/backend/tcop/postgres.c for details.
+  // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
   const TransactionError txn_err(status);
-  if (txn_err.value() == TransactionErrorCode::kSkipLocking) {
+  if (txn_err.value() == TransactionErrorCode::kSkipLocking ||
+      txn_err.value() == TransactionErrorCode::kLockNotFound) {
     return false;
   }
-  if (txn_metadata.isolation == IsolationLevel::READ_COMMITTED &&
-      subtransaction_pb && subtransaction_pb->subtransaction_id() > kMinSubTransactionId) {
-    return txn_err.value() != TransactionErrorCode::kReadRestartRequired &&
-           txn_err.value() != TransactionErrorCode::kConflict;
-  }
-  // For other situations, we can safely abort the transaction. Even if the error is retriable, it
-  // will be retried by starting a new transaction (done by the query layer).
-  return true;
+  return !subtransaction_pb || subtransaction_pb->subtransaction_id() == kMinSubTransactionId;
 }
 
 YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
@@ -238,6 +226,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
       : trace_(Trace::MaybeGetNewTrace()),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -253,6 +242,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
       : trace_(Trace::MaybeGetNewTrace()),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
         transaction_(transaction),
         metadata_(metadata),
@@ -264,6 +254,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
       : trace_(Trace::MaybeGetNewTrace()),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -302,14 +293,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if ((trace_ && trace_->must_print())
            || (threshold > 0 && ToMilliseconds(time_spent) > threshold)
            || (FLAGS_txn_print_trace_on_error && !status_.ok())) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent)
-                << "us. Trace: " << (trace_ ? "" : "Not collected");
+      LOG(INFO) << ToString() << " took " << MonoDelta(time_spent).ToPrettyString()
+                << ". Trace: " << (trace_ ? "" : "Not collected");
       if (trace_)
         trace_->DumpToLogInfo(true);
     } else if (trace_) {
       bool was_printed = false;
       YB_LOG_IF_EVERY_N(INFO, print_trace_every_n > 0, print_trace_every_n)
-          << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
+          << ToString() << " took " << MonoDelta(time_spent).ToPrettyString() << ". Trace: \n"
           << Trace::SetTrue(&was_printed);
       if (was_printed)
         trace_->DumpToLogInfo(true);
@@ -501,19 +492,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status.ok()) {
         if (used_read_time && metadata_.isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
           const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
-#ifndef NDEBUG
           if (read_point_already_set) {
+#ifndef NDEBUG
             // Display details of operations before crashing in debug mode.
             int op_idx = 1;
             for (const auto& op : ops) {
               LOG(ERROR) << "Operation " << op_idx << ": " << op.ToString();
               op_idx++;
             }
-          }
 #endif
-          LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
-              << "Read time already picked (" << read_point_.GetReadTime()
-              << ", but server replied with used read time: " << used_read_time;
+            LOG_WITH_PREFIX(DFATAL)
+                << "Read time already picked (" << read_point_.GetReadTime()
+                << ", but server replied with used read time: " << used_read_time;
+          }
           // TODO: Update local limit for the tablet id which sent back the used read time
           read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
           VLOG_WITH_PREFIX(3)
@@ -717,8 +708,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // that were first involved in the transaction with this batch of changes.
     auto status = StartPromotionToGlobal();
     if (!status.ok()) {
-      LOG(ERROR) << "Prepare for transaction " << metadata_.transaction_id
-                 << " rejected (promotion failed): " << status;
+      LOG(DFATAL) << "Prepare for transaction " << metadata_.transaction_id
+                  << " rejected (promotion failed): " << status;
       return status;
     }
     return true;
@@ -792,6 +783,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     metadata_promise_.set_value(metadata_);
     return metadata_future_;
+  }
+
+  Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
+    {
+      std::lock_guard lock(mutex_);
+      RETURN_NOT_OK(status_);
+      if (!ready_) {
+        return STATUS_FORMAT(IllegalState, "Transaction not ready");
+      }
+    }
+    return metadata_;
   }
 
   void PrepareChild(
@@ -1125,6 +1127,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
     background_transaction_ = background_transaction;
+  }
+
+  const ash::WaitStateInfoPtr wait_state() {
+    return wait_state_;
   }
 
  private:
@@ -1593,6 +1599,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                           const YBTransactionPtr& transaction,
                           TransactionPromoting promoting) {
     TRACE_TO(trace_, __func__);
+    ADOPT_WAIT_STATE(wait_state_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     VLOG_WITH_PREFIX(2) << "Picked status tablet: " << tablet;
 
     if (!tablet.ok()) {
@@ -1622,6 +1630,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       const Result<client::internal::RemoteTabletPtr>& result, const YBTransactionPtr& transaction,
       TransactionPromoting promoting) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
+    ADOPT_WAIT_STATE(wait_state_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
     if (!result.ok()) {
@@ -1918,6 +1928,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                      TransactionStatus transaction_status,
                      const YBTransactionPtr& transaction,
                      SendHeartbeatToNewTablet send_to_new_tablet) {
+    ADOPT_WAIT_STATE(wait_state_);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     UpdateClock(response, manager_);
     auto& handle = send_to_new_tablet ? new_heartbeat_handle_ : heartbeat_handle_;
     manager_->rpcs().Unregister(&handle);
@@ -1983,9 +1995,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
           FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING:
+          ASH_ENABLE_CONCURRENT_UPDATES();
+          SET_WAIT_STATUS(OnCpu_Passive);
           manager_->client()->messenger()->scheduler().Schedule(
-              [this, weak_transaction, send_to_new_tablet, id = metadata_.transaction_id](
+              [this, weak_transaction, send_to_new_tablet, id = metadata_.transaction_id,
+                  wait_state = wait_state_](
                   const Status&) {
+                ADOPT_WAIT_STATE(wait_state);
+                SCOPED_WAIT_STATUS(OnCpu_Active);
                 SendHeartbeat(TransactionStatus::PENDING, id, weak_transaction, send_to_new_tablet);
               },
               std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
@@ -2343,6 +2360,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
+  // This is a pointer to the wait state that was created while
+  // processing the inbound call, we use this to update the
+  // threadlocal wait state ptr when changing threads.
+  const ash::WaitStateInfoPtr wait_state_;
+
   std::atomic<MicrosTime> start_;
 
   // Manager is created once per service.
@@ -2566,6 +2588,10 @@ std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata(
   return impl_->GetMetadata(deadline);
 }
 
+Result<TransactionMetadata> YBTransaction::metadata() const {
+  return impl_->metadata();
+}
+
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {
   return impl_->ApplyChildResult(result);
 }
@@ -2625,6 +2651,10 @@ bool YBTransaction::OldTransactionAborted() const {
 
 void YBTransaction::InitPgSessionRequestVersion() {
   return impl_->InitPgSessionRequestVersion();
+}
+
+const ash::WaitStateInfoPtr YBTransaction::wait_state() {
+  return impl_->wait_state();
 }
 
 void YBTransaction::SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {

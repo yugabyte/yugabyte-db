@@ -32,6 +32,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
 #include "pg_yb_utils.h"
 
 static Oid	get_partition_parent_worker(Relation inhRel, Oid relid,

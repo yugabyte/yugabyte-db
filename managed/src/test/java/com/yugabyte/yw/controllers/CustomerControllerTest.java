@@ -64,6 +64,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -213,6 +214,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
   @Test
   public void testCustomerGETWithReadonlyUser() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     ObjectNode params = Json.newObject();

@@ -2,3 +2,4 @@ third-party
 build
 generated
 resources/ynp/configs/config.ini
+pywheels

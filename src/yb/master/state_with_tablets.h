@@ -62,6 +62,8 @@ class StateWithTablets {
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
+
+  // Returns true if the tablet is in a terminal state now.
   bool Done(const TabletId& tablet_id, int64_t serial, Status status);
   bool AllInState(SysSnapshotEntryPB::State state) const;
   bool HasInState(SysSnapshotEntryPB::State state);
@@ -164,6 +166,8 @@ class StateWithTablets {
     TabletId id;
     SysSnapshotEntryPB::State state;
     Status last_error;
+    // In-memory record of whether the task is running. A non-zero value indicates that the task is
+    // running.
     int64_t running_task_serial_no = 0;
     bool aborted = false;
 

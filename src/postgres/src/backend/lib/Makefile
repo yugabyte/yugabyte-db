@@ -13,6 +13,8 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	yb_percentile.o \
+	\
 	binaryheap.o \
 	bipartite_match.o \
 	bloomfilter.o \
@@ -23,6 +25,5 @@ OBJS = \
 	knapsack.o \
 	pairingheap.o \
 	rbtree.o \
-	yb_percentile.o
 
 include $(top_srcdir)/src/backend/common.mk

@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.HashicorpVaultAlgorithm;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil.VaultSecretEngineBuilder;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -121,7 +122,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
   }
 
   @Override
-  protected byte[] createKeyWithService(
+  protected EncryptionKey createKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
     LOG.info("createKeyWithService called : {}, {}", universeUUID, configUUID);
 
@@ -135,11 +136,11 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
       throw new RuntimeException(errMsg, e);
     }
 
-    return generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize);
+    return new EncryptionKey(generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize));
   }
 
   @Override
-  protected byte[] rotateKeyWithService(
+  protected EncryptionKey rotateKeyWithService(
       UUID universeUUID, UUID configUUID, EncryptionAtRestConfig config) {
     LOG.info("rotateKeyWithService called: {}, {}", universeUUID, configUUID);
 
@@ -152,12 +153,12 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
       throw new IllegalArgumentException(errMsg);
     }
 
-    return generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize);
+    return new EncryptionKey(generateUniverseDataKey(configUUID, universeUUID, algorithm, keySize));
   }
 
   @Override
   public byte[] validateRetrieveKeyWithService(
-      UUID configUUID, byte[] keyRef, ObjectNode authConfig) {
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext, ObjectNode authConfig) {
 
     LOG.debug("validateRetrieveKeyWithService called on config UUID: '{}'", configUUID);
 
@@ -189,12 +190,14 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
   }
 
   @Override
-  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
+  public byte[] retrieveKeyWithService(
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
     LOG.debug("retrieveKeyWithService called on config UUID: '{}'", configUUID);
 
     try {
       final ObjectNode authConfig = getAuthConfig(configUUID);
-      byte[] key = validateRetrieveKeyWithService(configUUID, keyRef, authConfig);
+      byte[] key =
+          validateRetrieveKeyWithService(configUUID, keyRef, encryptionContext, authConfig);
       updateCurrentAuthConfigProperties(configUUID, authConfig);
       return key;
     } catch (Exception e) {
@@ -205,7 +208,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
   }
 
   @Override
-  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+  public EncryptionKey encryptKeyWithService(UUID configUUID, byte[] universeKey) {
     byte[] encryptedUniverseKey = null;
     try {
       ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
@@ -222,7 +225,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
       LOG.error(errMsg, e);
       throw new RuntimeException(errMsg, e);
     }
-    return encryptedUniverseKey;
+    return new EncryptionKey(encryptedUniverseKey);
   }
 
   protected void cleanupWithService(UUID universeUUID, UUID configUUID) {

@@ -109,8 +109,6 @@ public class NodeAgentComponentTest extends FakeDBApplication {
             nodeAgentLogDir + "/node_agent-2023-08-07T22-50-15.473.log.gz");
 
     // Mock all the invocations with fake data
-    when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
-    when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(

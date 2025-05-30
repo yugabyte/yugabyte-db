@@ -46,11 +46,12 @@ RemoteMethod::RemoteMethod(std::string service_name,
                            std::string method_name)
     : service_name_(std::move(service_name)), method_name_(std::move(method_name)) {
   RequestHeader pb;
+  // TODO(#26139): this set_allocated_* call is not safe.
   pb.mutable_remote_method()->set_allocated_service_name(&service_name_);
   pb.mutable_remote_method()->set_allocated_method_name(&method_name_);
   auto se = ScopeExit([&pb] {
-    pb.mutable_remote_method()->release_method_name();
-    pb.mutable_remote_method()->release_service_name();
+    (void) pb.mutable_remote_method()->release_method_name();
+    (void) pb.mutable_remote_method()->release_service_name();
   });
   serialized_ = pb.SerializeAsString();
 }

@@ -39,9 +39,9 @@
 #include "orafce.h"
 #include "builtins.h"
 
-/* YB includes. */
-#include "yb/yql/pggate/ybc_pggate.h"
+/* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #ifndef ERRCODE_NO_DATA_FOUND
 #define ERRCODE_NO_DATA_FOUND				MAKE_SQLSTATE('P','0', '0','0','2')
@@ -923,7 +923,7 @@ safe_named_location(text *location)
 	char	nulls[1] = {' '};
 	char   *result;
 
-	old_cxt = GetCurrentMemoryContext();
+	old_cxt = CurrentMemoryContext;
 
 	values[0] = PointerGetDatum(location);
 

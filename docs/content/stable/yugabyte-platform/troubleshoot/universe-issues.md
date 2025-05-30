@@ -83,7 +83,7 @@ If you disable **Assign Public IP** during the universe creation, the process ma
 
 The preceding package requirements are applicable to YugabyteDB Anywhere version 2.13.1.0.
 
-If you are using YugabyteDB Anywhere version 2.12.*n*.*n* and disable **Use Time Sync** during the universe creation, you also need to install the `ntpd` package.
+If you are using YugabyteDB Anywhere v2.12 and disable **Use Time Sync** during the universe creation, you also need to install the `ntpd` package.
 
 ## Use support bundles
 
@@ -210,9 +210,9 @@ You can disable core collection globally by setting the [global runtime configur
 
 The `manifest.json` file, which contains the parameters that were used to create the support bundle.
 
-#### YB-Controller logs
+#### YB Controller logs
 
-YBC logs generated in `/controller/logs` folder in the YugabyteDB nodes (if YB-Controller is enabled).
+YBC logs generated in `/controller/logs` folder in the YugabyteDB nodes (if YB Controller is enabled).
 
 #### Kubernetes info
 

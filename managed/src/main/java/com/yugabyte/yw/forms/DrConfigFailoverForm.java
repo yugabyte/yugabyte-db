@@ -19,10 +19,15 @@ public class DrConfigFailoverForm {
   @Required
   public UUID drReplicaUniverseUuid;
 
+  /**
+   * @deprecated Do not pass in this field. This field is kept for backward compatibility and if it
+   *     is not passed in, the failover task will compute it which potentially can be at a later
+   *     time and hence reduce the data loss.
+   */
   @ApiModelProperty(
       value =
           "A map from database ID to its safetime since epoch in micro-seconds to use "
               + "during unplanned failover")
-  @Required
+  @Deprecated
   public Map<String, Long> namespaceIdSafetimeEpochUsMap;
 }

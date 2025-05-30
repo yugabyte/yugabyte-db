@@ -165,11 +165,9 @@ void XClusterTestBase::TearDown() {
 
 Status XClusterTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster) {
   auto producer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
     return run_on_cluster(producer_cluster());
   });
   auto consumer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
     return run_on_cluster(consumer_cluster());
   });
 
@@ -182,11 +180,9 @@ Status XClusterTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> r
 
 Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster) {
   auto producer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
     return run_on_cluster(&producer_cluster_);
   });
   auto consumer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
     return run_on_cluster(&consumer_cluster_);
   });
 
@@ -313,8 +309,7 @@ Status XClusterTestBase::SetupCertificates(
     const auto universe_sub_dir =
         JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id.ToString());
     RETURN_NOT_OK(CopyDirectory(
-        env, FLAGS_certs_dir, universe_sub_dir, UseHardLinks::kFalse, CreateIfMissing::kTrue,
-        RecursiveCopy::kFalse));
+        env, FLAGS_certs_dir, universe_sub_dir, CopyOption::kCreateIfMissing));
     LOG(INFO) << "Copied certs from " << FLAGS_certs_dir << " to " << universe_sub_dir;
   }
 

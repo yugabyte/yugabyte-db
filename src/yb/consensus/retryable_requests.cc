@@ -488,10 +488,8 @@ class RetryableRequests::Impl {
     auto& running_indexed_by_request_id = client_retryable_requests.running->get<RequestIdIndex>();
     auto running_it = running_indexed_by_request_id.find(data.request_id());
     if (running_it == running_indexed_by_request_id.end()) {
-#ifndef NDEBUG
-      LOG_WITH_PREFIX(ERROR) << "Running requests: "
-                             << AsString(running_indexed_by_request_id);
-#endif
+      LOG_WITH_PREFIX(WARNING) << "Running requests: "
+                               << AsString(running_indexed_by_request_id);
       LOG_WITH_PREFIX(DFATAL) << "Replication finished for request with unknown id " << data;
       return;
     }
@@ -531,10 +529,8 @@ class RetryableRequests::Impl {
         data.client_id(), mem_tracker_).first->second;
     auto& running_indexed_by_request_id = client_retryable_requests.running->get<RequestIdIndex>();
     if (running_indexed_by_request_id.count(data.request_id()) != 0) {
-#ifndef NDEBUG
-      LOG_WITH_PREFIX(ERROR) << "Running requests: "
-                             << yb::ToString(running_indexed_by_request_id);
-#endif
+      LOG_WITH_PREFIX(WARNING) << "Running requests: "
+                               << AsString(running_indexed_by_request_id);
       LOG_WITH_PREFIX(DFATAL) << "Bootstrapped running request " << data;
       return;
     }
@@ -622,10 +618,8 @@ class RetryableRequests::Impl {
     auto& replicated_indexed_by_last_id = client->replicated->get<LastIdIndex>();
     auto request_it = replicated_indexed_by_last_id.lower_bound(request_id);
     if (request_it != replicated_indexed_by_last_id.end() && request_it->first_id <= request_id) {
-#ifndef NDEBUG
-      LOG_WITH_PREFIX(ERROR)
-          << "Replicated requests: " << yb::ToString(client->replicated);
-#endif
+      LOG_WITH_PREFIX(WARNING)
+          << "Replicated requests: " << AsString(client->replicated);
 
       LOG_WITH_PREFIX(DFATAL) << "Request already replicated: " << data;
       return;

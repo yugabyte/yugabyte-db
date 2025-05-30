@@ -3,4 +3,4 @@
 ####################################################################################################
 # This testsuite contains testcases pertinent to yb_reset_analyze function.
 ####################################################################################################
-test: yb_reset_analyze
+test: yb.orig.reset_analyze

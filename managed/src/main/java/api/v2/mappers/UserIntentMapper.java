@@ -125,6 +125,8 @@ public interface UserIntentMapper {
   @ValueMappings({
     @ValueMapping(target = "SCRATCH", source = "Scratch"),
     @ValueMapping(target = "PERSISTENT", source = "Persistent"),
+    @ValueMapping(target = "HYPERDISK_BALANCED", source = "Hyperdisk_Balanced"),
+    @ValueMapping(target = "HYPERDISK_EXTREME", source = "Hyperdisk_Extreme"),
     @ValueMapping(target = "STANDARDSSD_LRS", source = "StandardSSD_LRS"),
     @ValueMapping(target = "PREMIUM_LRS", source = "Premium_LRS"),
     @ValueMapping(target = "PREMIUMV2_LRS", source = "PremiumV2_LRS"),

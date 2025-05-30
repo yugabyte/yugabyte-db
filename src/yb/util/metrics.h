@@ -1003,8 +1003,6 @@ class Counter : public Metric {
   DISALLOW_COPY_AND_ASSIGN(Counter);
 };
 
-using CounterPtr = scoped_refptr<Counter>;
-
 class MillisLagPrototype : public MetricPrototype {
  public:
   explicit MillisLagPrototype(const MetricPrototype::CtorArgs& args) : MetricPrototype(args) {
@@ -1287,8 +1285,6 @@ class EventStats : public BaseStats<EventStats> {
 
   DISALLOW_COPY_AND_ASSIGN(EventStats);
 };
-
-using EventStatsPtr = scoped_refptr<EventStats>;
 
 template<typename Stats>
 inline void IncrementStats(const scoped_refptr<Stats>& stats, int64_t value) {

@@ -24,11 +24,13 @@ To stream data change events from YugabyteDB databases, you need to use Debezium
 
 ## Set up YugabyteDB for CDC
 
-The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector:
+To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the following:
 
-- Create a DB stream ID.
+- Create a database stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the yb-admin CLI command. Refer to the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference documentation for more details.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the `create_change_data_stream` yb-admin CLI command. Refer to the [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference for more details.
+
+    Note that CDC currently only supports YSQL tables.
 
 - Make sure the YB-Master and YB-TServer ports are open.
 
@@ -38,7 +40,7 @@ The following steps are necessary to set up YugabyteDB for use with the Debezium
 
     The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoints internally for each DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
-    In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+    If CDC lags or is away for some time, the disk usage may grow and cause instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. For more information, see [Important configuration settings](#important-configuration-settings).
 
 ## Serialization
 

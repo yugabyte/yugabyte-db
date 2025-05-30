@@ -79,18 +79,18 @@ CREATE TABLE person (
 	location 	point
 );
 
--- CREATE TABLE emp (
--- 	salary 		int4,
--- 	manager 	name
--- ) INHERITS (person) WITH OIDS;
+CREATE TABLE emp (
+	salary 		int4,
+	manager 	name
+) INHERITS (person); /* WITH OIDS; YB: not supported */
 
--- CREATE TABLE student (
--- 	gpa 		float8
--- ) INHERITS (person);
+CREATE TABLE student (
+	gpa 		float8
+) INHERITS (person);
 
--- CREATE TABLE stud_emp (
--- 	percent 	int4
--- ) INHERITS (emp, student);
+CREATE TABLE stud_emp (
+	percent 	int4
+) INHERITS (emp, student);
 
 CREATE TABLE city (
 	name		name,
@@ -116,11 +116,11 @@ CREATE TABLE road (
 	thepath 	path
 );
 
--- CREATE TABLE ihighway () INHERITS (road);
+CREATE TABLE ihighway () INHERITS (road);
 
--- CREATE TABLE shighway (
--- 	surface		text
--- ) INHERITS (road);
+CREATE TABLE shighway (
+	surface		text
+) INHERITS (road);
 
 CREATE TABLE real_city (
 	pop			int4,

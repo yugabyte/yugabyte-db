@@ -134,5 +134,57 @@ TEST_F(PgIndexTest, NullKey) {
             (decltype(rows){{33, 30}, {22, 20}, {11, 10}, {44, std::nullopt}, {44, std::nullopt}}));
 }
 
+// Given that the "variable bloom filter" tries to dynamically adjust the SSTable files selected for
+// each ybctid being looked up during an index-scan, this test tries to make sure that even when
+// test data set is smaller, we force creation of multiple SSTable files (governed by kNumChunks)
+// and then perform some SQL operations that trigger index scans
+TEST_F(PgIndexTest, RandomIndexScan) {
+  constexpr size_t kNumChunks = 10;
+  constexpr size_t kRowsPerChunk = 100;
+  constexpr size_t kNumReads = 100;
+  constexpr int64_t kMaxValue = 100;
+  std::mt19937_64 rng(42);
+
+  ASSERT_OK(conn_->Execute("CREATE TABLE test(k BIGINT PRIMARY KEY, v BIGINT, t BIGINT)"));
+  ASSERT_OK(conn_->Execute("CREATE INDEX ON test(v ASC)"));
+  std::vector<std::pair<int64_t, int64_t>> rows(kNumChunks * kRowsPerChunk);
+  std::generate(
+      rows.begin(), rows.end(),
+      [&rng, n = 0]() mutable {
+        return std::pair<int64_t, int64_t>(n++, RandomUniformInt<int64_t>(1, kMaxValue, &rng));
+      });
+  std::shuffle(rows.begin(), rows.end(), rng);
+  for (size_t i = 0; i != kNumChunks; ++i) {
+    ASSERT_OK(conn_->CopyBegin("COPY test FROM STDIN WITH BINARY"));
+    for (size_t j = 0; j != kRowsPerChunk; ++j) {
+      conn_->CopyStartRow(3);
+      auto [key, value] = rows[i * kRowsPerChunk + j];
+      conn_->CopyPutInt64(key);
+      conn_->CopyPutInt64(value);
+      conn_->CopyPutInt64(-key);
+    }
+    ASSERT_OK(conn_->CopyEnd());
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    ASSERT_OK(cluster_->FlushTablets());
+  }
+  std::sort(rows.begin(), rows.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.second < rhs.second || (lhs.second == rhs.second && lhs.first < rhs.first);
+  });
+  for (size_t i = 0; i != kNumReads; ++i) {
+    auto limit = RandomUniformInt<int64_t>(1, kMaxValue, &rng) + 1;
+    SCOPED_TRACE(Format("Limit: $0", limit));
+    auto result = ASSERT_RESULT(conn_->FetchRows<int64_t>(Format(
+        "SELECT t FROM test WHERE v < $0 ORDER BY v, k", limit)));
+    auto it = std::lower_bound(
+        rows.begin(), rows.end(), limit, [](const auto& lhs, auto rhs) {
+      return lhs.second < rhs;
+    });
+    ASSERT_EQ(result.size(), it - rows.begin());
+    for (size_t j = 0; j != result.size(); ++j) {
+      ASSERT_EQ(result[j], -rows[j].first);
+    }
+  }
+}
+
 } // namespace pgwrapper
 } // namespace yb

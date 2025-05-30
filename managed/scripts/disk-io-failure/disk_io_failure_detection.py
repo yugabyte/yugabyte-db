@@ -115,8 +115,10 @@ def main(file_paths, process_names, time_limit=0.5, consecutive_failures_limit=5
             time.sleep(1)
 
 
-def parse_config_file(config_path):
-    args = {}
+def parse_config_file(args, config_path):
+    if not args:
+        args = {}
+
     check_file = os.path.isfile(config_path)
     if check_file:
         with open(config_path, 'r') as file:
@@ -149,23 +151,23 @@ if __name__ == "__main__":
                         help="Set the number of consecutive failures to trigger service stopping.")
 
     args_cmd = parser.parse_args()
-
-    config_args = parse_config_file(args_cmd.config)
+    config_args = {}
 
     for key, value in vars(args_cmd).items():
         if value is not None:
             config_args[key] = value
 
-    file_paths = set({})
+    config_args = parse_config_file(config_args, args_cmd.config)
+
+    file_paths = set(config_args[FILE_PATHS_ARG])
     for process in config_args.get(PROCESS_NAMES_ARG):
-        config_dict = parse_config_file(DEFAULT_HOME_DIR + process + CONF_PATH)
+        config_dict = {}
+        config_dict = parse_config_file(config_dict, DEFAULT_HOME_DIR + process + CONF_PATH)
         process_file_paths = config_dict.get(FS_DATA_DIRS_ARG)
-        if process_file_paths is not None:
-            for process_file_path in process_file_paths:
-                file_paths.add(process_file_path + "/" + EXAMPLE_TXT_FILE)
+        for process_file_path in process_file_paths:
+            file_paths.add(process_file_path + "/" + EXAMPLE_TXT_FILE)
 
     file_paths.add(DEFAULT_HOME_DIR_TEST_PATH)
-    # print("{} File paths.".format(str(file_paths)))
 
     logging.info("Running the main method with the args - %s: %s, %s: %s, %s: %s, %s: %s",
                  FILE_PATHS_ARG, file_paths,
@@ -173,6 +175,7 @@ if __name__ == "__main__":
                  TIME_LIMIT_ARG, config_args.get(TIME_LIMIT_ARG, 0.5),
                  CONSECUTIVE_FAILURES_LIMIT_ARG,
                  config_args.get(CONSECUTIVE_FAILURES_LIMIT_ARG, 5))
+
     main(file_paths,
          config_args.get(PROCESS_NAMES_ARG, []),
          config_args.get(TIME_LIMIT_ARG, 0.5),

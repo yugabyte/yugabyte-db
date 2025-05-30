@@ -40,7 +40,7 @@ type: docs
 
 </ul>
 
-After [creating a local cluster](../../../quick-start/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../../api/ysql/).
+After [creating a local cluster](../../../quick-start/macos/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../../api/ysql/).
 
 ## Set up the sample database
 
@@ -404,7 +404,7 @@ Use [indexes](../../../../explore/ysql-language-features/indexes-constraints/sec
 
 ### Recursive queries
 
-The following example uses a [recursive common table expression](../../../../explore/ysql-language-features/queries/#recursive-queries-and-ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a `UNION ALL` and are executed recursively to get the other levels. The main query is then run on the CTE.
+The following example uses a [recursive common table expression](../../../../explore/ysql-language-features/queries/#ctes) (CTE) to show the manager hierarchy. The `emp_manager` CTE is built using the `WITH RECURSIVE` clause to follow the hierarchy under JONES, down to the last level. The first subquery in the recursive clause starts at JONES. The second lists the employees who have JONES as a manager. They are declared with a `UNION ALL` and are executed recursively to get the other levels. The main query is then run on the CTE.
 
 ```sql
 WITH RECURSIVE emp_manager AS (

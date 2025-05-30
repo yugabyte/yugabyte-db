@@ -166,13 +166,13 @@ typedef struct Port
 	bool		yb_is_tserver_auth_method;
 
 	/*
-	 * To be used during Authentication, identifies whether authentication is
-	 * invoked due to Auth Passthrough Request packet.
+	 * YB: To be used during Authentication, identifies whether authentication
+	 * is invoked due to Auth Passthrough Request packet.
 	 */
 	bool		yb_is_auth_passthrough_req;
 
 	/*
-	 * To be used for the authentication of logical connections from the
+	 * YB: To be used for the authentication of logical connections from the
 	 * connection manager either via auth passthrough or the special
 	 * authentication backend.
 	 * It identifies whether the logical connection is encrypted.
@@ -321,7 +321,7 @@ extern void be_tls_get_peer_serial(Port *port, char *ptr, size_t len);
  * This is not supported with old versions of OpenSSL that don't have
  * the X509_get_signature_nid() function.
  */
-#if defined(USE_OPENSSL) && defined(HAVE_X509_GET_SIGNATURE_NID)
+#if defined(USE_OPENSSL) && (defined(HAVE_X509_GET_SIGNATURE_NID) || defined(HAVE_X509_GET_SIGNATURE_INFO))
 #define HAVE_BE_TLS_GET_CERTIFICATE_HASH
 extern char *be_tls_get_certificate_hash(Port *port, size_t *len);
 #endif

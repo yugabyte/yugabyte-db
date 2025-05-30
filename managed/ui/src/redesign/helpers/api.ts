@@ -252,7 +252,6 @@ export interface DrFailoverRequest {
   primaryUniverseUuid: string;
   // drReplicaUniverseUuid is the new DR replica universe AFTER failover (i.e. current primary universe).
   drReplicaUniverseUuid: string;
-  namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string };
 }
 
 export interface RestartDrConfigRequest {
@@ -769,6 +768,16 @@ class ApiService {
   importReleases = (payload: any) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
     return axios.post(requestUrl, payload).then((res) => res.data);
+  };
+
+  retryTask = (taskUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}/retry`;
+    return axios.post(requestUrl).then((response: any) => response.data);
+  };
+
+  rollbackTask = (taskUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}/rollback`;
+    return axios.post(requestUrl).then((response: any) => response.data);
   };
 }
 

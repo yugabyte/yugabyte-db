@@ -541,17 +541,16 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
   // Emulate a stateful system by having a bunch of operations in flight when consensus starts.
   // Specifically we emulate we're on term 10, with 10 operations that have not been committed yet.
   ConsensusBootstrapInfo info;
-  info.last_id.set_term(10);
+  info.last_id.term = 10;
   for (int i = 0; i < 10; i++) {
     auto replicate = rpc::MakeSharedMessage<LWReplicateMsg>();
     replicate->set_op_type(NO_OP);
-    info.last_id.set_index(100 + i);
-    replicate->mutable_id()->CopyFrom(info.last_id);
+    info.last_id.index = 100 + i;
+    info.last_id.ToPB(replicate->mutable_id());
     info.orphaned_replicates.push_back(replicate);
   }
 
-  info.last_committed_id.set_term(10);
-  info.last_committed_id.set_index(99);
+  info.last_committed_id = OpId(10, 99);
 
   {
     InSequence dummy;
@@ -612,8 +611,8 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
   consensus_->TEST_UpdateMajorityReplicated(
       OpId::FromPB(info.orphaned_replicates.back()->id()), &committed_index, &last_applied_op_id);
   // Should still be the last committed in the wal.
-  ASSERT_EQ(committed_index, OpId::FromPB(info.last_committed_id));
-  ASSERT_EQ(last_applied_op_id, OpId::FromPB(info.last_committed_id));
+  ASSERT_EQ(committed_index, info.last_committed_id);
+  ASSERT_EQ(last_applied_op_id, info.last_committed_id);
 
   // Now mark the last operation (the no-op round) as committed.
   // This should advance the committed index, since that round in on our current term,

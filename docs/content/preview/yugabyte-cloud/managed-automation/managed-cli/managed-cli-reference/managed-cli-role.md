@@ -50,10 +50,10 @@ ybm role create --role-name backuprole \
 
 Create a custom role.
 
-| Flag | Description |
+| <div style="width:100px">Flag</div> | Description |
 | :--- | :--- |
 | --role-name | Required. Name for the role. |
-| &#8209;&#8209;permissions | Required. Permissions for the role, provided as key value pairs. Permissions are made up of a resource type and an operation group.<br>Arguments:<ul><li>resource-type - the resource to which the permission applies</li><li>operation-group - the operation that the permission allows on the resource</li></ul>Both resource-type and operation-group are mandatory. Specify multiple permissions by using multiple --permissions arguments. Use `ybm permission list` to view a list of all permissions. |
+| --permissions | Required. Permissions for the role, provided as key value pairs. Permissions are made up of a resource type and an operation group.<br>Arguments:<ul><li>resource-type - the resource to which the permission applies</li><li>operation-group - the operation that the permission allows on the resource</li></ul>Both resource-type and operation-group are mandatory. Specify multiple permissions by using multiple --permissions arguments. Use `ybm permission list` to view a list of all permissions. |
 | --description | Description for the role. |
 
 ### delete
@@ -85,9 +85,9 @@ List the roles in your YugabyteDB Aeon account.
 
 Update the specified custom role.
 
-| Flag | Description |
+| <div style="width:100px">Flag</div> | Description |
 | :--- | :--- |
 | --role-name | Required. Name of the role. |
-| &#8209;&#8209;permissions | Required. Permissions for the role, provided as key value pairs. Permissions are made up of a resource type and an operation group.<br>Arguments:<ul><li>resource-type - the resource to which the permission applies</li><li>operation-group - the operation that the permission allows on the resource</li></ul>Both resource-type and operation-group are mandatory. Specify multiple permissions by using multiple --permissions arguments. Use `ybm permission list` to view a list of all permissions. |
+| --permissions | Required. Permissions for the role, provided as key value pairs. Permissions are made up of a resource type and an operation group.<br>Arguments:<ul><li>resource-type - the resource to which the permission applies</li><li>operation-group - the operation that the permission allows on the resource</li></ul>Both resource-type and operation-group are mandatory. Specify multiple permissions by using multiple --permissions arguments. Use `ybm permission list` to view a list of all permissions. |
 | --description | Description for the role. |
 | --new-name | New name for the updated role. |

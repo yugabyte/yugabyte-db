@@ -15,7 +15,6 @@
       "forceConsistentCasingInFileNames": true,
       "resolveJsonModule": true,
       "allowSyntheticDefaultImports": true,
-      "importsNotUsedAsValues": "error",
       "noImplicitAny": true,
       "noUnusedLocals": true,
       "noUnusedParameters": true,
@@ -24,4 +23,3 @@
       "noImplicitThis": true
     }
   }
-  

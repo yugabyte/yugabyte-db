@@ -95,3 +95,37 @@ Description:
       taskUuid: String typed ID of the async task. Can use contextual variables to set this.
       additionalDetails: Adding this property generates the GFlags additionalDetails to be logged.
           Can be omitted.
+
+4. x-yba-multipart (at operation level)
+This is a boolean extension used to trigger the code generation flow for multipart form data manually.
+Added this because code generation in multipart form data was not being triggered automatically based
+on the yamls.
+
+Example:
+x-yba-multipart: true
+
+5. x-yba-file-setter (at requestBody level)
+This is a string extension to generate the setter for files in multipart form data. Added because the
+field was not accessible in the newApiController.mustache as codegen params. This extension is only 
+used in multipart form data code generation.
+
+Example:
+      x-yba-file-setter: DownloadedSpecFile
+
+6. x-yba-file-name (at requestBody level)
+(String) Similar reason for its addition as 5 (x-yba-file-setter). Used for the file name to be used in 
+getFile method for multipart form data.
+
+Example:
+      x-yba-file-name: downloaded_spec_file
+
+7. x-java-type (at property level)
+This is a string used to specify the data type of fields in mustache files manually. 
+Reason for addition: Since the default data type for "type: string and format: binary" (default for files,
+to be specified in schema yamls) is InputStream, which is unreliable for large files (Attach Detach spec 
+file is ~60MB in size). A TODO item is to look into how InputStream works and why it gives a 
+java.nio.channels.ClosedChannelException (HTTP 500 error) for large files. The probable cause is that by 
+the time the flow reaches the handler, Play Framework closes the InputStream channel.
+
+Example: 
+                x-java-type: Http.MultipartFormData.FilePart<TemporaryFile>

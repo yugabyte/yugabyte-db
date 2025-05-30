@@ -5,14 +5,12 @@
 package auth
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
@@ -34,34 +32,9 @@ var LoginCmd = &cobra.Command{
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		var email, password string
-		var host string
 		var data []byte
-		hostConfig := viper.GetString("host")
+		url := viperVariablesInAuth(cmd, force)
 		if !force {
-			fmt.Printf("Enter Host [%s]: ", hostConfig)
-			// Prompt for the host
-			reader := bufio.NewReader(os.Stdin)
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				logrus.Fatalln(
-					formatter.Colorize("Could not read host: "+err.Error()+"\n",
-						formatter.RedColor))
-			}
-			// If the input is just a newline, use the default value
-			if input == "\n" {
-				input = hostConfig + "\n"
-			}
-			host = strings.TrimSpace(input)
-			if len(host) == 0 {
-				if len(strings.TrimSpace(hostConfig)) == 0 {
-					logrus.Fatalln(
-						formatter.Colorize("Host cannot be empty.\n",
-							formatter.RedColor))
-				} else {
-					host = hostConfig
-				}
-			}
-
 			// Prompt for the email
 			fmt.Print("Enter email or username: ")
 			_, err = fmt.Scanln(&email)
@@ -82,20 +55,6 @@ var LoginCmd = &cobra.Command{
 			password = string(data)
 
 		} else {
-			hostFlag, err := cmd.Flags().GetString("host")
-			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			// If the host is empty
-			if strings.Compare(hostFlag, "http://localhost:9000") == 0 {
-				if len(strings.TrimSpace(hostConfig)) == 0 {
-					host = hostFlag
-				} else {
-					host = hostConfig
-				}
-			} else {
-				host = hostFlag
-			}
 			email, err = cmd.Flags().GetString("email")
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -106,7 +65,6 @@ var LoginCmd = &cobra.Command{
 			}
 		}
 
-		viper.GetViper().Set("host", &host)
 		if strings.TrimSpace(email) == "" {
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -122,14 +80,6 @@ var LoginCmd = &cobra.Command{
 		}
 
 		logrus.Infoln("\n")
-
-		url, err := ybaAuthClient.ParseURL(host)
-		if err != nil {
-			logrus.Fatal(
-				formatter.Colorize(
-					err.Error()+"\n",
-					formatter.RedColor))
-		}
 
 		authAPI, err := ybaAuthClient.NewAuthAPIClientInitialize(url, "")
 		if err != nil {

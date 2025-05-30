@@ -27,11 +27,11 @@ namespace yb::vector_index {
 template<class Impl, IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
  public:
-  Status Insert(VectorId vertex_id, const Vector& v) override {
+  Status Insert(VectorId vector_id, const Vector& v) override {
     if (immutable_) {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
     }
-    RETURN_NOT_OK(impl().DoInsert(vertex_id, v));
+    RETURN_NOT_OK(impl().DoInsert(vector_id, v));
     has_entries_ = true;
     return Status::OK();
   }
@@ -61,6 +61,11 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return impl().DoSearch(query_vector, options);
   }
 
+  std::shared_ptr<void> Attach(std::shared_ptr<void> obj) override {
+    std::swap(attached_, obj);
+    return obj;
+  }
+
  private:
   Impl& impl() {
     return *static_cast<Impl*>(this);
@@ -72,6 +77,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 
   std::atomic<bool> has_entries_{false};
   std::atomic<bool> immutable_{false};
+  std::shared_ptr<void> attached_;
 };
 
 template <typename Vector, typename IteratorImpl>

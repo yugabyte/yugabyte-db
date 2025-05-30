@@ -7,8 +7,7 @@ import { toast } from 'react-toastify';
 import { useInterval } from 'react-use';
 import _ from 'lodash';
 import { Box, Typography, useTheme } from '@material-ui/core';
-import moment from 'moment';
-import { Trans, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
 import {
@@ -27,21 +26,14 @@ import {
   XClusterModalName,
   XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS,
-  MetricName,
-  liveMetricTimeRangeUnit,
-  liveMetricTimeRangeValue,
-  XClusterConfigType,
-  XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL,
-  I18N_KEY_PREFIX_XCLUSTER_TERMS
+  XClusterConfigType
 } from '../constants';
 import {
   MaxAcceptableLag,
   CurrentReplicationLag,
   getEnabledConfigActions,
-  getStrictestReplicationLagAlertThreshold,
   getInConfigTableUuid,
-  getIsXClusterConfigAllBidirectional,
-  getTableCountsOfConcern
+  getIsXClusterConfigAllBidirectional
 } from '../ReplicationUtils';
 import { LagGraph } from './LagGraph';
 import { ReplicationTables } from './ReplicationTables';
@@ -49,15 +41,13 @@ import { ReplicationOverview } from './ReplicationOverview';
 import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 import { DeleteConfigModal } from './DeleteConfigModal';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
-import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descriptors';
+import { YBLabelWithIcon } from '../../common/descriptors';
 import {
-  alertConfigQueryKey,
   api,
   metricQueryKey,
   universeQueryKey,
   xClusterQueryKey
 } from '../../../redesign/helpers/api';
-import { getAlertConfigurations } from '../../../actions/universe';
 import { MenuItemsContainer } from '../../universes/UniverseDetail/compounds/MenuItemsContainer';
 import { SyncXClusterConfigModal } from './SyncXClusterModal';
 import {
@@ -67,11 +57,9 @@ import {
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { EditTablesModal } from '../disasterRecovery/editTables/EditTablesModal';
 import { XClusterMetrics } from '../sharedComponents/XClusterMetrics/XClusterMetrics';
+import { XClusterBannerSection } from './XClusterBannerSection';
 
 import { XClusterConfig } from '../dtos';
-import { MetricsQueryParams } from '../../../redesign/helpers/dtos';
-import { NodeAggregation, SplitType } from '../../metrics/dtos';
-import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import './ReplicationDetails.scss';
 
@@ -85,8 +73,6 @@ interface Props {
 const ActionMenu = {
   ADVANCED: 'advanced'
 } as const;
-
-const TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT = 'clusterDetail.xCluster.shared';
 
 export function ReplicationDetails({
   params: { uuid: currentUniverseUuid, replicationUUID: xClusterConfigUuid }
@@ -134,38 +120,6 @@ export function ReplicationDetails({
         true
       ),
     { enabled: !!xClusterConfigQuery.data }
-  );
-
-  const replicationLagMetricSettings = {
-    metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
-    nodeAggregation: NodeAggregation.MAX,
-    splitType: SplitType.TABLE
-  };
-  const replicationLagMetricRequestParams: MetricsQueryParams = {
-    metricsWithSettings: [replicationLagMetricSettings],
-    nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
-    xClusterConfigUuid: xClusterConfigUuid,
-    start: moment().subtract(liveMetricTimeRangeValue, liveMetricTimeRangeUnit).format('X'),
-    end: moment().format('X')
-  };
-  const tableReplicationLagQuery = useQuery(
-    metricQueryKey.live(
-      replicationLagMetricRequestParams,
-      liveMetricTimeRangeValue,
-      liveMetricTimeRangeUnit
-    ),
-    () => api.fetchMetrics(replicationLagMetricRequestParams),
-    {
-      enabled: !!sourceUniverseQuery.data
-    }
-  );
-
-  const alertConfigFilter = {
-    template: AlertTemplate.REPLICATION_LAG,
-    targetUuid: currentUniverseUuid
-  };
-  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
-    getAlertConfigurations(alertConfigFilter)
   );
 
   const toggleConfigPausedState = useMutation(
@@ -302,31 +256,6 @@ export function ReplicationDetails({
     isXClusterConfigAllBidirectional
   );
 
-  let numTablesAboveLagThreshold = 0;
-  if (replicationLagAlertConfigQuery.isSuccess && tableReplicationLagQuery.isSuccess) {
-    const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
-      replicationLagAlertConfigQuery.data
-    );
-    tableReplicationLagQuery.data.async_replication_sent_lag?.data.forEach((trace) => {
-      if (
-        trace.y[trace.y.length - 1] &&
-        maxAcceptableLag &&
-        trace.y[trace.y.length - 1] > maxAcceptableLag
-      ) {
-        numTablesAboveLagThreshold += 1;
-      }
-    });
-  }
-
-  const tableCountsOfConcern = getTableCountsOfConcern(xClusterConfig.tableDetails);
-  const xClusterConfigTables = xClusterConfigQuery.data?.tableDetails ?? [];
-  const shouldShowConfigError = tableCountsOfConcern.error > 0;
-  const shouldShowMismatchedTablesBanner = tableCountsOfConcern.mismatchedTable > 0;
-  const shouldShowTableLagWarning =
-    replicationLagAlertConfigQuery.isSuccess &&
-    tableReplicationLagQuery.isSuccess &&
-    numTablesAboveLagThreshold > 0 &&
-    xClusterConfigTables.length > 0;
   const isEditTableModalVisible = showModal && visibleModal === XClusterModalName.EDIT_TABLES;
   const isRestartConfigModalVisible =
     showModal && visibleModal === XClusterModalName.RESTART_CONFIG;
@@ -562,86 +491,12 @@ export function ReplicationDetails({
               </Row>
             </Col>
           </Row>
-          <div className="replication-info-banners-container">
-            {shouldShowConfigError && (
-              <YBBanner variant={YBBannerVariant.DANGER}>
-                <div className="replication-info-banner-content">
-                  <b>Error!</b>
-                  {` Write-ahead logs are deleted for ${tableCountsOfConcern.error} ${
-                    tableCountsOfConcern.error > 1 ? 'tables' : 'table'
-                  } and replication restart is
-                required.`}
-                  <RbacValidator
-                    customValidateFunction={() => {
-                      return (
-                        hasNecessaryPerm({
-                          ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                          onResource: xClusterConfig.sourceUniverseUUID
-                        }) &&
-                        hasNecessaryPerm({
-                          ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
-                          onResource: xClusterConfig.targetUniverseUUID
-                        })
-                      );
-                    }}
-                    isControl
-                  >
-                    <YBButton
-                      className="restart-replication-button"
-                      btnIcon="fa fa-refresh"
-                      btnText="Restart Replication"
-                      onClick={() => {
-                        if (_.includes(enabledConfigActions, XClusterConfigAction.RESTART)) {
-                          dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
-                        }
-                      }}
-                      disabled={!_.includes(enabledConfigActions, XClusterConfigAction.RESTART)}
-                    />
-                  </RbacValidator>
-                </div>
-              </YBBanner>
-            )}
-            {shouldShowMismatchedTablesBanner && (
-              <YBBanner variant={YBBannerVariant.DANGER}>
-                <Box display="flex" alignItems="center" minHeight="41px">
-                  <Typography variant="body2">
-                    <Trans
-                      i18nKey={`${TRANSLATION_KEY_PREFIX_XCLUSTER_SHARED_COMPONENT}.banner.mismatchedTables`}
-                      components={{
-                        bold: <b />,
-                        ddlChangeStepsDocsLink: (
-                          <a
-                            href={XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          />
-                        )
-                      }}
-                      values={{
-                        sourceUniverseTerm: t('source.xClusterReplication', {
-                          keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
-                        }),
-                        targetUniverseTerm: t('target.xClusterReplication', {
-                          keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
-                        })
-                      }}
-                    />
-                  </Typography>
-                </Box>
-              </YBBanner>
-            )}
-            {shouldShowTableLagWarning && (
-              <YBBanner variant={YBBannerVariant.WARNING}>
-                <b>Warning!</b>
-                {` Replication lag for ${numTablesAboveLagThreshold} out of ${
-                  xClusterConfigTables.length
-                } ${xClusterConfigTables.length > 1 ? 'tables' : 'table'} ${
-                  numTablesAboveLagThreshold > 1 ? 'have' : 'has'
-                }
-                exceeded the maximum acceptable lag time.`}
-              </YBBanner>
-            )}
-          </div>
+          <XClusterBannerSection
+            sourceUniverse={sourceUniverse}
+            xClusterConfig={xClusterConfig}
+            enabledConfigActions={enabledConfigActions}
+            openRestartConfigModal={() => dispatch(openDialog(XClusterModalName.RESTART_CONFIG))}
+          />
           <Row className="replication-status">
             <Col lg={4}>
               <Box display="flex" alignItems="center" gridGap={theme.spacing(1)}>

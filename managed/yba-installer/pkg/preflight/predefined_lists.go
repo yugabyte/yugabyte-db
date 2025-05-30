@@ -36,7 +36,6 @@ var UpgradeChecks = []Check{
 	checks.Prometheus,
 	checks.NonRootUpgradeCheck,
 	checks.ServicesRunningCheck,
-	checks.UpgradeConfigCheck,
 }
 
 var ReplicatedMigrateChecks = []Check{

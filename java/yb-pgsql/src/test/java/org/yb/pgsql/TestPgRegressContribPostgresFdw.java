@@ -18,9 +18,10 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 import java.io.File;
+import java.util.Map;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressContribPostgresFdw extends BasePgRegressTest {
+public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -29,6 +30,12 @@ public class TestPgRegressContribPostgresFdw extends BasePgRegressTest {
   @Test
   public void schedule() throws Exception {
     runPgRegressTest(new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/postgres_fdw"),
-                     "yb_schedule");
+                     "yb_pg_schedule");
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    return flagMap;
   }
 }

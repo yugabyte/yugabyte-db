@@ -12,6 +12,7 @@
 //
 
 #include "yb/tablet/transaction_status_resolver.h"
+#include <deque>
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"

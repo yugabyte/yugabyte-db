@@ -37,6 +37,9 @@ Result<QLValuePB> SetValueHelper<std::string>::Apply(
     case DataType::BINARY:
       value_pb.set_binary_value(strval);
       break;
+    case DataType::BSON:
+      value_pb.set_bson_value(strval);
+      break;
     default:
       return STATUS_FORMAT(InvalidArgument, "unexpected string type $0", data_type);
   }

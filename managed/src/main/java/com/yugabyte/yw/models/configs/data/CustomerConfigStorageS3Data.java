@@ -34,11 +34,14 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
   @JsonProperty("AWS_HOST_BASE")
   public String awsHostBase;
 
+  @JsonProperty("GLOBAL_BUCKET_ACCESS")
+  public boolean globalBucketAccess = true;
+
   @ApiModelProperty(value = "path style access boolean")
   @JsonProperty("PATH_STYLE_ACCESS")
   public boolean isPathStyleAccess = false;
 
-  @ApiModelProperty(value = "AWS fallback region if region-chaining fails.")
+  @ApiModelProperty(value = "AWS signing region for S3 requests")
   @JsonProperty("SIGNING_REGION")
   public String fallbackRegion;
 
@@ -68,6 +71,13 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
     @ApiModelProperty(value = "AWS host base", example = "s3.amazonaws.com")
     @JsonProperty("AWS_HOST_BASE")
     public String awsHostBase;
+
+    @JsonProperty("GLOBAL_BUCKET_ACCESS")
+    public boolean globalBucketAccess = true;
+
+    @ApiModelProperty(value = "AWS signing region for S3 requests")
+    @JsonProperty("SIGNING_REGION")
+    public String fallbackRegion;
   }
 
   public static class IAMConfiguration {
@@ -86,6 +96,10 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
     @ApiModelProperty(value = "Use global/regional STS")
     @JsonProperty("REGIONAL_STS")
     public boolean regionalSTS = true;
+
+    @ApiModelProperty("Region for STS endpoint")
+    @JsonProperty("STS_REGION")
+    public String stsRegion;
   }
 
   public static class ProxySetting {

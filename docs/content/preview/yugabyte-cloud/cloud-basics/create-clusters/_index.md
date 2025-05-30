@@ -3,7 +3,6 @@ title: Create your cluster
 linkTitle: Create your cluster
 description: Create clusters in YugabyteDB Aeon.
 headcontent: Create a cluster in YugabyteDB Aeon
-image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters

@@ -262,6 +262,27 @@ class ConcurrentValueReference {
   URCU* urcu_;
 };
 
+// Similar to ConcurrentValueReference<T*>, but dereferences the pointer in operator* and
+// operator->, so that it's not necessary to write (*value_reference)->value.
+template<class T>
+class ConcurrentPointerReference : public ConcurrentValueReference<T*> {
+ public:
+  explicit ConcurrentPointerReference(std::atomic<T**>* value, URCU* urcu)
+      : ConcurrentValueReference<T*>(value, urcu) {}
+
+  T& operator*() const {
+    return *this->get();
+  }
+
+  T* operator->() const {
+    return this->get();
+  }
+
+  operator bool() const {
+    return this->get() != nullptr;
+  }
+};
+
 // Concurrent value is used for cases when some object has a lot of reads with small amount of
 // writes.
 template<class T>
@@ -291,7 +312,7 @@ class ConcurrentValue {
     DoSet(new T(std::move(t)));
   }
 
- private:
+ protected:
   void DoSet(T* new_value) {
     auto* old_value = value_.exchange(new_value, std::memory_order_acq_rel);
     urcu_.Synchronize();
@@ -302,8 +323,21 @@ class ConcurrentValue {
   URCU urcu_;
 };
 
+template<class T>
+class ConcurrentPointer : public ConcurrentValue<T*> {
+ public:
+  using ConcurrentValue<T*>::ConcurrentValue;
+
+  ConcurrentPointerReference<T> get() {
+    return ConcurrentPointerReference<T>(&this->value_, &this->urcu_);
+  }
+};
+
 } // namespace internal
 
+using internal::ConcurrentValueReference;
+using internal::ConcurrentPointerReference;
 using internal::ConcurrentValue;
+using internal::ConcurrentPointer;
 
 } // namespace yb

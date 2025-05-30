@@ -170,7 +170,7 @@ For the employed column, there are 2 distinct values. If an index is created on 
 
 ## Skewed data
 
-Ideally, your index/table should be reasonably distributed so that the nodes in the cluster process a similar amount of queries. Using pg_stats, you can quickly determine that empty names are about 30% of the dataset. If you create an index on this `name` that includes empty values, all the empty values will be one single node. Any queries for empty names will go to that one node. Depending on your usecase, this may or may not be ideal. In such scenarios you can consider a composite index involving more than one column.
+Ideally, your index/table should be reasonably distributed so that the nodes in the cluster process a similar amount of queries. Using pg_stats, you can quickly determine that empty names are about 30% of the dataset. If you create an index on this `name` that includes empty values, all the empty values will be one single node. Any queries for empty names will go to that one node. Depending on your use case, this may or may not be ideal. In such scenarios you can consider a composite index involving more than one column.
 
 ## Composition of arrays
 

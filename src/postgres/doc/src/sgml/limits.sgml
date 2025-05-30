@@ -57,14 +57,14 @@
 
     <row>
      <entry>columns per table</entry>
-     <entry>1600</entry>
+     <entry>1,600</entry>
      <entry>further limited by tuple size fitting on a single page; see note
      below</entry>
     </row>
 
     <row>
      <entry>columns in a result set</entry>
-     <entry>1664</entry>
+     <entry>1,664</entry>
      <entry></entry>
     </row>
 
@@ -72,12 +72,6 @@
      <entry>field size</entry>
      <entry>1 GB</entry>
      <entry></entry>
-    </row>
-
-    <row>
-     <entry>identifier length</entry>
-     <entry>63 bytes</entry>
-     <entry>can be increased by recompiling <productname>PostgreSQL</productname></entry>
     </row>
 
     <row>
@@ -92,11 +86,29 @@
      <entry>can be increased by recompiling <productname>PostgreSQL</productname></entry>
     </row>
 
-   <row>
-    <entry>partition keys</entry>
-    <entry>32</entry>
-    <entry>can be increased by recompiling <productname>PostgreSQL</productname></entry>
-   </row>
+    <row>
+     <entry>partition keys</entry>
+     <entry>32</entry>
+     <entry>can be increased by recompiling <productname>PostgreSQL</productname></entry>
+    </row>
+
+    <row>
+     <entry>identifier length</entry>
+     <entry>63 bytes</entry>
+     <entry>can be increased by recompiling <productname>PostgreSQL</productname></entry>
+    </row>
+
+    <row>
+     <entry>function arguments</entry>
+     <entry>100</entry>
+     <entry>can be increased by recompiling <productname>PostgreSQL</productname></entry>
+    </row>
+
+    <row>
+     <entry>query parameters</entry>
+     <entry>65,535</entry>
+     <entry></entry>
+    </row>
    </tbody>
   </tgroup>
  </table>
@@ -104,9 +116,9 @@
  <para>
   The maximum number of columns for a table is further reduced as the tuple
   being stored must fit in a single 8192-byte heap page.  For example,
-  excluding the tuple header, a tuple made up of 1600 <type>int</type> columns
+  excluding the tuple header, a tuple made up of 1,600 <type>int</type> columns
   would consume 6400 bytes and could be stored in a heap page, but a tuple of
-  1600 <type>bigint</type> columns would consume 12800 bytes and would
+  1,600 <type>bigint</type> columns would consume 12800 bytes and would
   therefore not fit inside a heap page.
   Variable-length fields of
   types such as <type>text</type>, <type>varchar</type>, and <type>char</type>
@@ -122,5 +134,16 @@
   column limit.  Moreover, although the dropped column values for newly
   created tuples are internally marked as null in the tuple's null bitmap, the
   null bitmap also occupies space.
+ </para>
+
+ <para>
+  Each table can store a theoretical maximum of 2^32 out-of-line values; see
+  <xref linkend="storage-toast" /> for a detailed discussion of out-of-line
+  storage. This limit arises from the use of a 32-bit OID to identify each
+  such value. The practical limit is significantly less than the theoretical
+  limit, because as the OID space fills up, finding an OID that is still free
+  can become expensive, in turn slowing down INSERT/UPDATE statements.
+  Typically, this is only an issue for tables containing many terabytes
+  of data; partitioning is a possible workaround.
  </para>
 </appendix>

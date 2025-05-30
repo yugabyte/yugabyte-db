@@ -47,22 +47,18 @@
 
 #include "yb/dockv/partition.h"
 
-#include "yb/gutil/map-util.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master_util.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags/auto_flags.h"
 #include "yb/util/format.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
-#include "yb/util/flags/auto_flags.h"
 
 using std::string;
 
@@ -515,11 +511,11 @@ Result<Schema> TableInfo::GetSchema() const {
 }
 
 bool TableInfo::has_pgschema_name() const {
-  return LockForRead()->schema().has_pgschema_name();
+  return LockForRead()->schema().has_deprecated_pgschema_name();
 }
 
 const string TableInfo::pgschema_name() const {
-  return LockForRead()->schema().pgschema_name();
+  return LockForRead()->schema().deprecated_pgschema_name();
 }
 
 bool TableInfo::has_pg_type_oid() const {
@@ -548,6 +544,11 @@ bool TableInfo::is_unique_index() const {
   auto l = LockForRead();
   return l->pb.has_index_info() ? l->pb.index_info().is_unique()
                                 : l->pb.is_unique_index();
+}
+
+bool TableInfo::is_vector_index() const {
+  auto l = LockForRead();
+  return l->is_vector_index();
 }
 
 Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
@@ -615,7 +616,8 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
     dockv::Partition::FromPB(metadata->pb.partition(), &partition);
     auto result = dockv::PartitionSchema::SplitHashPartitionForStatusTablet(partition);
     if (result) {
-      return TabletWithSplitPartitions{tablet, result->first, result->second};
+      return TabletWithSplitPartitions{
+          .tablet = tablet, .left = result->first, .right = result->second};
     }
   }
 
@@ -704,7 +706,7 @@ Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
         "Two tablets $0, $1 with the same partition key start and split depth: $2 and $3",
         tablet->id(), old_tablet->tablet_id(),
         tablet_meta.ShortDebugString(), old_tablet_lock->pb.ShortDebugString());
-    LOG(DFATAL) << msg;
+    LOG_WITH_PREFIX(DFATAL) << msg;
     return STATUS(IllegalState, msg);
   }
   return Status::OK();
@@ -901,12 +903,6 @@ Status TableInfo::GetCreateTableErrorStatus() const {
   return create_table_error_;
 }
 
-std::size_t TableInfo::NumLBTasks() const {
-  const auto tasks = GetTasks();
-  return std::count_if(
-      tasks.begin(), tasks.end(), [](const auto& task) { return task->started_by_lb(); });
-}
-
 std::size_t TableInfo::NumPartitions() const {
   SharedLock<decltype(lock_)> l(lock_);
   return partitions_.size();
@@ -996,17 +992,6 @@ Result<bool> TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) cons
   return false;
 }
 
-TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
-  if (!IsColocatedUserTable()) {
-    return nullptr;
-  }
-  SharedLock<decltype(lock_)> l(lock_);
-  if (!tablets_.empty()) {
-    return tablets_.begin()->second.lock();
-  }
-  return nullptr;
-}
-
 std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
   std::vector<qlexpr::IndexInfo> result;
   auto l = LockForRead();
@@ -1036,7 +1021,7 @@ bool TableInfo::UsesTablespacesForPlacement() const {
   bool is_regular_ysql_table =
       l->pb.table_type() == PGSQL_TABLE_TYPE &&
       l->namespace_id() != kPgSequencesDataNamespaceId &&
-      !IsColocatedUserTable() &&
+      !IsSecondaryTable() &&
       !IsColocationParentTable();
   return is_transaction_table_using_tablespaces ||
          is_regular_ysql_table ||
@@ -1055,7 +1040,7 @@ bool TableInfo::IsTablegroupParentTable() const {
   return IsTablegroupParentTableId(table_id_);
 }
 
-bool TableInfo::IsColocatedUserTable() const {
+bool TableInfo::IsSecondaryTable() const {
   return colocated() && !IsColocationParentTable();
 }
 
@@ -1197,7 +1182,7 @@ bool PersistentTableInfo::is_index() const {
 }
 
 bool PersistentTableInfo::is_vector_index() const {
-  return pb.index_info().has_vector_idx_options();
+  return pb.has_index_info() && pb.index_info().has_vector_idx_options();
 }
 
 const std::string& PersistentTableInfo::indexed_table_id() const {
@@ -1226,13 +1211,13 @@ Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
 
 bool PersistentTableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLQueueTableName;
 }
 
 bool PersistentTableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
   return pb.table_type() == PGSQL_TABLE_TYPE &&
-         schema().pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         schema().deprecated_pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
          name() == xcluster::kDDLReplicatedTableName;
 }
 
@@ -1360,6 +1345,41 @@ const DdlLogEntryPB& DdlLogEntry::new_pb() const {
 
 std::string DdlLogEntry::id() const {
   return DocHybridTime(HybridTime(pb_.time()), kMaxWriteId).EncodedInDocDbFormat();
+}
+
+// ================================================================================================
+// ObjectLockInfo
+// ================================================================================================
+
+std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance) {
+  auto l = LockForWrite();
+  {
+    std::lock_guard l(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+  if (l->pb.lease_info().live_lease() &&
+      l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
+    return l->pb.lease_info();
+  }
+  auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
+  lease_info.set_live_lease(true);
+  lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
+  lease_info.set_instance_seqno(instance.instance_seqno());
+  return std::move(l);
+}
+
+void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
+  MetadataCowWrapper<PersistentObjectLockInfo>::Load(metadata);
+  {
+    std::lock_guard l(mutex_);
+    last_ysql_lease_refresh_ = MonoTime::Now();
+  }
+}
+
+MonoTime ObjectLockInfo::last_ysql_lease_refresh() const {
+  std::lock_guard l(mutex_);
+  return last_ysql_lease_refresh_;
 }
 
 // ================================================================================================

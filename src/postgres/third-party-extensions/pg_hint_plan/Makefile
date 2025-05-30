@@ -27,7 +27,8 @@ DATA = \
 	pg_hint_plan--1.4--1.4.1.sql \
 	pg_hint_plan--1.4.1--1.4.2.sql \
 	pg_hint_plan--1.4.2--1.5.sql \
-	pg_hint_plan--1.5--1.5.1.sql
+	pg_hint_plan--1.5--1.5.1.sql \
+	pg_hint_plan--1.5.1--1.5.1-yb-1.0.sql
 
 EXTRA_CLEAN = RPMS
 
@@ -57,6 +58,7 @@ TARSOURCES = Makefile *.c  *.h COPYRIGHT* \
 	data/data.csv SPECS/*.spec
 
 LDFLAGS += -lyb_pggate_util
+LDFLAGS += -lyb_pggate
 LDFLAGS += -L${BUILD_ROOT}/lib
 
 rpms: rpm15

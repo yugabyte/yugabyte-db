@@ -82,7 +82,8 @@ var updateAWSEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(accessKeyID)) != 0 && len(strings.TrimSpace(secretAccessKey)) != 0 {
+		if len(strings.TrimSpace(accessKeyID)) != 0 &&
+			len(strings.TrimSpace(secretAccessKey)) != 0 {
 			logrus.Debug("Updating AWS credentials\n")
 			hasUpdates = true
 			requestBody[util.AWSAccessKeyEnv] = accessKeyID

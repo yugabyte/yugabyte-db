@@ -22,7 +22,7 @@ TTL-based expiration is only available in [YCQL](/{{<version>}}/api/ycql/).
 
 ## Setup
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs-new>}}
 
 ## Row-level TTL
 

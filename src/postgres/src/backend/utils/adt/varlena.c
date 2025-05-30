@@ -4779,8 +4779,8 @@ text_to_array(PG_FUNCTION_ARGS)
 	if (tstate.astate == NULL)
 		PG_RETURN_ARRAYTYPE_P(construct_empty_array(TEXTOID));
 
-	PG_RETURN_ARRAYTYPE_P(makeArrayResult(tstate.astate,
-										  GetCurrentMemoryContext()));
+	PG_RETURN_DATUM(makeArrayResult(tstate.astate,
+									CurrentMemoryContext));
 }
 
 /*
@@ -5008,7 +5008,7 @@ split_text_accum_result(SplitTextOutputData *tstate,
 										  PointerGetDatum(field_value),
 										  is_null,
 										  TEXTOID,
-										  GetCurrentMemoryContext());
+										  CurrentMemoryContext);
 	}
 }
 

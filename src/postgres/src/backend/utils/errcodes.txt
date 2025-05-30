@@ -495,3 +495,13 @@ Section: Class XX - Internal Error
 XX000    E    ERRCODE_INTERNAL_ERROR                                         internal_error
 XX001    E    ERRCODE_DATA_CORRUPTED                                         data_corrupted
 XX002    E    ERRCODE_INDEX_CORRUPTED                                        index_corrupted
+
+Section: Class YB - Yugabyte Error
+
+YB000    E    ERRCODE_YB_ERROR                                               yb_error
+YB001    E    ERRCODE_YB_TXN_ABORTED                                         yb_transaction_aborted
+YB002    E    ERRCODE_YB_RESTART_READ                                        yb_restart_read
+YB003    E    ERRCODE_YB_TXN_CONFLICT                                        yb_transaction_conflict
+YB004    E    ERRCODE_YB_DEADLOCK                                            yb_deadlock
+YB010    E    ERRCODE_YB_TXN_SKIP_LOCKING                                    yb_transaction_skip_locking
+YB011    E    ERRCODE_YB_TXN_LOCK_NOT_FOUND                                  yb_transaction_lock_not_found

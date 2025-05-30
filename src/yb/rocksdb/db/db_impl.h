@@ -74,6 +74,13 @@ struct JobContext;
 struct ExternalSstFileInfo;
 struct RocksDBPriorityThreadPoolMetrics;
 
+namespace internal {
+
+constexpr int kTopDiskCompactionPriority = 100;
+constexpr int kShuttingDownPriority = 200;
+
+} // namespace internal
+
 class DBImpl : public DB {
  public:
   DBImpl(const DBOptions& options, const std::string& dbname);
@@ -500,6 +507,8 @@ class DBImpl : public DB {
   bool NeedsDelay() override;
 
   Result<std::string> GetMiddleKey() override;
+
+  void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override;
 
   // Returns a table reader for the largest SST file.
   Result<TableReader*> TEST_GetLargestSstTableReader() override;
@@ -1019,6 +1028,8 @@ class DBImpl : public DB {
   mutable std::mutex files_changed_listener_mutex_;
 
   std::function<void()> files_changed_listener_ GUARDED_BY(files_changed_listener_mutex_);
+
+  std::atomic<bool> allow_compaction_failures_{false};
 
   // No copying allowed
   DBImpl(const DBImpl&) = delete;

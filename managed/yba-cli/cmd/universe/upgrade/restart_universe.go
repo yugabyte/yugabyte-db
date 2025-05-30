@@ -19,6 +19,7 @@ import (
 // RestartCmd represents the universe upgrade restart command
 var RestartCmd = &cobra.Command{
 	Use:     "restart",
+	GroupID: "action",
 	Short:   "Restart a YugabyteDB Anywhere Universe",
 	Long:    "Restart a YugabyteDB Anywhere Universe",
 	Example: "yba universe restart --name <universe-name>",

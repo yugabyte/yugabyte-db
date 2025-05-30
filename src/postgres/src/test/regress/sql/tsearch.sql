@@ -563,6 +563,12 @@ SELECT ts_headline('english',
 to_tsquery('english','Lorem') && phraseto_tsquery('english','ullamcorper urna'),
 'MaxFragments=100, MaxWords=100, MinWords=1');
 
+-- Edge cases with empty query
+SELECT ts_headline('english',
+'', to_tsquery('english', ''));
+SELECT ts_headline('english',
+'foo bar', to_tsquery('english', ''));
+
 --Rewrite sub system
 
 CREATE TABLE test_tsquery (txtkeyword TEXT, txtsample TEXT);
@@ -735,7 +741,10 @@ select websearch_to_tsquery('simple', ':');
 select websearch_to_tsquery('simple', 'abc & def');
 select websearch_to_tsquery('simple', 'abc | def');
 select websearch_to_tsquery('simple', 'abc <-> def');
+
+-- parens are ignored, too
 select websearch_to_tsquery('simple', 'abc (pg or class)');
+select websearch_to_tsquery('simple', '(foo bar) or (ding dong)');
 
 -- NOT is ignored in quotes
 select websearch_to_tsquery('english', 'My brand new smartphone');

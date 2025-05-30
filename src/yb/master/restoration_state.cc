@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/docdb/docdb.pb.h"
+
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
 

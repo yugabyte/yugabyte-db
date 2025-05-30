@@ -26,16 +26,11 @@ import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import {
   fetchCustomerTasks,
   fetchCustomerTasksFailure,
-  fetchCustomerTasksSuccess
+  fetchCustomerTasksSuccess,
+  hideTaskInDrawer
 } from '../../../../actions/tasks';
 
 import { Task } from '../dtos';
-
-interface TaskDetailDrawerProps {
-  taskUUID: string;
-  visible: boolean;
-  onClose: () => void;
-}
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -54,20 +49,21 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 enum taskRetryStates {
-  NOT_RETRIED,
   RETRIED_LOADING,
   RETRIED_FINISHED
 }
 
-export const TaskDetailDrawer: FC<TaskDetailDrawerProps> = ({ visible, taskUUID, onClose }) => {
+export const TaskDetailDrawer: FC = () => {
   const classes = useStyles();
   const dispatch = useDispatch();
 
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
+  const taskUUID = useSelector((data: any) => data.tasks.showTaskInDrawer);
+  const visible = taskUUID !== '';
 
-  const [taskRetryStatus, setTaskRetryStatus] = useSessionStorage(
-    `task-retried-${taskUUID}`,
-    taskRetryStates.NOT_RETRIED
+  const [taskRetries, setTaskRetryStatus] = useSessionStorage<Record<string, taskRetryStates>>(
+    `task_retries`,
+    {}
   );
 
   const { t } = useTranslation('translation', {
@@ -79,7 +75,10 @@ export const TaskDetailDrawer: FC<TaskDetailDrawerProps> = ({ visible, taskUUID,
   const refetchTask = () => {
     dispatch(fetchCustomerTasks() as any).then((response: any) => {
       if (!response.error) {
-        setTaskRetryStatus(taskRetryStates.RETRIED_FINISHED);
+        setTaskRetryStatus({
+          ...taskRetries,
+          [taskUUID]: taskRetryStates.RETRIED_FINISHED
+        });
         dispatch(fetchCustomerTasksSuccess(response.payload));
       } else {
         dispatch(fetchCustomerTasksFailure(response.payload));
@@ -89,30 +88,34 @@ export const TaskDetailDrawer: FC<TaskDetailDrawerProps> = ({ visible, taskUUID,
 
   useEffect(() => {
     const task = find(taskList.customerTaskList, { id: taskUUID });
+    const taskRetryStatus = taskRetries[taskUUID];
     if (task) {
       setCurrentTask(task);
-    } else if (taskRetryStatus === taskRetryStates.NOT_RETRIED) {
+    } else if (taskRetryStatus === undefined && taskUUID !== null) {
+      setTaskRetryStatus({
+        ...taskRetries,
+        [taskUUID]: taskRetryStates.RETRIED_LOADING
+      });
       // if we don't find the task in the store (created just now), refresh the task list in redux store
-      setTaskRetryStatus(taskRetryStates.RETRIED_LOADING);
       refetchTask();
     }
     return () => {
       setCurrentTask(null);
     };
-  }, [taskUUID, taskList, taskRetryStatus]);
+  }, [taskUUID, taskList, taskRetries]);
 
   const onHide = () => {
-    onClose();
+    dispatch(hideTaskInDrawer());
   };
 
-  if (visible && !currentTask && taskRetryStatus === taskRetryStates.RETRIED_LOADING) {
+  if (visible && !currentTask && taskRetries[taskUUID] === taskRetryStates.RETRIED_LOADING) {
     return <YBLoadingCircleIcon size="small" />;
   }
   // we did try refetching the tasks , but still can't find the task.(i.e task might be deleted).
   // we show an error toast.
   // but, how are we supposed to find the deleted task?. we can find those attached to the old backups.
   // task uuid is present, but the original task is deleted.
-  if (!currentTask && taskRetryStatus === taskRetryStates.RETRIED_FINISHED && visible) {
+  if (!currentTask && taskRetries[taskUUID] === taskRetryStates.RETRIED_FINISHED && visible) {
     return (
       <Snackbar
         open={visible}
@@ -135,9 +138,6 @@ export const TaskDetailDrawer: FC<TaskDetailDrawerProps> = ({ visible, taskUUID,
   return (
     <YBSidePanel
       open={visible}
-      classes={{
-        paper: classes.root
-      }}
       onClose={onHide}
       overrideWidth="600px"
       dialogContentProps={{

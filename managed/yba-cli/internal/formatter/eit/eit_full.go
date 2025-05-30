@@ -215,7 +215,7 @@ func (feit *FullEITContext) startSubsection(format string) (*template.Template, 
 }
 
 func (feit *FullEITContext) subSection(name string) {
-	feit.Output.Write([]byte("\n\n"))
+	feit.Output.Write([]byte("\n"))
 	feit.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	feit.Output.Write([]byte("\n"))
 }

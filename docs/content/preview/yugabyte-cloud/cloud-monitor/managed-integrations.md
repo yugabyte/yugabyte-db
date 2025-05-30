@@ -131,6 +131,9 @@ How you enable the OTLP Receiver feature flag differs between Prometheus version
   - Publicly-accessible endpoint URL that resolves to the private IP of the Prometheus instance.
 
     The DNS for the endpoint must be in a publicly accessible DNS record, allowing it to resolve globally. This typically involves adding the URL to a public DNS zone. For example, in AWS, this would mean adding the URL to a Public Hosted Zone in Route 53. To confirm that the address is publicly resolvable, you can use a tool like nslookup.
+  - Enable out-of-order ingestion.
+  
+    Prometheus does not guarantee the order of metrics. To ensure that metrics are ingested in order and prevent out-of-order ingestion errors, you must enable out-of-order ingestion. For more information, see [Prometheus out-of-order ingestion](https://prometheus.io/docs/guides/opentelemetry/#enable-out-of-order-ingestion).
 
   - VPC hosting the Prometheus instance has the following Inbound Security Group rules:
     - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP).

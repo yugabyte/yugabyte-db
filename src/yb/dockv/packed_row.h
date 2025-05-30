@@ -26,6 +26,7 @@
 
 #include "yb/dockv/dockv_fwd.h"
 
+#include "yb/dockv/value_type.h"
 #include "yb/util/byte_buffer.h"
 #include "yb/util/kv_util.h"
 

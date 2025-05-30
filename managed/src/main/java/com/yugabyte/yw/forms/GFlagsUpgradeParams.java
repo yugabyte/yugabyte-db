@@ -65,8 +65,6 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
     if (!verifyGFlagsHasChanges(universe) && isFirstTry) {
       throw new PlatformServiceException(Http.Status.BAD_REQUEST, SPECIFIC_GFLAGS_NO_CHANGES_ERROR);
     }
-
-    verifyPreviewGFlagsSettings(universe);
   }
 
   public void checkXClusterAutoFlags(

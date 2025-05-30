@@ -12,6 +12,12 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Encryption at rest" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/encryption-at-rest/" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/managed-ear/" >}}
+{{< /page-finder/head >}}
+
 Data at rest in a YugabyteDB universe should be protected from unauthorized users by encrypting it. You do this by enabling encryption at rest. When enabled, the data in your universe is secured using envelope encryption, whereby multiple encryption keys are used to encrypt data, and those keys are in turn encrypted by other keys in a key hierarchy.
 
 YugabyteDB Anywhere uses the following types of keys for envelope encryption:
@@ -43,7 +49,7 @@ You enable encryption at rest during universe creation as follows:
 
 You enable encryption at rest on an existing universe as follows:
 
-1. Navigate to your universe, click **Actions**, and choose **Edit Security > Encryption at Rest**.
+1. Navigate to your universe, click **Actions**, and choose **More > Edit Security > Encryption at Rest**.
 
 1. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for this Universe**.
 
@@ -78,7 +84,7 @@ If your configuration includes AWS KMS, the following occurs: after the universe
 You can disable encryption at rest for a universe as follows:
 
 1. Navigate to the universe for which you want to rotate the keys.
-2. Select **Actions > Edit Security > Encryption-at-Rest**.
+2. Select **Actions > More > Edit Security > Encryption-at-Rest**.
 3. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for this Universe** and click **Apply**.
 
 To verify that encryption at rest is disabled, check the current cluster configuration for each node to see that it contains `encryption_enabled: false`.
@@ -106,7 +112,7 @@ YugabyteDB Anywhere uses a KMS configuration to house the information about the 
 You can change KMS configurations, and consequently the master keys used to encrypt the universe key, at any time. To accomplish this, do the following:
 
 1. [Create a new KMS configuration](../create-kms-config/aws-kms/) with the new master key to use.
-1. After the KMS configuration is successfully created, go to the encryption at rest-enabled universe, and select **Actions > Edit Security > Encryption at Rest**.
+1. After the KMS configuration is successfully created, go to the encryption at rest-enabled universe, and select **Actions > More > Edit Security > Encryption at Rest**.
 1. In the **Manage Encryption at Rest** dialog, choose the new KMS configuration from the **Key Management Service Config** list.
 1. Click **Apply** to use the new KMS configuration and master key for envelope encryption.
 
@@ -135,5 +141,5 @@ Once encryption is enabled with a new universe key, only new data is encrypted w
 To rotate the universe keys, perform the following:
 
 1. Navigate to the universe for which you want to rotate the keys.
-2. Select **Actions > Edit Security > Encryption at Rest**.
+2. Select **Actions > More > Edit Security > Encryption at Rest**.
 3. Select **Rotate Universe key** and click **Apply**.

@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
@@ -68,7 +68,7 @@ public class TableSpaceStructures {
 
   @EqualsAndHashCode
   @NoArgsConstructor
-  @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+  @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
   public static class PlacementBlock {
     @ApiModelProperty(value = "Cloud")
     @NotNull

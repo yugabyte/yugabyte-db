@@ -10,8 +10,11 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import java.time.Duration;
+import java.util.Date;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
@@ -58,6 +61,16 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
             targetMasterAddresses,
             xClusterWaitTimeout.toMillis());
         log.info("Skipping {}: XCluster db replication setup already done", getName());
+
+        // If all the replication setup time for all namespaces are null, then set it.
+        if (xClusterConfig.getNamespaces().stream()
+            .map(XClusterNamespaceConfig::getReplicationSetupTime)
+            .allMatch(Objects::isNull)) {
+          // There should be only one namespace in the replication group at this point.
+          xClusterConfig.updateReplicationSetupTimeForNamespaces(
+              xClusterConfig.getNamespaceIds(), new Date() /* moment */);
+        }
+
         return;
       } catch (Exception ignored) {
         // Ignore the exception and continue with the setup because the replication group is not
@@ -79,6 +92,11 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
           xClusterConfig.getReplicationGroupName(),
           targetMasterAddresses,
           xClusterWaitTimeout.toMillis());
+
+      // There should be only one namespace in the replication group at this point.
+      xClusterConfig.updateReplicationSetupTimeForNamespaces(
+          xClusterConfig.getNamespaceIds(), new Date() /* moment */);
+
       log.debug(
           "XCluster db replication setup complete for xClusterConfig: {}",
           xClusterConfig.getUuid());

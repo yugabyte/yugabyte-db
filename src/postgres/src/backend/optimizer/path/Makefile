@@ -14,6 +14,7 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS = \
 	yb_uniqkeys.o \
+	\
 	allpaths.o \
 	clausesel.o \
 	costsize.o \

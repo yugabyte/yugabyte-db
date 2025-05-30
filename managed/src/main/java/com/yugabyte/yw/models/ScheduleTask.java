@@ -68,6 +68,21 @@ public class ScheduleTask extends Model {
     return tasks.get(0);
   }
 
+  public static ScheduleTask getLastFullBackupTask(UUID scheduleUUID) {
+    List<ScheduleTask> tasks =
+        find.query()
+            .where()
+            .eq("scheduleUUID", scheduleUUID)
+            .eq("isFullBackup", true)
+            .orderBy()
+            .desc("scheduledTime")
+            .findList();
+    if (tasks.isEmpty()) {
+      return null;
+    }
+    return tasks.get(0);
+  }
+
   public static Optional<ScheduleTask> getLastSuccessfulTask(UUID scheduleUUID) {
     return find
         .query()

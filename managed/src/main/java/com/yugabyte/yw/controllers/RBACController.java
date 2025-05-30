@@ -75,6 +75,7 @@ import play.routing.Router;
 public class RBACController extends AuthenticatedController {
 
   public static final String newAuthzRuntimeFlagPath = "yb.rbac.use_new_authz";
+  public static final String ROLE_NAME_PATTERN = "^[a-zA-Z0-9-_]+$";
 
   private final PermissionUtil permissionUtil;
   private final RoleUtil roleUtil;
@@ -244,8 +245,17 @@ public class RBACController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, RoleFormData.class);
 
     // Ensure that the given role name is not blank.
-    if (roleFormData.name == null || roleFormData.name.isBlank()) {
+    if (roleFormData.name == null || StringUtils.isBlank(roleFormData.name)) {
       String errorMsg = "Role name cannot be blank: " + roleFormData.name;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Ensure that the given role name is valid.
+    if (!roleFormData.name.matches(ROLE_NAME_PATTERN)) {
+      String errorMsg =
+          "Role name can only contain alphanumeric characters, hyphen and underscore: "
+              + roleFormData.name;
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }

@@ -5,6 +5,10 @@ linkTitle: Explore
 headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 type: indexpage
+aliases:
+  - /stable/explore/cluster-setup-aeon/
+  - /stable/explore/cluster-setup-local/
+  - /stable/explore/cluster-setup-anywhere/
 showRightNav: true
 ---
 

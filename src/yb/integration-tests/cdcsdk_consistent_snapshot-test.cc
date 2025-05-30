@@ -401,11 +401,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeAfterSnapshot) {
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {1, 1, 0, 0, 1, 0};
+  const uint32_t expected_count[] = {
+      static_cast<uint32_t>((FLAGS_ysql_enable_packed_row ? 2 : 1)), 1, 0, 0, 1, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  ExpectedRecord expected_records_before_snapshot[] = {{0, 0}, {1, 2}};
-  ExpectedRecord expected_records_after_snapshot[] = {{2, 3}};
+  ExpectedRecord expected_records_before_snapshot[] = {{0, 0} /* DDL */, {1, 2}};
+  ExpectedRecord expected_records_after_snapshot_with_packed_row[] = {{0, 0} /* DDL */, {2, 3}};
+  ExpectedRecord expected_records_after_snapshot_no_packed_row[] = {{2, 3}};
 
   GetChangesResponsePB change_resp_updated =
       ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, cp_resp));
@@ -428,7 +430,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeAfterSnapshot) {
         record.row_message().op() == RowMessage::COMMIT) {
       continue;
     }
-    CheckRecord(record, expected_records_after_snapshot[expected_record_count++], count);
+    if (FLAGS_ysql_enable_packed_row) {
+      CheckRecord(
+          record, expected_records_after_snapshot_with_packed_row[expected_record_count++], count);
+    } else {
+      CheckRecord(
+          record, expected_records_after_snapshot_no_packed_row[expected_record_count++], count);
+    }
   }
   CheckCount(expected_count, count);
 }
@@ -1533,6 +1541,63 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 5;
   VerifyTransactionParticipant(tablets[0].tablet_id(), OpId::Max());
 
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCreateReplicationSlotExportSnapshot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pg_export_snapshot) = true;
+  auto slot_name = "logical_repl_slot_export_snapshot";
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // 10K records inserted using a thread.
+  std::thread bg_writer([cluster = &test_cluster_]() {
+    ASSERT_OK(WriteRows(1 /* start */, 10001 /* end */, cluster));
+  });
+  auto result = ASSERT_RESULT(repl_conn.FetchFormat(
+      "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput EXPORT_SNAPSHOT", slot_name));
+  auto snapshot_name =
+      ASSERT_RESULT(pgwrapper::GetValue<std::optional<std::string>>(result.get(), 0, 2));
+  LOG(INFO) << "Snapshot Name: " << (snapshot_name.has_value() ? *snapshot_name : "NULL");
+
+  // Fetch the stream_id of the replication slot.
+  auto stream_id = ASSERT_RESULT(conn.FetchRow<std::string>(
+      Format("SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '$0'", slot_name)));
+  auto xrepl_stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(stream_id));
+
+  auto cp_resp =
+      ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(xrepl_stream_id, tablets[0].tablet_id()));
+
+  // Count the number of snapshot READs.
+  GetChangesResponsePB change_resp;
+  uint32_t reads_snapshot = ASSERT_RESULT(
+      ConsumeSnapshotAndVerifyCounts(xrepl_stream_id, tablets, cp_resp, &change_resp));
+
+  bg_writer.join();
+
+  LOG(INFO) << "Insertion of records using threads has completed.";
+
+  // Count the number of INSERTS.
+  uint32_t inserts_snapshot =
+      ASSERT_RESULT(ConsumeInsertsAndVerifyCounts(xrepl_stream_id, tablets, change_resp));
+
+  auto conn2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // Import snapshot in a transaction.
+  ASSERT_OK(conn2.ExecuteFormat("SET TRANSACTION SNAPSHOT '$0'", snapshot_name));
+  auto rows_in_import_transaction = ASSERT_RESULT(
+      conn2.FetchRow<pgwrapper::PGUint64>(Format("SELECT count(*) FROM $0", kTableName)));
+
+  LOG(INFO) << "Got " << reads_snapshot << " snapshot (read) records";
+  LOG(INFO) << "Got " << inserts_snapshot << " insert records";
+  LOG(INFO) << "Got " << reads_snapshot + inserts_snapshot << " total (read + insert) record";
+  ASSERT_EQ(reads_snapshot + inserts_snapshot, 10000);
+
+  LOG(INFO) << "Got " << rows_in_import_transaction << " rows after setting snapshot";
+  // After setting snapshot, we should see exactly the same number of rows as reads_snapshot.
+  ASSERT_EQ(rows_in_import_transaction, reads_snapshot);
 }
 
 }  // namespace cdc

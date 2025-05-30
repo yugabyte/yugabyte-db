@@ -9,6 +9,11 @@
 
 typedef struct od_route od_route_t;
 
+typedef enum {
+	YB_ROUTE_INACTIVE,
+	YB_ROUTE_ACTIVE,
+} od_route_status_t;
+
 struct od_route {
 	od_rule_t *rule;
 	od_route_id_t id;
@@ -29,8 +34,13 @@ struct od_route {
 	od_error_logger_t *err_logger;
 	bool extra_logging_enabled;
 
-	yb_oid_entry_t* yb_database_entry;
-	yb_oid_entry_t* yb_user_entry;
+	char yb_database_name[DB_NAME_MAX_LEN];
+	int yb_database_name_len;
+
+	char yb_user_name[USER_NAME_MAX_LEN];
+	int yb_user_name_len;
+
+	od_route_status_t status;
 
 	od_list_t link;
 

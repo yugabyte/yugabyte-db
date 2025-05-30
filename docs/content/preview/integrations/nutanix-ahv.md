@@ -12,7 +12,12 @@ type: docs
 
 [Nutanix AHV](https://www.nutanix.com/products/ahv) is a modern and secure virtualization platform that powers VMs and containers for applications and cloud-native workloads on-premises and in public clouds.
 
-## Deploy
+Nutanix AHV is [fully compatible](https://portal.nutanix.com/page/documents/compatibility-interoperability-matrix/software?partnerName=Yugabyte&solutionType=all&componentVersion=all&hypervisor=all&validationType=all) with YugabyteDB and YugabyteDB Anywhere:
+
+- Deploy YugabyteDB Anywhere on a Nutanix VM.
+- Use YugabyteDB Anywhere to deploy on-premises universes on Nutanix VMs.
+
+## Deploy YugabyteDB Anywhere and on-premises universes
 
 The following steps describe how to deploy YugabyteDB Anywhere and YugabyteDB using Nutanix AHV VMs:
 

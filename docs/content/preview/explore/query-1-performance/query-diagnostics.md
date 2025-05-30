@@ -172,7 +172,7 @@ For more information on active session history, see [Active Session History](../
 
 Provides the output of the EXPLAIN command for a randomly selected subset of queries.
 
-Normally, all data is written to the file system when the diagnositcs interval has expired. However, if the explain data being gathered exceeds the internal buffer size, query diagnostics will flush the data to the file system to make room for data from further queries.
+Normally, all data is written to the file system when the diagnostics interval has expired. However, if the explain data being gathered exceeds the internal buffer size, query diagnostics will flush the data to the file system to make room for data from further queries.
 
 Output file: explain_plan.txt
 

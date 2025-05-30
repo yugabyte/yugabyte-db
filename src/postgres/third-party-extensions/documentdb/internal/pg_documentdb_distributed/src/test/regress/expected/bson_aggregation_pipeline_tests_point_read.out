@@ -1,0 +1,372 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 423000;
+SET documentdb.next_collection_id TO 4230;
+SET documentdb.next_collection_index_id TO 4230;
+SELECT documentdb_api.insert_one('db','aggregation_find_point_read_noncoll','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_find_point_read_noncoll','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','aggregation_find_point_read_noncoll','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('agg_db','aggregation_find_point_read','{"_id":"1", "int": 10, "a" : { "b" : [ "x", 1, 2.0, true ] } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('agg_db','aggregation_find_point_read','{"_id":"2", "double": 2.0, "a" : { "b" : {"c": 3} } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('agg_db','aggregation_find_point_read','{"_id":"3", "boolean": false, "a" : "no", "b": "yes", "c": true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('agg_db', '{ "createIndexes": "aggregation_find_point_read", "indexes": [ { "key": { "$**": "text" }, "name": "my_txt" }]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- fetch all rows
+SELECT shard_key_value, object_id, document FROM documentdb_api.collection('agg_db', 'aggregation_find_point_read') ORDER BY object_id;
+ shard_key_value |  object_id   |                                                               document                                                               
+---------------------------------------------------------------------
+            4232 | { "" : "1" } | { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+            4232 | { "" : "2" } | { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+            4232 | { "" : "3" } | { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true }
+(3 rows)
+
+-- basic point read (colocated table) - uses fast path
+SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }}');
+                                                 document                                                  
+---------------------------------------------------------------------
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+(1 row)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }}');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+-- same point read on non-colocated table - uses slow path
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_find_point_read_noncoll", "filter": { "_id": "2" }}');
+                                                                                                                                                  QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0) (actual rows=1 loops=1)
+   Output: remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 55 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM documentdb_data.documents_4230_423000 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : "2" }'::documentdb_core.bsonquery) AND (object_id OPERATOR(documentdb_core.=) '{ "" : "2" }'::documentdb_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '4230'::bigint))
+         Tuple data received from node: 55 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documentdb_data.documents_4230_423000 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+               Output: document
+               Index Cond: ((collection.shard_key_value = '4230'::bigint) AND (collection.object_id OPERATOR(documentdb_core.=) '{ "" : "2" }'::documentdb_core.bson))
+(12 rows)
+
+-- now test point reads with various find features for fast path
+-- limit
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "limit": 0 }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "limit": 1 }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "limit": 2 }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "limit": 3 }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+-- skip
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 0 }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 1 }');
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
+   Output: document
+   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+         Output: document
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(5 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 2 }');
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
+   Output: document
+   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+         Output: document
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(5 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 3 }');
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
+   Output: document
+   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+         Output: document
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(5 rows)
+
+-- skip + limit
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 0, "limit": 0 }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 0, "limit": 1 }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 1, "limit": 1 }');
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
+   Output: document
+   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+         Output: document
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(5 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 2, "limit": 2 }');
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
+   Output: document
+   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+         Output: document
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(5 rows)
+
+-- sort
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "_id": 1 } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "_id": -1 } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "a": -1 } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "a": 1 } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+-- projection
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "projection": { "a.b": 1 } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : "2" }'::bson)
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+-- filter
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "a": { "$exists": true } }, "sort": { "a": 1 } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: (collection.document #>= '{ "a" : { "$minKey" : 1 } }'::bsonquery)
+(4 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "a": { "$exists": false } }, "sort": { "a": 1 } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: bson_dollar_exists(collection.document, '{ "a" : false }'::bson)
+   Rows Removed by Filter: 1
+(5 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "_id": { "$gt": 1 } }, "sort": { "a": 1 } }');
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Sort  (cost=0.01..0.02 rows=1 width=64) (actual rows=0 loops=1)
+   Output: document, (bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson))
+   Sort Key: (bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   Sort Method: quicksort  Memory: 25kB
+   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
+         Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+         Filter: (collection.document @> '{ "_id" : { "$numberInt" : "1" } }'::bson)
+         Rows Removed by Filter: 1
+(9 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "_id": { "$gt": 2 } }, "sort": { "a": 1 } }');
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Sort  (cost=0.01..0.02 rows=1 width=64) (actual rows=0 loops=1)
+   Output: document, (bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson))
+   Sort Key: (bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   Sort Method: quicksort  Memory: 25kB
+   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
+         Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+         Filter: (collection.document @> '{ "_id" : { "$numberInt" : "2" } }'::bson)
+         Rows Removed by Filter: 1
+(9 rows)
+
+-- filter with special operators
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "$text": { "$search": "abc" } }, "sort": { "$meta": 1 } }');
+                                                                                                                      QUERY PLAN                                                                                                                       
+---------------------------------------------------------------------
+ Sort  (cost=0.01..0.02 rows=1 width=64) (actual rows=0 loops=1)
+   Output: document, (bson_orderby(document, '{ "$meta" : { "$numberInt" : "1" } }'::bson))
+   Sort Key: (bson_orderby(collection.document, '{ "$meta" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   Sort Method: quicksort  Memory: 25kB
+   ->  Custom Scan (DocumentDBApiQueryScan)  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
+         Output: document, bson_orderby(document, '{ "$meta" : { "$numberInt" : "1" } }'::bson)
+         ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
+               Output: document
+               Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+               Filter: bson_text_meta_qual(collection.document, '''abc'''::tsquery, '\x0400000000000000ffffffff000000000000000001000000000000002800000000000000000000000000803f000000000000803f000000000000803f000000000000803f00000000'::bytea, true)
+               Rows Removed by Filter: 1
+(11 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "g": { "$nearSphere": { "$geometry": { "type" : "Point", "coordinates": [0, 0] } }} }, "sort": { "a": 1 } }');
+ERROR:  planner returned error :: caused by :: unable to find index for $geoNear query
+-- filters with and/nested and - today doesn't use the fast-path but needs to be handled.
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "_id": { "$gt": "1" } }, { "$and": [ {"_id": "2" }, {"_id": { "$gt": "0" } } ] } ] } }');
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document @> '{ "_id" : "1" }'::bson) AND (collection.document @> '{ "_id" : "0" }'::bson))
+(4 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": { "$gt": "1" }, "_id": "2", "_id": { "$gt": "0" } } }');
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document @> '{ "_id" : "1" }'::bson) AND (collection.document @> '{ "_id" : "0" }'::bson))
+(4 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "a": { "$gt": "1" } }, { "$and": [ {"_id": "2" }, {"a": { "$gt": "0" } } ] } ] } }');
+                                                                                     QUERY PLAN                                                                                      
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document #> '{ "a" : "1" }'::bsonquery) AND ((collection.document #= '{ "_id" : "2" }'::bsonquery) AND (collection.document #> '{ "a" : "0" }'::bsonquery)))
+   Rows Removed by Filter: 1
+(5 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "a": { "$gt": "1" }, "_id": "2", "a": { "$gt": "0" } } }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document #> '{ "a" : "1" }'::bsonquery) AND (collection.document #> '{ "a" : "0" }'::bsonquery))
+   Rows Removed by Filter: 1
+(5 rows)
+
+-- singleBatch
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "a": 1 }, "singleBatch": true }');
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+(3 rows)
+
+-- batchSize
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "_id": { "$gt": 2 } }, "sort": { "a": 1 }, "batchSize": 0 }');
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Sort  (cost=0.01..0.02 rows=1 width=64) (actual rows=0 loops=1)
+   Output: document, (bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson))
+   Sort Key: (bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   Sort Method: quicksort  Memory: 25kB
+   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
+         Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+         Filter: (collection.document @> '{ "_id" : { "$numberInt" : "2" } }'::bson)
+         Rows Removed by Filter: 1
+(9 rows)
+

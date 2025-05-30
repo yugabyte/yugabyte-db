@@ -1,0 +1,854 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 240000;
+SET documentdb.next_collection_id TO 2400;
+SET documentdb.next_collection_index_id TO 2400;
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"1", "a" : { "b" : 1 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"2", "a" : { "b" : [ 0, 1, 2]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"3", "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"4", "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"5", "a" : { "b" : [ { "1" : [ 1, 2, 3 ] } ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"6", "a" : [ { "c" : 0 }, 2 ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"7", "a" : [ { "c" : 0 }, { "c" : 1 }, { "b" : 2 } ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"8", "a" : { "c" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','projectexprs','{"_id":"9", "c" : { "d" : 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- field path expressions
+SELECT bson_expression_get(document, '{ "field" : "$a" }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                                                                                                                                 bson_expression_get                                                                                                                                 
+---------------------------------------------------------------------
+ { "field" : { "b" : { "$numberInt" : "1" } } }
+ { "field" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "field" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "field" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "field" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "field" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+ { "field" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "field" : { "c" : { "$numberInt" : "1" } } }
+ { }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : "$a.b" }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                                                                                                                  bson_expression_get                                                                                                                  
+---------------------------------------------------------------------
+ { "field" : { "$numberInt" : "1" } }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "field" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "field" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "field" : [  ] }
+ { "field" : [ { "$numberInt" : "2" } ] }
+ { }
+ { }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : "$a.c" }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                       bson_expression_get                        
+---------------------------------------------------------------------
+ { }
+ { }
+ { "field" : [  ] }
+ { "field" : [  ] }
+ { }
+ { "field" : [ { "$numberInt" : "0" } ] }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ] }
+ { "field" : { "$numberInt" : "1" } }
+ { }
+(9 rows)
+
+-- field path expressions on bson_expression_get() with nullOnEmpty = true
+SELECT bson_expression_get(document, '{ "field" : "$a" }', true) FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                                                                                                                                 bson_expression_get                                                                                                                                 
+---------------------------------------------------------------------
+ { "field" : { "b" : { "$numberInt" : "1" } } }
+ { "field" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "field" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "field" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "field" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "field" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+ { "field" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "field" : { "c" : { "$numberInt" : "1" } } }
+ { "field" : null }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : "$a.b" }', true) FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                                                                                                                  bson_expression_get                                                                                                                  
+---------------------------------------------------------------------
+ { "field" : { "$numberInt" : "1" } }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "field" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "field" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "field" : [  ] }
+ { "field" : [ { "$numberInt" : "2" } ] }
+ { "field" : null }
+ { "field" : null }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : "$a.c" }', true) FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                       bson_expression_get                        
+---------------------------------------------------------------------
+ { "field" : null }
+ { "field" : null }
+ { "field" : [  ] }
+ { "field" : [  ] }
+ { "field" : null }
+ { "field" : [ { "$numberInt" : "0" } ] }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ] }
+ { "field" : { "$numberInt" : "1" } }
+ { "field" : null }
+(9 rows)
+
+-- field path expressions on bson_expression_get() with nullOnEmpty = false
+SELECT bson_expression_get(document, '{ "field" : "$a" }', false) FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                                                                                                                                 bson_expression_get                                                                                                                                 
+---------------------------------------------------------------------
+ { "field" : { "b" : { "$numberInt" : "1" } } }
+ { "field" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "field" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] }
+ { "field" : [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] }
+ { "field" : { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } }
+ { "field" : [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] }
+ { "field" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
+ { "field" : { "c" : { "$numberInt" : "1" } } }
+ { }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : "$a.b" }', false) FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                                                                                                                  bson_expression_get                                                                                                                  
+---------------------------------------------------------------------
+ { "field" : { "$numberInt" : "1" } }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "field" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "field" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "field" : [  ] }
+ { "field" : [ { "$numberInt" : "2" } ] }
+ { }
+ { }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : "$a.c" }', false) FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                       bson_expression_get                        
+---------------------------------------------------------------------
+ { }
+ { }
+ { "field" : [  ] }
+ { "field" : [  ] }
+ { }
+ { "field" : [ { "$numberInt" : "0" } ] }
+ { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ] }
+ { "field" : { "$numberInt" : "1" } }
+ { }
+(9 rows)
+
+-- const value expressions
+SELECT bson_expression_get(document, '{ "field" : "someString" }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+    bson_expression_get     
+---------------------------------------------------------------------
+ { "field" : "someString" }
+ { "field" : "someString" }
+ { "field" : "someString" }
+ { "field" : "someString" }
+ { "field" : "someString" }
+ { "field" : "someString" }
+ { "field" : "someString" }
+ { "field" : "someString" }
+ { "field" : "someString" }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : [ "1.0" ] }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+   bson_expression_get   
+---------------------------------------------------------------------
+ { "field" : [ "1.0" ] }
+ { "field" : [ "1.0" ] }
+ { "field" : [ "1.0" ] }
+ { "field" : [ "1.0" ] }
+ { "field" : [ "1.0" ] }
+ { "field" : [ "1.0" ] }
+ { "field" : [ "1.0" ] }
+ { "field" : [ "1.0" ] }
+ { "field" : [ "1.0" ] }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$minKey": 1 } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+       bson_expression_get       
+---------------------------------------------------------------------
+ { "field" : { "$minKey" : 1 } }
+ { "field" : { "$minKey" : 1 } }
+ { "field" : { "$minKey" : 1 } }
+ { "field" : { "$minKey" : 1 } }
+ { "field" : { "$minKey" : 1 } }
+ { "field" : { "$minKey" : 1 } }
+ { "field" : { "$minKey" : 1 } }
+ { "field" : { "$minKey" : 1 } }
+ { "field" : { "$minKey" : 1 } }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "nestedField": "fieldValue" } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+              bson_expression_get               
+---------------------------------------------------------------------
+ { "field" : { "nestedField" : "fieldValue" } }
+ { "field" : { "nestedField" : "fieldValue" } }
+ { "field" : { "nestedField" : "fieldValue" } }
+ { "field" : { "nestedField" : "fieldValue" } }
+ { "field" : { "nestedField" : "fieldValue" } }
+ { "field" : { "nestedField" : "fieldValue" } }
+ { "field" : { "nestedField" : "fieldValue" } }
+ { "field" : { "nestedField" : "fieldValue" } }
+ { "field" : { "nestedField" : "fieldValue" } }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "nestedField": "fieldValue", "nestedField2": "fieldValue2" } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                              bson_expression_get                               
+---------------------------------------------------------------------
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+ { "field" : { "nestedField" : "fieldValue", "nestedField2" : "fieldValue2" } }
+(9 rows)
+
+-- literal expressions
+SELECT bson_expression_get(document, '{ "field" : { "$literal": 1.0 } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+            bson_expression_get            
+---------------------------------------------------------------------
+ { "field" : { "$numberDouble" : "1.0" } }
+ { "field" : { "$numberDouble" : "1.0" } }
+ { "field" : { "$numberDouble" : "1.0" } }
+ { "field" : { "$numberDouble" : "1.0" } }
+ { "field" : { "$numberDouble" : "1.0" } }
+ { "field" : { "$numberDouble" : "1.0" } }
+ { "field" : { "$numberDouble" : "1.0" } }
+ { "field" : { "$numberDouble" : "1.0" } }
+ { "field" : { "$numberDouble" : "1.0" } }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$literal": [1, 2, 3] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+                                   bson_expression_get                                    
+---------------------------------------------------------------------
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "field" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$literal": "some literal" } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+     bson_expression_get      
+---------------------------------------------------------------------
+ { "field" : "some literal" }
+ { "field" : "some literal" }
+ { "field" : "some literal" }
+ { "field" : "some literal" }
+ { "field" : "some literal" }
+ { "field" : "some literal" }
+ { "field" : "some literal" }
+ { "field" : "some literal" }
+ { "field" : "some literal" }
+(9 rows)
+
+-- isArray expressions: top level expression
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": "some literal" } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": { "$literal": [ 1, 2, 3 ] } } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": { "$literal": "someLiteral" } } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": { "nestedObj": "someValue" } } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+-- project $a.b along with isArray to validate the values easily.
+SELECT bson_expression_get(document, '{ "field" : { "$isArray":  "$a.b" } }'), bson_expression_get(document, '{ "field" : "$a.b" }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get |                                                                                                                  bson_expression_get                                                                                                                  
+---------------------------------------------------------------------
+ { "field" : false } | { "field" : { "$numberInt" : "1" } }
+ { "field" : true }  | { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "field" : true }  | { "field" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "field" : true }  | { "field" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "field" : true }  | { "field" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }
+ { "field" : true }  | { "field" : [  ] }
+ { "field" : true }  | { "field" : [ { "$numberInt" : "2" } ] }
+ { "field" : false } | { }
+ { "field" : false } | { }
+(9 rows)
+
+-- test nested operator expansion (this should all be false since the inner operator returns true/false and is never an array)
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": { "$isArray":  "$a.b" } } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+-- isArray expressions: array declaration.
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ "some literal" ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ { "$literal": [ 1, 2, 3 ] } ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ { "$literal": "someLiteral" } ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ { "nestedObj": "someValue" } ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ "$a.b" ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ [1, 2, 3 ] ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+(9 rows)
+
+-- isArray expressions: array declaration invalid
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ERROR:  Expression $isArray takes exactly 1 arguments. 0 were passed in.
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ 1, 2 ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ERROR:  Expression $isArray takes exactly 1 arguments. 2 were passed in.
+-- unsupported operators
+SELECT bson_expression_get(document, '{ "field" : { "$unknownop": "some literal" } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
+ERROR:  Unknown expression $unknownop
+-- Array Expression and Nested Expression evaluation tests
+SELECT bson_expression_get(document, '{ "new" : ["$_id"]}') FROM documentdb_api.collection('db', 'projectexprs');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "new" : [ "1" ] }
+ { "new" : [ "2" ] }
+ { "new" : [ "3" ] }
+ { "new" : [ "4" ] }
+ { "new" : [ "5" ] }
+ { "new" : [ "6" ] }
+ { "new" : [ "7" ] }
+ { "new" : [ "8" ] }
+ { "new" : [ "9" ] }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "new" : ["$a"]}') FROM documentdb_api.collection('db', 'projectexprs');
+                                                                                                                                  bson_expression_get                                                                                                                                  
+---------------------------------------------------------------------
+ { "new" : [ { "b" : { "$numberInt" : "1" } } ] }
+ { "new" : [ { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } ] }
+ { "new" : [ [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ] ] }
+ { "new" : [ [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ] ] }
+ { "new" : [ { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] } ] }
+ { "new" : [ [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ] ] }
+ { "new" : [ [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] ] }
+ { "new" : [ { "c" : { "$numberInt" : "1" } } ] }
+ { "new" : [ null ] }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "new" : ["$a.b"]}') FROM documentdb_api.collection('db', 'projectexprs');
+                                                                                                                   bson_expression_get                                                                                                                   
+---------------------------------------------------------------------
+ { "new" : [ { "$numberInt" : "1" } ] }
+ { "new" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "new" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ] }
+ { "new" : [ [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] ] }
+ { "new" : [ [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ] }
+ { "new" : [ [  ] ] }
+ { "new" : [ [ { "$numberInt" : "2" } ] ] }
+ { "new" : [ null ] }
+ { "new" : [ null ] }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "new" : {"val": ["$a.b"]}}') FROM documentdb_api.collection('db', 'projectexprs');
+                                                                                                                         bson_expression_get                                                                                                                         
+---------------------------------------------------------------------
+ { "new" : { "val" : [ { "$numberInt" : "1" } ] } }
+ { "new" : { "val" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "new" : { "val" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ] } }
+ { "new" : { "val" : [ [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] ] } }
+ { "new" : { "val" : [ [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ] } }
+ { "new" : { "val" : [ [  ] ] } }
+ { "new" : { "val" : [ [ { "$numberInt" : "2" } ] ] } }
+ { "new" : { "val" : [ null ] } }
+ { "new" : { "val" : [ null ] } }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "new" : {"val": ["1", "2", "$a.b"]}}') FROM documentdb_api.collection('db', 'projectexprs');
+                                                                                                                              bson_expression_get                                                                                                                              
+---------------------------------------------------------------------
+ { "new" : { "val" : [ "1", "2", { "$numberInt" : "1" } ] } }
+ { "new" : { "val" : [ "1", "2", [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "new" : { "val" : [ "1", "2", [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ] } }
+ { "new" : { "val" : [ "1", "2", [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] ] } }
+ { "new" : { "val" : [ "1", "2", [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ] } }
+ { "new" : { "val" : [ "1", "2", [  ] ] } }
+ { "new" : { "val" : [ "1", "2", [ { "$numberInt" : "2" } ] ] } }
+ { "new" : { "val" : [ "1", "2", null ] } }
+ { "new" : { "val" : [ "1", "2", null ] } }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "new" : {"val": ["1", "2", "$a.b"], "val2": "$_id"}}') FROM documentdb_api.collection('db', 'projectexprs');
+                                                                                                                                     bson_expression_get                                                                                                                                     
+---------------------------------------------------------------------
+ { "new" : { "val" : [ "1", "2", { "$numberInt" : "1" } ], "val2" : "1" } }
+ { "new" : { "val" : [ "1", "2", [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ], "val2" : "2" } }
+ { "new" : { "val" : [ "1", "2", [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ], "val2" : "3" } }
+ { "new" : { "val" : [ "1", "2", [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] ], "val2" : "4" } }
+ { "new" : { "val" : [ "1", "2", [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] ], "val2" : "5" } }
+ { "new" : { "val" : [ "1", "2", [  ] ], "val2" : "6" } }
+ { "new" : { "val" : [ "1", "2", [ { "$numberInt" : "2" } ] ], "val2" : "7" } }
+ { "new" : { "val" : [ "1", "2", null ], "val2" : "8" } }
+ { "new" : { "val" : [ "1", "2", null ], "val2" : "9" } }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ "$a.b" ] } }') FROM documentdb_api.collection('db', 'projectexprs');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ "$a.b" ] , "a": 1.0} }') FROM documentdb_api.collection('db', 'projectexprs');
+ERROR:  an expression operator specification must contain exactly one field, found 2 fields '$isArray' and 'a'.
+SELECT bson_expression_get(document, '{ "field" : { "first": 1.0, "$isArray": [ "$a.b" ]} }') FROM documentdb_api.collection('db', 'projectexprs');
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+SELECT bson_expression_get(document, '{ "field" : ["$_id", ["$a", "$b"], { "arrayobj" : [{},"$_id"]}] }') FROM documentdb_api.collection('db', 'projectexprs');
+                                                                                                                                                          bson_expression_get                                                                                                                                                           
+---------------------------------------------------------------------
+ { "field" : [ "1", [ { "b" : { "$numberInt" : "1" } }, null ], { "arrayobj" : [ {  }, "1" ] } ] }
+ { "field" : [ "2", [ { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, null ], { "arrayobj" : [ {  }, "2" ] } ] }
+ { "field" : [ "3", [ [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" } } ], null ], { "arrayobj" : [ {  }, "3" ] } ] }
+ { "field" : [ "4", [ [ { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } ], null ], { "arrayobj" : [ {  }, "4" ] } ] }
+ { "field" : [ "5", [ { "b" : [ { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } ] }, null ], { "arrayobj" : [ {  }, "5" ] } ] }
+ { "field" : [ "6", [ [ { "c" : { "$numberInt" : "0" } }, { "$numberInt" : "2" } ], null ], { "arrayobj" : [ {  }, "6" ] } ] }
+ { "field" : [ "7", [ [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], null ], { "arrayobj" : [ {  }, "7" ] } ] }
+ { "field" : [ "8", [ { "c" : { "$numberInt" : "1" } }, null ], { "arrayobj" : [ {  }, "8" ] } ] }
+ { "field" : [ "9", [ null, null ], { "arrayobj" : [ {  }, "9" ] } ] }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : [{"$literal" : 3.12}] }') FROM documentdb_api.collection('db', 'projectexprs');
+                       bson_expression_get                       
+---------------------------------------------------------------------
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+ { "field" : [ { "$numberDouble" : "3.1200000000000001066" } ] }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : [{"$isArray" : [1,2]}] }') FROM documentdb_api.collection('db', 'projectexprs');
+ERROR:  Expression $isArray takes exactly 1 arguments. 2 were passed in.
+SELECT bson_expression_get(document, '{ "field" : {"$literal" : 3.12} }') FROM documentdb_api.collection('db', 'projectexprs');
+                     bson_expression_get                     
+---------------------------------------------------------------------
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+ { "field" : { "$numberDouble" : "3.1200000000000001066" } }
+(9 rows)
+
+SELECT bson_expression_get(document, '{ "field" : {"$isArray" : "$a.b"} }') FROM documentdb_api.collection('db', 'projectexprs');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : false }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : true }
+ { "field" : false }
+ { "field" : false }
+(9 rows)
+
+-- Expressions with undefined paths.
+SELECT documentdb_api.insert_one('db', 'projectexprwithundefined','{"_id":"1", "a": [ 1, 2 ] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'projectexprwithundefined','{"_id":"2", "a": { "b": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'projectexprwithundefined','{"_id":"3", "a" : [ { "b": 1 }, 2, 3 ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'projectexprwithundefined','{"_id":"4", "a" : { "b": [ 1, 2 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT bson_expression_get(document, '{"field": "$z"}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { }
+ { }
+ { }
+ { }
+(4 rows)
+
+SELECT bson_expression_get(document, '{"field": "$a.b.c"}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+ bson_expression_get 
+---------------------------------------------------------------------
+ { "field" : [  ] }
+ { }
+ { "field" : [  ] }
+ { "field" : [  ] }
+(4 rows)
+
+SELECT bson_expression_get(document, '{"field": ["$z", 2]}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+              bson_expression_get               
+---------------------------------------------------------------------
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+(4 rows)
+
+SELECT bson_expression_get(document, '{"field": ["$a.b.c", 2]}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+              bson_expression_get               
+---------------------------------------------------------------------
+ { "field" : [ [  ], { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+ { "field" : [ [  ], { "$numberInt" : "2" } ] }
+ { "field" : [ [  ], { "$numberInt" : "2" } ] }
+(4 rows)
+
+SELECT bson_expression_get(document, '{"field": ["$a.x.y", 2]}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+              bson_expression_get               
+---------------------------------------------------------------------
+ { "field" : [ [  ], { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+ { "field" : [ [  ], { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+(4 rows)
+
+SELECT bson_expression_get(document, '{"field": ["$z.x.y", 2]}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+              bson_expression_get               
+---------------------------------------------------------------------
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+ { "field" : [ null, { "$numberInt" : "2" } ] }
+(4 rows)
+
+SELECT bson_expression_get(document, '{"field": [ ["$a.x.y"], 2, ["$z"]]}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+                     bson_expression_get                      
+---------------------------------------------------------------------
+ { "field" : [ [ [  ] ], { "$numberInt" : "2" }, [ null ] ] }
+ { "field" : [ [ null ], { "$numberInt" : "2" }, [ null ] ] }
+ { "field" : [ [ [  ] ], { "$numberInt" : "2" }, [ null ] ] }
+ { "field" : [ [ null ], { "$numberInt" : "2" }, [ null ] ] }
+(4 rows)
+
+SELECT bson_expression_get(document, '{"field": [ ["$a.x.y"], 2, [{"$arrayElemAt": [[1], 2]}]]}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+                     bson_expression_get                      
+---------------------------------------------------------------------
+ { "field" : [ [ [  ] ], { "$numberInt" : "2" }, [ null ] ] }
+ { "field" : [ [ null ], { "$numberInt" : "2" }, [ null ] ] }
+ { "field" : [ [ [  ] ], { "$numberInt" : "2" }, [ null ] ] }
+ { "field" : [ [ null ], { "$numberInt" : "2" }, [ null ] ] }
+(4 rows)
+
+SELECT bson_expression_get(document, '{"field": [ ["$a.x.y"], 2, [{"$arrayElemAt": [[1], 0]}]]}') FROM documentdb_api.collection('db', 'projectexprwithundefined');
+                              bson_expression_get                               
+---------------------------------------------------------------------
+ { "field" : [ [ [  ] ], { "$numberInt" : "2" }, [ { "$numberInt" : "1" } ] ] }
+ { "field" : [ [ null ], { "$numberInt" : "2" }, [ { "$numberInt" : "1" } ] ] }
+ { "field" : [ [ [  ] ], { "$numberInt" : "2" }, [ { "$numberInt" : "1" } ] ] }
+ { "field" : [ [ null ], { "$numberInt" : "2" }, [ { "$numberInt" : "1" } ] ] }
+(4 rows)
+
+-- Error cases when a field is an empty string
+SELECT bson_expression_get(document, '{ "field" : {"" : "$a.b"} }') FROM documentdb_api.collection('db', 'projectexprs');
+ERROR:  FieldPath cannot be constructed with empty string.
+SELECT bson_expression_get(document, '{ "new" : {"val": ["1", "2", {"": "hello"}], "val2": "$_id"}}') FROM documentdb_api.collection('db', 'projectexprs');
+ERROR:  FieldPath cannot be constructed with empty string.
+SELECT bson_expression_get(document, '{ "field" : [{"literal" : [2, {"" : "empty"}]}] }') FROM documentdb_api.collection('db', 'projectexprs');
+ERROR:  FieldPath cannot be constructed with empty string.
+-- Field not present or null, NullOnEmpty = false
+SELECT bson_expression_get('{}', '{ "": "$a" }', false), 
+bson_expression_get('{"a" : null}', '{ "": "$a" }', false),
+bson_expression_get('{}', '{ "": { "a" : "$a" }}', false),
+bson_expression_get('{"a" : null}', '{ "": { "a" : "$a" }}', false);
+ bson_expression_get | bson_expression_get | bson_expression_get |   bson_expression_get   
+---------------------------------------------------------------------
+ { }                 | { "" : null }       | { "" : {  } }       | { "" : { "a" : null } }
+(1 row)
+
+-- Field not present or null, NullOnEmpty = true
+SELECT bson_expression_get('{}', '{ "": "$a" }', true), 
+bson_expression_get('{"a" : null}', '{ "": "$a" }', true),
+bson_expression_get('{}', '{ "": { "a" : "$a" }}', true),
+bson_expression_get('{"a" : null}', '{ "": { "a" : "$a" }}', true);
+ bson_expression_get | bson_expression_get |   bson_expression_get   |   bson_expression_get   
+---------------------------------------------------------------------
+ { "" : null }       | { "" : null }       | { "" : { "a" : null } } | { "" : { "a" : null } }
+(1 row)
+
+-- Document and array expressions with nested expressions that should be converted to a constant at the tree parse stage
+SET client_min_messages TO DEBUG3;
+SELECT bson_expression_get('{}', '{"result": {"a": [ { "$literal" : "foo" } ] }}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing document expression into constant.
+        bson_expression_get         
+---------------------------------------------------------------------
+ { "result" : { "a" : [ "foo" ] } }
+(1 row)
+
+SELECT bson_expression_get('{}', '{"result": [ { "$literal" : "foo" } ] }');
+DEBUG:  Optimizing array expression into constant.
+   bson_expression_get    
+---------------------------------------------------------------------
+ { "result" : [ "foo" ] }
+(1 row)
+
+SELECT bson_expression_get('{}', '{"result": [ { "$undefined" : true } ] }');
+DEBUG:  Optimizing array expression into constant.
+   bson_expression_get   
+---------------------------------------------------------------------
+ { "result" : [ null ] }
+(1 row)
+
+SELECT bson_expression_get('{}', '{"result": [ { "$literal" : "foo" }, {"$substr": ["wehello world", 2, -1]} ] }');
+DEBUG:  Optimizing array expression into constant.
+           bson_expression_get           
+---------------------------------------------------------------------
+ { "result" : [ "foo", "hello world" ] }
+(1 row)
+
+SELECT bson_expression_get('{}', '{"result": {"a": [ { "$literal" : "foo" } ], "a": {"$const": "foo2"} }}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing document expression into constant.
+       bson_expression_get       
+---------------------------------------------------------------------
+ { "result" : { "a" : "foo2" } }
+(1 row)
+
+SELECT bson_expression_get('{}', '{"document": {"a": { "$literal" : {"a": "$$REMOVE" } }, "b": {"$const": "b is 2"} }}');
+DEBUG:  Optimizing document expression into constant.
+                       bson_expression_get                       
+---------------------------------------------------------------------
+ { "document" : { "a" : { "a" : "$$REMOVE" }, "b" : "b is 2" } }
+(1 row)
+
+SELECT bson_expression_get('{}', '{"document": {"a": { "b" : {"a": "foo", "d": {"$substr": ["hello world", 6, -1]}} }, "c": {"$const": "c is 2"} }}');
+DEBUG:  Optimizing document expression into constant.
+                                 bson_expression_get                                 
+---------------------------------------------------------------------
+ { "document" : { "a" : { "b" : { "a" : "foo", "d" : "world" } }, "c" : "c is 2" } }
+(1 row)
+
+SELECT bson_expression_get('{}', '{"document": {"a": {"d": { "$literal" : {"a": "$$REMOVE" } }, "c": [{"$literal": "$$REMOVE"}, true, false]}, "b": {"$const": "b is 2"}}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing document expression into constant.
+                                             bson_expression_get                                              
+---------------------------------------------------------------------
+ { "document" : { "a" : { "d" : { "a" : "$$REMOVE" }, "c" : [ "$$REMOVE", true, false ] }, "b" : "b is 2" } }
+(1 row)
+
+SELECT bson_dollar_project('{}', '{"array": [{"$substr": ["hello world", 0, -1]}, "1", 2, true, false, {"$literal": [{ "$add":[1, 2] }]}], "document": {"a": { "$literal" : {"a": "$$REMOVE" } }, "b": {"$const": "b is 2"} }}');
+DEBUG:  Optimizing array expression into constant.
+                                                                                             bson_dollar_project                                                                                             
+---------------------------------------------------------------------
+ { "array" : [ "hello world", "1", { "$numberInt" : "2" }, true, false, [ { "$add" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } ] ], "document" : { "a" : { "a" : "$$REMOVE" }, "b" : "b is 2" } }
+(1 row)
+
+SELECT bson_dollar_project('{}', '{"array": [{"$substr": ["hello world", 0, -1]}, "1", 2, true, false, {"$literal": [{ "$add":[1, 2] }]}], "document": {"a": { "$literal" : {"a": "$$REMOVE" } }, "b": {"$const": "b is 2"}}, "array2": [{"$literal": "$$ROOT"}, {"$literal": "$$NOW"}, true], "document2": {"result": {"$substr": ["result is: blah", 11, -1]}}}');
+DEBUG:  Optimizing array expression into constant.
+DEBUG:  Optimizing array expression into constant.
+                                                                                                                                   bson_dollar_project                                                                                                                                    
+---------------------------------------------------------------------
+ { "array" : [ "hello world", "1", { "$numberInt" : "2" }, true, false, [ { "$add" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } ] ], "document" : { "a" : { "a" : "$$REMOVE" }, "b" : "b is 2" }, "array2" : [ "$$ROOT", "$$NOW", true ], "document2" : { "result" : "blah" } }
+(1 row)
+
+SET client_min_messages TO DEFAULT;

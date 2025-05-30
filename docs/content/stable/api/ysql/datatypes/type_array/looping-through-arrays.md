@@ -61,16 +61,18 @@ The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the content
 The examples below clarify the behavior of `FOREACH`.
 
 ## Syntax and semantics
+
 ```
 [ <<label>> ]
 FOREACH var [ SLICE non_negative_integer_literal ] IN ARRAY expression LOOP
   statements
 END LOOP [ label ];
 ```
+
 - `var` must be explicitly declared before the `FOREACH` loop.
 - The operand of the optional `SLICE` clause must be a non-negative `int` literal.
 - Assume that `expression` has the data type `some_type[]`.
-		- When `SLICE 0` is used, `var` must be declared as `some_type`.
+  - When `SLICE 0` is used, `var` must be declared as `some_type`.
   - When the `SLICE` clause's operand is positive, `var` must be declared as `some_type[]`.
 - `SLICE 0` has the same effect as omitting the `SLICE` clause.
 - When `SLICE 0` is used, or the `SLICE` clause is omitted, YSQL assigns each in turn of the array's  values, visited in row-major order, to `var`.

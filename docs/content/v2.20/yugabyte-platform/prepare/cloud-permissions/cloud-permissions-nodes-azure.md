@@ -12,10 +12,6 @@ menu:
 type: docs
 ---
 
-For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters, you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on.
-
-The more permissions that you can provide, the more YBA can automate.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
@@ -50,6 +46,8 @@ The more permissions that you can provide, the more YBA can automate.
   </li>
 </ul>
 
+For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters, you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
+
 ## Azure
 
 ### Application and resource group
@@ -71,15 +69,11 @@ For more information on roles, refer to [Assign Azure roles using the Azure port
 
 ### Credentials
 
-YugabyteDB Anywhere can authenticate with Azure using one of the following methods:
+YugabyteDB Anywhere can authenticate with Azure using a client secret.
 
 - [Add credentials](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=client-secret#add-credentials), in the form of a client secret, to your registered application.
 
     For information on creating client secrets, see [Create a new client secret](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal#option-3-create-a-new-client-secret) in the Microsoft Entra documentation.
-
-- [Assign a managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) to the Azure VM hosting YugabyteDB Anywhere. Azure will use the managed identity assigned to your instance to authenticate.
-
-    For information on assigning roles for managed identities, see [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
 
 Record the following information about your service account. You will need to provide this information later when creating an Azure provider configuration.
 
@@ -87,7 +81,7 @@ Record the following information about your service account. You will need to pr
 | :--- | :--- |
 | **Service account details** | [Azure provider configuration](../../../configure-yugabyte-platform/azure/) |
 | Client ID: | |
-| Client Secret:<br>(not required when using managed identity) | |
+| Client Secret: | |
 | Resource Group: | |
 | Subscription ID: | |
 | (Optional) Network Resource Group: | |

@@ -47,11 +47,11 @@ template<class Buffer>
 class EncoderResolver {
  public:
   const KeyEncoder<Buffer>& GetKeyEncoder(DataType t) {
-    return *encoders_[to_underlying(t)];
+    return *encoders_[std::to_underlying(t)];
   }
 
   const bool HasKeyEncoderForType(DataType t) {
-    return encoders_[to_underlying(t)] != nullptr;
+    return encoders_[std::to_underlying(t)] != nullptr;
   }
 
  private:
@@ -73,7 +73,7 @@ class EncoderResolver {
   template<DataType Type>
   void AddMapping() {
     KeyEncoderTraits<Type, Buffer> traits;
-    encoders_[to_underlying(Type)] = std::make_shared<KeyEncoder<Buffer>>(traits);
+    encoders_[std::to_underlying(Type)] = std::make_shared<KeyEncoder<Buffer>>(traits);
   }
 
   friend class Singleton<EncoderResolver<Buffer>>;

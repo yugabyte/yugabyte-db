@@ -12,10 +12,6 @@ menu:
 type: docs
 ---
 
-For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters, you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on.
-
-The more permissions that you can provide, the more YBA can automate.
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
@@ -56,8 +52,6 @@ Because you are creating the VMs manually, nodes for on-premises providers don't
 
 With an on-premises provider, permissions against your infrastructure are generally not needed to deploy VMs, modify VMs, and so on.
 
-However, lacking these permissions, although YBA can still operate, YBA can't automate many management tasks and will rely on human manual steps or externally-scripted automation to perform the following tasks:
+Provisioning VMs requires root accress, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.
 
-- create, scale, and delete database clusters with full automation
-- apply OS security patches
-- recover to full health if a VM fails
+For more information, refer to [Automatically provision on-premises nodes](../../server-nodes-software/software-on-prem/).

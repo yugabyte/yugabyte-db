@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -174,7 +175,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()
-        && !taskParams().skipNodeChecks) {
+        && !isSkipPrechecks()) {
       Optional<NodeDetails> nonLive =
           nodesToBeRestarted.getAllNodes().stream()
               .filter(n -> n.state != NodeState.Live)
@@ -192,6 +193,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
       }
     }
+  }
+
+  protected boolean isSkipPrechecks() {
+    return taskParams().skipNodeChecks;
   }
 
   private RollMaxBatchSize getCurrentRollBatchSize(Universe universe) {
@@ -213,7 +218,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   @Override
   protected void addBasicPrecheckTasks() {
-    if (isFirstTry()) {
+    if (isFirstTry() && !isSkipPrechecks()) {
       verifyClustersConsistency();
     }
   }
@@ -233,6 +238,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   // State set on node while it is being upgraded
   public abstract NodeState getNodeState();
+
+  protected NodeState getNodeState(Set<ServerType> processTypes) {
+    return getNodeState();
+  }
 
   public void runUpgrade(Runnable upgradeLambda) {
     runUpgrade(upgradeLambda, null /* Txn callback */);
@@ -271,11 +280,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error: ", getName(), t);
-      if (onFailureTask != null) {
-        log.info("Running on failure upgrade task");
-        onFailureTask.run();
-        log.info("Finished on failure upgrade task");
-      }
 
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
         Universe universe = getUniverse();
@@ -300,6 +304,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               createLoadBalancerStateChangeTask(true)
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
             });
+      }
+      if (onFailureTask != null) {
+        log.info("Running on failure upgrade task");
+        onFailureTask.run();
+        log.info("Finished on failure upgrade task");
       }
       throw t;
     } finally {
@@ -577,7 +586,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
     Universe universe = getUniverse();
 
-    NodeState nodeState = getNodeState();
     if (hasTServer) {
       if (!isBlacklistLeaders()) {
         // Need load balancer on to perform leader blacklist.
@@ -591,35 +599,39 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
     }
-    // For inactive role (updating master links for tserver-only nodes)
-    // we can process all the nodes concurrently.
-    RollMaxBatchSize rollMaxBatchSize =
-        activeRole
-            ? getCurrentRollBatchSize(universe)
-            : RollMaxBatchSize.of(Integer.MAX_VALUE, Integer.MAX_VALUE);
 
-    List<List<NodeDetails>> split =
-        splitNodes(getUniverse(), nodes, processTypesFunction, rollMaxBatchSize);
+    List<List<NodeDetails>> split;
+    if (activeRole) {
+      RollMaxBatchSize rollMaxBatchSize = getCurrentRollBatchSize(universe);
+      split = splitNodes(getUniverse(), nodes, processTypesFunction, rollMaxBatchSize);
+    } else {
+      // For inactive role (updating master links for tserver-only nodes)
+      // we can process all the nodes concurrently.
+      split = Collections.singletonList(new ArrayList<>(nodes));
+    }
 
     for (List<NodeDetails> nodeList : split) {
       // Nodes are grouped by the same set of server types, so it doesn't matter which node to take.
       Set<ServerType> processTypes = processTypesFunction.apply(nodeList.get(0));
 
+      NodeState nodeState = getNodeState(processTypes);
+
       if (nodeList.size() > 1) {
         log.debug("Stopping {} nodes simultaneously, processes {}", nodeList.size(), processTypes);
       }
-      createSetNodeStateTasks(nodeList, nodeState).setSubTaskGroupType(subGroupType);
-
+      if (activeRole) {
+        createSetNodeStateTasks(nodeList, nodeState).setSubTaskGroupType(subGroupType);
+      }
       UUID primaryId = universe.getUniverseDetails().getPrimaryCluster().uuid;
       boolean hasPrimaryNodes = false;
       for (NodeDetails node : nodeList) {
         hasPrimaryNodes = hasPrimaryNodes || node.isInPlacement(primaryId);
-        if (!taskParams().skipNodeChecks) {
+        if (!isSkipPrechecks()) {
           createNodePrecheckTasks(
               node, processTypes, subGroupType, true, context.targetSoftwareVersion);
         }
       }
-      if (activeRole && hasPrimaryNodes && !taskParams().skipNodeChecks) {
+      if (activeRole && hasPrimaryNodes && !isSkipPrechecks()) {
         createCheckNodesAreSafeToTakeDownTask(
             Collections.singletonList(MastersAndTservers.from(nodeList, processTypes)),
             getTargetSoftwareVersion(),
@@ -704,12 +716,14 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
       // Run post node upgrade hooks
       createHookTriggerTasks(nodeList, false, true);
-      createSetNodeStateTasks(nodeList, NodeState.Live).setSubTaskGroupType(subGroupType);
-      for (NodeDetails node : nodeList) {
-        createSleepAfterStartupTask(
-            taskParams().getUniverseUUID(),
-            processTypes,
-            SetNodeState.getStartKey(node.getNodeName(), nodeState));
+      if (activeRole) {
+        createSetNodeStateTasks(nodeList, NodeState.Live).setSubTaskGroupType(subGroupType);
+        for (NodeDetails node : nodeList) {
+          createSleepAfterStartupTask(
+              taskParams().getUniverseUUID(),
+              processTypes,
+              SetNodeState.getStartKey(node.getNodeName(), nodeState));
+        }
       }
       if (context.postAction != null) {
         nodeList.forEach(context.postAction);
@@ -932,8 +946,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       ServerType processType,
       Map<String, String> oldGflags,
       Map<String, String> newGflags,
-      UniverseTaskParams.CommunicationPorts communicationPorts,
-      Map<String, String> connectionPoolingGflags) {
+      UniverseTaskParams.CommunicationPorts communicationPorts) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
@@ -942,9 +955,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (communicationPorts != null) {
       params.communicationPorts = communicationPorts;
       params.overrideNodePorts = true;
-    }
-    if (connectionPoolingGflags != null) {
-      params.connectionPoolingGflags = connectionPoolingGflags;
     }
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
@@ -971,27 +981,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         null /* communicationPorts */);
   }
 
-  protected void createServerConfFileUpdateTasks(
-      UniverseDefinitionTaskParams.UserIntent userIntent,
-      List<NodeDetails> nodes,
-      Set<ServerType> processTypes,
-      UniverseDefinitionTaskParams.Cluster curCluster,
-      Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
-      UniverseDefinitionTaskParams.Cluster newCluster,
-      Collection<UniverseDefinitionTaskParams.Cluster> newClusters,
-      UniverseTaskParams.CommunicationPorts communicationPorts) {
-    createServerConfFileUpdateTasks(
-        userIntent,
-        nodes,
-        processTypes,
-        curCluster,
-        curClusters,
-        newCluster,
-        newClusters,
-        null /* communicationPorts */,
-        null /* connectionPoolingGflags */);
-  }
-
   /**
    * Create a task to update server conf files on DB nodes.
    *
@@ -1012,8 +1001,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
       UniverseDefinitionTaskParams.Cluster newCluster,
       Collection<UniverseDefinitionTaskParams.Cluster> newClusters,
-      UniverseTaskParams.CommunicationPorts communicationPorts,
-      Map<String, String> connectionPoolingGflags) {
+      UniverseTaskParams.CommunicationPorts communicationPorts) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
@@ -1031,13 +1019,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           GFlagsUtil.getGFlagsForNode(node, processType, curCluster, curClusters);
       subTaskGroup.addSubTask(
           getAnsibleConfigureServerTask(
-              userIntent,
-              node,
-              processType,
-              oldGFlags,
-              newGFlags,
-              communicationPorts,
-              connectionPoolingGflags));
+              userIntent, node, processType, oldGFlags, newGFlags, communicationPorts));
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1288,5 +1270,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     @Builder.Default boolean skipStartingProcesses = false;
     String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
+    YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
+    UUID rootCAUUID;
   }
 }

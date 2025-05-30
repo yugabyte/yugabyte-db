@@ -83,13 +83,13 @@ namespace consensus {
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
 struct ConsensusBootstrapInfo {
-  ConsensusBootstrapInfo();
+  ConsensusBootstrapInfo() = default;
 
   // The id of the last operation in the log
-  OpIdPB last_id;
+  OpId last_id = OpId::Min();
 
   // The id of the last committed operation in the log.
-  OpIdPB last_committed_id;
+  OpId last_committed_id = OpId::Min();
 
   // REPLICATE messages which were in the log with no accompanying
   // COMMIT. These need to be passed along to consensus init in order
@@ -335,6 +335,15 @@ class Consensus {
   // Returns 0 if timeout happened.
   virtual Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const = 0;
+
+  // Read replicated messages for xCluster replication.
+  // Only committed messages (committed_op_id) are returned.
+  // There can be more valid messages that are within the majority_replicated_op_id and
+  // committed_op_id range.
+  // If any message is not returned due to delay in commit, or if the result reaches
+  // FLAGS_consensus_max_batch_size_bytes, have_more_messages is set.
+  virtual Result<XClusterReadOpsResult> ReadReplicatedMessagesForXCluster(
+      const yb::OpId& from, const CoarseTimePoint deadline, bool fetch_single_entry) = 0;
 
   // Read majority replicated messages for CDC producer.
   virtual Result<ReadOpsResult> ReadReplicatedMessagesForCDC(

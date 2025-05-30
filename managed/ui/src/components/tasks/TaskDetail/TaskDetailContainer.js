@@ -10,17 +10,9 @@ import {
   fetchFailedSubTasks,
   fetchFailedSubTasksResponse,
   fetchTaskProgress,
-  fetchTaskProgressResponse,
-  retryTask,
-  retryTaskResponse,
-  rollbackTask,
-  rollbackTaskResponse,
+  fetchTaskProgressResponse
 } from '../../../actions/tasks';
-import {
-  fetchUniverseList,
-  fetchUniverseListResponse
-} from '../../../actions/universe';
-
+import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -41,16 +33,6 @@ const mapDispatchToProps = (dispatch) => {
     fetchCurrentTaskDetail: (taskUUID) => {
       dispatch(fetchTaskProgress(taskUUID)).then((response) => {
         dispatch(fetchTaskProgressResponse(response.payload));
-      });
-    },
-    retryCurrentTask: (taskUUID) => {
-      return dispatch(retryTask(taskUUID)).then((response) => {
-        return dispatch(retryTaskResponse(response.payload));
-      });
-    },
-    rollbackCurrentTask: (taskUUID) => {
-      return dispatch(rollbackTask(taskUUID)).then((response) => {
-        return dispatch(rollbackTaskResponse(response.payload));
       });
     },
     fetchUniverseList: () => {

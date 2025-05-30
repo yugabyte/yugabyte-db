@@ -65,6 +65,7 @@ select pgstatginindex('test_hashidx');
 -- check that using any of these functions with unsupported relations will fail
 create table test_partitioned (a int) partition by range (a);
 create index test_partitioned_index on test_partitioned(a);
+create index test_partitioned_hash_index on test_partitioned using hash(a);
 -- these should all fail
 select pgstattuple('test_partitioned');
 select pgstattuple('test_partitioned_index');
@@ -73,6 +74,7 @@ select pg_relpages('test_partitioned');
 select pgstatindex('test_partitioned');
 select pgstatginindex('test_partitioned');
 select pgstathashindex('test_partitioned');
+select pgstathashindex('test_partitioned_hash_index');
 
 create view test_view as select 1;
 -- these should all fail
@@ -117,6 +119,18 @@ create index test_partition_hash_idx on test_partition using hash (a);
 select pgstatindex('test_partition_idx');
 select pgstathashindex('test_partition_hash_idx');
 
+-- these should work for sequences
+create sequence test_sequence;
+select count(*) from pgstattuple('test_sequence');
+select pg_relpages('test_sequence');
+
+-- these should fail for sequences
+select pgstatindex('test_sequence');
+select pgstatginindex('test_sequence');
+select pgstathashindex('test_sequence');
+select pgstattuple_approx('test_sequence');
+
+drop sequence test_sequence;
 drop table test_partitioned;
 drop view test_view;
 drop foreign table test_foreign_table;

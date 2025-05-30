@@ -41,7 +41,9 @@ var createK8sCertManagerEITCmd = &cobra.Command{
 		}
 
 		if len(strings.TrimSpace(rootCertFilePath)) == 0 {
-			logrus.Fatalf(formatter.Colorize("Missing root certificate file path\n", formatter.RedColor))
+			logrus.Fatalf(
+				formatter.Colorize("Missing root certificate file path\n", formatter.RedColor),
+			)
 		}
 
 		logrus.Debug("Reading contents from root certificate file: ", rootCertFilePath)

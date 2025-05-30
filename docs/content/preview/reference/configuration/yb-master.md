@@ -7,8 +7,9 @@ menu:
   preview:
     identifier: yb-master
     parent: configuration
-    weight: 2450
+    weight: 2000
 type: docs
+body_class: configuration
 ---
 
 Use the yb-master binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The yb-master executable file is located in the `bin` directory of YugabyteDB home.
@@ -53,7 +54,7 @@ Specifies the configuration file to load flags from.
 
 ##### --master_addresses
 
-Specifies a comma-separated list of all RPC addresses for yb-master consensus-configuration.
+Specifies a comma-separated list of all RPC addresses for YB-Master consensus-configuration.
 
 {{< note title="Note" >}}
 
@@ -75,7 +76,7 @@ Changing the value of this flag after the cluster has already been created is no
 
 ##### --fs_wal_dirs
 
-Specifies a comma-separated list of directories, where yb-master will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
+Specifies a comma-separated list of directories, where YB-Master will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
 Default: Same value as `--fs_data_dirs`
 
@@ -165,7 +166,7 @@ Default: `""`
 
 ##### --defer_index_backfill
 
-If enabled, yb-master avoids launching any new index-backfill jobs on the cluster for all new YCQL indexes.
+If enabled, YB-Master avoids launching any new index-backfill jobs on the cluster for all new YCQL indexes.
 You will need to run [`yb-admin backfill_indexes_for_table`](../../../admin/yb-admin/#backfill-indexes-for-table) manually for indexes to be functional.
 See [`CREATE DEFERRED INDEX`](../../../api/ycql/ddl_create_index/#deferred-index) for reference.
 
@@ -179,7 +180,7 @@ Default: `true`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp>}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -202,6 +203,12 @@ Default: `true`
 Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
 
 Default: `false`
+
+##### --ysql_follower_reads_avoid_waiting_for_safe_time
+
+Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+Default: `true`
 
 ## Logging flags
 
@@ -233,7 +240,7 @@ Default: `false`
 
 ##### --log_dir
 
-The directory to write yb-master log files.
+The directory to write YB-Master log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
@@ -275,18 +282,18 @@ Default: `true`
 
 ## Memory division flags
 
-These flags are used to determine how the RAM of a node is split between the [master](../../../architecture/key-concepts/#master-server) process and other processes, including Postgres and a [TServer](../../../architecture/key-concepts/#tserver) process if present, as well as how to split memory inside of a master process between various internal components like the RocksDB block cache.
+These flags are used to determine how the RAM of a node is split between the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including the PostgreSQL processes and a [Master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
 
 {{< warning title="Warning" >}}
 
-Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for the master process and TServer if present leaves enough memory on the node for Postgres, and any required other processes like monitoring agents plus the memory needed by the kernel.
+Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for the Master process and TServer (if present) leaves enough memory on the node for PostgreSQL and any required other processes like monitoring agents, plus the memory needed by the kernel.
 
 {{< /warning >}}
 
 
 ### Flags controlling the defaults for the other memory division flags
 
-The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and master.
+The memory division flags have multiple sets of defaults; which set of defaults is in force depends on these flags.  Note that these defaults can differ between TServer and Master.
 
 ##### --use_memory_defaults_optimized_for_ysql
 
@@ -294,22 +301,22 @@ If true, the defaults for the memory division settings take into account the amo
 
 Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
-If this flag is true then the memory division flag defaults change to provide much more memory for Postgres; furthermore, they optimize for the node size.
+If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
 
-If these defaults are used for both TServer and master, then a node's available memory is partitioned as follows:
+If these defaults are used for both TServer and Master, then a node's available memory is partitioned as follows:
 
 | node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
 | :--- | ---: | ---: | ---: | ---: |
 | TServer %  | 45% | 48% | 57% | 60% |
-| master %   | 20% | 15% | 10% | 10% |
-| Postgres % | 25% | 27% | 28% | 27% |
+| Master %   | 20% | 15% | 10% | 10% |
+| PostgreSQL % | 25% | 27% | 28% | 27% |
 | other %    | 10% | 10% |  5% |  3% |
 
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
 
-For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
+For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
 
-The defaults for the master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
+The defaults for the Master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
 
 | flag | default |
 | :--- | :--- |
@@ -318,45 +325,28 @@ The defaults for the master process partitioning flags when `--use_memory_defaul
 
 Currently these are the same as the defaults when `--use_memory_defaults_optimized_for_ysql` is `false`, but may change in future releases.
 
-Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [allowing for tablet replica overheads](../../../develop/best-practices-ysql#allowing-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
-
-| total node GiB | max number of tablet replicas | max number of Postgres connections |
-| ---: | ---: | ---: |
-|   4 |    240 |  30 |
-|   8 |    530 |  65 |
-|  16 |  1,250 | 130 |
-|  32 |  2,700 | 225 |
-|  64 |  5,500 | 370 |
-| 128 | 11,000 | 550 |
-| 256 | 22,100 | 730 |
-
-These values are approximate because different kernels use different amounts of memory, leaving different amounts of memory for the TServer and thus the per-tablet overhead TServer component.
-
-Also shown is an estimate of how many Postgres connections that node can handle assuming default Postgres flags and usage.  Unusually memory expensive queries or preloading Postgres catalog information will reduce the number of connections that can be supported.
-
-Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
 
 ### Flags controlling the split of memory among processes
 
-Note that in general these flags will have different values for TServer and master processes.
+Note that in general these flags will have different values for TServer and Master processes.
 
 ##### --memory_limit_hard_bytes
 
-Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
+Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
 Default: `0`
 
 ##### --default_memory_limit_to_ram_ratio
 
-The percentage of available RAM to use for this process if [`--memory_limit_hard_bytes`](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
-Default: `0.10` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `0.10` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 ### Flags controlling the split of memory within a master process
 
 ##### --db_block_cache_size_bytes
 
-Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [`--db_block_cache_size_percentage`](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
 
 Default: `-1`
 
@@ -364,7 +354,7 @@ Default: `-1`
 
 Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
 
-Default: `25` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `25` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 ##### --tablet_overhead_size_percentage
 
@@ -372,11 +362,11 @@ Percentage of the process' hard memory limit to use for tablet-related overheads
 
 Each tablet replica generally requires 700 MiB of this memory.
 
-Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `0` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 ## Raft flags
 
-For a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-master configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
+With the exception of flags that have different defaults for yb-master vs yb-tserver (for example, `--evict_failed_followers`), for a typical deployment, values used for Raft and the write ahead log (WAL) flags in yb-master configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -392,7 +382,7 @@ Failed followers will be evicted from the Raft group and the data will be re-rep
 
 Default: `false`
 
-Note that it is not recommended to set the flag to true for masters as you cannot automatically recover a failed master once it is evicted.
+Note that it is not recommended to set the flag to true for Masters as you cannot automatically recover a failed Master once it is evicted.
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
@@ -470,7 +460,7 @@ Default: `64`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
 ## Load balancing flags
 
@@ -737,7 +727,7 @@ Default: `1`
 
 ##### --enable_tablet_split_of_pitr_tables
 
-Enables automatic tablet splitting of tables covered by Point In Time Recovery schedules.
+Enables automatic tablet splitting of tables covered by Point-In-Time Recovery schedules.
 
 Default: `true`
 
@@ -801,7 +791,7 @@ The unique identifier for the cluster.
 
 Default: `""`
 
-##### -- use_private_ip
+##### --use_private_ip
 
 Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration flags.
 
@@ -909,10 +899,12 @@ To specify a _minimum_ TLS version of 1.2, for example, the flag needs to be set
 --ssl_protocols = tls12,tls13
 ```
 
-In addition, as this setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag as follows:
+By default, PostgreSQL uses a default minimum version for TLS of v1.2, as set using the [ssl_min_protocol_version](https://www.postgresql.org/docs/15/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION) configuration parameter.
+
+As the `ssl_protocols` setting does not propagate to PostgreSQL, if you specify a different minimum TLS version for Master and TServer, you should update the `ssl_min_protocol_version` parameter. For example:
 
 ```sh
---ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
+--ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.3'"
 ```
 
 ## Change data capture (CDC) flags
@@ -932,6 +924,18 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
 Default: `28800` (8 hours)
+
+##### --cdc_intent_retention_ms
+
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+
+Default: `28800000` (8 hours)
+
+##### --cdcsdk_tablet_not_of_interest_timeout_secs
+
+Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+Default: `14400` (4 hours)
 
 ##### --enable_tablet_split_of_cdcsdk_streamed_tables
 
@@ -1032,14 +1036,28 @@ Default: `false`
 
 {{< note title="Important" >}}
 
-Each yb-tserver regularly sends a heartbeat request to the yb-master
-leader. As part of the heartbeat response, yb-master leader reads all the rows
+Each YB-TServer regularly sends a heartbeat request to the YB-Master
+leader. As part of the heartbeat response, YB-Master leader reads all the rows
 in the table `pg_yb_catalog_version` and sends the result back in the heartbeat
 response. As there is one row in the table `pg_yb_catalog_version` for each
 database, the cost of reading `table pg_yb_catalog_version` becomes more
-expensive when the number of yb-tservers, or the number of databases goes up.
+expensive when the number of YB-TServers, or the number of databases goes up.
 
 {{< /note >}}
+
+## Advisory lock flags
+
+Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+
+To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+
+##### --ysql_yb_enable_advisory_locks
+
+Enables advisory locking.
+
+This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
+
+Default: false
 
 ## Advanced flags
 

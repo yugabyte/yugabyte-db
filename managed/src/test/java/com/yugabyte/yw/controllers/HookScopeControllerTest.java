@@ -85,7 +85,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
   @Before
   public void before() {
     defaultCustomer = ModelFactory.testCustomer();
-    defaultUser = ModelFactory.testUser(defaultCustomer);
+    defaultUser = ModelFactory.testUser(defaultCustomer, Users.Role.Admin);
     adminUser = ModelFactory.testUser(defaultCustomer, "admin@customer.com", Role.Admin);
     superAdminUser =
         ModelFactory.testUser(defaultCustomer, "superadmin@customer.com", Role.SuperAdmin);

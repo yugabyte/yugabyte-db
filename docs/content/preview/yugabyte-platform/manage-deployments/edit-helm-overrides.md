@@ -29,7 +29,7 @@ To edit Kubernetes overrides, do the following:
 
 If you are using Google Cloud Storage (GCS) for backups, you can enable GKE service account-based IAM (GCP IAM) so that Kubernetes universes can access GCS.
 
-Before upgrading a universe for GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam).
+Before upgrading a universe for GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/#gke-service-account-based-iam-gcp-iam).
 
 To upgrade an existing universe to use GCP IAM, do the following:
 

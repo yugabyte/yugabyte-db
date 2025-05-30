@@ -19,7 +19,6 @@
 #include "executor/nodeAppend.h"
 #include "executor/nodeBitmapAnd.h"
 #include "executor/nodeBitmapHeapscan.h"
-#include "executor/nodeYbBitmapTablescan.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeCtescan.h"
@@ -42,7 +41,6 @@
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeModifyTable.h"
 #include "executor/nodeNamedtuplestorescan.h"
-#include "executor/nodeYbBatchedNestloop.h"
 #include "executor/nodeNestloop.h"
 #include "executor/nodeProjectSet.h"
 #include "executor/nodeRecursiveunion.h"
@@ -66,10 +64,12 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
+/* YB includes */
+#include "executor/nodeYbBatchedNestloop.h"
 #include "executor/nodeYbBitmapIndexscan.h"
+#include "executor/nodeYbBitmapTablescan.h"
 #include "executor/nodeYbSeqscan.h"
+#include "pg_yb_utils.h"
 
 static bool IndexSupportsBackwardScan(Oid indexid);
 

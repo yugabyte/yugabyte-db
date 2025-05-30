@@ -17,9 +17,11 @@
 #include "yb/integration-tests/packed_row_test_base.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/util/backoff_waiter.h"
 
 using namespace std::literals;
 
+DECLARE_bool(enable_global_load_balancing);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_int32(remote_bootstrap_begin_session_timeout_ms);
@@ -330,6 +332,8 @@ TEST_F(CqlPackedRowTest, CompactWithoutLivenessColumn) {
 }
 
 void CqlPackedRowTest::TestRemoteBootstrap() {
+  // Global load balancing could break leader step down at the end of this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_global_load_balancing) = false;
   FLAGS_remote_bootstrap_begin_session_timeout_ms = 50000;
   FLAGS_TEST_rbs_sleep_after_taking_metadata_ms = 500;
   constexpr size_t kNewTServerIdx = 3;
@@ -375,7 +379,21 @@ void CqlPackedRowTest::TestRemoteBootstrap() {
   }
 
   auto new_server_uuid = cluster_->mini_tablet_server(kNewTServerIdx)->fs_manager().uuid();
-  ASSERT_OK(StepDown(leaders[0], new_server_uuid, ForceStepDown::kTrue));
+  ASSERT_OK(WaitFor([this, &new_server_uuid] {
+    auto leaders = ListActiveTabletLeadersPeers(cluster_.get());
+    if (leaders.size() != 1) {
+      LOG(WARNING) << "Wrong number of leaders: " << AsString(leaders, [](const auto& peer) {
+        return Format("T $0 P $1", peer->tablet_id(), peer->permanent_uuid());
+      });
+      return false;
+    }
+    if (leaders[0]->permanent_uuid() == new_server_uuid) {
+      return true;
+    }
+    WARN_NOT_OK(StepDown(leaders[0], new_server_uuid, ForceStepDown::kTrue),
+                "Step down failed");
+    return false;
+  }, 20s * kTimeMultiplier, "Wait for leader change to " + new_server_uuid));
 
   auto value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
   LOG(INFO) << "Value: " << value;

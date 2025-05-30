@@ -3205,7 +3205,7 @@ check_new_partition_bound(char *relname, Relation parent,
 								 * datums list.
 								 */
 								PartitionRangeDatum *datum =
-								list_nth(spec->upperdatums, Abs(cmpval) - 1);
+									list_nth(spec->upperdatums, Abs(cmpval) - 1);
 
 								/*
 								 * The new partition overlaps with the

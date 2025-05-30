@@ -1,8 +1,8 @@
 #include "postgres.h"
 
 #include "funcapi.h"
-#include "postmaster/syslogger.h"
 #include "pg_yb_utils.h"
+#include "postmaster/syslogger.h"
 #include "utils/builtins.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

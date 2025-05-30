@@ -19,6 +19,8 @@
  */
 #include "postgres.h"
 
+#include <unistd.h>
+
 #include "access/xlog.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
@@ -121,7 +123,20 @@ StartupProcShutdownHandler(SIGNAL_ARGS)
 	int			save_errno = errno;
 
 	if (in_restore_command)
-		proc_exit(1);
+	{
+		/*
+		 * If we are in a child process (e.g., forked by system() in
+		 * RestoreArchivedFile()), we don't want to call any exit callbacks.
+		 * The parent will take care of that.
+		 */
+		if (MyProcPid == (int) getpid())
+			proc_exit(1);
+		else
+		{
+			write_stderr_signal_safe("StartupProcShutdownHandler() called in child process\n");
+			_exit(1);
+		}
+	}
 	else
 		shutdown_requested = true;
 	WakeupRecovery();
@@ -314,11 +329,22 @@ startup_progress_timeout_handler(void)
 	startup_progress_timer_expired = true;
 }
 
+void
+disable_startup_progress_timeout(void)
+{
+	/* Feature is disabled. */
+	if (log_startup_progress_interval == 0)
+		return;
+
+	disable_timeout(STARTUP_PROGRESS_TIMEOUT, false);
+	startup_progress_timer_expired = false;
+}
+
 /*
  * Set the start timestamp of the current operation and enable the timeout.
  */
 void
-begin_startup_progress_phase(void)
+enable_startup_progress_timeout(void)
 {
 	TimestampTz fin_time;
 
@@ -326,13 +352,26 @@ begin_startup_progress_phase(void)
 	if (log_startup_progress_interval == 0)
 		return;
 
-	disable_timeout(STARTUP_PROGRESS_TIMEOUT, false);
-	startup_progress_timer_expired = false;
 	startup_progress_phase_start_time = GetCurrentTimestamp();
 	fin_time = TimestampTzPlusMilliseconds(startup_progress_phase_start_time,
 										   log_startup_progress_interval);
 	enable_timeout_every(STARTUP_PROGRESS_TIMEOUT, fin_time,
 						 log_startup_progress_interval);
+}
+
+/*
+ * A thin wrapper to first disable and then enable the startup progress
+ * timeout.
+ */
+void
+begin_startup_progress_phase(void)
+{
+	/* Feature is disabled. */
+	if (log_startup_progress_interval == 0)
+		return;
+
+	disable_startup_progress_timeout();
+	enable_startup_progress_timeout();
 }
 
 /*

@@ -15,8 +15,6 @@
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/dockv/value_type.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -43,6 +41,7 @@ class PrimitiveValue;
 class RowPackerV1;
 class RowPackerV2;
 class SchemaPacking;
+class SchemaPackingRegistry;
 class SchemaPackingStorage;
 class SubDocKey;
 class YBPartialRow;

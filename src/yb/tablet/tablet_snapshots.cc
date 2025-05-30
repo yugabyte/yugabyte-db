@@ -21,10 +21,10 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/vector_index.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
@@ -35,12 +35,14 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -108,7 +110,7 @@ struct TabletSnapshots::ColocatedTableMetadata {
   boost::optional<Schema> schema;
   boost::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
-  std::string table_id;
+  TableId table_id;
 };
 
 TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}
@@ -351,7 +353,7 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
       CoarseMonoClock::Now() +
       MonoDelta::FromMilliseconds(FLAGS_max_wait_for_aborting_transactions_during_restore_ms);
   WARN_NOT_OK(
-      tablet().AbortSQLTransactions(deadline),
+      tablet().AbortActiveTransactions(deadline),
       Format("Cannot abort transactions for tablet $0 during restore", tablet().tablet_id()));
 
   if (!snapshot_dir.empty()) {
@@ -511,14 +513,22 @@ Status TabletSnapshots::RestoreCheckpoint(
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(DeleteStorages(CompleteShutdownStorages(op_pauses)));
+    for (const auto& path : CompleteShutdownStorages(op_pauses)) {
+      if (env().FileExists(path)) {
+        RETURN_NOT_OK(env().DeleteRecursively(path));
+      }
+    }
 
     auto s = CopyDirectory(
-        &rocksdb_env(), snapshot_dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
+        &rocksdb_env(), snapshot_dir, db_dir,
+        CopyOption::kUseHardLinks, CopyOption::kCreateIfMissing, CopyOption::kRecursive);
     if (PREDICT_FALSE(!s.ok())) {
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
+
+    RETURN_NOT_OK(MoveChildren(this->env(), db_dir, docdb::IncludeIntents::kFalse));
+
     auto tablet_metadata_file = TabletMetadataFile(db_dir);
     if (env().FileExists(tablet_metadata_file)) {
       RETURN_NOT_OK(env().DeleteFile(tablet_metadata_file));
@@ -617,7 +627,8 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
   auto dest_dir = source_dir + kTempSnapshotDirSuffix;
   RETURN_NOT_OK(CleanupSnapshotDir(dest_dir));
   RETURN_NOT_OK(CopyDirectory(
-      &rocksdb_env(), source_dir, dest_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue));
+      &rocksdb_env(), source_dir, dest_dir,
+      CopyOption::kUseHardLinks, CopyOption::kCreateIfMissing, CopyOption::kRecursive));
 
   {
     rocksdb::Options rocksdb_options;
@@ -695,8 +706,8 @@ Status TabletSnapshots::CreateCheckpoint(
 
 Status TabletSnapshots::DoCreateCheckpoint(
     const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in) {
-  auto temp_intents_dir = docdb::GetStorageDir(dir, kIntentsDirName);
-  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, kIntentsDirName);
+  auto temp_intents_dir = docdb::GetStorageDir(dir, docdb::kIntentsDirName);
+  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, docdb::kIntentsDirName);
 
   if (has_intents_db()) {
     RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));

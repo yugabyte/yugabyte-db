@@ -94,6 +94,7 @@ properties:
       - Provisioned
       - SoftwareInstalled
       - UpgradeSoftware
+      - UpgradeMasterSoftware
       - RollbackUpgrade
       - FinalizeUpgrade
       - UpdateGFlags

@@ -42,7 +42,7 @@
 #include "parser/scansup.h"
 #include "utils/builtins.h"
 
-/* YB Includes */
+/* YB includes */
 #include "pg_yb_utils.h"
 
 /*

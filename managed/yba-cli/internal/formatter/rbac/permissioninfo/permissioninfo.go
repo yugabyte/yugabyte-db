@@ -123,7 +123,11 @@ func (c *Context) PrerequisitePermissions() string {
 
 	for _, p := range c.p.GetPrerequisitePermissions() {
 		permissionPrereq = fmt.Sprintf(
-			"%sAction: %s, Resource Type: %s\n", permissionPrereq, p.GetAction(), p.GetResourceType())
+			"%sAction: %s, Resource Type: %s\n",
+			permissionPrereq,
+			p.GetAction(),
+			p.GetResourceType(),
+		)
 	}
 	return permissionPrereq
 }

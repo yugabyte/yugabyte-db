@@ -57,7 +57,7 @@ var updateUserCmd = &cobra.Command{
 
 		r := make([]ybaclient.UserWithFeatures, 0)
 		for _, user := range rUsers {
-			if strings.Compare(user.GetEmail(), email) == 0 {
+			if strings.EqualFold(user.GetEmail(), email) {
 				r = append(r, user)
 			}
 		}
@@ -82,7 +82,9 @@ var updateUserCmd = &cobra.Command{
 			Timezone: util.GetStringPointer(timezone),
 		}
 
-		rUpdate, response, err := authAPI.UpdateUserProfile(updateUser.GetUuid()).Users(req).Execute()
+		rUpdate, response, err := authAPI.UpdateUserProfile(updateUser.GetUuid()).
+			Users(req).
+			Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
 				response,

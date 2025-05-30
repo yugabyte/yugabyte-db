@@ -3,6 +3,7 @@
 
 use strict;
 use warnings;
+use Config;
 use File::Basename qw(basename dirname);
 use File::Path qw(rmtree);
 use PostgreSQL::Test::Cluster;
@@ -173,6 +174,16 @@ foreach my $filename (
 	close $file;
 }
 
+# Test that macOS system files are skipped. Only test on non-macOS systems
+# however since creating incorrect .DS_Store files on a macOS system may have
+# unintended side effects.
+if ($Config{osname} ne 'darwin')
+{
+	open my $file, '>>', "$pgdata/.DS_Store";
+	print $file "DONOTCOPY";
+	close $file;
+}
+
 # Connect to a database to create global/pg_internal.init.  If this is removed
 # the test to ensure global/pg_internal.init is not copied will return a false
 # positive.
@@ -242,6 +253,12 @@ foreach my $filename (
 	ok(!-f "$tempdir/backup/$filename", "$filename not copied");
 }
 
+# We only test .DS_Store files being skipped on non-macOS systems
+if ($Config{osname} ne 'darwin')
+{
+	ok(!-f "$tempdir/backup/.DS_Store", ".DS_Store not copied");
+}
+
 # Unlogged relation forks other than init should not be copied
 ok(-f "$tempdir/backup/${baseUnloggedPath}_init",
 	'unlogged init fork in backup');
@@ -304,17 +321,23 @@ $node->command_fails(
 	[ @pg_basebackup_defs, '-D', "$tempdir/backup_foo", '-Fp', "-Tfoo" ],
 	'-T with invalid format fails');
 
-# Tar format doesn't support filenames longer than 100 bytes.
 my $superlongname = "superlongname_" . ("x" x 100);
-my $superlongpath = "$pgdata/$superlongname";
+# Tar format doesn't support filenames longer than 100 bytes.
+SKIP:
+{
+	my $superlongpath = "$pgdata/$superlongname";
 
-open my $file, '>', "$superlongpath"
-  or die "unable to create file $superlongpath";
-close $file;
-$node->command_fails(
-	[ @pg_basebackup_defs, '-D', "$tempdir/tarbackup_l1", '-Ft' ],
-	'pg_basebackup tar with long name fails');
-unlink "$pgdata/$superlongname";
+	skip "File path too long", 1
+	  if $windows_os && length($superlongpath) > 255;
+
+	open my $file, '>', "$superlongpath"
+	  or die "unable to create file $superlongpath";
+	close $file;
+	$node->command_fails(
+		[ @pg_basebackup_defs, '-D', "$tempdir/tarbackup_l1", '-Ft' ],
+		'pg_basebackup tar with long name fails');
+	unlink "$superlongpath";
+}
 
 # The following tests are for symlinks.
 
@@ -327,19 +350,24 @@ umask(0027);
 # Enable group permissions on PGDATA
 chmod_recursive("$pgdata", 0750, 0640);
 
-rename("$pgdata/pg_replslot", "$tempdir/pg_replslot")
-  or BAIL_OUT "could not move $pgdata/pg_replslot";
-dir_symlink("$tempdir/pg_replslot", "$pgdata/pg_replslot")
+# Create a temporary directory in the system location.
+my $sys_tempdir = PostgreSQL::Test::Utils::tempdir_short;
+
+# pg_replslot should be empty. We remove it and recreate it in $sys_tempdir
+# before symlinking, in order to avoid possibly trying to move things across
+# drives.
+rmdir("$pgdata/pg_replslot")
+  or BAIL_OUT "could not remove $pgdata/pg_replslot";
+mkdir("$sys_tempdir/pg_replslot"); # if this fails the symlink will fail
+dir_symlink("$sys_tempdir/pg_replslot", "$pgdata/pg_replslot")
   or BAIL_OUT "could not symlink to $pgdata/pg_replslot";
 
 $node->start;
 
 # Test backup of a tablespace using tar format.
-# Create a temporary directory in the system location and symlink it
-# to our physical temp location.  That way we can use shorter names
-# for the tablespace directories, which hopefully won't run afoul of
-# the 99 character length limit.
-my $sys_tempdir      = PostgreSQL::Test::Utils::tempdir_short;
+# Symlink the system located tempdir to our physical temp location.
+# That way we can use shorter names for the tablespace directories,
+# which hopefully won't run afoul of the 99 character length limit.
 my $real_sys_tempdir = "$sys_tempdir/tempdir";
 dir_symlink "$tempdir", $real_sys_tempdir;
 
@@ -461,7 +489,7 @@ SKIP:
 SKIP:
 {
 	skip "unix-style permissions not supported on Windows", 1
-	  if ($windows_os);
+	  if ($windows_os || $Config::Config{osname} eq 'cygwin');
 
 	ok(check_mode_recursive("$tempdir/backup1", 0750, 0640),
 		"check backup dir permissions");

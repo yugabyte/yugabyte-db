@@ -16,7 +16,7 @@
 
 #include "access/xlogdefs.h"
 
-/* Yugabyte includes */
+/* YB includes */
 #include "common/pg_yb_common.h"
 
 
@@ -241,7 +241,6 @@ typedef struct VariableCacheData
 	 */
 	Oid			nextOid;		/* next OID to assign */
 	uint32		oidCount;		/* OIDs available before must do XLOG work */
-
 
 	/*
 	 * These fields are protected by XidGenLock.

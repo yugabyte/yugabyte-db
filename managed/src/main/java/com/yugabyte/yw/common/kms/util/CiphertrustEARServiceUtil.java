@@ -2,11 +2,13 @@ package com.yugabyte.yw.common.kms.util;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.util.CiphertrustManagerClient.AuthType;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -153,20 +155,93 @@ public class CiphertrustEARServiceUtil {
     return randomBytes;
   }
 
+  public EncryptionKey encryptKeyWithEncryptionContext(ObjectNode authConfig, byte[] keyBytes) {
+    Map<String, Object> encryptResponse = encryptKey(authConfig, keyBytes);
+    Object cipherTextObject = encryptResponse.get("ciphertext");
+    String cipherTextString = "";
+    if (cipherTextObject != null && cipherTextObject instanceof String) {
+      cipherTextString = cipherTextObject.toString();
+    }
+    if (cipherTextString.isEmpty()) {
+      log.error("Error encrypting key with CIPHERTRUST KMS. Got empty ciphertext.");
+      return null;
+    }
+    byte[] cipherTextBytes = Base64.getDecoder().decode(cipherTextString);
+    ObjectMapper mapper = new ObjectMapper();
+    ObjectNode encryptionContext = mapper.convertValue(encryptResponse, ObjectNode.class);
+    return new EncryptionKey(cipherTextBytes, encryptionContext);
+  }
+
   public Map<String, Object> encryptKey(ObjectNode authConfig, byte[] keyBytes) {
     CiphertrustManagerClient ciphertrustManagerClient = getCiphertrustManagerClient(authConfig);
     // Recheck the conversion from bytes -> string once again.
     Map<String, Object> encryptResponse =
         ciphertrustManagerClient.encryptText(Base64.getEncoder().encodeToString(keyBytes));
-    if (encryptResponse == null || encryptResponse.isEmpty()) {
+    if (encryptResponse == null
+        || encryptResponse.isEmpty()
+        || !encryptResponse.containsKey("ciphertext")) {
       log.error("Error encrypting key with CIPHERTRUST KMS.");
       return null;
     }
     return encryptResponse;
   }
 
+  public String getKeyId(ObjectNode authConfig) {
+    CiphertrustManagerClient ciphertrustManagerClient = getCiphertrustManagerClient(authConfig);
+    Map<String, Object> keyDetails = ciphertrustManagerClient.getKeyDetails();
+    if (keyDetails == null || keyDetails.isEmpty()) {
+      // Key does not exist
+      log.error("Key does not exist on CipherTrust manager.");
+      return null;
+    }
+    if (keyDetails.containsKey("id")) {
+      String keyId = keyDetails.get("id").toString();
+      if (keyId == null || keyId.isEmpty()) {
+        log.error("Key ID is empty.");
+        return null;
+      } else {
+        log.info(
+            "Key name is: '{}', key ID is '{}'.",
+            authConfig.path(CipherTrustKmsAuthConfigField.KEY_NAME.fieldName).asText(),
+            keyId);
+        return keyId;
+      }
+    } else {
+      log.error("Key ID not found in key details.");
+      return null;
+    }
+  }
+
+  public byte[] decryptKeyWithEncryptionContext(
+      ObjectNode authConfig, ObjectNode encryptionContext) {
+    Map<String, Object> encryptedKeyMaterial =
+        new ObjectMapper().convertValue(encryptionContext, Map.class);
+    return decryptKey(authConfig, encryptedKeyMaterial);
+  }
+
   public byte[] decryptKey(ObjectNode authConfig, Map<String, Object> encryptedKeyMaterial) {
     CiphertrustManagerClient ciphertrustManagerClient = getCiphertrustManagerClient(authConfig);
+    // Check if the key name and ID correspond to the same key.
+    String keyId = getKeyId(authConfig);
+    if (keyId == null || keyId.isEmpty()) {
+      log.error("Key ID is empty in Ciphertrust KMS.");
+      return null;
+    }
+    String keyName = authConfig.path(CipherTrustKmsAuthConfigField.KEY_NAME.fieldName).asText();
+    if (keyName == null || keyName.isEmpty()) {
+      log.error("Key name is empty in Ciphertrust KMS.");
+      return null;
+    }
+    if (encryptedKeyMaterial.containsKey("id")
+        && !keyId.equals(encryptedKeyMaterial.get("id").toString())) {
+      String errMsg =
+          String.format(
+              "Key ID '%s' from the encryption context does not match the key name '%s' in the"
+                  + " CIPHERTRUST KMS auth config.",
+              keyId, keyName);
+      log.error(errMsg);
+      return null;
+    }
     // Recheck the conversion from bytes -> string once again.
     String decryptResponse = ciphertrustManagerClient.decryptText(encryptedKeyMaterial);
     if (decryptResponse == null || decryptResponse.isEmpty()) {
@@ -174,6 +249,17 @@ public class CiphertrustEARServiceUtil {
       return null;
     }
     return Base64.getDecoder().decode(decryptResponse);
+  }
+
+  public void testEncryptAndDecrypt(ObjectNode authConfig) {
+    byte[] randomTestKey = generateRandomBytes(32);
+    Map<String, Object> encryptedKeyMaterial = encryptKey(authConfig, randomTestKey);
+    byte[] decryptedKeyBytes = decryptKey(authConfig, encryptedKeyMaterial);
+    if (!Arrays.equals(randomTestKey, decryptedKeyBytes)) {
+      String errMsg = "Encrypt and decrypt operations gave different outputs in CipherTrust KMS.";
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
   }
 
   public String getConfigFieldValue(ObjectNode authConfig, String fieldName) {
@@ -228,17 +314,6 @@ public class CiphertrustEARServiceUtil {
               + " size from {} to {} in the KMS config.",
           authConfigKeySize,
           actualKeySize);
-    }
-  }
-
-  public void testEncryptAndDecrypt(ObjectNode authConfig) {
-    byte[] randomTestKey = generateRandomBytes(32);
-    Map<String, Object> encryptedKeyMaterial = encryptKey(authConfig, randomTestKey);
-    byte[] decryptedKeyBytes = decryptKey(authConfig, encryptedKeyMaterial);
-    if (!Arrays.equals(randomTestKey, decryptedKeyBytes)) {
-      String errMsg = "Encrypt and decrypt operations gave different outputs in CipherTrust KMS.";
-      log.error(errMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
   }
 
@@ -339,16 +414,6 @@ public class CiphertrustEARServiceUtil {
             keyDetails.get("usageMask").toString());
         return false;
       }
-    }
-
-    // Check if it is a symmetric key.
-    if (keyDetails.containsKey("objectType")
-        && !keyDetails.get("objectType").toString().equals("Symmetric Key")) {
-      log.error(
-          "Key '{}' is not a symmetric key on CipherTrust manager. Actual key type = '{}'.",
-          getConfigFieldValue(authConfig, CipherTrustKmsAuthConfigField.KEY_NAME.fieldName),
-          keyDetails.get("objectType").toString());
-      return false;
     }
 
     // If all checks pass, return true.

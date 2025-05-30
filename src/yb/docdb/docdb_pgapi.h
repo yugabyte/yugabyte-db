@@ -76,7 +76,8 @@ Status DocPgInit();
 
 Status DocPgPrepareExpr(const std::string& expr_str,
                         YbgPreparedExpr *expr,
-                        DocPgVarRef *ret_type);
+                        DocPgVarRef *ret_type,
+                        const std::optional<int> version);
 
 Status DocPgAddVarRef(size_t column_idx,
                       int32_t attno,

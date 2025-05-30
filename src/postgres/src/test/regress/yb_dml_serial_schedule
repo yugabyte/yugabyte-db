@@ -1,6 +1,6 @@
 # src/test/regress/yb_dml_serial_schedule
-test: yb_dml_insert_conflict
-test: yb_dml_read_time
-test: yb_dml_pushdown
-test: yb_dml_scankey
-test: yb_dml
+test: yb.orig.dml_insert_conflict
+test: yb.orig.dml_read_time
+test: yb.orig.dml_pushdown
+test: yb.orig.dml_scankey
+test: yb.orig.dml

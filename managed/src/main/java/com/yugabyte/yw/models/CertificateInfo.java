@@ -350,6 +350,13 @@ public class CertificateInfo extends Model {
     return copy;
   }
 
+  public CertificateInfo update(String certFilePath) throws IOException, NoSuchAlgorithmException {
+    setCertificate(certFilePath);
+    setChecksum(FileUtils.getFileChecksum(certFilePath));
+    save();
+    return this;
+  }
+
   public CertificateInfo update(
       Date sDate, Date eDate, String certPath, HashicorpVaultConfigParams params)
       throws IOException, NoSuchAlgorithmException {

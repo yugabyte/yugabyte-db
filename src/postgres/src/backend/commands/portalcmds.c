@@ -33,7 +33,10 @@
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
+
+/* YB includes */
 #include "pg_yb_utils.h"
+
 
 /*
  * PerformCursorOpen
@@ -299,6 +302,7 @@ PortalCleanup(Portal portal)
 
 			/* We must make the portal's resource owner current */
 			saveResourceOwner = CurrentResourceOwner;
+			/* YB: wrap in try-catch for transparent query retry */
 			PG_TRY();
 			{
 				if (portal->resowner)

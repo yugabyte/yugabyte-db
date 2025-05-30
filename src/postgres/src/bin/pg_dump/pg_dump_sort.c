@@ -81,6 +81,7 @@ enum dbObjectTypePriorities
 	PRIO_TABLE_DATA,
 	PRIO_SEQUENCE_SET,
 	PRIO_BLOB_DATA,
+	PRIO_STATISTICS_DATA_DATA,
 	PRIO_POST_DATA_BOUNDARY,	/* boundary! */
 	PRIO_CONSTRAINT,
 	PRIO_INDEX,
@@ -147,11 +148,12 @@ static const int dbObjectTypePriority[] =
 	PRIO_PUBLICATION,			/* DO_PUBLICATION */
 	PRIO_PUBLICATION_REL,		/* DO_PUBLICATION_REL */
 	PRIO_PUBLICATION_TABLE_IN_SCHEMA,	/* DO_PUBLICATION_TABLE_IN_SCHEMA */
+	PRIO_STATISTICS_DATA_DATA,	/* DO_STATISTICS_DATA_DATA */
 	PRIO_SUBSCRIPTION,			/* DO_SUBSCRIPTION */
 	PRIO_TABLEGROUP				/* DO_TABLEGROUP */
 };
 
-StaticAssertDecl(lengthof(dbObjectTypePriority) == (DO_TABLEGROUP + 1),
+StaticAssertDecl(lengthof(dbObjectTypePriority) == NUM_DUMPABLE_OBJECT_TYPES,
 				 "array length mismatch");
 
 static DumpId preDataBoundId;
@@ -473,7 +475,6 @@ TopoSort(DumpableObject **objs,
 		obj = objs[j];
 		/* Output candidate to ordering[] */
 		ordering[--i] = obj;
-
 		/* Update beforeConstraints counts of its predecessors */
 		for (k = 0; k < obj->nDeps; k++)
 		{
@@ -861,13 +862,46 @@ repairMatViewBoundaryMultiLoop(DumpableObject *boundaryobj,
 {
 	/* remove boundary's dependency on object after it in loop */
 	removeObjectDependency(boundaryobj, nextobj->dumpId);
-	/* if that object is a matview, mark it as postponed into post-data */
+
+	/*
+	 * If that object is a matview or matview stats, mark it as postponed into
+	 * post-data.
+	 */
 	if (nextobj->objType == DO_TABLE)
 	{
 		TableInfo  *nextinfo = (TableInfo *) nextobj;
 
 		if (nextinfo->relkind == RELKIND_MATVIEW)
 			nextinfo->postponed_def = true;
+	}
+	else if (nextobj->objType == DO_REL_STATS)
+	{
+		RelStatsInfo *nextinfo = (RelStatsInfo *) nextobj;
+
+		if (nextinfo->relkind == RELKIND_MATVIEW)
+			nextinfo->section = SECTION_POST_DATA;
+	}
+}
+
+/*
+ * If a function is involved in a multi-object loop, we can't currently fix
+ * that by splitting it into two DumpableObjects.  As a stopgap, we try to fix
+ * it by dropping the constraint that the function be dumped in the pre-data
+ * section.  This is sufficient to handle cases where a function depends on
+ * some unique index, as can happen if it has a GROUP BY for example.
+ */
+static void
+repairFunctionBoundaryMultiLoop(DumpableObject *boundaryobj,
+								DumpableObject *nextobj)
+{
+	/* remove boundary's dependency on object after it in loop */
+	removeObjectDependency(boundaryobj, nextobj->dumpId);
+	/* if that object is a function, mark it as postponed into post-data */
+	if (nextobj->objType == DO_FUNC)
+	{
+		FuncInfo   *nextinfo = (FuncInfo *) nextobj;
+
+		nextinfo->postponed_def = true;
 	}
 }
 
@@ -1062,6 +1096,43 @@ repairDependencyLoop(DumpableObject **loop,
 					}
 				}
 			}
+			else if (loop[i]->objType == DO_REL_STATS &&
+					 ((RelStatsInfo *) loop[i])->relkind == RELKIND_MATVIEW)
+			{
+				for (j = 0; j < nLoop; j++)
+				{
+					if (loop[j]->objType == DO_POST_DATA_BOUNDARY)
+					{
+						DumpableObject *nextobj;
+
+						nextobj = (j < nLoop - 1) ? loop[j + 1] : loop[0];
+						repairMatViewBoundaryMultiLoop(loop[j], nextobj);
+						return;
+					}
+				}
+			}
+		}
+	}
+
+	/* Indirect loop involving function and data boundary */
+	if (nLoop > 2)
+	{
+		for (i = 0; i < nLoop; i++)
+		{
+			if (loop[i]->objType == DO_FUNC)
+			{
+				for (j = 0; j < nLoop; j++)
+				{
+					if (loop[j]->objType == DO_PRE_DATA_BOUNDARY)
+					{
+						DumpableObject *nextobj;
+
+						nextobj = (j < nLoop - 1) ? loop[j + 1] : loop[0];
+						repairFunctionBoundaryMultiLoop(loop[j], nextobj);
+						return;
+					}
+				}
+			}
 		}
 	}
 
@@ -1236,9 +1307,9 @@ repairDependencyLoop(DumpableObject **loop,
 								"there are circular foreign-key constraints among these tables:",
 								nLoop));
 		for (i = 0; i < nLoop; i++)
-			pg_log_info("  %s", loop[i]->name);
-		pg_log_info("You might not be able to restore the dump without using --disable-triggers or temporarily dropping the constraints.");
-		pg_log_info("Consider using a full dump instead of a --data-only dump to avoid this problem.");
+			pg_log_warning_detail("%s", loop[i]->name);
+		pg_log_warning_hint("You might not be able to restore the dump without using --disable-triggers or temporarily dropping the constraints.");
+		pg_log_warning_hint("Consider using a full dump instead of a --data-only dump to avoid this problem.");
 		if (nLoop > 1)
 			removeObjectDependency(loop[0], loop[1]->dumpId);
 		else					/* must be a self-dependency */
@@ -1256,7 +1327,7 @@ repairDependencyLoop(DumpableObject **loop,
 		char		buf[1024];
 
 		describeDumpableObject(loop[i], buf, sizeof(buf));
-		pg_log_info("  %s", buf);
+		pg_log_warning_detail("%s", buf);
 	}
 
 	if (nLoop > 1)
@@ -1515,6 +1586,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 			snprintf(buf, bufsize,
 					 "POST-DATA BOUNDARY  (ID %d)",
 					 obj->dumpId);
+			return;
+		case DO_REL_STATS:
+			snprintf(buf, bufsize,
+					 "RELATION STATISTICS FOR %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
 			return;
 	}
 	/* shouldn't get here */

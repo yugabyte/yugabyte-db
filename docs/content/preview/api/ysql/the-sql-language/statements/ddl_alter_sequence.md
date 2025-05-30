@@ -101,7 +101,7 @@ Create a simple sequence.
 yugabyte=# CREATE SEQUENCE s;
 ```
 
-```
+```output
 CEATE SEQUENCE
 ```
 
@@ -111,7 +111,7 @@ Modify the increment value.
 yugabyte=# ALTER SEQUENCE s INCREMENT BY 5;
 ```
 
-```
+```output
 ALTER SEQUENCE
 ```
 
@@ -119,7 +119,7 @@ ALTER SEQUENCE
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -130,7 +130,7 @@ yugabyte=# SELECT nextval('s');
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        6
@@ -143,7 +143,7 @@ Modify the starting value.
 yugabyte=# ALTER SEQUENCE s RESTART WITH 2;
 ```
 
-```
+```output
 ALTER SEQUENCE
 ```
 
@@ -151,7 +151,7 @@ ALTER SEQUENCE
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        2
@@ -162,7 +162,7 @@ yugabyte=# SELECT nextval('s');
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        7
@@ -171,8 +171,8 @@ yugabyte=# SELECT nextval('s');
 
 ## See also
 
-- [`CREATE SEQUENCE`](../ddl_create_sequence)
-- [`DROP SEQUENCE`](../ddl_drop_sequence)
-- [`currval()`](../../../exprs/func_currval)
-- [`lastval()`](../../../exprs/func_lastval)
-- [`nextval()`](../../../exprs/func_nextval)
+- [CREATE SEQUENCE](../ddl_create_sequence)
+- [DROP SEQUENCE](../ddl_drop_sequence)
+- [currval()](../../../exprs/sequence_functions/func_currval)
+- [lastval()](../../../exprs/sequence_functions/func_lastval)
+- [nextval()](../../../exprs/sequence_functions/func_nextval)

@@ -38,6 +38,15 @@ Status EncryptedRandomAccessFile::Create(
       result, header_manager, std::move(underlying));
 }
 
+EncryptedRandomAccessFile::EncryptedRandomAccessFile(
+    std::unique_ptr<RandomAccessFile> file,
+    std::unique_ptr<BlockAccessCipherStream> stream,
+    uint64_t header_size)
+    : RandomAccessFileWrapper(std::move(file)), stream_(std::move(stream)),
+      header_size_(header_size) {}
+
+EncryptedRandomAccessFile::~EncryptedRandomAccessFile() = default;
+
 Status EncryptedRandomAccessFile::ReadInternal(
     uint64_t offset,
     size_t n,

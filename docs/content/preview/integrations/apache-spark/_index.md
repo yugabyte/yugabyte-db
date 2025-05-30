@@ -4,7 +4,6 @@ headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Use Apache Spark with YugabyteDB
 headcontent: Use Apache Spark with YugabyteDB
-image: /images/section_icons/develop/ecosystem/apache-spark.png
 menu:
   preview_integrations:
     identifier: apache-spark

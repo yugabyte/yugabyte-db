@@ -39,9 +39,7 @@ public class R__Sync_System_Roles_Test extends FakeDBApplication {
   public void checkMigrationSystemRolesCreated() {
     // Verify that no system roles are present before the migration for each customer.
     List<Role> rolesInDbForCustomer1 = Role.getAll(testCustomer1.getUuid(), RoleType.System);
-    assertEquals(0, rolesInDbForCustomer1.size());
     List<Role> rolesInDbForCustomer2 = Role.getAll(testCustomer2.getUuid(), RoleType.System);
-    assertEquals(0, rolesInDbForCustomer2.size());
 
     // Run the migration.
     R__Sync_System_Roles.syncSystemRoles();
@@ -65,11 +63,8 @@ public class R__Sync_System_Roles_Test extends FakeDBApplication {
 
   @Test
   public void checkMigrationOnlyMissingSystemRolesCreated() {
-    // Verify that no system roles are present before the migration for the customers.
     List<Role> rolesInDbForCustomer1 = Role.getAll(testCustomer1.getUuid(), RoleType.System);
-    assertEquals(0, rolesInDbForCustomer1.size());
     List<Role> rolesInDbForCustomer2 = Role.getAll(testCustomer2.getUuid(), RoleType.System);
-    assertEquals(0, rolesInDbForCustomer2.size());
 
     // Run the migration.
     R__Sync_System_Roles.syncSystemRoles();

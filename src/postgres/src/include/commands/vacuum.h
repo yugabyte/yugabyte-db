@@ -93,7 +93,7 @@ typedef struct ParallelVacuumState ParallelVacuumState;
  * any useful statistics.  If it does, the remainder of the struct holds
  * the information to be stored in a pg_statistic row for the column.  Be
  * careful to allocate any pointed-to data in anl_context, which will NOT
- * be GetCurrentMemoryContext() when compute_stats is called.
+ * be CurrentMemoryContext when compute_stats is called.
  *
  * Note: all comparisons done for statistical purposes should use the
  * underlying column's collation (attcollation), except in situations

@@ -1,4 +1,5 @@
-Table name: test_table
+- Table name: test_table
+- Database name: yugabyte
 - Table information:
 |Table Name        |Table Groupname |Colocated |
 +------------------+----------------+----------+
@@ -39,7 +40,8 @@ Table name: test_table
 
 ============================================================
 
-Table name: foreign_test_table
+- Table name: foreign_test_table
+- Database name: yugabyte
 - Table information:
 |Table Name                |Table Groupname |Colocated |
 +--------------------------+----------------+----------+
@@ -59,7 +61,8 @@ Table name: foreign_test_table
 
 ============================================================
 
-Table name: test_sequence
+- Table name: test_sequence
+- Database name: yugabyte
 - Table information:
 |Table Name           |Table Groupname |Colocated |
 +---------------------+----------------+----------+
@@ -85,7 +88,8 @@ Table name: test_sequence
 
 ============================================================
 
-Table name: test_table_partition
+- Table name: test_table_partition
+- Database name: yugabyte
 - Table information:
 |Table Name                  |Table Groupname |Colocated |
 +----------------------------+----------------+----------+
@@ -136,7 +140,8 @@ Table name: test_table_partition
 
 ============================================================
 
-Table name: referencing_table
+- Table name: referencing_table
+- Database name: yugabyte
 - Table information:
 |Table Name               |Table Groupname |Colocated |
 +-------------------------+----------------+----------+
@@ -163,7 +168,8 @@ Table name: referencing_table
 
 ============================================================
 
-Table name: test_view
+- Table name: test_view
+- Database name: yugabyte
 - Table information:
 |Table Name       |Table Groupname |Colocated |
 +-----------------+----------------+----------+
@@ -186,7 +192,8 @@ Table name: test_view
 
 ============================================================
 
-Table name: table_referenced_by_view
+- Table name: table_referenced_by_view
+- Database name: yugabyte
 - Table information:
 |Table Name                      |Table Groupname |Colocated |
 +--------------------------------+----------------+----------+

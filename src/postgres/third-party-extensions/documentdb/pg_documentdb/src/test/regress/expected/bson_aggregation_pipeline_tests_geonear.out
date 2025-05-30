@@ -1,0 +1,316 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 4900;
+SET documentdb.next_collection_index_id TO 4900;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "agg_geonear", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }, {"key": {"a.geo": "2dsphere"}, "name": "my_2ds_ageo_idx" }]}');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 2, "a": { "b": [ 1.1, 1.1]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 3, "a": { "b": [ 2.29, 2.29]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 4, "a": { "b": [ 3.31, 3.31]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 5, "a": { "b": [ 4.42, 4.42]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 6, "a": { "b": [ 5.5, 5.5]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 7, "a": { "b": [ 6.66, 6.66]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 8, "a": { "b": [ 7.74, 7.74]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','agg_geonear','{ "_id": 9, "a": { "b": [ 8.81, 8.81]} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Validations (more validations to follow)
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$match": { "query": {  } } }, { "$geoNear": { "near": [5, 6], "key": "a.b", "distanceField": "dist.calculated" } } ]}');
+ERROR:  $geoNear was not the first stage in the pipeline.
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated" } } ]}');
+ERROR:  There is more than one 2dsphere index; unsure which to use for $geoNear
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": {  } } ]}');
+ERROR:  $geoNear requires a 'distanceField' option as a String
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": "value" } ]}');
+ERROR:  invalid parameter: expected an object ($geoNear)
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": true, "distanceField": "dist.calculated", "key": "a" } } ]}');
+ERROR:  $geoNear requires near argument to be a GeoJSON object or a legacy point(array)
+SELECT documentdb_test_helpers.drop_primary_key('db','agg_geonear');
+ drop_primary_key 
+------------------
+ 
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.get_collection_indexes('db', 'agg_geonear') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                               index_spec_as_bson                                                                | index_is_valid 
+---------------+----------+-------------------------------------------------------------------------------------------------------------------------------------------------+----------------
+          4900 |     4901 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : "2d" }, "name" : "my_2d_ab_idx" }                                                             | t
+          4900 |     4902 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b" : "2dsphere" }, "name" : "my_2ds_ab_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" } }     | t
+          4900 |     4903 | { "v" : { "$numberInt" : "2" }, "key" : { "a.geo" : "2dsphere" }, "name" : "my_2ds_ageo_idx", "2dsphereIndexVersion" : { "$numberInt" : "3" } } | t
+(3 rows)
+
+BEGIN;
+SET LOCAL enable_seqscan to off;
+SET LOCAL seq_page_cost TO 9999999;
+-- Find using $geoNear
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "key": "a.b" } }, { "$addFields": { "dist.calculated": {"$round":[ "$dist.calculated", 15 ] } } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+                                                                                                      document                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "calculated" : { "$numberDouble" : "70711.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "calculated" : { "$numberDouble" : "168309.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "calculated" : { "$numberDouble" : "178639.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "calculated" : { "$numberDouble" : "317682.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "calculated" : { "$numberDouble" : "324580.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "calculated" : { "$numberDouble" : "459437.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "calculated" : { "$numberDouble" : "473415.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "calculated" : { "$numberDouble" : "626259.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "calculated" : { "$numberDouble" : "781025.0" } } }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "key": "a.b", "includeLocs": "dist.location" } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+                                                                                                                                                             document                                                                                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "70711.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "168309.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "178639.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "317682.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "324580.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "location" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ], "calculated" : { "$numberDouble" : "459437.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "location" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ], "calculated" : { "$numberDouble" : "473415.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "location" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ], "calculated" : { "$numberDouble" : "626259.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "location" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "calculated" : { "$numberDouble" : "781025.0" } } }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "spherical": true, "key": "a.b", "includeLocs": "dist.location" } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+                                                                                                                                                             document                                                                                                                                                             
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "1231.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "2936.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "3101.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "5539.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "5636.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "location" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ], "calculated" : { "$numberDouble" : "8011.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "location" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ], "calculated" : { "$numberDouble" : "8218.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "location" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ], "calculated" : { "$numberDouble" : "10921.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "location" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "calculated" : { "$numberDouble" : "13621.0" } } }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "spherical": true, "key": "a.b", "includeLocs": "dist.location", "distanceMultiplier": 6378.1 } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+                                                                                                                                                              document                                                                                                                                                               
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "7851641.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "18726743.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "19781171.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "35330111.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "35946104.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "location" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ], "calculated" : { "$numberDouble" : "51094295.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "location" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ], "calculated" : { "$numberDouble" : "52412129.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "location" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ], "calculated" : { "$numberDouble" : "69654220.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "location" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "calculated" : { "$numberDouble" : "86877567.0" } } }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "spherical": false, "key": "a.b", "includeLocs": "dist.location" } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+                                                                                                                                                             document                                                                                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "70711.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "168309.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "178639.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "317682.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "324580.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "location" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ], "calculated" : { "$numberDouble" : "459437.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "location" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ], "calculated" : { "$numberDouble" : "473415.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "location" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ], "calculated" : { "$numberDouble" : "626259.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "location" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "calculated" : { "$numberDouble" : "781025.0" } } }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [5, 6] }, "distanceField": "dist.calculated", "spherical": false, "key": "a.b", "includeLocs": "dist.location" } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+                                                                                                                                                                document                                                                                                                                                                
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "7842911090.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "18705922360.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "19759178280.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "35290831015.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "35906139203.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "location" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ], "calculated" : { "$numberDouble" : "51037488256.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "location" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ], "calculated" : { "$numberDouble" : "52353856384.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "location" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ], "calculated" : { "$numberDouble" : "69576778059.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "location" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "calculated" : { "$numberDouble" : "86780975615.0" } } }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [5, 6] }, "distanceField": "dist.calculated", "spherical": false, "key": "a.b", "includeLocs": "dist.location", "distanceMultiplier": 0.001 } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+                                                                                                                                                              document                                                                                                                                                               
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "7842911.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "18705922.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "19759178.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "35290831.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "35906139.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "location" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ], "calculated" : { "$numberDouble" : "51037488.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "location" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ], "calculated" : { "$numberDouble" : "52353856.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "location" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ], "calculated" : { "$numberDouble" : "69576778.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "location" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "calculated" : { "$numberDouble" : "86780976.0" } } }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [5, 6] }, "distanceField": "dist.calculated", "spherical": true, "key": "a.b", "includeLocs": "dist.location" } } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+                                                                                                                                                                document                                                                                                                                                                
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "7842911090.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "18705922360.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "19759178280.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "35290831015.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "35906139203.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "location" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ], "calculated" : { "$numberDouble" : "51037488256.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "location" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ], "calculated" : { "$numberDouble" : "52353856384.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "location" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ], "calculated" : { "$numberDouble" : "69576778059.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "location" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "calculated" : { "$numberDouble" : "86780975615.0" } } }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [35, 35] }, "distanceField": "dist.calculated", "key": "a.geo"} } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}');
+ document 
+----------
+(0 rows)
+
+--min/max distance test
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [5, 6] }, "distanceField": "dist.calculated", "key": "a.b", "includeLocs": "dist.location", "minDistance": 0, "maxDistance": 500000} } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}'); -- Upto 500 kms
+                                                                                                                                                                document                                                                                                                                                                
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "7842911090.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "18705922360.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "19759178280.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "35290831015.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "35906139203.0" } } }
+(5 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a.b", "includeLocs": "dist.location", "minDistance": 0, "maxDistance": 2} } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}'); -- Upto 2 cartesian distance
+                                                                                                                                                             document                                                                                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] }, "dist" : { "location" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "calculated" : { "$numberDouble" : "0.0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ] }, "dist" : { "location" : [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1000000000000000888" } ], "calculated" : { "$numberDouble" : "155563.0" } } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "key": "a.b", "spherical": true, "includeLocs": "dist.location", "minDistance": 0, "maxDistance": 0.1} } , { "$addFields": { "dist.calculated": {"$round":[ { "$multiply": ["$dist.calculated", 100000] }] } } } ]}'); -- Upto 0.1 radians
+                                                                                                                                                            document                                                                                                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ] }, "dist" : { "location" : [ { "$numberDouble" : "5.5" }, { "$numberDouble" : "5.5" } ], "calculated" : { "$numberDouble" : "1231.0" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ] }, "dist" : { "location" : [ { "$numberDouble" : "4.4199999999999999289" }, { "$numberDouble" : "4.4199999999999999289" } ], "calculated" : { "$numberDouble" : "2936.0" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ] }, "dist" : { "location" : [ { "$numberDouble" : "6.6600000000000001421" }, { "$numberDouble" : "6.6600000000000001421" } ], "calculated" : { "$numberDouble" : "3101.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ] }, "dist" : { "location" : [ { "$numberDouble" : "3.3100000000000000533" }, { "$numberDouble" : "3.3100000000000000533" } ], "calculated" : { "$numberDouble" : "5539.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ] }, "dist" : { "location" : [ { "$numberDouble" : "7.7400000000000002132" }, { "$numberDouble" : "7.7400000000000002132" } ], "calculated" : { "$numberDouble" : "5636.0" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ] }, "dist" : { "location" : [ { "$numberDouble" : "2.2900000000000000355" }, { "$numberDouble" : "2.2900000000000000355" } ], "calculated" : { "$numberDouble" : "8011.0" } } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ] }, "dist" : { "location" : [ { "$numberDouble" : "8.8100000000000004974" }, { "$numberDouble" : "8.8100000000000004974" } ], "calculated" : { "$numberDouble" : "8218.0" } } }
+(7 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [5, 6] }, "distanceField": "dist.calculated", "spherical": true, "key": "a.b", "includeLocs": "dist.location" } } ]}');
+                                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using my_2ds_ab_idx on documentdb_data.documents_4900 collection
+   Output: bson_dollar_project_geonear(document, '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "distanceField" : "dist.calculated", "spherical" : true, "key" : "a.b", "includeLocs" : "dist.location" }'::bson), (bson_validate_geography(document, 'a.b'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "distanceField" : "dist.calculated", "spherical" : true, "key" : "a.b", "includeLocs" : "dist.location" }'::bson)
+   Order By: (bson_validate_geography(collection.document, 'a.b'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "distanceField" : "dist.calculated", "spherical" : true, "key" : "a.b", "includeLocs" : "dist.location" }'::bson)
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "spherical": true, "key": "a.b", "includeLocs": "dist.location" } } ]}');
+                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using my_2d_ab_idx on documentdb_data.documents_4900 collection
+   Output: bson_dollar_project_geonear(document, '{ "near" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "distanceField" : "dist.calculated", "spherical" : true, "key" : "a.b", "includeLocs" : "dist.location" }'::bson), (bson_validate_geometry(document, 'a.b'::text) <|-|> '{ "near" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "distanceField" : "dist.calculated", "spherical" : true, "key" : "a.b", "includeLocs" : "dist.location" }'::bson)
+   Order By: (bson_validate_geometry(collection.document, 'a.b'::text) <|-|> '{ "near" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "distanceField" : "dist.calculated", "spherical" : true, "key" : "a.b", "includeLocs" : "dist.location" }'::bson)
+(3 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [35, 35] }, "distanceField": "dist.calculated", "key": "a.geo"} } ]}');    
+                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using my_2ds_ageo_idx on documentdb_data.documents_4900 collection
+   Output: bson_dollar_project_geonear(document, '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson), (bson_validate_geography(document, 'a.geo'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson)
+   Order By: (bson_validate_geography(collection.document, 'a.geo'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson)
+(3 rows)
+
+-- min / maxDistance Explains
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [5, 6] }, "distanceField": "dist.calculated", "key": "a.b", "includeLocs": "dist.location", "minDistance": 0, "maxDistance": 500000} } ]}'); -- Upto 500 kms
+                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using my_2ds_ab_idx on documentdb_data.documents_4900 collection
+   Output: bson_dollar_project_geonear(document, '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "distanceField" : "dist.calculated", "key" : "a.b", "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberInt" : "500000" } }'::bson), (bson_validate_geography(document, 'a.b'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "distanceField" : "dist.calculated", "key" : "a.b", "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberInt" : "500000" } }'::bson)
+   Index Cond: (bson_validate_geography(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "distanceField" : "dist.calculated", "key" : "a.b", "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberInt" : "500000" } } }'::bson)
+   Order By: (bson_validate_geography(collection.document, 'a.b'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "distanceField" : "dist.calculated", "key" : "a.b", "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberInt" : "500000" } }'::bson)
+(4 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [0, 0], "distanceField": "dist.calculated", "key": "a.b", "includeLocs": "dist.location", "minDistance": 0, "maxDistance": 2} } ]}'); -- Upto 2 cartesian distance
+                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using my_2d_ab_idx on documentdb_data.documents_4900 collection
+   Output: bson_dollar_project_geonear(document, '{ "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist.calculated", "key" : "a.b", "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberInt" : "2" } }'::bson), (bson_validate_geometry(document, 'a.b'::text) <|-|> '{ "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist.calculated", "key" : "a.b", "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberInt" : "2" } }'::bson)
+   Index Cond: (bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist.calculated", "key" : "a.b", "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberInt" : "2" } } }'::bson)
+   Order By: (bson_validate_geometry(collection.document, 'a.b'::text) <|-|> '{ "near" : [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], "distanceField" : "dist.calculated", "key" : "a.b", "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberInt" : "2" } }'::bson)
+(4 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "key": "a.b", "spherical": true, "includeLocs": "dist.location", "minDistance": 0, "maxDistance": 0.1} } ]}'); -- Upto 0.1 radians
+                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using my_2d_ab_idx on documentdb_data.documents_4900 collection
+   Output: bson_dollar_project_geonear(document, '{ "near" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "distanceField" : "dist.calculated", "key" : "a.b", "spherical" : true, "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberDouble" : "0.10000000000000000555" } }'::bson), (bson_validate_geometry(document, 'a.b'::text) <|-|> '{ "near" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "distanceField" : "dist.calculated", "key" : "a.b", "spherical" : true, "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberDouble" : "0.10000000000000000555" } }'::bson)
+   Index Cond: (bson_validate_geometry(collection.document, 'a.b'::text) OPERATOR(documentdb_api_internal.@|><|) '{ "a.b" : { "near" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "distanceField" : "dist.calculated", "key" : "a.b", "spherical" : true, "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberDouble" : "0.10000000000000000555" } } }'::bson)
+   Order By: (bson_validate_geometry(collection.document, 'a.b'::text) <|-|> '{ "near" : [ { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "distanceField" : "dist.calculated", "key" : "a.b", "spherical" : true, "includeLocs" : "dist.location", "minDistance" : { "$numberInt" : "0" }, "maxDistance" : { "$numberDouble" : "0.10000000000000000555" } }'::bson)
+(4 rows)
+
+ROLLBACK;

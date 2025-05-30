@@ -91,11 +91,6 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
 
-    if (cloudEnabled) {
-      log.debug("Skipping check for ybm");
-      return;
-    }
-
     int maxSplit =
         taskParams().nodesToCheck.stream()
             .mapToInt(mt -> Math.max(mt.tserversList.size(), mt.mastersList.size()))

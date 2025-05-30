@@ -120,6 +120,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tsan_util.h"
 
@@ -361,6 +362,19 @@ void SetVerboseLogLevel(int level) {
 
 Status SetInternalSignalNumber(int signum) {
   return SetStackTraceSignal(signum);
+}
+
+tserver::PGReplicationSlotLsnType CDCSDKStreamInfo::GetPGReplicationSlotLsnType(
+    ReplicationSlotLsnType lsn_type) {
+  switch (lsn_type) {
+    case ReplicationSlotLsnType_SEQUENCE:
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE;
+    case ReplicationSlotLsnType_HYBRID_TIME:
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME;
+    default:
+      LOG(WARNING) << "Invalid LSN type specified: " << lsn_type << ", defaulting to SEQUENCE";
+      return tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_SEQUENCE;
+  }
 }
 
 YBClientBuilder::YBClientBuilder()
@@ -761,10 +775,11 @@ Result<YBTableInfo> YBClient::GetYBTableInfo(const YBTableName& table_name) {
   return info;
 }
 
-Result<YBTableInfo> YBClient::GetYBTableInfoById(const TableId& table_id) {
+Result<YBTableInfo> YBClient::GetYBTableInfoById(const TableId& table_id, bool include_hidden) {
   YBTableInfo info;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
+  RETURN_NOT_OK(data_->GetTableSchema(
+      this, table_id, deadline, &info, master::IncludeHidden(include_hidden)));
   return info;
 }
 
@@ -1123,17 +1138,21 @@ Status YBClient::ListClones(master::ListClonesResponsePB* ret) {
   return Status::OK();
 }
 
-Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
-                                  const uint32_t next_oid, const uint32_t count,
-                                  uint32_t* begin_oid, uint32_t* end_oid) {
+Status YBClient::ReservePgsqlOids(
+    const std::string& namespace_id, uint32_t next_oid, uint32_t count, uint32_t* begin_oid,
+    uint32_t* end_oid, bool use_secondary_space, uint32_t* oid_cache_invalidations_count) {
   ReservePgsqlOidsRequestPB req;
   ReservePgsqlOidsResponsePB resp;
   req.set_namespace_id(namespace_id);
   req.set_next_oid(next_oid);
   req.set_count(count);
+  req.set_use_secondary_space(use_secondary_space);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, ReservePgsqlOids);
   *begin_oid = resp.begin_oid();
   *end_oid = resp.end_oid();
+  if (oid_cache_invalidations_count) {
+    *oid_cache_invalidations_count = resp.oid_cache_invalidations_count();
+  }
   return Status::OK();
 }
 
@@ -1479,7 +1498,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     CoarseTimePoint deadline,
     const CDCSDKDynamicTablesOption& dynamic_tables_option,
     uint64_t *consistent_snapshot_time_out,
-    const std::optional<ReplicationSlotLsnType>& lsn_type) {
+    const std::optional<ReplicationSlotLsnType>& lsn_type,
+    const std::optional<ReplicationSlotOrderingMode>& ordering_mode) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1506,6 +1526,9 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   if (lsn_type.has_value()) {
     req.mutable_cdcsdk_stream_create_options()->set_lsn_type(lsn_type.value());
   }
+  if (ordering_mode.has_value()) {
+    req.mutable_cdcsdk_stream_create_options()->set_ordering_mode(ordering_mode.value());
+  }
   req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
       dynamic_tables_option);
 
@@ -1531,7 +1554,8 @@ Status YBClient::GetCDCStream(
     std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map,
     std::optional<std::string>* replication_slot_name,
     std::vector<TableId>* unqualified_table_ids,
-    std::optional<ReplicationSlotLsnType>* lsn_type) {
+    std::optional<ReplicationSlotLsnType>* lsn_type,
+    std::optional<ReplicationSlotOrderingMode>* ordering_mode) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1595,6 +1619,12 @@ Status YBClient::GetCDCStream(
     *lsn_type = resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type();
   }
 
+  if (ordering_mode && resp.stream().has_cdc_stream_info_options() &&
+      resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_ordering_mode()) {
+    *ordering_mode =
+        resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_ordering_mode();
+  }
+
   return Status::OK();
 }
 
@@ -1610,7 +1640,7 @@ Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
   if (replica_identities) {
     replica_identities->reserve(resp.stream().replica_identity_map_size());
     for (const auto& entry : resp.stream().replica_identity_map()) {
-      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first));
+      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first, true /* include_hidden */));
 
       const auto pg_table_id = table_info.pg_table_id;
       auto table_oid = VERIFY_RESULT(
@@ -1968,6 +1998,18 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
   data_->DeleteNotServingTablet(this, tablet_id, deadline, callback);
 }
 
+void YBClient::AcquireObjectLocksGlobalAsync(
+    const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+    CoarseTimePoint deadline) {
+  data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback);
+}
+
+void YBClient::ReleaseObjectLocksGlobalAsync(
+    const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+    CoarseTimePoint deadline) {
+  data_->ReleaseObjectLocksGlobalAsync(this, request, deadline, callback);
+}
+
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
     PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
@@ -2033,10 +2075,10 @@ Result<TabletServersInfo> YBClient::ListLiveTabletServers(bool primary_only) {
   CALL_SYNC_LEADER_MASTER_RPC_EX(Cluster, req, resp, ListLiveTabletServers);
 
   TabletServersInfo result;
-  result.resize(resp.servers_size());
+  result.tablet_servers.resize(resp.servers_size());
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListLiveTabletServersResponsePB_Entry& entry = resp.servers(i);
-    auto& out = result[i];
+    auto& out = result.tablet_servers[i];
     out.server = YBTabletServer::FromPB(entry, data_->cloud_info_pb_);
     const CloudInfoPB& cloud_info = entry.registration().common().cloud_info();
 
@@ -2486,7 +2528,7 @@ Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>*
   master_uuids->clear();
   for (const ServerEntryPB& master : resp.masters()) {
     if (master.has_error()) {
-      LOG_WITH_PREFIX(ERROR) << "Master " << master.ShortDebugString() << " hit error "
+      LOG_WITH_PREFIX(WARNING) << "Master " << master.ShortDebugString() << " hit error "
         << master.error().ShortDebugString();
       return StatusFromPB(master.error());
     }
@@ -2972,7 +3014,7 @@ Result<std::optional<std::pair<bool, uint32>>> YBClient::ValidateAutoFlagsConfig
   master::ValidateAutoFlagsConfigResponsePB resp;
   req.mutable_config()->CopyFrom(config);
   if (min_flag_class) {
-    req.set_min_flag_class(to_underlying(*min_flag_class));
+    req.set_min_flag_class(std::to_underlying(*min_flag_class));
   }
 
   // CALL_SYNC_LEADER_MASTER_RPC_EX will return on failure. Capture the Status so that we can handle
@@ -3037,37 +3079,6 @@ int64_t YBClient::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
 
 void YBClient::RequestAbortAllRpcs() {
   data_->rpcs_.RequestAbortAll();
-}
-
-Status YBClient::AcquireObjectLocksGlobal(const tserver::AcquireObjectLockRequestPB& lock_req) {
-  LOG_WITH_FUNC(INFO) << lock_req.ShortDebugString();
-  AcquireObjectLocksGlobalRequestPB req;
-  AcquireObjectLocksGlobalResponsePB resp;
-  req.set_txn_id(lock_req.txn_id());
-  req.set_subtxn_id(lock_req.subtxn_id());
-  req.set_session_host_uuid(lock_req.session_host_uuid());
-  req.mutable_object_locks()->CopyFrom(lock_req.object_locks());
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, AcquireObjectLocksGlobal);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::OK();
-}
-
-Status YBClient::ReleaseObjectLocksGlobal(const tserver::ReleaseObjectLockRequestPB& release_req) {
-  LOG_WITH_FUNC(INFO) << release_req.ShortDebugString();
-  ReleaseObjectLocksGlobalRequestPB req;
-  ReleaseObjectLocksGlobalResponsePB resp;
-  req.set_txn_id(release_req.txn_id());
-  req.set_subtxn_id(release_req.subtxn_id());
-  req.set_session_host_uuid(release_req.session_host_uuid());
-  req.mutable_object_locks()->CopyFrom(release_req.object_locks());
-  req.set_release_all_locks(release_req.release_all_locks());
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReleaseObjectLocksGlobal);
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::OK();
 }
 
 }  // namespace client

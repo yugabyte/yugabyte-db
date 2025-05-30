@@ -164,18 +164,18 @@ public class BackupUtil {
   }
 
   public static long getMinRecoveryTimeForSchedule(
-      List<SnapshotInfo> snapshotInfoList, long retentionPeriodInSeconds) {
-    Optional<SnapshotInfo> oldestSuccessfulSnaptshoScheduletOptional =
+      List<SnapshotInfo> snapshotInfoList, PitrConfig pitrConfig) {
+    Optional<SnapshotInfo> oldestSuccessfulSnapshotScheduleOptional =
         snapshotInfoList.stream()
-            .filter(
-                i ->
-                    i.getState().equals(State.COMPLETE)
-                        && (i.getSnapshotTime()
-                            >= System.currentTimeMillis() - (retentionPeriodInSeconds * 1000L)))
+            .filter(i -> i.getState().equals(State.COMPLETE))
             .sorted(Comparator.comparing(SnapshotInfo::getSnapshotTime))
             .findFirst();
-    if (oldestSuccessfulSnaptshoScheduletOptional.isPresent()) {
-      return oldestSuccessfulSnaptshoScheduletOptional.get().getSnapshotTime();
+    if (oldestSuccessfulSnapshotScheduleOptional.isPresent()) {
+      return Math.max(
+          System.currentTimeMillis() - pitrConfig.getRetentionPeriod() * 1000L,
+          Math.max(
+              pitrConfig.getCreateTime().getTime(),
+              pitrConfig.getIntermittentMinRecoverTimeInMillis()));
     }
     return 0L;
   }
@@ -262,8 +262,8 @@ public class BackupUtil {
       tables.addAll(tableNameList);
       if (MapUtils.isNotEmpty(tablesWithIndexesMap)) {
         Set<String> indexes =
-            tablesWithIndexesMap.values().parallelStream()
-                .flatMap(tI -> tI.parallelStream())
+            tablesWithIndexesMap.values().stream()
+                .flatMap(tI -> tI.stream())
                 .collect(Collectors.toSet());
         tables.addAll(indexes);
       }
@@ -275,9 +275,9 @@ public class BackupUtil {
       Set<String> indexes = new HashSet<>();
       if (MapUtils.isNotEmpty(tablesWithIndexesMap)) {
         indexes =
-            tablesWithIndexesMap.entrySet().parallelStream()
+            tablesWithIndexesMap.entrySet().stream()
                 .filter(tWE -> parentTables.contains(tWE.getKey()))
-                .flatMap(tWE -> tWE.getValue().parallelStream())
+                .flatMap(tWE -> tWE.getValue().stream())
                 .collect(Collectors.toSet());
       }
       return indexes;
@@ -409,7 +409,7 @@ public class BackupUtil {
         .tableByTableBackup(backup.getBackupInfo().tableByTableBackup);
     List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
     Set<KeyspaceTablesList> kTLists =
-        backupParams.parallelStream()
+        backupParams.stream()
             .map(
                 b -> {
                   return KeyspaceTablesList.builder()

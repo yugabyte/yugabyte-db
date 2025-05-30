@@ -41,7 +41,7 @@ If you are using Visual Studio, add the Npgsql package to the project as follows
 To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
 
 ```csharp
-dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
+dotnet add package NpgsqlYB.EntityFrameworkCore.YugabyteDB --version 8.0.4.1
 ```
 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql.EntityFrameworkCore.PostgreSQL) for EntityFramework.
@@ -62,7 +62,7 @@ namespace ConsoleApp.PostgreSQL
         public DbSet<Post> Posts { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-            => optionsBuilder.UseNpgsql("Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte");
+            => optionsBuilder.UseNpgsql("Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=yugabyte;Load Balance Hosts=true;Topology Keys=cloud1.datacenter1.rack1;Timeout=0;");
     }
 
     public class Blog

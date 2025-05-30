@@ -21,48 +21,49 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/result.h"
 
-namespace yb {
-
-class AdvisoryLockTest;
-
-namespace tserver {
+namespace yb::tserver {
 
 constexpr std::string_view kPgAdvisoryLocksTableName = "pg_advisory_locks";
+
+struct YsqlAdvisoryLocksTableLockId {
+  uint32_t db_oid;
+  uint32_t class_oid;
+  uint32_t objid;
+  uint32_t objsubid;
+};
 
 // Helper class for the advisory locks table.
 class YsqlAdvisoryLocksTable {
  public:
+  using LockId = YsqlAdvisoryLocksTableLockId;
+
   explicit YsqlAdvisoryLocksTable(std::shared_future<client::YBClient*> client_future);
 
-  Result<client::YBPgsqlLockOpPtr> CreateLockOp(
-      uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
-      PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, bool wait,
-      rpc::Sidecars* sidecars) EXCLUDES(mutex_);
+  Result<client::YBPgsqlLockOpPtr> MakeLockOp(
+      const LockId& lock_id, AdvisoryLockMode mode, bool wait) EXCLUDES(mutex_);
 
-  Result<client::YBPgsqlLockOpPtr> CreateUnlockOp(
-      uint32_t db_oid, uint32_t class_oid, uint32_t objid, uint32_t objsubid,
-      PgsqlLockRequestPB::PgsqlAdvisoryLockMode mode, rpc::Sidecars* sidecars) EXCLUDES(mutex_);
+  Result<client::YBPgsqlLockOpPtr> MakeUnlockOp(
+      const LockId& lock_id, AdvisoryLockMode mode) EXCLUDES(mutex_);
 
-  Result<client::YBPgsqlLockOpPtr> CreateUnlockAllOp(
-      uint32_t db_oid, rpc::Sidecars* sidecars) EXCLUDES(mutex_);
+  Result<client::YBPgsqlLockOpPtr> MakeUnlockAllOp(uint32_t db_oid) EXCLUDES(mutex_);
+
+  auto TEST_GetTable() { return GetTable(); }
+
+  Result<std::vector<TabletId>> LookupAllTablets(CoarseTimePoint deadline) EXCLUDES(mutex_);
 
  private:
-  friend class yb::AdvisoryLockTest;
-
   Result<client::YBTablePtr> GetTable() EXCLUDES(mutex_);
 
   std::mutex mutex_;
   client::YBTablePtr table_ GUARDED_BY(mutex_);
   std::shared_future<client::YBClient*> client_future_;
+  std::vector<TabletId> tablet_ids_;
 };
 
-} // namespace tserver
-} // namespace yb
+} // namespace yb::tserver

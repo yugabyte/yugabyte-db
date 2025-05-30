@@ -27,13 +27,13 @@ class CowWriteLock;
 
 namespace master {
 
+class CDCStreamInfo;
 class SysCatalogTable;
-class XClusterConfigInfo;
 class SysXClusterConfigEntryPB;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
+class XClusterConfigInfo;
 struct PersistentXClusterConfigInfo;
-class CDCStreamInfo;
 
 // Wrapper over XClusterConfigInfo that provides safe utils to access and modify XClusterConfigInfo.
 class XClusterConfig {
@@ -55,6 +55,10 @@ class XClusterConfig {
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const
       EXCLUDES(mutex_);
+
+  Status SetXClusterRole(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      XClusterNamespaceInfoPB_XClusterRole role) EXCLUDES(mutex_);
 
   Status RemoveStreams(const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams);
 

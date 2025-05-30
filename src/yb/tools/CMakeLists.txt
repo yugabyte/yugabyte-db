@@ -159,6 +159,7 @@ target_link_libraries(yb-bulk_load
 add_executable(yb-pbc-dump pbc-dump.cc)
 target_link_libraries(yb-pbc-dump
   ${LINK_LIBS}
+  encryption
 )
 
 add_library(admin-test-base admin-test-base.cc)
@@ -215,6 +216,7 @@ ADD_YB_TEST(data-patcher-test)
 ADD_YB_TEST_DEPENDENCIES(data-patcher-test data-patcher)
 ADD_YB_TEST(yb-backup/yb-backup-test)
 ADD_YB_TEST(yb-backup/yb-backup-cross-feature-test)
+ADD_YB_TEST(yb-backup/yb-backup-during-ddl-test)
 ADD_YB_TEST(yb-admin-snapshot-test)
 ADD_YB_TEST(yb-admin-xcluster-test)
 ADD_YB_TEST(yb-admin_client-test)

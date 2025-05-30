@@ -98,6 +98,7 @@ class WriteBuffer {
 
   WriteBufferPos Position();
   size_t BytesAfterPosition(const WriteBufferPos& pos) const;
+  Status Truncate(const WriteBufferPos& pos);
 
   bool empty() {
     return blocks_.empty();

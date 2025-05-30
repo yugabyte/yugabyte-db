@@ -28,6 +28,7 @@ func init() {
 	XClusterCmd.AddCommand(restartXClusterCmd)
 	XClusterCmd.AddCommand(pauseXClusterCmd)
 	XClusterCmd.AddCommand(resumeXClusterCmd)
-	//  XClusterCmd.AddCommand(createXClusterCmd)
-	//  XClusterCmd.AddCommand(updateXClusterCmd)
+	XClusterCmd.AddCommand(createXClusterCmd)
+	XClusterCmd.AddCommand(updateXClusterCmd)
+	XClusterCmd.AddCommand(fullCopyXClusterCmd)
 }

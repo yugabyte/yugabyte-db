@@ -20,7 +20,7 @@ The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the content
 
 - For the special case where the iterand array is one-dimensional, the `FOREACH` loop is useful only when the operand of the `SLICE` clause is `0`. In this use, it is a syntactically more compact way to achieve the effect that is achieved with a `FOR var IN` loop like this:
 
-  ```
+  ```output
   for var in array_lower(iterand_arr, 1)..array_upper(iterand_arr, 1) loop
     ... iterand_arr[var] ...
   end loop;
@@ -28,7 +28,7 @@ The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the content
 
 - When the operand of the `SLICE` clause is greater than `0`, and when the dimensionality of the iterand array is greater than `1`, the `FOREACH` loop provides functionality that `unnest()` cannot provide. Briefly, when the iterand array has `n` dimensions and the operand of the `SLICE` clause is `s`, YSQL assigns _slices_ (that is, subarrays) of dimensionality `s` to the iterator. The values in such a slice are those from the iterand array that remain when the distinct values of the first `(n - s)` indexes are used to drive the iteration. These two pseudocode blocks illustrate the idea:
 
-  ```
+  ```output
   -- In this example, the SLICE operand is 1.
   -- As a consequence, array_ndims(iterator_array) is 1.
   -- Assume that array_ndims(iterand_arr) is 4.
@@ -45,7 +45,7 @@ The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the content
   end loop;
   ```
 
-  ```
+  ```output
   -- In this example, the SLICE operand is 3.
   -- As a consequence, array_ndims(iterator_array) is 3.
   -- Assume that array_ndims(iterand_arr) is 4.
@@ -61,16 +61,18 @@ The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the content
 The examples below clarify the behavior of `FOREACH`.
 
 ## Syntax and semantics
-```
+
+```output
 [ <<label>> ]
 FOREACH var [ SLICE non_negative_integer_literal ] IN ARRAY expression LOOP
   statements
 END LOOP [ label ];
 ```
+
 - `var` must be explicitly declared before the `FOREACH` loop.
 - The operand of the optional `SLICE` clause must be a non-negative `int` literal.
 - Assume that `expression` has the data type `some_type[]`.
-		- When `SLICE 0` is used, `var` must be declared as `some_type`.
+  - When `SLICE 0` is used, `var` must be declared as `some_type`.
   - When the `SLICE` clause's operand is positive, `var` must be declared as `some_type[]`.
 - `SLICE 0` has the same effect as omitting the `SLICE` clause.
 - When `SLICE 0` is used, or the `SLICE` clause is omitted, YSQL assigns each in turn of the array's  values, visited in row-major order, to `var`.
@@ -103,9 +105,10 @@ begin
 end;
 $body$;
 ```
+
 It shows this (after manually stripping the _"INFO:"_ prompt):
 
-```
+```output
 1
 2
 3
@@ -122,6 +125,7 @@ The next loop shows these things of note:
 - The syntax spot where _"var"_ is used above need not be occupied by a single variable. Rather, _"f1"_ and _"f2"_ are used, to correspond to the fields in _"rt"_.
 - The `FOREACH` loop is followed by a _"cursor"_ loop whose `SELECT` statement uses `unnest()`.
 - The `FOREACH` loop is more terse than the _"cursor"_ loop. In particular, you can use the pair of declared variables _"f1"_ and _"f2"_ without any fuss (just as you could have used a single variable _"r"_ of type _"rt"_ without any fuss) as the iterator. YSQL looks after the proper assignment in both cases. But when you use `unnest()`, you have to look after this yourself.
+
 ```plpgsql
 create type rt as (f1 int, f2 text);
 
@@ -151,8 +155,10 @@ begin
 end;
 $body$;
 ```
+
 It shows this:
-```
+
+```output
 FOREACH
 1 | dog
 2 | cat
@@ -165,6 +171,7 @@ unnest()
 3 | ant
 4 | rat
 ```
+
 This shows that this use of the `FOREACH` loop (with an implied `0` as the `SLICE` clause's  operand) is functionally equivalent to `unnest()`.
 
 ## Looping over the contents of a multidimensional array taking advantage of a non-zero SLICE operand
@@ -185,7 +192,9 @@ insert into t(k, arr) values(1, '
     }
   }'::text[]);
 ```
+
 Next, show the outcome when a bad value is used for the `SLICE` operand:
+
 ```plpgsql
 do $body$
 declare
@@ -199,9 +208,10 @@ begin
 end;
 $body$;
 ```
+
 It shows `array_ndims(arr): 3` and then it reports this error:
 
-```
+```output
 2202E: slice dimension (4) is out of the valid range 0..3
 ```
 
@@ -229,11 +239,14 @@ begin
 end;
 $body$;
 ```
+
 It shows this:
-```
+
+```output
 FOREACH SLICE 3
 1 | {{{001,002},{003,004}},{{005,006},{007,008}}}
 ```
+
 The `FOREACH` loop generates just a single iterator slice. And, as the `assert` shows, this is identical to the iterand array. In other words, setting the `SLICE` operand to be equal to the iterand array's dimensionality, while the result is well-defined, is not useful. So, using this example iterand array, the useful range for the `SLICE` operand is `0..2`.
 
 The next test uses `SLICE 2`:
@@ -255,12 +268,15 @@ begin
 end;
 $body$;
 ```
+
 It shows this:
-```
+
+```output
 FOREACH SLICE 2
 1 | {{001,002},{003,004}}
 2 | {{005,006},{007,008}}
 ```
+
 As the `assert` shows, the operand of the `SLICE` operator determines the dimensionality of the iterator slices.
 
 The next test uses `SLICE 1`:
@@ -282,14 +298,17 @@ begin
 end;
 $body$;
 ```
+
 It shows this:
-```
+
+```output
 FOREACH SLICE 1
 1 | {001,002}
 2 | {003,004}
 3 | {005,006}
 4 | {007,008}
 ```
+
 Once again, the `assert` shows that the operand of the `SLICE` operator determines the dimensionality of the iterator slices.
 
 The last `FOREACH` test uses `SLICE 0`. Notice that, now, the iterator is declared as the scalar `text` variable  _"var"_:
@@ -310,8 +329,10 @@ begin
 end;
 $body$;
 ```
+
 It shows this:
-```
+
+```output
 FOREACH SLICE 0
 1 | 001
 2 | 002
@@ -322,7 +343,9 @@ FOREACH SLICE 0
 7 | 007
 8 | 008
 ```
+
 This is functionally equivalent to `unnest()` as the final test shows:
+
 ```plpgsql
 do $body$
 <<b>>declare
@@ -349,8 +372,10 @@ begin
 end b;
 $body$;
 ```
+
 It shows this:
-```
+
+```output
 unnest()
 2 | 001
 3 | 002
@@ -409,7 +434,9 @@ begin
 end;
 $body$;
 ```
+
 And:
+
 ```plpgsql
 -- Second overload
 create function array_slices(arr in anyarray, slice_operand in int)
@@ -493,11 +520,15 @@ begin
 end;
 $body$;
 ```
+
 You can see that each leg of the `CASE` is "generated" formulaically—albeit manually—by following a pattern that could be parameterized. You can use these encapsulations for iterand arrays of any dimensionality. But you must take responsibility for following the rule that the value of the `SLICE` operand must fall within the acceptable range. Otherwise, you'll get the error that was demonstrated above:
-```
+
+```output
 2202E: slice dimension % is out of the valid range 0..%
 ```
+
 Here is the test harness. Both this procedure and the function that generates the to-be-tested iterand array are hard-coding for a dimensionality of `4`.
+
 ```plpgsql
 -- Exercise each of the meaningful calls to array_slices().
 --
@@ -577,7 +608,9 @@ begin
 end;
 $body$;
 ```
+
 Here is a function to generate a four-dimensional array. Notice that the actual argument for  the _"lengths"_ formal parameter must be a one-dimensional `int[]` array with four values. These specify the lengths along each of the output array's dimensions.
+
 ```plpgsql
 create function four_d_array(lengths in int[])
   returns text[]
@@ -636,7 +669,9 @@ begin
 end;
 $body$;
 ```
+
 And here is one example test invocation:
+
 ```plpgsql
 do $body$
 declare
@@ -648,8 +683,10 @@ begin
 end;
 $body$;
 ```
+
 It produces this result:
 ```
+
 [1:2][1:2][1:2][1:2]
 
 slice_operand: 0

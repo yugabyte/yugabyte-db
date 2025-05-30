@@ -194,6 +194,7 @@ public class XClusterConfig extends Model {
   private Set<XClusterNamespaceConfig> namespaces = new HashSet<>();
 
   @ApiModelProperty(value = "Replication group name in the target universe cluster config")
+  @JsonProperty
   private String replicationGroupName;
 
   public enum ConfigType {
@@ -368,6 +369,16 @@ public class XClusterConfig extends Model {
     return tableConfig.get();
   }
 
+  public XClusterNamespaceConfig getNamespaceById(String namespaceId) {
+    return maybeGetNamespaceById(namespaceId)
+        .orElseThrow(
+            () ->
+                new IllegalArgumentException(
+                    String.format(
+                        "Namespace with id (%s) does not belong to the xClusterConfig %s",
+                        namespaceId, this)));
+  }
+
   public Set<XClusterTableConfig> getTablesById(Set<String> tableIds) {
     Map<String, XClusterTableConfig> tableConfigMap =
         this.getTableDetails().stream()
@@ -430,7 +441,7 @@ public class XClusterConfig extends Model {
         .filter(
             table ->
                 tableIds.contains(table.getTableId()) && table.isReplicationSetupDone() == done)
-        .map(table -> table.getTableId())
+        .map(XClusterTableConfig::getTableId)
         .collect(Collectors.toSet());
   }
 
@@ -456,6 +467,17 @@ public class XClusterConfig extends Model {
     return this.getTables().stream()
         .filter(table -> table.isIndexTable() == includeIndexTables)
         .map(table -> table.getTableId())
+        .collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public Set<String> getNamespaceIds() {
+    if (this.type != ConfigType.Db) {
+      throw new IllegalArgumentException(
+          "getNamespaceIds() is only valid for xCluster config with type Db");
+    }
+    return this.getNamespaces().stream()
+        .map(XClusterNamespaceConfig::getSourceNamespaceId)
         .collect(Collectors.toSet());
   }
 
@@ -611,6 +633,7 @@ public class XClusterConfig extends Model {
       Optional<XClusterTableConfig> tableConfig = maybeGetTableById(tableId);
       if (tableConfig.isPresent()) {
         tableConfig.get().setReplicationSetupDone(replicationSetupDone);
+
       } else {
         String errMsg =
             String.format(
@@ -629,6 +652,33 @@ public class XClusterConfig extends Model {
 
   public void updateReplicationSetupDone(Collection<String> tableIds) {
     updateReplicationSetupDone(tableIds, true /* replicationSetupDone */);
+  }
+
+  @Transactional
+  public void updateReplicationSetupTimeForTables(
+      Collection<String> tableIds, @Nullable Date moment) {
+    ensureTableIdsExist(new HashSet<>(tableIds));
+    this.getTableDetails().stream()
+        .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setReplicationSetupTime(moment));
+    update();
+  }
+
+  @Transactional
+  public void updateReplicationSetupTimeForNamespace(String namespaceId, @Nullable Date moment) {
+    ensureNamespaceIdsExist(Collections.singleton(namespaceId));
+    this.getNamespaceById(namespaceId).setReplicationSetupTime(moment);
+    update();
+  }
+
+  @Transactional
+  public void updateReplicationSetupTimeForNamespaces(
+      Set<String> namespaceIds, @Nullable Date moment) {
+    ensureNamespaceIdsExist(namespaceIds);
+    this.getNamespaces().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setReplicationSetupTime(moment));
+    update();
   }
 
   /**
@@ -712,11 +762,29 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void updateBackupForNamespaces(Set<String> namespaceIds, Backup backup) {
+    ensureNamespaceIdsExist(namespaceIds);
+    this.getNamespaces().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setBackup(backup));
+    update();
+  }
+
+  @Transactional
   public void updateRestoreForTables(Set<String> tableIds, Restore restore) {
     ensureTableIdsExist(tableIds);
     this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setRestore(restore));
+    update();
+  }
+
+  @Transactional
+  public void updateRestoreForNamespaces(Set<String> namespaceIds, Restore restore) {
+    ensureNamespaceIdsExist(namespaceIds);
+    this.getNamespaces().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setRestore(restore));
     update();
   }
 
@@ -839,12 +907,13 @@ public class XClusterConfig extends Model {
     return sourceUniverseUUID + "_" + configName;
   }
 
-  public void setReplicationGroupName(String replicationGroupName) {
+  @JsonIgnore
+  public void setReplicationGroupName(String newReplicationGroupName) {
     if (imported) {
-      this.replicationGroupName = replicationGroupName;
+      this.replicationGroupName = newReplicationGroupName;
       return;
     }
-    setReplicationGroupName(this.getSourceUniverseUUID(), replicationGroupName /* configName */);
+    setReplicationGroupName(this.getSourceUniverseUUID(), newReplicationGroupName /* configName */);
   }
 
   @JsonIgnore

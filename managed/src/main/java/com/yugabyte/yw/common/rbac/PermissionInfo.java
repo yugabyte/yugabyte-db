@@ -41,7 +41,7 @@ public class PermissionInfo {
             Role.getOrBadRequest(customerUUID, resourceUUID);
             break;
           case USER:
-            Users.getOrBadRequest(customerUUID, customerUUID);
+            Users.getOrBadRequest(customerUUID, resourceUUID);
             break;
           case OTHER:
             // Nothing to check explicitly for OTHER resources.

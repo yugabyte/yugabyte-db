@@ -3,5 +3,5 @@
 ####################################################################################################
 # Testsuite for tests covering pg_stat collection behavior.
 ####################################################################################################
-test: yb_pg_stat
-test: yb_pg_stat_backend
+test: yb.orig.pg_stat
+test: yb.orig.pg_stat_backend

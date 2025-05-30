@@ -264,6 +264,39 @@ def is_master(command):
     return False
 
 
+def parse_zone_from_flags():
+    infile = GFLAGS_MASTER_TEMPLATE_FILE if is_master(command) else GFLAGS_TSERVER_TEMPLATE_FILE
+    with open(infile, 'r') as instream:
+        content = instream.readlines()
+        for line in content:
+            if "--placement_zone" in line:
+                zone = line.split("=")[-1].strip()
+    return zone
+
+
+def set_exported_instance_env(command):
+    try:
+        if is_master(command):
+            pod_type = "yb-master"
+        else:
+            pod_type = "yb-tserver"
+        ordinal_index = os.getenv("HOSTNAME").split("-")[-1]
+        availability_zone = parse_zone_from_flags()
+        # if we cannot find zone for some reason, we should just call it yb-tserver-0
+        # in multi-zone deployments, we will have to format it like  yb-tserver-0_us-west1-ae
+        if availability_zone.strip():
+            # format yb-tserver-0_us-west1-a"
+            os.environ["EXPORTED_INSTANCE"] = "%s-%s_%s" % (
+                pod_type, ordinal_index, availability_zone)
+        else:
+            os.environ["EXPORTED_INSTANCE"] = "%s-%s" % (pod_type, ordinal_index)
+    except Exception as e:
+        logging.error("Error while setting exported instance env: {}, traceback: {}".format(
+            e, traceback.format_exc()))
+        # set it back to hostname in case there is an exception
+        os.environ["EXPORTED_INSTANCE"] = os.getenv("HOSTNAME")
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         format="%(asctime)s [%(levelname)s] %(filename)s: %(message)s",
@@ -272,6 +305,8 @@ if __name__ == "__main__":
     core_collection_interval = 30  # Seconds
     subs_env_gflags_interval = 20  # Seconds
     command = sys.argv[1:]
+    set_exported_instance_env(command)
+
     if len(command) < 1:
         logging.critical("No command to run")
         sys.exit(1)

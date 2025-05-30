@@ -57,7 +57,7 @@ To get the driver and HikariPool from Maven, add the following dependencies to t
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.7.3-yb-1</version>
+  <version>{{< version-driver-java >}}</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
@@ -74,7 +74,7 @@ To get the driver and HikariPool, add the following dependencies to the Gradle p
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
-implementation 'com.yugabyte:jdbc-yugabytedb:42.7.3-yb-1'
+implementation 'com.yugabyte:jdbc-yugabytedb:{{< version-driver-java >}}'
 implementation 'com.zaxxer:HikariCP:5.0.1'
 ```
 
@@ -174,6 +174,8 @@ To use the driver, do the following:
   Connection conn = ds.getConnection();
   ```
 
+The driver also supports connecting to multiple YugabyteDB clusters, while keeping connections balanced in each connected cluster. For more information, refer to [Connect to multiple clusters](../../smart-drivers/#connect-to-multiple-clusters)
+
 ## Try it out
 
 This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It starts by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) utility.
@@ -181,7 +183,7 @@ This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It st
 Next, you use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 
 {{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
+The driver requires YugabyteDB v2.7.2.0 or later, and Java 8 or above.
 {{< /note>}}
 
 ### Install YugabyteDB and create a local cluster
@@ -301,7 +303,7 @@ To use the samples, complete the following steps:
   ```
 
   {{< note title="Note">}}
-The driver requires YugabyteDB version 2.7.2.0 or higher.
+The driver requires YugabyteDB v2.7.2.0 or later.
   {{< /note>}}
 
   The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.

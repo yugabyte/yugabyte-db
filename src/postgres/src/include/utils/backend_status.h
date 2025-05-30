@@ -17,11 +17,11 @@
 
 
 /*
- * The number of attempts to read a BEEntry before proceeding with inconsistent
- * results. This must be a multiple of YB_BEENTRY_LOGGING_INTERVAL
+ * YB: The number of attempts to read a BEEntry before proceeding with
+ * inconsistent results. This must be a multiple of YB_BEENTRY_LOGGING_INTERVAL
  */
 #define YB_MAX_BEENTRIES_ATTEMPTS 1000
-/* How often to log BEEntry read failures */
+/* YB: How often to log BEEntry read failures */
 #define YB_BEENTRY_LOGGING_INTERVAL 100
 
 /* ----------
@@ -199,8 +199,9 @@ typedef struct PgBackendStatus
 	char	   *st_databasename;	/* Used in YB Mode */
 
 	/*
-	 * Memory usage of backend from TCMalloc, including PostgreSQL memory usage
-	 * + pggate memory usage + cached memory - memory that was freed but not recycled
+	 * YB: Memory usage of backend from TCMalloc, including PostgreSQL memory
+	 * usage + pggate memory usage + cached memory - memory that was freed but
+	 * not recycled
 	 */
 	int64_t		yb_st_allocated_mem_bytes;
 
@@ -302,7 +303,7 @@ typedef struct LocalPgBackendStatus
 	 */
 	TransactionId backend_xmin;
 
-	/* Backend's RSS memory usage */
+	/* YB: Backend's RSS memory usage */
 	int64_t		yb_backend_rss_mem_bytes;
 } LocalPgBackendStatus;
 
@@ -372,5 +373,6 @@ extern void yb_pgstat_add_session_info(uint64_t session_id);
 extern bool yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt);
 
 extern PgBackendStatus *getBackendStatusArray(void);
+
 
 #endif							/* BACKEND_STATUS_H */

@@ -13,7 +13,11 @@
 
 #include "yb/docdb/docdb_util.h"
 
+#include "yb/common/entity_ids.h"
+
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
@@ -42,6 +46,8 @@ using std::vector;
 namespace yb::docdb {
 
 using dockv::DocPath;
+
+const std::string kIntentsDirName = "intents";
 
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value, const int pg_data_type,
@@ -177,7 +183,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
         partial_range_key_intents, /* replicated_batches_state= */ Slice(), intra_txn_write_id_,
         /* applier= */ nullptr);
     DirectWriteToWriteBatchHandler handler(rocksdb_write_batch);
-    RETURN_NOT_OK(writer.Apply(&handler));
+    RETURN_NOT_OK(writer.Apply(handler));
     intra_txn_write_id_ = writer.intra_txn_write_id();
   } else {
     // TODO: this block has common code with docdb::PrepareExternalWriteBatch and probably
@@ -235,9 +241,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   rocksdb::Status rocksdb_write_status = db->Write(write_options(), &rocksdb_write_batch);
 
   if (!rocksdb_write_status.ok()) {
-    LOG(ERROR) << "Failed writing to RocksDB: " << rocksdb_write_status.ToString();
-    return STATUS_SUBSTITUTE(RuntimeError,
-                             "Error writing to RocksDB: $0", rocksdb_write_status.ToString());
+    LOG(DFATAL) << "Failed writing to RocksDB: " << rocksdb_write_status;
+    return rocksdb_write_status.CloneAndPrepend("Error writing to RocksDB");
   }
   return Status::OK();
 }
@@ -587,6 +592,30 @@ std::string GetStorageDir(const std::string& data_dir, const std::string& storag
 
 std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage) {
   return JoinPathSegments(data_dir, storage);
+}
+
+Status MoveChild(Env& env, const std::string& data_dir, const std::string& child) {
+  auto source_dir = JoinPathSegments(data_dir, child);
+  if (!env.DirExists(source_dir)) {
+    return Status::OK();
+  }
+  auto dest_dir = GetStorageDir(data_dir, child);
+  LOG(INFO) << "Moving " << source_dir << " => " << dest_dir;
+  if (env.FileExists(dest_dir)) {
+    RETURN_NOT_OK(env.DeleteRecursively(dest_dir));
+  }
+  return env.RenameFile(source_dir, dest_dir);
+}
+
+Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents) {
+  auto children = VERIFY_RESULT(env.GetChildren(db_dir, ExcludeDots::kTrue));
+  for (const auto& child : children) {
+    if (child.starts_with(kVectorIndexDirPrefix) ||
+        (include_intents && child == kIntentsDirName)) {
+      RETURN_NOT_OK(MoveChild(env, db_dir, child));
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace yb::docdb

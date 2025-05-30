@@ -566,6 +566,21 @@ class AwsCloud(AbstractCloud):
         waiter = ec2.get_waiter('volume_available')
         waiter.wait(VolumeIds=[vol_id])
 
+    def get_disk(self, host_info, vol_id, args):
+        logging.info("Retreiving volume {} from host {}".format(vol_id, host_info['id']))
+        ec2 = boto3.client('ec2', region_name=host_info['region'])
+        try:
+            response = ec2.describe_volumes(VolumeIds=[vol_id])
+            volumes = response.get("Volumes", [])
+            if not volumes:
+                logging.warning(f"Volume {vol_id} not found.")
+                return None  # No volume found
+            return volumes[0]  # Return full volume details
+        except Exception as e:
+            logging.warning(f"Error fetching AWS disk attachment: {e}")
+            return None
+
+
     def clone_disk(self, args, volume_id, num_disks,
                    snapshot_creation_delay=15, snapshot_creation_max_attempts=80):
         output = []

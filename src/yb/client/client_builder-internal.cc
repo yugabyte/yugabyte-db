@@ -43,25 +43,25 @@
 #include "yb/util/metric_entity.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(yb_client_num_reactors, 16,
-             "Number of reactor threads for the yb client to communicate with different tservers.");
+DEFINE_NON_RUNTIME_int32(yb_client_num_reactors, 16,
+    "Number of reactor threads for the yb client to communicate with different tservers.");
 
-DEFINE_UNKNOWN_int32(yb_client_admin_operation_timeout_sec, 120,
-             "The number of seconds after which an admin operation should timeout.");
+DEFINE_NON_RUNTIME_int32(yb_client_admin_operation_timeout_sec, 120,
+    "The number of seconds after which an admin operation should timeout.");
 
-namespace yb {
+DEFINE_NON_RUNTIME_int32(yb_client_admin_rpc_timeout_sec, 60,
+    "The number of seconds after which an admin RPC should timeout.");
 
-namespace client {
+namespace yb::client {
 
 YBClientBuilder::Data::Data()
     : master_address_flag_name_("tserver_master_addrs"),
       num_reactors_(FLAGS_yb_client_num_reactors),
       default_admin_operation_timeout_(
           MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec)),
-      default_rpc_timeout_(MonoDelta::FromSeconds(60)) {}
+      default_rpc_timeout_(MonoDelta::FromSeconds(FLAGS_yb_client_admin_rpc_timeout_sec)) {}
 
 YBClientBuilder::Data::~Data() {
 }
 
-}  // namespace client
-}  // namespace yb
+}  // namespace yb::client

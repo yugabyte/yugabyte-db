@@ -118,7 +118,7 @@ func (ft *FullDefinitionContext) startSubsection(format string) (*template.Templ
 }
 
 func (ft *FullDefinitionContext) subSection(name string) {
-	ft.Output.Write([]byte("\n\n"))
+	ft.Output.Write([]byte("\n"))
 	ft.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	ft.Output.Write([]byte("\n"))
 }

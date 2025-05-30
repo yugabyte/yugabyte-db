@@ -3,4 +3,4 @@
 ####################################################################################################
 # Postgres Testsuites: This suite includes tests on replication slot functions.
 ####################################################################################################
-test: yb_replication_slot
+test: yb.orig.replication_slot

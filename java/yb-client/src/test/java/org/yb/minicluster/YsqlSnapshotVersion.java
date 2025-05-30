@@ -14,8 +14,8 @@
 package org.yb.minicluster;
 
 public enum YsqlSnapshotVersion {
-  /** PG15 alpha snapshot. To be replaced with 2025.1 snapshot when it is available. */
-  PG15_ALPHA,
+  /** Snapshot captured during PG15.12 merge. */
+  PG15_12,
 
   /** Latest (current) snapshot. */
   LATEST

@@ -17,10 +17,12 @@ import pipes
 import platform
 import random
 import re
+import requests
 import socket
 import string
 import subprocess
 import sys
+import time
 
 from enum import Enum
 
@@ -58,6 +60,9 @@ DEFAULT_YSQL_PROXY_RPC_PORT = 5433
 DEFAULT_REDIS_PROXY_HTTP_PORT = 11000
 DEFAULT_REDIS_PROXY_RPC_PORT = 6379
 DEFAULT_NODE_EXPORTER_HTTP_PORT = 9300
+
+MAX_RETRIES = 5
+RETRY_DELAY = 10  # Initial delay, increases exponentially
 
 
 def get_path_from_yb(path):
@@ -453,3 +458,43 @@ def get_mount_roots(connect_options, paths):
     finally:
         if remote_shell is not None:
             remote_shell.close()
+
+
+def retry_operation_for_timeout(operation, *args, operation_name="", **kwargs):
+    """
+    Generic retry mechanism with exponential backoff for timeout calls.
+
+    :param operation: Function to retry.
+    :param args: Arguments to pass to the function.
+    :param operation_name: Name of the operation for logging.
+    :param kwargs: Keyword arguments to pass to the function.
+    :return: Result of the operation if successful.
+    :raises: Last exception if all retries fail.
+    """
+    precondition_check = kwargs.get('precondition_check', None)
+    postcondition_check = kwargs.get('postcondition_check', None)
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            if precondition_check:
+                kwargs.pop('precondition_check')
+                if precondition_check():
+                    logging.warning(f"{operation_name} is still in progress... \
+                                     Waiting ({attempt}/{MAX_RETRIES})")
+                    time.sleep(RETRY_DELAY * (2 ** (attempt - 1)))
+                    continue
+
+            if postcondition_check:
+                kwargs.pop('postcondition_check')
+                if precondition_check():
+                    logging.info(f"{operation_name} is complete... Returning")
+                    return
+            logging.info(f"Attempting {operation_name} (Attempt {attempt}/{MAX_RETRIES})")
+            return operation(*args, **kwargs)  # Execute the function
+        except (requests.exceptions.RequestException, TimeoutError, socket.timeout) as e:
+            logging.warning(f"Timeout during {operation_name} with error {str(e)}. \
+                            Retrying... ({attempt}/{MAX_RETRIES})")
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY * (2 ** (attempt - 1)))  # Exponential backoff
+            else:
+                logging.error(f"Failed to complete {operation_name} after {MAX_RETRIES} attempts")
+                raise  # Raise the last exception

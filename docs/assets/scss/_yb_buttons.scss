@@ -144,6 +144,14 @@ body {
     }
   }
 
+  .card-link {
+    .arrow-btn {
+      &.more {
+        font-size: 13px;
+      }
+    }
+  }
+
   .arrow-btn {
     color: #507ce1;
     font-weight: 500;

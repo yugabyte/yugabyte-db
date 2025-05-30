@@ -230,10 +230,6 @@ class YBSchemaBuilder {
 
   YBSchemaBuilder* SetTableProperties(const TableProperties& table_properties);
 
-  YBSchemaBuilder* SetSchemaName(const std::string& pgschema_name);
-
-  std::string SchemaName();
-
   // Resets 'schema' to the result of this builder.
   //
   // If the Schema is invalid for any reason (eg missing types, duplicate column names, etc)

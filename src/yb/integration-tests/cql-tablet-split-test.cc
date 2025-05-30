@@ -306,20 +306,20 @@ load_generator::ReadStatus CqlSecondaryIndexReader::PerformRead(
         "for v: '$0', expected key: '$1', key_index: $2", expected_value, key_str, key_index);
   };
   if (!iter.Next()) {
-    LOG(ERROR) << "No rows found " << values_formatter();
+    LOG(WARNING) << "No rows found " << values_formatter();
     return load_generator::ReadStatus::kNoRows;
   }
   auto row = iter.Row();
   const auto k = row.Value(0).ToString();
   if (k != key_str) {
-    LOG(ERROR) << "Invalid k " << values_formatter() << " got k: " << k;
+    LOG(WARNING) << "Invalid k " << values_formatter() << " got k: " << k;
     return load_generator::ReadStatus::kInvalidRead;
   }
   if (iter.Next()) {
     return load_generator::ReadStatus::kExtraRows;
-    LOG(ERROR) << "More than 1 row found " << values_formatter();
+    LOG(WARNING) << "More than 1 row found " << values_formatter();
     do {
-      LOG(ERROR) << "k: " << iter.Row().Value(0).ToString();
+      LOG(WARNING) << "k: " << iter.Row().Value(0).ToString();
     } while (iter.Next());
   }
   return load_generator::ReadStatus::kOk;
@@ -403,7 +403,7 @@ void CqlTabletSplitTest::CompleteSecondaryIndexTest(const int num_splits, const 
 }
 
 TEST_F(CqlTabletSplitTest, SecondaryIndex) {
-  const auto kNumSplits = RegularBuildVsSanitizers(10, 3);
+  const auto kNumSplits = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 3, 3, 3);
 
   ASSERT_NO_FATALS(StartSecondaryIndexTest());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability) = 0.5;
@@ -476,7 +476,11 @@ TEST_F_EX(CqlTabletSplitTest, SecondaryIndexWithDrop, CqlTabletSplitTestMultiMas
 class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
  protected:
   void SetUpFlags() override {
+#ifdef __APPLE__
+    const int64 kSplitThreshold = 16_KB;
+#else
     const int64 kSplitThreshold = 64_KB;
+#endif
 
     std::vector<std::string> common_flags;
     common_flags.push_back("--yb_num_shards_per_tserver=1");
@@ -522,14 +526,22 @@ struct BatchTimeseriesDataSource {
 Status RunBatchTimeSeriesTest(
     ExternalMiniCluster* cluster, CppCassandraDriver* driver, const int num_splits,
     const MonoDelta timeout) {
+#ifdef __APPLE__
+  const auto kWriterThreads = 1;
+  const auto kReaderThreads = 1;
+  const auto kReadBatchSize = 10;
+  const auto kWriteBatchSize = 10;
+  const auto kValueSize = 500;
+#else
   const auto kWriterThreads = 4;
   const auto kReaderThreads = 4;
-  const auto kMinMetricsCount = 10000;
-  const auto kMaxMetricsCount = 20000;
   const auto kReadBatchSize = 100;
   const auto kWriteBatchSize = 500;
-  const auto kReadBackDeltaTime = 100;
   const auto kValueSize = 100;
+#endif
+  const auto kMinMetricsCount = 10000;
+  const auto kMaxMetricsCount = 20000;
+  const auto kReadBackDeltaTime = 100;
 
   const auto kMaxWriteErrors = 100;
   const auto kMaxReadErrors = 100;

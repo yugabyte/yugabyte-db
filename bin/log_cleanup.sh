@@ -98,15 +98,17 @@ logs_purge_threshold_kb=$(( logs_purge_threshold_kb / 2 ))
 find_and_sort() {
   dir=$1
   regex=$2
-  find "${dir}" -type f -name "${regex}" -print0 | \
+  exclude="${3:-"$^"}" # exclude nothing by default
+  find "${dir}" -type f -name "${regex}" -not -name "${exclude}" -print0 | \
     xargs -0 -r stat -c '%Y %n' | \
     sort | cut -d' ' -f2-
 }
 
-delete_log_files() {
+delete_or_gzip_log_files() {
   local log_dir=$1
   local find_regex=$2
-  local permitted_usage=$3
+  local permitted_usage_kb=$3
+  local command=$4
   local logs_disk_usage_bytes
   logs_disk_usage_bytes=$(find "${log_dir}" -type f -name "${find_regex}" -print0 | \
     xargs -0 -r stat -c '%s' | \
@@ -115,49 +117,52 @@ delete_log_files() {
     logs_disk_usage_bytes=0
   fi
   local logs_disk_usage_kb=$(( logs_disk_usage_bytes / 1000 ))
-  echo "Permitted disk usage for $find_regex files in kb: ${permitted_usage}"
-  echo "Disk usage by $find_regex files in kb: ${logs_disk_usage_kb}"
-
-  # get all the gz files.
-  local gz_files
-  local file_size
-  gz_files=$(find_and_sort "${log_dir}" "${find_regex}.gz")
-  for file in ${gz_files}; do
-    # If usage exceeds permitted, delete the old gz files.
-    if [[ "${logs_disk_usage_kb}" -gt "${permitted_usage}" ]]; then
-      file_size=$(du -k "${file}" | awk '{print $1}')
-      logs_disk_usage_kb=$(( logs_disk_usage_kb - file_size ))
-      echo "Delete file ${file}"
-      rm "${file}"
-    else
-      break
+  # Skip this part if command is gzip
+  # Remove all zipped files till we are under permitted usage
+  if [[ "$command" == "delete" ]]; then
+    echo "Permitted disk usage for $find_regex files in kb: ${permitted_usage_kb}"
+    echo "Disk usage by $find_regex files in kb: ${logs_disk_usage_kb}"
+    # get all the gz files.
+    local gz_files
+    local file_size
+    gz_files=$(find_and_sort "${log_dir}" "${find_regex}.gz")
+    for file in ${gz_files}; do
+      # If usage exceeds permitted, delete the old gz files.
+      if [[ "${logs_disk_usage_kb}" -gt "${permitted_usage_kb}" ]]; then
+        file_size=$(du -k "${file}" | awk '{print $1}')
+        logs_disk_usage_kb=$(( logs_disk_usage_kb - file_size ))
+        echo "Delete file ${file}"
+        rm "${file}"
+      else
+        break
+      fi
+    done
+    # Skip deletion of non-gz files if we are under permitted usage
+    if [[ "${logs_disk_usage_kb}" -le "${permitted_usage_kb}" ]]; then
+      return
     fi
-  done
-
-  # Skip deletion of non-gz files if we are under permitted usage
-  if [[ "${logs_disk_usage_kb}" -le "${permitted_usage}" ]]; then
-    return
   fi
 
-  # All the non-gz files
+  # Delete or gzip all the non-gz files till we are under permitted usage
   local files
-  local current_file
-  files="$(find_and_sort "${log_dir}" "${find_regex}")"
-  # Remove the current log files from the list
-  for log_regex in ${log_regexes}; do
-    current_file="$(find_and_sort "${log_dir}" "${log_regex}" | tail -n1)"
-    # double quotes around files are import
-    # https://stackoverflow.com/a/4651495
-    files="$(echo "${files}" | grep -v -E "^${current_file}$")"
-  done
   local file_size
+  # gzip/delete all files except the most recent one.
+  files=$(find_and_sort "${log_dir}" "${find_regex}" "*.gz" | head -n -1)
   for file in ${files}; do
     # If usage exceeds permitted, delete the old files.
-    if [[ "${logs_disk_usage_kb}" -gt "${permitted_usage}" ]]; then
+    if [[ "${logs_disk_usage_kb}" -gt "${permitted_usage_kb}" ]]; then
       file_size=$(du -k "$file" | awk '{print $1}')
       logs_disk_usage_kb=$(( logs_disk_usage_kb - file_size ))
-      echo "Delete file ${file}"
-      rm "${file}"
+      if [ "$command" == "delete" ]; then
+        echo "Delete file $file"
+        rm "$file"
+      else
+        echo "Compressing file $file"
+        gzip "$file" || echo "Compression failed. Continuing."
+        local new_file_size_kb
+        new_file_size_kb=$(du -k "${file}".gz | awk '{print $1}')
+        logs_disk_usage_kb=$((logs_disk_usage_kb + new_file_size_kb))
+      fi
     else
       break
     fi
@@ -220,19 +225,17 @@ for daemon_type in ${daemon_types}; do
   for log_regex in ${log_regexes}; do
     # Using print0 since printf is not supported on all UNIX systems.
     # xargs -0 -r stat -c '%Y %n' outputs: [unix time in millisecs] [name of file]
-    non_gz_files=$(find "${YB_LOG_DIR}" -type f -name "${log_regex}" ! -name "*.gz" -print0 | \
-      xargs -0 -r stat -c '%Y %n' | \
-      sort | cut -d' ' -f2-
-    )
+    non_gz_files=$(find_and_sort "${YB_LOG_DIR}" "${log_regex}" "*.gz")
     # TODO: grep -c can be used here instead of wc -l.
     non_gz_file_count=$(echo "${non_gz_files}" | wc -l)
     # gzip all files but the current one.
     if [[ "${non_gz_file_count}" -gt 1 ]]; then
-      files_to_gzip=$(echo "${non_gz_files}" | head -n-1)
-      for file in ${files_to_gzip}; do
-        echo "Compressing file ${file}"
-        gzip "${file}" || echo "Compression failed. Continuing."
-      done
+      permitted_postgres_plain_disk_usage_kb=0
+      if [[ "${log_regex}" == "postgres*log" && "${PRESERVE_AUDIT_LOGS:-}" == "true" ]]; then
+        permitted_postgres_plain_disk_usage_kb=$((postgres_max_log_size_kb / 2))
+      fi
+      delete_or_gzip_log_files "${YB_LOG_DIR}" "${log_regex}" \
+        "${permitted_postgres_plain_disk_usage_kb}" "gzip"
     fi
   done
 
@@ -245,8 +248,8 @@ for daemon_type in ${daemon_types}; do
     percent_disk_usage_kb=$(( disk_size_kb * logs_disk_percent_max / 100 ))
     permitted_disk_usage_kb=$([[ "${percent_disk_usage_kb}" -le "${logs_purge_threshold_kb}" ]] && \
       echo "${percent_disk_usage_kb}" || echo "${logs_purge_threshold_kb}")
-    delete_log_files "${YB_LOG_DIR}" "${server_log}" "${permitted_disk_usage_kb}"
-    delete_log_files "${YB_LOG_DIR}" "${postgres_log}" "${postgres_max_log_size_kb}"
+    delete_or_gzip_log_files "${YB_LOG_DIR}" "${server_log}" "${permitted_disk_usage_kb}" "delete"
+    delete_or_gzip_log_files "${YB_LOG_DIR}" "${postgres_log}" \
+      "${postgres_max_log_size_kb}" "delete"
   fi
 done
-

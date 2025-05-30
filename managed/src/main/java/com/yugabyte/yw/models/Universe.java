@@ -527,6 +527,36 @@ public class Universe extends Model {
   }
 
   /**
+   * Update a universe in mutual exclusion with universe lock. It does not update
+   * 'updateInProgress'. Instead, tryLock is used to provide provide mutual exclusion between the
+   * callback and the lock update for universe by an incoming task.
+   *
+   * <p>Note: Ensure that the callback finishes quickly.
+   */
+  public static void doIfUnlocked(UUID universeUuid, Consumer<Universe> callback) {
+    if (UNIVERSE_KEY_LOCK.tryLock(universeUuid)) {
+      try {
+        Universe.maybeGet(universeUuid)
+            .ifPresent(
+                u -> {
+                  if (u.getUniverseDetails().updateInProgress) {
+                    LOG.debug(
+                        "Universe {}({}) is already being updated",
+                        u.getName(),
+                        u.getUniverseUUID());
+                  } else {
+                    callback.accept(u);
+                  }
+                });
+      } finally {
+        UNIVERSE_KEY_LOCK.releaseLock(universeUuid);
+      }
+    } else {
+      LOG.info("Could not acquire key lock for universe {}", universeUuid);
+    }
+  }
+
+  /**
    * Deletes the universe entry with the given UUID.
    *
    * @param universeUUID : uuid of the universe.
@@ -1157,17 +1187,27 @@ public class Universe extends Model {
   }
 
   public boolean nodeExists(String host, int port) {
-    return getUniverseDetails().nodeDetailsSet.parallelStream()
-        .anyMatch(
-            n ->
-                n.cloudInfo.private_ip != null
-                    && n.cloudInfo.private_ip.equals(host)
-                    && (port == n.masterHttpPort
-                        || port == n.tserverHttpPort
-                        || port == n.ysqlServerHttpPort
-                        || port == n.yqlServerHttpPort
-                        || port == n.redisServerHttpPort
-                        || port == n.nodeExporterPort));
+    if (host == null) {
+      return false;
+    }
+    Optional<NodeDetails> nodeDetailsOpt =
+        getUniverseDetails().nodeDetailsSet.parallelStream()
+            .filter(n -> n.cloudInfo.private_ip != null && n.cloudInfo.private_ip.equals(host))
+            .findFirst();
+    if (!nodeDetailsOpt.isPresent()) {
+      return false;
+    }
+    NodeDetails node = nodeDetailsOpt.get();
+    if (port == node.masterHttpPort
+        || port == node.tserverHttpPort
+        || port == node.ysqlServerHttpPort
+        || port == node.yqlServerHttpPort
+        || port == node.redisServerHttpPort
+        || port == node.nodeExporterPort) {
+      return true;
+    }
+    Optional<NodeAgent> nodeAgentOpt = NodeAgent.maybeGetByIp(host);
+    return nodeAgentOpt.isPresent() && nodeAgentOpt.get().getPort() == port;
   }
 
   public void incrementVersion() {

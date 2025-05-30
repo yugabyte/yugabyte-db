@@ -24,20 +24,19 @@
 
 #include "postgres.h"
 
-#include "skey.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/itup.h"
 #include "access/relation.h"
+#include "executor/ybExpr.h"
 #include "nodes/pathnodes.h"
+#include "pg_yb_utils.h"
+#include "skey.h"
 #include "utils/catcache.h"
 #include "utils/resowner.h"
 #include "utils/sampling.h"
 #include "utils/snapshot.h"
-
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
-#include "executor/ybExpr.h"
 
 extern PGDLLIMPORT int yb_parallel_range_rows;
 
@@ -280,9 +279,9 @@ extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
 extern void YbDmlAppendTargetRegularAttr(const FormData_pg_attribute *attr,
 										 YbcPgStatement handle);
 
-extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-										Relation index, bool xs_want_itup,
-										YbcPgStatement handle);
+extern void YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
+										TupleDesc tupdesc, Relation index,
+										bool xs_want_itup, YbcPgStatement handle);
 extern void YbDmlAppendTargets(List *colrefs, YbcPgStatement handle);
 
 extern void YbAppendPrimaryColumnRef(YbcPgStatement dml, YbcPgExpr colref);
@@ -316,6 +315,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 
 /* Returns whether the given populated ybScan needs PG recheck. */
 extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
+
+extern bool YbIsScanningEmbeddedIdx(Relation table, Relation index);
 
 /*
  * Used in Agg node init phase to determine whether YB preliminary check or PG
@@ -361,9 +362,6 @@ extern Oid	ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
  * so the extra cost should be relatively low in general.
  */
 #define YBC_UNCOVERED_INDEX_COST_FACTOR 1.1
-
-/* OID for function "yb_hash_code" */
-#define YB_HASH_CODE_OID 8020
 
 extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 							bool is_backwards_scan, bool is_seq_scan,

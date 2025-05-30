@@ -44,6 +44,12 @@ class PgWire {
     return Load<Out, NetworkByteOrder>(data);
   }
 
+  template <class Out>
+  static Result<Out> CheckedReadNumber(Slice* cursor) {
+    SCHECK_GE(cursor->size(), sizeof(Out), InvalidArgument, "Unexpected end of data");
+    return ReadNumber<Out>(cursor);
+  }
+
   // Read Text Data
   static void ReadBytes(Slice *cursor, char *value, int64_t bytes);
   static void ReadString(Slice *cursor, std::string *value, int64_t bytes);

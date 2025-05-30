@@ -334,14 +334,16 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
   @Test
   public void testV2SystemdEnable() throws ApiException {
     UUID taskUUID = UUID.randomUUID();
-    when(mockUpgradeUniverseHandler.upgradeSystemd(any(), eq(customer), eq(universe)))
+    Universe cronUniverse = ModelFactory.createUniverse("universe-nosysd", customer.getId(), false);
+    when(mockUpgradeUniverseHandler.upgradeSystemd(any(), eq(customer), eq(cronUniverse)))
         .thenReturn(taskUUID);
     UniverseSystemdEnableStart req = new UniverseSystemdEnableStart();
     req.setSleepAfterTserverRestartMillis(10000);
-    YBATask resp = apiClient.systemdEnable(customer.getUuid(), universe.getUniverseUUID(), req);
+    YBATask resp = apiClient.systemdEnable(customer.getUuid(), cronUniverse.getUniverseUUID(), req);
     ArgumentCaptor<SystemdUpgradeParams> captor =
         ArgumentCaptor.forClass(SystemdUpgradeParams.class);
-    verify(mockUpgradeUniverseHandler).upgradeSystemd(captor.capture(), eq(customer), eq(universe));
+    verify(mockUpgradeUniverseHandler)
+        .upgradeSystemd(captor.capture(), eq(customer), eq(cronUniverse));
     SystemdUpgradeParams params = captor.getValue();
     assertTrue(10000 == params.sleepAfterTServerRestartMillis);
     assertEquals(taskUUID, resp.getTaskUuid());

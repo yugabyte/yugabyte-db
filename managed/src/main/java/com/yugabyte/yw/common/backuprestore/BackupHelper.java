@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common.backuprestore;
 
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
@@ -17,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
@@ -114,7 +117,8 @@ public class BackupHelper {
   private ValidateReplicationInfo validateReplicationInfo;
   private NodeUniverseManager nodeUniverseManager;
   private YbcBackupUtil ybcBackupUtil;
-  @Inject Commissioner commissioner;
+  private SoftwareUpgradeHelper softwareUpgradeHelper;
+  private Commissioner commissioner;
 
   @Inject
   public BackupHelper(
@@ -123,10 +127,11 @@ public class BackupHelper {
       CustomerConfigService customerConfigService,
       RuntimeConfGetter confGetter,
       StorageUtilFactory storageUtilFactory,
-      Commissioner commisssioner,
+      Commissioner commissioner,
       ValidateReplicationInfo validateReplicationInfo,
       NodeUniverseManager nodeUniverseManager,
-      YbcBackupUtil ybcBackupUtil) {
+      YbcBackupUtil ybcBackupUtil,
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.ybcManager = ybcManager;
     this.ybClientService = ybClientService;
     this.customerConfigService = customerConfigService;
@@ -135,7 +140,8 @@ public class BackupHelper {
     this.validateReplicationInfo = validateReplicationInfo;
     this.nodeUniverseManager = nodeUniverseManager;
     this.ybcBackupUtil = ybcBackupUtil;
-    // this.commissioner = commissioner;
+    this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.commissioner = commissioner;
   }
 
   public String getValidOwnerRegex() {
@@ -291,6 +297,7 @@ public class BackupHelper {
     if (!isSkipConfigBasedPreflightValidation(universe)) {
       validateStorageConfig(customerConfig);
     }
+
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     log.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
     CustomerTask.create(
@@ -310,6 +317,12 @@ public class BackupHelper {
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot restore backup with major version upgrade is in progress");
+    }
+
     taskParams.backupStorageInfoList.forEach(
         bSI -> {
           if (StringUtils.isNotBlank(bSI.newOwner)
@@ -356,7 +369,7 @@ public class BackupHelper {
           .getStorageUtil(customerConfig.getName())
           .validateStorageConfigOnDefaultLocationsList(
               configData,
-              taskParams.backupStorageInfoList.parallelStream()
+              taskParams.backupStorageInfoList.stream()
                   .map(bSI -> bSI.storageLocation)
                   .collect(Collectors.toSet()),
               false);
@@ -366,6 +379,17 @@ public class BackupHelper {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore the ybc backup as ybc is not installed on the universe");
     }
+
+    // Set error management flags based on runtime config
+    Boolean ignoreErrors =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ignoreRestoreErrors);
+    log.debug(
+        "Configured ignoreErrors: {}, errorIfRolesExists: {}, errorIfTablespacesExists: {}",
+        ignoreErrors);
+    for (BackupStorageInfo backupStorageInfo : taskParams.backupStorageInfoList) {
+      backupStorageInfo.setIgnoreErrors(ignoreErrors || backupStorageInfo.getIgnoreErrors());
+    }
+
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
     CustomerTask.create(
         customer,
@@ -507,7 +531,7 @@ public class BackupHelper {
         if (backupInfo.backupType.equals(TableType.YQL_TABLE_TYPE)
             && CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
           List<TableInfo> tableInfos =
-              tableInfoList.parallelStream()
+              tableInfoList.stream()
                   .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
                   .filter(
                       tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
@@ -522,7 +546,7 @@ public class BackupHelper {
           }
         } else if (backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
-              tableInfoList.parallelStream()
+              tableInfoList.stream()
                   .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
                   .filter(
                       tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
@@ -555,7 +579,7 @@ public class BackupHelper {
   public void validateMapToRestoreWithUniverseNonRedisYBC(
       UUID universeUUID, Map<TableType, Map<String, Set<String>>> restoreMap) {
     List<TableInfo> tableInfos = getTableInfosOrEmpty(Universe.getOrBadRequest(universeUUID));
-    tableInfos.parallelStream()
+    tableInfos.stream()
         .filter(t -> !t.getTableType().equals(TableType.REDIS_TABLE_TYPE))
         .forEach(
             t -> {
@@ -679,7 +703,7 @@ public class BackupHelper {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     if (keyspace != null && CollectionUtils.isEmpty(tableUuids)) {
       tableInfoList =
-          tableInfoList.parallelStream()
+          tableInfoList.stream()
               .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
@@ -692,7 +716,7 @@ public class BackupHelper {
 
     if (keyspace == null) {
       tableInfoList =
-          tableInfoList.parallelStream()
+          tableInfoList.stream()
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
       if (CollectionUtils.isEmpty(tableInfoList)) {
@@ -795,7 +819,7 @@ public class BackupHelper {
       return TablespaceResponse.builder().containsTablespaces(false).build();
     }
     Map<String, Tablespace> tablespacesInBackupMap =
-        tablespacesInBackup.parallelStream()
+        tablespacesInBackup.stream()
             .collect(Collectors.toMap(t -> t.tablespaceName, Function.identity()));
 
     // Conflicting tablespaces info.
@@ -838,7 +862,7 @@ public class BackupHelper {
     List<String> unsupportedTablespaceNames =
         validateReplicationInfo
             .getUnsupportedTablespacesOnUniverse(universe, tablespacesInBackup)
-            .parallelStream()
+            .stream()
             .map(t -> t.tablespaceName)
             .collect(Collectors.toList());
 
@@ -918,13 +942,6 @@ public class BackupHelper {
       }
       // Assign this backup for all further uses.
       restorableBackup = optBackupClosestToRestoreTimestamp.get();
-      if (!restorableBackup.getBackupInfo().isPointInTimeRestoreEnabled()) {
-        throw new PlatformServiceException(
-            PRECONDITION_FAILED,
-            String.format(
-                "Point in time restore not enabled for the backup %s",
-                restorableBackup.getBackupUUID()));
-      }
     }
 
     RestorePreflightResponse.RestorePreflightResponseBuilder preflightResponseBuilder =
@@ -953,7 +970,7 @@ public class BackupHelper {
     }
 
     boolean queryUniverseTablespaces =
-        restorableBackup.getBackupParamsCollection().parallelStream()
+        restorableBackup.getBackupParamsCollection().stream()
             .filter(bP -> CollectionUtils.isNotEmpty(bP.getTablespacesList()))
             .findAny()
             .isPresent();
@@ -1074,7 +1091,7 @@ public class BackupHelper {
             .getSelectiveTableRestore();
 
     boolean queryUniverseTablespaces =
-        ybcSuccessMarkerMap.values().parallelStream()
+        ybcSuccessMarkerMap.values().stream()
             .filter(yBP -> CollectionUtils.isNotEmpty(yBP.tablespaceInfos))
             .findAny()
             .isPresent();
@@ -1349,6 +1366,42 @@ public class BackupHelper {
         universe, UniverseConfKeys.skipConfigBasedPreflightValidation);
   }
 
+  public void maybeSetBackupRevertToPreRolesBehaviour(BackupTableParams params, Universe universe) {
+    // If revert to pre roles behaviour is true, we dont' need further checks.
+    if (params.getRevertToPreRolesBehaviour()) {
+      log.debug("Revert to pre roles behaviour is true, skipping further checks.");
+      return;
+    }
+
+    // Runtime config to always use rever to pre roles behaviour.
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.revertToPreRolesBehaviour)) {
+      params.setRevertToPreRolesBehaviour(true);
+      log.debug("runtime config for 'revert to pre roles behaviour' is true");
+      return;
+    }
+
+    // Set to false by default
+    params.setRevertToPreRolesBehaviour(false);
+  }
+
+  public void maybeSetRestoreRevertToPreRolesBehaviour(
+      RestoreBackupParams params, Universe universe) {
+    for (BackupStorageInfo storageInfo : params.backupStorageInfoList) {
+      if (storageInfo.getRevertToPreRolesBehaviour()) {
+        log.debug("Revert to pre roles behaviour is true, skipping further checks.");
+        continue;
+      }
+      // Runtime config to always use rever to pre roles behaviour.
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.revertToPreRolesBehaviour)) {
+        storageInfo.setRevertToPreRolesBehaviour(true);
+        log.debug("runtime config for 'revert to pre roles behaviour' is true");
+        continue;
+      }
+      // Set to false by default
+      storageInfo.setRevertToPreRolesBehaviour(false);
+    }
+  }
+
   /* ---- Restorable objects preflight validation ---- */
 
   /**
@@ -1377,10 +1430,6 @@ public class BackupHelper {
             PRECONDITION_FAILED, "No backup available for Point in restore to target timestamp");
       }
       restorableBackup = optBackupClosestToRestoreTimestamp.get();
-      if (!restorableBackup.getBackupInfo().isPointInTimeRestoreEnabled()) {
-        throw new PlatformServiceException(
-            PRECONDITION_FAILED, "Point in time restore not enabled for the backup");
-      }
     }
 
     boolean success = true;

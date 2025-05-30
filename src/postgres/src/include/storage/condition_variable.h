@@ -22,9 +22,11 @@
 #ifndef CONDITION_VARIABLE_H
 #define CONDITION_VARIABLE_H
 
-#include "storage/proc.h"
 #include "storage/proclist_types.h"
 #include "storage/spin.h"
+
+/* YB includes */
+#include "storage/proc.h"
 
 typedef struct
 {

@@ -25,6 +25,12 @@ export interface UnsupportedSqlObjectData  {
    * @type {string}
    * @memberof UnsupportedSqlObjectData
    */
+  object_type?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof UnsupportedSqlObjectData
+   */
   object_name?: string;
   /**
    * 

@@ -21,20 +21,26 @@ import {
   TIMESTAMP_FIELDS
 } from './helpers/constants';
 import {
-  YcqlLiveQueryPrimativeFields,
+  YcqlLiveQueryPrimitiveFields,
   YsqlLiveQuery,
-  YsqlLiveQueryPrimativeFields,
+  YsqlLiveQueryPrimitiveFields,
   YsqlSlowQuery,
-  YsqlSlowQueryPrimativeFields
+  YsqlSlowQueryPrimitiveFields
 } from './helpers/types';
 import { adaptHistogramData } from './helpers/utils';
 import { parseFloatIfDefined } from '../xcluster/ReplicationUtils';
 import { QueryApi } from '../../redesign/helpers/constants';
-import { formatDatetime, YB_LIVE_QUERY_TIMESTAMP_FORMAT, YBTimeFormats } from '../../redesign/helpers/DateUtils';
+import {
+  formatDatetime,
+  YB_LIVE_QUERY_TIMESTAMP_FORMAT,
+  YBTimeFormats
+} from '../../redesign/helpers/DateUtils';
 
 interface QueryInfoSidePanelBaseProps {
   visible: boolean;
+  isPg15Supported: boolean;
   onHide: () => void;
+  isConnectionPoolEnabled: boolean;
 }
 interface SlowQueryInfoSidePanelProps extends QueryInfoSidePanelBaseProps {
   queryApi: typeof QueryApi.YSQL;
@@ -48,10 +54,20 @@ interface LiveQueryInfoSidePanelProps extends QueryInfoSidePanelBaseProps {
 }
 type QueryInfoSidePanelProps = SlowQueryInfoSidePanelProps | LiveQueryInfoSidePanelProps;
 
+const PG_15_FIELDS: readonly (YsqlSlowQueryPrimitiveFields | YsqlLiveQueryPrimitiveFields)[] = [
+  'min_plan_time',
+  'max_plan_time',
+  'mean_plan_time',
+  'stddev_plan_time',
+  'total_plan_time',
+  'leader_pid',
+  'query_id'
+];
+
 /**
  * This constant stores the order of the `YSQLSlowQuery` fields to display to the user.
  */
-const YSQL_SLOW_QUERY_DETAIL_FIELDS: YsqlSlowQueryPrimativeFields[] = [
+const YSQL_SLOW_QUERY_DETAIL_FIELDS: YsqlSlowQueryPrimitiveFields[] = [
   'calls',
   'rows',
   'datname',
@@ -61,6 +77,11 @@ const YSQL_SLOW_QUERY_DETAIL_FIELDS: YsqlSlowQueryPrimativeFields[] = [
   'min_time',
   'mean_time',
   'stddev_time',
+  'min_plan_time',
+  'max_plan_time',
+  'mean_plan_time',
+  'stddev_plan_time',
+  'total_plan_time',
   'P25',
   'P50',
   'P90',
@@ -68,7 +89,7 @@ const YSQL_SLOW_QUERY_DETAIL_FIELDS: YsqlSlowQueryPrimativeFields[] = [
   'P99'
 ];
 
-const YSQL_LIVE_QUERY_DETAIL_FIELDS: YsqlLiveQueryPrimativeFields[] = [
+const YSQL_LIVE_QUERY_DETAIL_FIELDS: YsqlLiveQueryPrimitiveFields[] = [
   'dbName',
   'queryStartTime',
   'elapsedMillis',
@@ -77,10 +98,12 @@ const YSQL_LIVE_QUERY_DETAIL_FIELDS: YsqlLiveQueryPrimativeFields[] = [
   'clientHost',
   'clientPort',
   'appName',
-  'sessionStatus'
+  'sessionStatus',
+  'leader_pid',
+  'query_id'
 ];
 
-const YCQL_LIVE_QUERY_DETAIL_FIELDS: YcqlLiveQueryPrimativeFields[] = [
+const YCQL_LIVE_QUERY_DETAIL_FIELDS: YcqlLiveQueryPrimitiveFields[] = [
   'clientHost',
   'clientPort',
   'elapsedMillis',
@@ -153,8 +176,10 @@ export const QueryInfoSidePanel = ({
   queryApi,
   queryType,
   queryData,
+  isPg15Supported,
   visible,
-  onHide
+  onHide,
+  isConnectionPoolEnabled
 }: QueryInfoSidePanelProps) => {
   const [currentTab, setCurrentTab] = useState<QueryInfoTab>(DEFAULT_TAB);
   const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
@@ -171,9 +196,9 @@ export const QueryInfoSidePanel = ({
 
   const formatQueryData = (
     ysqlSlowQueryKey:
-      | YsqlLiveQueryPrimativeFields
-      | YcqlLiveQueryPrimativeFields
-      | YsqlSlowQueryPrimativeFields
+      | YsqlLiveQueryPrimitiveFields
+      | YcqlLiveQueryPrimitiveFields
+      | YsqlSlowQueryPrimitiveFields
   ): string => {
     const queryDataEntry = queryData?.[ysqlSlowQueryKey];
 
@@ -215,14 +240,19 @@ export const QueryInfoSidePanel = ({
       : [];
   const queryMetricFields =
     queryType === QueryType.SLOW
-      ? YSQL_SLOW_QUERY_DETAIL_FIELDS
+      ? YSQL_SLOW_QUERY_DETAIL_FIELDS.filter(
+          (fieldName) => isPg15Supported || !PG_15_FIELDS.includes(fieldName)
+        )
       : queryApi === QueryApi.YSQL
-      ? YSQL_LIVE_QUERY_DETAIL_FIELDS
+      ? YSQL_LIVE_QUERY_DETAIL_FIELDS.filter(
+          (fieldName) => isPg15Supported || !PG_15_FIELDS.includes(fieldName)
+        )
       : YCQL_LIVE_QUERY_DETAIL_FIELDS;
-  const islatencyPercentilesSupported = queryType === QueryType.SLOW;
+  const isLatencyPercentilesSupported = queryType === QueryType.SLOW;
 
   const queryDetails = queryData
     ? queryMetricFields.map((queryKey) => {
+        if (isConnectionPoolEnabled && ['clientHost', 'clientPort'].includes(queryKey)) return null;
         return (
           <div className={classes.queryMetricRow} key={queryKey}>
             <Typography className={classes.queryMetricLabel} variant="body2" color="textSecondary">
@@ -243,7 +273,7 @@ export const QueryInfoSidePanel = ({
       {queryData && (
         <div className={classes.content}>
           <CodeBlock code={queryData.query} />
-          {islatencyPercentilesSupported ? (
+          {isLatencyPercentilesSupported ? (
             <TabContext value={currentTab}>
               <TabList
                 classes={{ root: classes.queryInfoTabList }}

@@ -56,9 +56,10 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
   );
-  const isRfChangeEnabled = runtimeConfigs?.configEntries?.find(
+  const isRfChangeEnabled =
+    runtimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.RF_CHANGE_FEATURE_FLAG
-  )?.value === 'true';
+    )?.value === 'true';
 
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
   const isDedicatedNodesEnabled = !!(enableDedicatedNodesObject?.value === 'true');
@@ -112,11 +113,18 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           </Box>
         )}
         <Box mt={2}>
-          <TotalNodesField disabled={isViewMode} />
+          <TotalNodesField
+            disabled={isViewMode}
+            isPrimary={isPrimary}
+            useK8CustomResources={useK8CustomResources}
+          />
         </Box>
         <Box mt={2}>
-          <ReplicationFactor disabled={isViewMode || (isEditPrimary && !isRfChangeEnabled)}
-                             isPrimary={isPrimary} isEditMode={isEditMode} />
+          <ReplicationFactor
+            disabled={isViewMode || (isEditPrimary && !isRfChangeEnabled)}
+            isPrimary={isPrimary}
+            isEditMode={isEditMode}
+          />
         </Box>
         {isPrimary && isGeoPartitionEnabled && (
           <Box mt={2} display="flex" flexDirection="column">

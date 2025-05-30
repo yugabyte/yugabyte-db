@@ -1,0 +1,315 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 659000;
+SET documentdb.next_collection_id TO 6590;
+SET documentdb.next_collection_index_id TO 6590;
+-- exercise invalid insert syntax errors
+select documentdb_api.insert('db', NULL);
+ERROR:  insert document cannot be NULL
+select documentdb_api.insert(NULL, '{"insert":"into", "documents":[{"a":1}]}');
+ERROR:  database name cannot be NULL
+select documentdb_api.insert('db', '{"documents":[{"a":1}]}');
+ERROR:  BSON field 'insert.insert' is missing but a required field
+select documentdb_api.insert('db', '{"insert":"into"}');
+ERROR:  BSON field 'insert.documents' is missing but a required field
+select documentdb_api.insert('db', '{"insert":["into"], "documents":[{"a":1}]}');
+ERROR:  collection name has invalid type array
+select documentdb_api.insert('db', '{"insert":"into", "documents":{"a":1}}');
+ERROR:  BSON field 'insert.documents' is the wrong type 'object', expected type 'array'
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"a":1}], "extra":1}');
+ERROR:  BSON field 'insert.extra' is an unknown field
+select documentdb_api.insert('db', '{"insert":"into", "documents":[4]}');
+ERROR:  BSON field 'insert.documents.0' is the wrong type 'int', expected type 'object'
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"a":1}],"ordered":1}');
+ERROR:  BSON field 'insert.ordered' is the wrong type 'int', expected type 'bool'
+-- Disallow system.views, system.profile writes
+select documentdb_api.insert('db', '{"insert":"system.views", "documents":[{"a":1}],"ordered":true}');
+ERROR:  cannot write to db.system.views
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+select documentdb_api.insert('db', '{"insert":"system.profile", "documents":[{"a":1}],"ordered":true}');
+ERROR:  cannot write to db.system.profile
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+-- regular single-row insert
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":99,"a":99}]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{}';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "99" }, "a" : { "$numberInt" : "99" } }
+(1 row)
+
+-- Insert into a db with same name and different case and collection being same. Expect to error
+select documentdb_api.insert('dB', '{"insert":"into", "documents":[{"_id":99,"a":99}]}');
+ERROR:  db already exists with different case already have: [db] trying to create [dB]
+CONTEXT:  SQL statement "SELECT documentdb_api_internal.validate_dbname(NEW.database_name)"
+PL/pgSQL function trigger_validate_dbname() line 3 at PERFORM
+SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+-- Insert into a db with same name and different case and collection being different. Expect to error
+select documentdb_api.insert('dB', '{"insert":"intonew", "documents":[{"_id":99,"a":99}]}');
+ERROR:  db already exists with different case already have: [db] trying to create [dB]
+CONTEXT:  SQL statement "SELECT documentdb_api_internal.validate_dbname(NEW.database_name)"
+PL/pgSQL function trigger_validate_dbname() line 3 at PERFORM
+SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+-- Insert into same db and new collection.
+select documentdb_api.insert('db', '{"insert":"intonew1", "documents":[{"_id":99,"a":99}]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- keep the collection, but remove the rows
+select documentdb_api.delete('db', '{"delete":"into", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- single-row insert with retry
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"a":1}]}',NULL,'insert-1');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"a":1}]}',NULL,'insert-1');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{}';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(1 row)
+
+rollback;
+-- regular multi-row insert
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"a":1},{"_id":2,"a":2}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+rollback;
+-- multi-row insert with first document key starts with $
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"$a":1},{"_id":2,"a":2}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{}' order by document-> '_id';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "$a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+rollback;
+-- multi-row insert with first document key starts with $ and ordered:false
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"$a":1},{"_id":2,"a":2}],"ordered":false}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{}' order by document-> '_id';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "$a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+rollback;
+-- shard the collection by _id
+select documentdb_api.shard_collection('db', 'into', '{"_id":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- single-row insert with retry
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"a":1}]}',NULL,'insert-2');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"a":1}]}',NULL,'insert-2');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{}';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(1 row)
+
+rollback;
+-- single-row insert with retry and auto-generated _id
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"a":1}]}',NULL,'insert-2');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"a":1}]}',NULL,'insert-2');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select count(*) from documentdb_api.collection('db','into') where document @@ '{}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+rollback;
+-- multi-row insert into different shards
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"a":1},{"_id":2,"a":2}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+select document from documentdb_api.collection('db','into') where document @@ '{"a":1}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{"a":2}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(1 row)
+
+rollback;
+-- insert with documents in special section
+begin;
+SELECT documentdb_api.insert('db', '{"insert":"into"}', '{ "": [{"_id":1,"a":1},{"_id":2,"a":2}] }');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select document from documentdb_api.collection('db','into') where document @@ '{}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+rollback;
+-- insert with both docs specified.
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":1,"a":1},{"_id":2,"a":2}]}', '{ "": [{"_id":1,"a":1},{"_id":2,"a":2}] }');
+ERROR:  Unexpected additional documents
+rollback;
+-- insert with id undefined skips
+begin;
+select documentdb_api.insert('db', '{"insert":"into", "documents":[{"_id":{ "$undefined": true } }]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+rollback;
+begin;
+select documentdb_api.insert('db', '{"insert":"into"}', '{ "": [ {"_id":{ "$undefined": true } } ]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+rollback;
+-- single-row insert into non-existent collection when auto-creation is disabled
+begin;
+set local documentdb.enable_create_collection_on_insert to off;
+select documentdb_api.insert('db', '{"insert":"notexists", "documents":[{"_id":1,"a":1}]}');
+ERROR:  collection 'notexists' does not exist
+rollback;
+-- insert with invalid database
+begin;
+select documentdb_api.insert('Invalid Database Name', '{"insert":"notexists", "documents":[{"_id":1,"a":1}]}');
+ERROR:  Database Invalid Database Name has an invalid character  
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+rollback;
+begin;
+select documentdb_api.insert('db', '{"insert":"system.othercoll", "documents":[{"_id":1,"a":1}]}');
+ERROR:  Invalid system namespace: db.system.othercoll
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+rollback;
+begin;
+select documentdb_api.insert('db', '{"insert":"random$name", "documents":[{"_id":1,"a":1}]}');
+ERROR:  Invalid collection name: random$name
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+rollback;
+begin;
+select documentdb_api.insert('db', '{"insert":".randomname", "documents":[{"_id":1,"a":1}]}');
+ERROR:  Collection names cannot start with '.': .randomname
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+rollback;
+begin;
+select documentdb_api.insert('verylongdatabasenameformeasuringthelimitsofdatabasenamesinmongodb', '{"insert":"coll", "documents":[{"_id":1,"a":1}]}');
+ERROR:  database name is too long
+rollback;
+begin;
+select documentdb_api.insert('verylongdatabasenameformeasuringlimitsofdatabasenamesinmongodb', '{"insert":"verylongcollectionnameformeasuringthelimitsofcollectionnamesinmongodb", "documents":[{"_id":1,"a":1}]}');
+NOTICE:  creating collection
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+rollback;
+select documentdb_api.drop_collection('db','into');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+select documentdb_api.drop_collection('db','intonew1');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+

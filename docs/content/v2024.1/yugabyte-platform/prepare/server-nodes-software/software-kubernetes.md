@@ -16,12 +16,12 @@ type: docs
 
 The minimum software versions for a Kubernetes cluster and Helm chart are as follows:
 
-- Kubernetes 1.22
+- Kubernetes 1.26
 - Helm 3.11.3
 
 The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
 
-- Kubernetes - 1.22 to 1.25
+- Kubernetes - 1.26 to 1.33
 - Helm - 3.11.3
 
 For OpenShift clusters, the recommended OpenShift Container Platform (OCP) version is 4.6, with backward compatibility assumed but not guaranteed. In addition, ensure that you have the following:

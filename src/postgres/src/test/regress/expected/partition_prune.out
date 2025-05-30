@@ -1038,6 +1038,7 @@ create table boolpart (a bool) partition by list (a);
 create table boolpart_default partition of boolpart default;
 create table boolpart_t partition of boolpart for values in ('true');
 create table boolpart_f partition of boolpart for values in ('false');
+insert into boolpart values (true), (false), (null);
 explain (costs off) select * from boolpart where a in (true, false);
                    QUERY PLAN                   
 ------------------------------------------------
@@ -1070,20 +1071,25 @@ explain (costs off) select * from boolpart where a is true or a is not true;
          Filter: ((a IS TRUE) OR (a IS NOT TRUE))
    ->  Seq Scan on boolpart_t boolpart_2
          Filter: ((a IS TRUE) OR (a IS NOT TRUE))
-(5 rows)
+   ->  Seq Scan on boolpart_default boolpart_3
+         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+(7 rows)
 
 explain (costs off) select * from boolpart where a is not true;
-           QUERY PLAN            
----------------------------------
- Seq Scan on boolpart_f boolpart
-   Filter: (a IS NOT TRUE)
-(2 rows)
+                  QUERY PLAN                   
+-----------------------------------------------
+ Append
+   ->  Seq Scan on boolpart_f boolpart_1
+         Filter: (a IS NOT TRUE)
+   ->  Seq Scan on boolpart_default boolpart_2
+         Filter: (a IS NOT TRUE)
+(5 rows)
 
 explain (costs off) select * from boolpart where a is not true and a is not false;
-        QUERY PLAN        
---------------------------
- Result
-   One-Time Filter: false
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on boolpart_default boolpart
+   Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
 (2 rows)
 
 explain (costs off) select * from boolpart where a is unknown;
@@ -1110,11 +1116,287 @@ explain (costs off) select * from boolpart where a is not unknown;
          Filter: (a IS NOT UNKNOWN)
 (7 rows)
 
+select * from boolpart where a in (true, false);
+ a 
+---
+ f
+ t
+(2 rows)
+
+select * from boolpart where a = false;
+ a 
+---
+ f
+(1 row)
+
+select * from boolpart where not a = false;
+ a 
+---
+ t
+(1 row)
+
+select * from boolpart where a is true or a is not true;
+ a 
+---
+ f
+ t
+ 
+(3 rows)
+
+select * from boolpart where a is not true;
+ a 
+---
+ f
+ 
+(2 rows)
+
+select * from boolpart where a is not true and a is not false;
+ a 
+---
+ 
+(1 row)
+
+select * from boolpart where a is unknown;
+ a 
+---
+ 
+(1 row)
+
+select * from boolpart where a is not unknown;
+ a 
+---
+ f
+ t
+(2 rows)
+
+-- try some other permutations with a NULL partition instead of a DEFAULT
+delete from boolpart where a is null;
+create table boolpart_null partition of boolpart for values in (null);
+insert into boolpart values(null);
+explain (costs off) select * from boolpart where a is not true;
+                 QUERY PLAN                 
+--------------------------------------------
+ Append
+   ->  Seq Scan on boolpart_f boolpart_1
+         Filter: (a IS NOT TRUE)
+   ->  Seq Scan on boolpart_null boolpart_2
+         Filter: (a IS NOT TRUE)
+(5 rows)
+
+explain (costs off) select * from boolpart where a is not true and a is not false;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on boolpart_null boolpart
+   Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+(2 rows)
+
+explain (costs off) select * from boolpart where a is not false;
+                 QUERY PLAN                 
+--------------------------------------------
+ Append
+   ->  Seq Scan on boolpart_t boolpart_1
+         Filter: (a IS NOT FALSE)
+   ->  Seq Scan on boolpart_null boolpart_2
+         Filter: (a IS NOT FALSE)
+(5 rows)
+
+select * from boolpart where a is not true;
+ a 
+---
+ f
+ 
+(2 rows)
+
+select * from boolpart where a is not true and a is not false;
+ a 
+---
+ 
+(1 row)
+
+select * from boolpart where a is not false;
+ a 
+---
+ t
+ 
+(2 rows)
+
+-- inverse boolean partitioning - a seemingly unlikely design, but we've got
+-- code for it, so we'd better test it.
+create table iboolpart (a bool) partition by list ((not a));
+create table iboolpart_default partition of iboolpart default;
+create table iboolpart_f partition of iboolpart for values in ('true');
+create table iboolpart_t partition of iboolpart for values in ('false');
+insert into iboolpart values (true), (false), (null);
+explain (costs off) select * from iboolpart where a in (true, false);
+                   QUERY PLAN                    
+-------------------------------------------------
+ Append
+   ->  Seq Scan on iboolpart_t iboolpart_1
+         Filter: (a = ANY ('{t,f}'::boolean[]))
+   ->  Seq Scan on iboolpart_f iboolpart_2
+         Filter: (a = ANY ('{t,f}'::boolean[]))
+   ->  Seq Scan on iboolpart_default iboolpart_3
+         Filter: (a = ANY ('{t,f}'::boolean[]))
+(7 rows)
+
+explain (costs off) select * from iboolpart where a = false;
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on iboolpart_f iboolpart
+   Filter: (NOT a)
+(2 rows)
+
+explain (costs off) select * from iboolpart where not a = false;
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on iboolpart_t iboolpart
+   Filter: a
+(2 rows)
+
+explain (costs off) select * from iboolpart where a is true or a is not true;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Append
+   ->  Seq Scan on iboolpart_t iboolpart_1
+         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+   ->  Seq Scan on iboolpart_f iboolpart_2
+         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+   ->  Seq Scan on iboolpart_default iboolpart_3
+         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+(7 rows)
+
+explain (costs off) select * from iboolpart where a is not true;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Append
+   ->  Seq Scan on iboolpart_t iboolpart_1
+         Filter: (a IS NOT TRUE)
+   ->  Seq Scan on iboolpart_f iboolpart_2
+         Filter: (a IS NOT TRUE)
+   ->  Seq Scan on iboolpart_default iboolpart_3
+         Filter: (a IS NOT TRUE)
+(7 rows)
+
+explain (costs off) select * from iboolpart where a is not true and a is not false;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Append
+   ->  Seq Scan on iboolpart_t iboolpart_1
+         Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+   ->  Seq Scan on iboolpart_f iboolpart_2
+         Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+   ->  Seq Scan on iboolpart_default iboolpart_3
+         Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+(7 rows)
+
+explain (costs off) select * from iboolpart where a is unknown;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Append
+   ->  Seq Scan on iboolpart_t iboolpart_1
+         Filter: (a IS UNKNOWN)
+   ->  Seq Scan on iboolpart_f iboolpart_2
+         Filter: (a IS UNKNOWN)
+   ->  Seq Scan on iboolpart_default iboolpart_3
+         Filter: (a IS UNKNOWN)
+(7 rows)
+
+explain (costs off) select * from iboolpart where a is not unknown;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Append
+   ->  Seq Scan on iboolpart_t iboolpart_1
+         Filter: (a IS NOT UNKNOWN)
+   ->  Seq Scan on iboolpart_f iboolpart_2
+         Filter: (a IS NOT UNKNOWN)
+   ->  Seq Scan on iboolpart_default iboolpart_3
+         Filter: (a IS NOT UNKNOWN)
+(7 rows)
+
+select * from iboolpart where a in (true, false);
+ a 
+---
+ t
+ f
+(2 rows)
+
+select * from iboolpart where a = false;
+ a 
+---
+ f
+(1 row)
+
+select * from iboolpart where not a = false;
+ a 
+---
+ t
+(1 row)
+
+select * from iboolpart where a is true or a is not true;
+ a 
+---
+ t
+ f
+ 
+(3 rows)
+
+select * from iboolpart where a is not true;
+ a 
+---
+ f
+ 
+(2 rows)
+
+select * from iboolpart where a is not true and a is not false;
+ a 
+---
+ 
+(1 row)
+
+select * from iboolpart where a is unknown;
+ a 
+---
+ 
+(1 row)
+
+select * from iboolpart where a is not unknown;
+ a 
+---
+ t
+ f
+(2 rows)
+
+-- Try some other permutations with a NULL partition instead of a DEFAULT
+delete from iboolpart where a is null;
+create table iboolpart_null partition of iboolpart for values in (null);
+insert into iboolpart values(null);
+-- Pruning shouldn't take place for these.  Just check the result is correct
+select * from iboolpart where a is not true;
+ a 
+---
+ f
+ 
+(2 rows)
+
+select * from iboolpart where a is not true and a is not false;
+ a 
+---
+ 
+(1 row)
+
+select * from iboolpart where a is not false;
+ a 
+---
+ t
+ 
+(2 rows)
+
 create table boolrangep (a bool, b bool, c int) partition by range (a,b,c);
 create table boolrangep_tf partition of boolrangep for values from ('true', 'false', 0) to ('true', 'false', 100);
 create table boolrangep_ft partition of boolrangep for values from ('false', 'true', 0) to ('false', 'true', 100);
 create table boolrangep_ff1 partition of boolrangep for values from ('false', 'false', 0) to ('false', 'false', 50);
 create table boolrangep_ff2 partition of boolrangep for values from ('false', 'false', 50) to ('false', 'false', 100);
+create table boolrangep_null partition of boolrangep default;
 -- try a more complex case that's been known to trip up pruning in the past
 explain (costs off)  select * from boolrangep where not a and not b and c = 25;
                   QUERY PLAN                  
@@ -1122,6 +1404,32 @@ explain (costs off)  select * from boolrangep where not a and not b and c = 25;
  Seq Scan on boolrangep_ff1 boolrangep
    Filter: ((NOT a) AND (NOT b) AND (c = 25))
 (2 rows)
+
+-- ensure we prune boolrangep_tf
+explain (costs off)  select * from boolrangep where a is not true and not b and c = 25;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Append
+   ->  Seq Scan on boolrangep_ff1 boolrangep_1
+         Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
+   ->  Seq Scan on boolrangep_ff2 boolrangep_2
+         Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
+   ->  Seq Scan on boolrangep_ft boolrangep_3
+         Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
+   ->  Seq Scan on boolrangep_null boolrangep_4
+         Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
+(9 rows)
+
+-- ensure we prune everything apart from boolrangep_tf and boolrangep_null
+explain (costs off)  select * from boolrangep where a is not false and not b and c = 25;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Append
+   ->  Seq Scan on boolrangep_tf boolrangep_1
+         Filter: ((a IS NOT FALSE) AND (NOT b) AND (c = 25))
+   ->  Seq Scan on boolrangep_null boolrangep_2
+         Filter: ((a IS NOT FALSE) AND (NOT b) AND (c = 25))
+(5 rows)
 
 -- test scalar-to-array operators
 create table coercepart (a varchar) partition by list (a);
@@ -1530,7 +1838,36 @@ explain (costs off) select * from rparted_by_int2 where a > 100000000000000;
    Filter: (a > '100000000000000'::bigint)
 (2 rows)
 
-drop table lp, coll_pruning, rlp, mc3p, mc2p, boolpart, boolrangep, rp, coll_pruning_multi, like_op_noprune, lparted_by_int2, rparted_by_int2;
+drop table lp, coll_pruning, rlp, mc3p, mc2p, boolpart, iboolpart, boolrangep, rp, coll_pruning_multi, like_op_noprune, lparted_by_int2, rparted_by_int2;
+-- check that AlternativeSubPlan within a pruning expression gets cleaned up
+create table asptab (id int primary key) partition by range (id);
+create table asptab0 partition of asptab for values from (0) to (1);
+create table asptab1 partition of asptab for values from (1) to (2);
+explain (costs off)
+select * from
+  (select exists (select 1 from int4_tbl tinner where f1 = touter.f1) as b
+   from int4_tbl touter) ss,
+  asptab
+where asptab.id > ss.b::int;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on int4_tbl touter
+   ->  Append
+         ->  Index Only Scan using asptab0_pkey on asptab0 asptab_1
+               Index Cond: (id > ((SubPlan 3))::integer)
+               SubPlan 4
+                 ->  Seq Scan on int4_tbl tinner_2
+         ->  Index Only Scan using asptab1_pkey on asptab1 asptab_2
+               Index Cond: (id > ((SubPlan 3))::integer)
+         SubPlan 3
+           ->  Seq Scan on int4_tbl tinner_1
+                 Filter: (f1 = touter.f1)
+   SubPlan 2
+     ->  Seq Scan on int4_tbl tinner
+(14 rows)
+
+drop table asptab;
 --
 -- Test Partition pruning for HASH partitioning
 --
@@ -1743,7 +2080,6 @@ explain (costs off) select * from hp where a = 1 and b = 'abcde' and
    One-Time Filter: false
 (2 rows)
 
-drop table hp;
 --
 -- Test runtime partition pruning
 --
@@ -1865,6 +2201,27 @@ explain (analyze, costs off, summary off, timing off) execute ab_q3 (2, 2);
          Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
 (10 rows)
 
+--
+-- Test runtime pruning with hash partitioned tables
+--
+-- recreate partitions dropped above
+create table hp1 partition of hp for values with (modulus 4, remainder 1);
+create table hp2 partition of hp for values with (modulus 4, remainder 2);
+create table hp3 partition of hp for values with (modulus 4, remainder 3);
+-- Ensure we correctly prune unneeded partitions when there is an IS NULL qual
+prepare hp_q1 (text) as
+select * from hp where a is null and b = $1;
+explain (costs off) execute hp_q1('xxx');
+                 QUERY PLAN                 
+--------------------------------------------
+ Append
+   Subplans Removed: 3
+   ->  Seq Scan on hp2 hp_1
+         Filter: ((a IS NULL) AND (b = $1))
+(4 rows)
+
+deallocate hp_q1;
+drop table hp;
 -- Test a backwards Append scan
 create table list_part (a int) partition by list (a);
 create table list_part1 partition of list_part for values in (1);
@@ -2484,6 +2841,7 @@ update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
                            Index Cond: (a = 1)
                ->  Bitmap Heap Scan on ab_a1_b3 ab_a1_3 (actual rows=0 loops=1)
                      Recheck Cond: (a = 1)
+                     Heap Blocks: exact=1
                      ->  Bitmap Index Scan on ab_a1_b3_a_idx (actual rows=1 loops=1)
                            Index Cond: (a = 1)
          ->  Materialize (actual rows=1 loops=1)
@@ -2499,9 +2857,10 @@ update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
                                  Index Cond: (a = 1)
                      ->  Bitmap Heap Scan on ab_a1_b3 ab_3 (actual rows=0 loops=1)
                            Recheck Cond: (a = 1)
+                           Heap Blocks: exact=1
                            ->  Bitmap Index Scan on ab_a1_b3_a_idx (actual rows=1 loops=1)
                                  Index Cond: (a = 1)
-(34 rows)
+(36 rows)
 
 table ab;
  a | b 
@@ -3811,20 +4170,217 @@ explain (costs off) select * from rp_prefix_test3 where a >= 1 and b >= 1 and b 
    Filter: ((a >= 1) AND (b >= 1) AND (d >= 0) AND (b = 2) AND (c = 2))
 (2 rows)
 
-create table hp_prefix_test (a int, b int, c int, d int) partition by hash (a part_test_int4_ops, b part_test_int4_ops, c part_test_int4_ops, d part_test_int4_ops);
-create table hp_prefix_test_p1 partition of hp_prefix_test for values with (modulus 2, remainder 0);
-create table hp_prefix_test_p2 partition of hp_prefix_test for values with (modulus 2, remainder 1);
--- Test that get_steps_using_prefix() handles non-NULL step_nullkeys
-explain (costs off) select * from hp_prefix_test where a = 1 and b is null and c = 1 and d = 1;
-                         QUERY PLAN                          
--------------------------------------------------------------
- Seq Scan on hp_prefix_test_p1 hp_prefix_test
-   Filter: ((b IS NULL) AND (a = 1) AND (c = 1) AND (d = 1))
-(2 rows)
-
 drop table rp_prefix_test1;
 drop table rp_prefix_test2;
 drop table rp_prefix_test3;
+--
+-- Test that get_steps_using_prefix() handles IS NULL clauses correctly
+--
+create table hp_prefix_test (a int, b int, c int, d int)
+  partition by hash (a part_test_int4_ops, b part_test_int4_ops, c part_test_int4_ops, d part_test_int4_ops);
+-- create 8 partitions
+select 'create table hp_prefix_test_p' || x::text || ' partition of hp_prefix_test for values with (modulus 8, remainder ' || x::text || ');'
+from generate_Series(0,7) x;
+                                               ?column?                                               
+------------------------------------------------------------------------------------------------------
+ create table hp_prefix_test_p0 partition of hp_prefix_test for values with (modulus 8, remainder 0);
+ create table hp_prefix_test_p1 partition of hp_prefix_test for values with (modulus 8, remainder 1);
+ create table hp_prefix_test_p2 partition of hp_prefix_test for values with (modulus 8, remainder 2);
+ create table hp_prefix_test_p3 partition of hp_prefix_test for values with (modulus 8, remainder 3);
+ create table hp_prefix_test_p4 partition of hp_prefix_test for values with (modulus 8, remainder 4);
+ create table hp_prefix_test_p5 partition of hp_prefix_test for values with (modulus 8, remainder 5);
+ create table hp_prefix_test_p6 partition of hp_prefix_test for values with (modulus 8, remainder 6);
+ create table hp_prefix_test_p7 partition of hp_prefix_test for values with (modulus 8, remainder 7);
+(8 rows)
+
+\gexec
+create table hp_prefix_test_p0 partition of hp_prefix_test for values with (modulus 8, remainder 0);
+create table hp_prefix_test_p1 partition of hp_prefix_test for values with (modulus 8, remainder 1);
+create table hp_prefix_test_p2 partition of hp_prefix_test for values with (modulus 8, remainder 2);
+create table hp_prefix_test_p3 partition of hp_prefix_test for values with (modulus 8, remainder 3);
+create table hp_prefix_test_p4 partition of hp_prefix_test for values with (modulus 8, remainder 4);
+create table hp_prefix_test_p5 partition of hp_prefix_test for values with (modulus 8, remainder 5);
+create table hp_prefix_test_p6 partition of hp_prefix_test for values with (modulus 8, remainder 6);
+create table hp_prefix_test_p7 partition of hp_prefix_test for values with (modulus 8, remainder 7);
+-- insert 16 rows, one row for each test to perform.
+insert into hp_prefix_test
+select
+  case a when 0 then null else 1 end,
+  case b when 0 then null else 2 end,
+  case c when 0 then null else 3 end,
+  case d when 0 then null else 4 end
+from
+  generate_series(0,1) a,
+  generate_series(0,1) b,
+  generate_Series(0,1) c,
+  generate_Series(0,1) d;
+-- Ensure partition pruning works correctly for each combination of IS NULL
+-- and equality quals.  This may seem a little excessive, but there have been
+-- a number of bugs in this area over the years.  We make use of row only
+-- output to reduce the size of the expected results.
+\t on
+select
+  'explain (costs off) select tableoid::regclass,* from hp_prefix_test where ' ||
+  string_agg(c.colname || case when g.s & (1 << c.colpos) = 0 then ' is null' else ' = ' || (colpos+1)::text end, ' and ' order by c.colpos)
+from (values('a',0),('b',1),('c',2),('d',3)) c(colname, colpos), generate_Series(0,15) g(s)
+group by g.s
+order by g.s;
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d is null
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d is null
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d is null
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d is null
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d is null
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d is null
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d is null
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d is null
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d = 4
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d = 4
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d = 4
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d = 4
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d = 4
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d = 4
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d = 4
+ explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d = 4
+
+\gexec
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d is null
+ Seq Scan on hp_prefix_test_p0 hp_prefix_test
+   Filter: ((a IS NULL) AND (b IS NULL) AND (c IS NULL) AND (d IS NULL))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d is null
+ Seq Scan on hp_prefix_test_p1 hp_prefix_test
+   Filter: ((b IS NULL) AND (c IS NULL) AND (d IS NULL) AND (a = 1))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d is null
+ Seq Scan on hp_prefix_test_p2 hp_prefix_test
+   Filter: ((a IS NULL) AND (c IS NULL) AND (d IS NULL) AND (b = 2))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d is null
+ Seq Scan on hp_prefix_test_p4 hp_prefix_test
+   Filter: ((c IS NULL) AND (d IS NULL) AND (a = 1) AND (b = 2))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d is null
+ Seq Scan on hp_prefix_test_p3 hp_prefix_test
+   Filter: ((a IS NULL) AND (b IS NULL) AND (d IS NULL) AND (c = 3))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d is null
+ Seq Scan on hp_prefix_test_p7 hp_prefix_test
+   Filter: ((b IS NULL) AND (d IS NULL) AND (a = 1) AND (c = 3))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d is null
+ Seq Scan on hp_prefix_test_p4 hp_prefix_test
+   Filter: ((a IS NULL) AND (d IS NULL) AND (b = 2) AND (c = 3))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d is null
+ Seq Scan on hp_prefix_test_p5 hp_prefix_test
+   Filter: ((d IS NULL) AND (a = 1) AND (b = 2) AND (c = 3))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d = 4
+ Seq Scan on hp_prefix_test_p4 hp_prefix_test
+   Filter: ((a IS NULL) AND (b IS NULL) AND (c IS NULL) AND (d = 4))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d = 4
+ Seq Scan on hp_prefix_test_p6 hp_prefix_test
+   Filter: ((b IS NULL) AND (c IS NULL) AND (a = 1) AND (d = 4))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d = 4
+ Seq Scan on hp_prefix_test_p5 hp_prefix_test
+   Filter: ((a IS NULL) AND (c IS NULL) AND (b = 2) AND (d = 4))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d = 4
+ Seq Scan on hp_prefix_test_p6 hp_prefix_test
+   Filter: ((c IS NULL) AND (a = 1) AND (b = 2) AND (d = 4))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d = 4
+ Seq Scan on hp_prefix_test_p4 hp_prefix_test
+   Filter: ((a IS NULL) AND (b IS NULL) AND (c = 3) AND (d = 4))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d = 4
+ Seq Scan on hp_prefix_test_p5 hp_prefix_test
+   Filter: ((b IS NULL) AND (a = 1) AND (c = 3) AND (d = 4))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d = 4
+ Seq Scan on hp_prefix_test_p6 hp_prefix_test
+   Filter: ((a IS NULL) AND (b = 2) AND (c = 3) AND (d = 4))
+
+explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d = 4
+ Seq Scan on hp_prefix_test_p4 hp_prefix_test
+   Filter: ((a = 1) AND (b = 2) AND (c = 3) AND (d = 4))
+
+-- And ensure we get exactly 1 row from each. Again, all 16 possible combinations.
+select
+  'select tableoid::regclass,* from hp_prefix_test where ' ||
+  string_agg(c.colname || case when g.s & (1 << c.colpos) = 0 then ' is null' else ' = ' || (colpos+1)::text end, ' and ' order by c.colpos)
+from (values('a',0),('b',1),('c',2),('d',3)) c(colname, colpos), generate_Series(0,15) g(s)
+group by g.s
+order by g.s;
+ select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d is null
+ select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d is null
+ select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d is null
+ select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d is null
+ select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d is null
+ select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d is null
+ select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d is null
+ select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d is null
+ select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d = 4
+ select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d = 4
+ select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d = 4
+ select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d = 4
+ select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d = 4
+ select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d = 4
+ select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d = 4
+ select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d = 4
+
+\gexec
+select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d is null
+ hp_prefix_test_p0 |   |   |   |  
+
+select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d is null
+ hp_prefix_test_p1 | 1 |   |   |  
+
+select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d is null
+ hp_prefix_test_p2 |   | 2 |   |  
+
+select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d is null
+ hp_prefix_test_p4 | 1 | 2 |   |  
+
+select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d is null
+ hp_prefix_test_p3 |   |   | 3 |  
+
+select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d is null
+ hp_prefix_test_p7 | 1 |   | 3 |  
+
+select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d is null
+ hp_prefix_test_p4 |   | 2 | 3 |  
+
+select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d is null
+ hp_prefix_test_p5 | 1 | 2 | 3 |  
+
+select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d = 4
+ hp_prefix_test_p4 |   |   |   | 4
+
+select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d = 4
+ hp_prefix_test_p6 | 1 |   |   | 4
+
+select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d = 4
+ hp_prefix_test_p5 |   | 2 |   | 4
+
+select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d = 4
+ hp_prefix_test_p6 | 1 | 2 |   | 4
+
+select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d = 4
+ hp_prefix_test_p4 |   |   | 3 | 4
+
+select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d = 4
+ hp_prefix_test_p5 | 1 |   | 3 | 4
+
+select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d = 4
+ hp_prefix_test_p6 |   | 2 | 3 | 4
+
+select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d = 4
+ hp_prefix_test_p4 | 1 | 2 | 3 | 4
+
+\t off
 drop table hp_prefix_test;
 --
 -- Check that gen_partprune_steps() detects self-contradiction from clauses

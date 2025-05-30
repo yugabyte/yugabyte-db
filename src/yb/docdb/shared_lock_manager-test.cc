@@ -17,6 +17,7 @@
 #include <thread>
 
 #include "yb/docdb/lock_batch.h"
+#include "yb/docdb/lock_util.h"
 #include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/rpc/thread_pool.h"
@@ -201,8 +202,8 @@ TEST_F(SharedLockManagerTest, DumpKeys) {
   ASSERT_NOK(lb2.status());
   ASSERT_STR_CONTAINS(
       lb2.status().ToString(),
-      "[{ key: 666F6F intent_types: [kStrongRead, kStrongWrite] existing_state: 0 }, "
-      "{ key: 626172 intent_types: [kStrongRead, kStrongWrite] existing_state: 0 }]");
+      "[{ key: 666F6F intent_types: [kStrongRead, kStrongWrite] }, "
+      "{ key: 626172 intent_types: [kStrongRead, kStrongWrite] }]");
 }
 
 } // namespace docdb

@@ -78,5 +78,3 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
   >}}
 
 {{< /sections/3-boxes >}}
-
-<div class="row">

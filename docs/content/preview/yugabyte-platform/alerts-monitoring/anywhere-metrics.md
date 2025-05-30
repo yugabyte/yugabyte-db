@@ -20,6 +20,8 @@ You access metrics by navigating to **Universes > Universe-Name > Metrics**, as 
 
 ![Metrics Page](/images/yp/metrics_main.png)
 
+By default, metrics use your current timezone as set in your profile. To change timezones, choose a timezone from the timezone menu. If the timezone menu is not available, set the **Enable viewing metrics in timezone** [Global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) option (config key `yb.ui.metrics.enable_timezone`) to true to display it.
+
 Use the time menu to change the range. To zoom in to view granular data points, select a portion of the time range along the y-axis of any chart. This zooms all charts.
 
 ![Fine grained metrics](/images/yp/fine-grain-metrics.png)

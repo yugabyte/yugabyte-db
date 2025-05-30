@@ -26,6 +26,9 @@ CREATE TABLE gtest_err_3 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (c * 2) S
 
 -- generation expression must be immutable
 CREATE TABLE gtest_err_4 (a int PRIMARY KEY, b double precision GENERATED ALWAYS AS (random()) STORED);
+-- ... but be sure that the immutability test is accurate
+CREATE TABLE gtest2 (a int, b text GENERATED ALWAYS AS (a || ' sec') STORED);
+DROP TABLE gtest2;
 
 -- cannot have default/identity and generated
 CREATE TABLE gtest_err_5a (a int PRIMARY KEY, b int DEFAULT 5 GENERATED ALWAYS AS (a * 2) STORED);
@@ -390,9 +393,13 @@ DROP TABLE gtest_parent;
 -- partitioned table
 CREATE TABLE gtest_parent (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE (f1);
 CREATE TABLE gtest_child PARTITION OF gtest_parent FOR VALUES FROM ('2016-07-01') TO ('2016-08-01');
+CREATE TABLE gtest_child3 PARTITION OF gtest_parent FOR VALUES FROM ('2016-09-01') TO ('2016-10-01');
 INSERT INTO gtest_parent (f1, f2) VALUES ('2016-07-15', 1);
 SELECT * FROM gtest_parent;
 SELECT * FROM gtest_child;
+UPDATE gtest_parent SET f1 = f1 + 60, f2 = f2 + 1;
+SELECT * FROM gtest_parent;
+SELECT * FROM gtest_child3;
 DROP TABLE gtest_parent;
 
 -- generated columns in partition key (not allowed)

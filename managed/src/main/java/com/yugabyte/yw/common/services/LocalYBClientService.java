@@ -79,4 +79,19 @@ public class LocalYBClientService implements YBClientService {
     VersionInfo.VersionInfoPB versionInfo = response.getStatus().getVersionInfo();
     return Optional.of(versionInfo.getVersionNumber() + "-b" + versionInfo.getBuildNumber());
   }
+
+  @Override
+  public Optional<String> getYsqlMajorVersion(YBClient client, String nodeIp, int port) {
+    GetStatusResponse response;
+    try {
+      response = client.getStatus(nodeIp, port);
+    } catch (Exception e) {
+      log.error("Error fetching ysql major version on node " + nodeIp, e);
+      return Optional.empty();
+    }
+    VersionInfo.VersionInfoPB versionInfo = response.getStatus().getVersionInfo();
+    return versionInfo.hasYsqlMajorVersion()
+        ? Optional.of(String.valueOf(versionInfo.getYsqlMajorVersion()))
+        : Optional.empty();
+  }
 }

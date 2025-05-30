@@ -61,7 +61,7 @@ ResetUnloggedRelations(int op)
 	 * Just to be sure we don't leak any memory, let's create a temporary
 	 * memory context for this operation.
 	 */
-	tmpctx = AllocSetContextCreate(GetCurrentMemoryContext(),
+	tmpctx = AllocSetContextCreate(CurrentMemoryContext,
 								   "ResetUnloggedRelations",
 								   ALLOCSET_DEFAULT_SIZES);
 	oldctx = MemoryContextSwitchTo(tmpctx);
@@ -186,7 +186,7 @@ ResetUnloggedRelationsInDbspaceDir(const char *dbspacedirname, int op)
 		 */
 		ctl.keysize = sizeof(Oid);
 		ctl.entrysize = sizeof(unlogged_relation_entry);
-		ctl.hcxt = GetCurrentMemoryContext();
+		ctl.hcxt = CurrentMemoryContext;
 		hash = hash_create("unlogged relation OIDs", 32, &ctl,
 						   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 

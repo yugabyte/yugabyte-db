@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.HookInserter;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Universe;
@@ -34,9 +35,8 @@ public class RunApiTriggeredHooks extends UniverseTaskBase {
   @Override
   public void run() {
     log.info("Started {} task", getName());
-
+    Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
     try {
-      Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       Collection<NodeDetails> nodes = universe.getNodes();
 
       int countBefore = nodes.size();
@@ -66,7 +66,8 @@ public class RunApiTriggeredHooks extends UniverseTaskBase {
         HookInserter.addHookTrigger(
             TriggerType.ApiTriggered, taskParams().hookUUIDs, this, taskParams(), nodes);
       }
-
+      // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.RunningHooks);
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'", getName(), t.getMessage(), t);

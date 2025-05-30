@@ -1,0 +1,194 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 4800000;
+SET documentdb.next_collection_id TO 4800;
+SET documentdb.next_collection_index_id TO 4800;
+-- Test basic usage
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '$a.b');
+                   bson_dollar_unwind                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [[1, 2], [2, 3], [4, 5]] } }', '$a.b');
+                                 bson_dollar_unwind                                  
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "1", "a" : { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "_id" : "1", "a" : { "b" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ] } }
+(3 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [] } }', '$a.b');
+ bson_dollar_unwind 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : null } }', '$a.b');
+ bson_dollar_unwind 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : 4 } }', '$a.b');
+                   bson_dollar_unwind                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "4" } } }
+(1 row)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : { "c" : 1 } } }', '$a.b');
+                        bson_dollar_unwind                         
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+(1 row)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : [1, 2, 3] }', '$a');
+              bson_dollar_unwind               
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "$numberInt" : "1" } }
+ { "_id" : "1", "a" : { "$numberInt" : "2" } }
+ { "_id" : "1", "a" : { "$numberInt" : "3" } }
+(3 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : [1, {"c":1}, [3,4], "x"] }', '$a');
+                            bson_dollar_unwind                             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "$numberInt" : "1" } }
+ { "_id" : "1", "a" : { "c" : { "$numberInt" : "1" } } }
+ { "_id" : "1", "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : "1", "a" : "x" }
+(4 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [{"a":1}, {"a":2}, {"a":3}] } }', '$a.b');
+                        bson_dollar_unwind                         
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "a" : { "$numberInt" : "1" } } } }
+ { "_id" : "1", "a" : { "b" : { "a" : { "$numberInt" : "2" } } } }
+ { "_id" : "1", "a" : { "b" : { "a" : { "$numberInt" : "3" } } } }
+(3 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "x": "y", "a" : { "b" : [1, 2, 3], "c" : [1, 2] } }', '$a.b');
+                                                      bson_dollar_unwind                                                      
+---------------------------------------------------------------------
+ { "_id" : "1", "x" : "y", "a" : { "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "1", "x" : "y", "a" : { "b" : { "$numberInt" : "2" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "_id" : "1", "x" : "y", "a" : { "b" : { "$numberInt" : "3" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+(3 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "x": "y", "a" : { "b" : [1, 2, 3], "c" : { "x" : [1, 2] } } }', '$a.c');
+                                                                                     bson_dollar_unwind                                                                                     
+---------------------------------------------------------------------
+ { "_id" : "1", "x" : "y", "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } } }
+(1 row)
+
+SELECT bson_dollar_unwind('{"_id":"1", "x": "y", "a" : { "b" : [1, 2, 3], "c" : { "x" : [1, 2] } } }', '$a.c.x');
+                                                                       bson_dollar_unwind                                                                       
+---------------------------------------------------------------------
+ { "_id" : "1", "x" : "y", "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : { "x" : { "$numberInt" : "1" } } } }
+ { "_id" : "1", "x" : "y", "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "c" : { "x" : { "$numberInt" : "2" } } } }
+(2 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3, null] } }', '$a.b');
+                   bson_dollar_unwind                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } } }
+ { "_id" : "1", "a" : { "b" : null } }
+(4 rows)
+
+-- Preserve null and empty
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":true}'::bson);
+                   bson_dollar_unwind                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } } }
+(3 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [] } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":true}'::bson);
+     bson_dollar_unwind      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+(1 row)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : null } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":true}'::bson);
+          bson_dollar_unwind           
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : null } }
+(1 row)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":true}'::bson);
+     bson_dollar_unwind      
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  } }
+(1 row)
+
+-- Project idx field
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "includeArrayIndex":"idx"}'::bson);
+                                    bson_dollar_unwind                                    
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } }, "idx" : { "$numberLong" : "0" } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } }, "idx" : { "$numberLong" : "1" } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } }, "idx" : { "$numberLong" : "2" } }
+(3 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [] } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":false, "includeArrayIndex":"idx"}'::bson);
+ bson_dollar_unwind 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : null } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":false, "includeArrayIndex":"idx"}'::bson);
+ bson_dollar_unwind 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [] } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":true, "includeArrayIndex":"idx"}'::bson);
+            bson_dollar_unwind             
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  }, "idx" : null }
+(1 row)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : null } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":true, "includeArrayIndex":"idx"}'::bson);
+                 bson_dollar_unwind                  
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : null }, "idx" : null }
+(1 row)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "includeArrayIndex":""}'::bson);
+                                  bson_dollar_unwind                                   
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "1" } }, "" : { "$numberLong" : "0" } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "2" } }, "" : { "$numberLong" : "1" } }
+ { "_id" : "1", "a" : { "b" : { "$numberInt" : "3" } }, "" : { "$numberLong" : "2" } }
+(3 rows)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { } }', '{"path":"$a.b", "includeArrayIndex":"","preserveNullAndEmptyArrays":true}'::bson);
+           bson_dollar_unwind           
+---------------------------------------------------------------------
+ { "_id" : "1", "a" : {  }, "" : null }
+(1 row)
+
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { } }', '{"path":"$a.b", "includeArrayIndex":"","preserveNullAndEmptyArrays":false}'::bson);
+ bson_dollar_unwind 
+---------------------------------------------------------------------
+(0 rows)
+
+-- Project conflicting idx
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "includeArrayIndex":"_id"}'::bson);
+                             bson_dollar_unwind                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberLong" : "0" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberLong" : "1" }, "a" : { "b" : { "$numberInt" : "2" } } }
+ { "_id" : { "$numberLong" : "2" }, "a" : { "b" : { "$numberInt" : "3" } } }
+(3 rows)
+
+-- Test invalid paths
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : 4 } }', 'a.b');
+ERROR:  $unwind path must be prefixed by $
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : 4 } }', '');
+ERROR:  $unwind path should have at least two characters
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : 4 } }', '$');
+ERROR:  $unwind path should have at least two characters
+-- Invalid Arguments
+SELECT bson_dollar_unwind('{"_id":"1", "a" : { "b" : [1, 2, 3] } }', '{"path":"$a.b", "preserveNullAndEmptyArrays":"a"}'::bson);
+ERROR:  $unwind preserveNullAndEmptyArrays must be a bool value

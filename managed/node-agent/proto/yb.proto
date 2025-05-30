@@ -1,0 +1,186 @@
+syntax = "proto3";
+package nodeagent.server;
+
+option go_package = "./service";
+option java_package = "com.yugabyte.yw.nodeagent";
+option java_multiple_files = true;
+
+import "common.proto";
+
+message PreflightCheckInput {
+    string ybHomeDir = 1;
+    bool skipProvisioning = 2;
+    bool airGapInstall = 3;
+    bool installNodeExporter = 4;
+    uint32 sshPort = 5;
+    repeated string mountPaths = 6;
+    uint32 masterHttpPort = 7;
+    uint32 masterRpcPort = 8;
+    uint32 tserverHttpPort = 9;
+    uint32 tserverRpcPort = 10;
+    uint32 redisServerHttpPort = 11;
+    uint32 redisServerRpcPort = 12;
+    uint32 nodeExporterPort = 13;
+    uint32 ycqlServerHttpPort = 14;
+    uint32 ycqlServerRpcPort = 15;
+    uint32 ysqlServerHttpPort = 16;
+    uint32 ysqlServerRpcPort = 17;
+    uint32 ybControllerHttpPort = 18;
+    uint32 ybControllerRpcPort = 19;
+}
+
+message PreflightCheckOutput {
+    repeated NodeConfig nodeConfigs = 1;
+}
+
+message NodeConfig {
+    string type = 1;
+    string value = 2;
+}
+
+
+enum Service {
+    EARLYOOM = 0;
+}
+
+message GetServiceStateRequest {
+    Service service = 1;
+}
+
+message EarlyoomState {
+    int32 kills_last_hour = 1;
+    int32 total_kills = 2;
+}
+
+message GetServiceStateResponse {
+    bool enabled = 1;
+    oneof state {
+        EarlyoomState earlyoomState = 2;
+    }
+}
+
+message EarlyoomConfig {
+    optional string startArgs = 1;
+}
+
+message ServiceConfig {
+    optional string ybHomeDir = 1;
+    oneof data {
+        EarlyoomConfig earlyoomConfig = 2;
+    }
+}
+
+message ConfigureServiceInput {
+    Service service = 1;
+    bool enabled = 2;
+    optional ServiceConfig config = 3;
+}
+
+message ConfigureServiceOutput {
+    Service service = 1;
+    bool success = 2;
+    optional Error error = 3;
+}
+
+enum ServerControlType {
+    START = 0;
+    STOP = 1;
+}
+
+message ServerControlInput {
+    ServerControlType controlType = 1;
+    string serverName = 2;
+    string serverHome = 3;
+    bool deconfigure = 4;
+    uint32 numVolumes = 5;
+}
+
+message ServerControlOutput {
+    int32 pid = 1;
+}
+
+message InstallSoftwareInput {
+    string ybPackage = 1;
+    string remoteTmp = 2;
+    string ybHomeDir = 3;
+    repeated string symLinkFolders = 4;
+}
+
+message InstallSoftwareOutput {
+    int32 pid = 1;
+}
+
+message DownloadSoftwareInput {
+    string ybPackage = 1;
+    bool s3RemoteDownload = 2;
+    string awsAccessKey = 3;
+    string awsSecretKey = 4;
+    bool gcsRemoteDownload = 5;
+    string gcsCredentialsJson = 6;
+    bool httpRemoteDownload = 7;
+    string httpPackageChecksum = 8;
+    string iTestS3PackagePath = 9;
+    string remoteTmp = 10;
+}
+
+message DownloadSoftwareOutput {
+    int32 pid = 1;
+}
+
+message ServerGFlagsInput {
+    map<string, string> gflags = 1;
+    string serverName = 2;
+    string serverHome = 3;
+    bool resetMasterState = 4;
+}
+
+message ServerGFlagsOutput {
+}
+
+message InstallYbcInput {
+    string ybcPackage = 1;
+    string remoteTmp = 2;
+    string ybHomeDir = 3;
+    repeated string mountPoints = 4;
+}
+
+message InstallYbcOutput {
+    int32 pid = 1;
+}
+
+message ConfigureServerInput {
+    string remoteTmp = 1;
+    string ybHomeDir = 2;
+    repeated string processes = 3;
+    repeated string mountPoints = 4;
+    uint32 numCoresToKeep = 5;
+}
+
+message ConfigureServerOutput {
+    int32 pid = 1;
+}
+
+message InstallOtelCollectorInput {
+    string ybHomeDir = 1;
+    repeated string mountPoints = 2;
+    string otelColPackagePath = 3;
+    string ycqlAuditLogLevel = 4;
+    string otelColConfigFile = 5;
+    string otelColAwsAccessKey = 6;
+    string otelColAwsSecretKey = 7;
+    string otelColGcpCredsFile = 8;
+    string remoteTmp = 9;
+}
+
+message InstallOtelCollectorOutput {
+    int32 pid = 1;
+}
+
+message SetupCGroupInput {
+    string ybHomeDir = 1;
+    uint32 pgMaxMemMb = 2;
+}
+
+message SetupCGroupOutput {
+    int32 pid = 1;
+}

@@ -249,7 +249,7 @@ aws ec2 create-vpc-endpoint \
     --service-name <pse_service_name> \
     --subnet-ids <subnet_ids> \
     --security-group-ids <endpoint_security_group_id> \
-    -–private-dns-enabled 
+    --private-dns-enabled 
 ```
 
 Replace values as follows:

@@ -14,12 +14,10 @@
  */
 #include "postgres.h"
 
-#include "catalog/namespace.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "parser/parse_coerce.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/inherit.h"
@@ -37,13 +35,16 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-/* Yugabyte includes */
+/* YB includes */
+#include "catalog/namespace.h"
 #include "catalog/pg_opfamily.h"
+#include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
 
 /* These parameters are set by GUC */
 int			from_collapse_limit;
 int			join_collapse_limit;
+
 extern int	yb_bnl_batch_size;
 
 
@@ -85,8 +86,10 @@ static bool check_equivalence_delay(PlannerInfo *root,
 static bool check_redundant_nullability_qual(PlannerInfo *root, Node *clause);
 static void check_mergejoinable(RestrictInfo *restrictinfo);
 static void check_hashjoinable(RestrictInfo *restrictinfo);
-static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static void check_memoizable(RestrictInfo *restrictinfo);
+
+/* YB declarations */
+static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static ListCell *yb_find_wholerow_of_record_type(List *expr);
 
 
@@ -2826,7 +2829,7 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 			Oid			finalargtypmod = innerTypMod;
 			Node	   *coerced = NULL;
 
-			MemoryContext cxt = GetCurrentMemoryContext();
+			MemoryContext cxt = CurrentMemoryContext;
 
 			PG_TRY();
 			{

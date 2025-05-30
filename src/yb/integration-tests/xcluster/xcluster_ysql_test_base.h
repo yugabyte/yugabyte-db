@@ -20,6 +20,9 @@ namespace yb {
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 
 YB_STRONGLY_TYPED_BOOL(ExpectNoRecords);
+YB_STRONGLY_TYPED_BOOL(CheckColumnCounts);
+
+YB_DEFINE_ENUM(ReplicationDirection, (AToB)(BToA))
 
 class XClusterYsqlTestBase : public XClusterTestBase {
  public:
@@ -136,10 +139,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status VerifyWrittenRecords(
       const client::YBTableName& producer_table_name,
       const client::YBTableName& consumer_table_name,
-      ExpectNoRecords expect_no_records = ExpectNoRecords::kFalse);
+      ExpectNoRecords expect_no_records = ExpectNoRecords::kFalse,
+      CheckColumnCounts check_col_counts = CheckColumnCounts::kTrue);
 
   Status VerifyWrittenRecords(
-      ExpectNoRecords expect_no_records);
+      ExpectNoRecords expect_no_records,
+      CheckColumnCounts check_col_counts = CheckColumnCounts::kTrue);
 
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
@@ -167,25 +172,35 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       bool delete_op = false, bool use_transaction = false);
 
   virtual Status CheckpointReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      bool require_no_bootstrap_needed = true);
+
   Result<bool> IsXClusterBootstrapRequired(
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& source_namespace_id);
+
   Status AddNamespaceToXClusterReplication(
       const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id);
+
   // A empty list for namespace_names (the default) means just the namespace namespace_name.
   Status CreateReplicationFromCheckpoint(
       const std::string& target_master_addresses = {},
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
       std::vector<NamespaceName> namespace_names = {});
+
   // A empty list for namespace_names (the default) means just the namespace namespace_name.
   Status WaitForCreateReplicationToFinish(
-      const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {});
+      const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {},
+      xcluster::ReplicationGroupId replication_group_id = kReplicationGroupId);
+
+  Status DeleteOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
 
   Status VerifyDDLExtensionTablesCreation(const NamespaceName& db_name, bool only_source = false);
   Status VerifyDDLExtensionTablesDeletion(const NamespaceName& db_name, bool only_source = false);
 
   Status EnablePITROnClusters();
+  Status PerformPITROnConsumerCluster(HybridTime time);
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
@@ -196,6 +211,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+  Status StartPostgres(Cluster* cluster);
+  void SetPGCallbacks(Cluster* cluster, uint16_t pg_port);
 
   Status WriteGenerateSeries(
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table);

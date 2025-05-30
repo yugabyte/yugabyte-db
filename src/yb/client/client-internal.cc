@@ -203,6 +203,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
                          const rpc::ResponseCallback& callback) {
         (proxy->*func)(req, resp, controller, callback);
       });
+  SCOPED_WAIT_STATUS(YBClient_WaitingOnMaster);
   RETURN_NOT_OK(rpcs_.RegisterAndStartStatus(rpc, rpc->RpcHandle()));
   auto result = rpc->synchronizer().Wait();
   if (attempts) {
@@ -232,7 +233,6 @@ Status YBClient::Data::SyncLeaderMasterRpc(
 // These are not actually exposed outside, but it's nice to auto-add using directive.
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterTable);
-YB_CLIENT_SPECIALIZE_SIMPLE(AcquireObjectLocksGlobal);
 YB_CLIENT_SPECIALIZE_SIMPLE(BackfillIndex);
 YB_CLIENT_SPECIALIZE_SIMPLE(ChangeMasterClusterConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
@@ -265,9 +265,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
-YB_CLIENT_SPECIALIZE_SIMPLE(ReleaseObjectLocksGlobal);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetObjectLockStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Encryption, GetFullUniverseKeyRegistry);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AreNodesSafeToTakeDown);
@@ -286,8 +286,6 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetStatefulServiceLocation);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, AcquireObjectLocksGlobal);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReleaseObjectLocksGlobal);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, ValidateAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
@@ -316,6 +314,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, InsertHistoricalColocatedSchemaPacking);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, InsertPackedSchemaForXClusterTarget);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, BootstrapProducer);
@@ -577,7 +576,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
                             table_name,
                             internal::GetSchema(schema),
                             internal::GetSchema(info.schema));
-        LOG(ERROR) << msg;
+        LOG(WARNING) << msg;
         return STATUS(AlreadyPresent, msg);
       }
 
@@ -595,7 +594,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
               table_name.ToString(),
               partition_schema.DebugString(internal::GetSchema(schema)),
               info.partition_schema.DebugString(internal::GetSchema(info.schema)));
-          LOG(ERROR) << msg;
+          LOG(WARNING) << msg;
           return STATUS(AlreadyPresent, msg);
         }
       }
@@ -903,7 +902,7 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                             table_name,
                             internal::GetSchema(ybschema),
                             internal::GetSchema(info.schema));
-        LOG(ERROR) << msg;
+        LOG(WARNING) << msg;
         return STATUS(AlreadyPresent, msg);
       }
 
@@ -1524,8 +1523,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
       resp.partition_schema(), internal::GetSchema(&info->schema), &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
-  if (!resp.schema().pgschema_name().empty()) {
-    info->table_name.set_pgschema_name(resp.schema().pgschema_name());
+  if (!resp.schema().deprecated_pgschema_name().empty()) {
+    info->table_name.set_pgschema_name(resp.schema().deprecated_pgschema_name());
   }
   info->table_id = resp.identifier().table_id();
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
@@ -2311,6 +2310,96 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
   std::function<void(Result<bool>)> user_cb_;
 };
 
+class AcquireObjectLocksGlobalRpc
+    : public ClientMasterRpc<
+          master::AcquireObjectLocksGlobalRequestPB, master::AcquireObjectLocksGlobalResponsePB> {
+ public:
+  AcquireObjectLocksGlobalRpc(
+      YBClient* client, master::AcquireObjectLocksGlobalRequestPB request,
+      StdStatusCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.CopyFrom(request);
+  }
+
+  string ToString() const override {
+    return Format(
+        "AcquireObjectLocksGlobal (request: $0, num_attempts: $1)", req_.DebugString(),
+        num_attempts());
+  }
+
+  virtual ~AcquireObjectLocksGlobalRpc() {}
+
+ private:
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
+  }
+
+  bool ShouldRetry(const Status& status) override {
+    return status.IsTryAgain();
+  }
+
+  void CallRemoteMethod() override {
+    VLOG(2) << "Calling AcquireObjectLocksGlobal with request: " << req_.DebugString();
+    master_ddl_proxy()->AcquireObjectLocksGlobalAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&AcquireObjectLocksGlobalRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  StdStatusCallback user_cb_;
+};
+
+class ReleaseObjectLocksGlobalRpc
+    : public ClientMasterRpc<
+          master::ReleaseObjectLocksGlobalRequestPB, master::ReleaseObjectLocksGlobalResponsePB> {
+ public:
+  ReleaseObjectLocksGlobalRpc(
+      YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request,
+      StdStatusCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.CopyFrom(request);
+  }
+
+  string ToString() const override {
+    return Format(
+        "ReleaseObjectLocksGlobal (request: $0, num_attempts: $1)", req_.DebugString(),
+        num_attempts());
+  }
+
+  virtual ~ReleaseObjectLocksGlobalRpc() {}
+
+ private:
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
+  }
+
+  bool ShouldRetry(const Status& status) override {
+    return status.IsTryAgain();
+  }
+
+  void CallRemoteMethod() override {
+    VLOG(2) << "Calling ReleaseObjectLocksGlobalAsync with request: " << req_.DebugString();
+    master_ddl_proxy()->ReleaseObjectLocksGlobalAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&ReleaseObjectLocksGlobalRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  StdStatusCallback user_cb_;
+};
+
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
@@ -2572,6 +2661,18 @@ void YBClient::Data::DeleteNotServingTablet(
       client, tablet_id, callback, deadline);
 }
 
+void YBClient::Data::AcquireObjectLocksGlobalAsync(
+    YBClient* client, master::AcquireObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = StartRpc<internal::AcquireObjectLocksGlobalRpc>(client, request, callback, deadline);
+}
+
+void YBClient::Data::ReleaseObjectLocksGlobalAsync(
+    YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
+    StdStatusCallback callback) {
+  auto rpc = StartRpc<internal::ReleaseObjectLocksGlobalRpc>(client, request, callback, deadline);
+}
+
 void YBClient::Data::GetTableLocations(
     YBClient* client, const TableId& table_id, const int32_t max_tablets,
     const RequireTabletsRunning require_tablets_running, const PartitionsOnly partitions_only,
@@ -2701,6 +2802,8 @@ void YBClient::Data::DoSetMasterServerProxy(CoarseTimePoint deadline,
     return;
   }
 
+  ASH_ENABLE_CONCURRENT_UPDATES();
+  SET_WAIT_STATUS(YBClient_WaitingOnMaster);
   rpcs_.Register(
       std::make_shared<GetLeaderMasterRpc>(
           Bind(&YBClient::Data::LeaderMasterDetermined, Unretained(this)),
@@ -2725,7 +2828,7 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
       out.str(master_server_addr);
       out.str(" ");
     }
-    LOG(ERROR) << out.str();
+    LOG(DFATAL) << out.str();
     return STATUS(InvalidArgument, "master addresses cannot be empty");
   }
 

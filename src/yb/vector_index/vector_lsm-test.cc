@@ -20,6 +20,8 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/priority_thread_pool.h"
+#include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/vector_index/ann_methods.h"
@@ -27,13 +29,16 @@
 #include "yb/vector_index/usearch_wrapper.h"
 #include "yb/vector_index/vector_lsm.h"
 #include "yb/vector_index/vector_lsm-test.pb.h"
+#include "yb/vector_index/vectorann_util.h"
 
 using namespace std::literals;
 
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
-DECLARE_bool(TEST_vector_index_skip_update_metadata_during_shutdown);
+DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 
 namespace yb::vector_index {
+
+extern MonoDelta TEST_sleep_on_merged_chunk_populated;
 
 using FloatVectorLSM = VectorLSM<std::vector<float>, float>;
 using TestUsearchIndexFactory = MakeVectorIndexFactory<UsearchIndexFactory, FloatVectorLSM>;
@@ -136,16 +141,20 @@ using TestFrontiers = rocksdb::UserFrontiersBase<TestFrontier>;
 
 class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMethodKind> {
  protected:
+  // Usearch creates an index with min capacity of 64 vectors.
+  constexpr static size_t kDefaultChunkSize = 64;
+
   VectorLSMTest()
       : thread_pool_(rpc::ThreadPoolOptions {
           .name = "Insert Thread Pool",
           .max_workers = 10,
-        }) {
+        }),
+        priority_thread_pool_(/* max_running_tasks = */ 2) {
   }
 
-  Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
+  Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
 
-  Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk);
+  Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
 
   Status InsertCube(
       FloatVectorLSM& lsm, size_t dimensions,
@@ -158,9 +167,12 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
       FloatVectorLSM& lsm, size_t dimensions, const FloatVectorLSM::Vector& query_vector,
       size_t max_num_results);
 
+  Result<std::vector<std::string>> GetFiles(FloatVectorLSM& lsm);
+
   void TestBootstrap(bool flush);
 
   rpc::ThreadPool thread_pool_;
+  PriorityThreadPool priority_thread_pool_;
   SimpleVectorLSMKeyValueStorage key_value_storage_;
   FloatVectorLSM::InsertEntries  inserted_entries_;
 };
@@ -175,9 +187,17 @@ auto GetVectorIndexFactory(ANNMethodKind ann_method) {
   return decltype(&TestUsearchIndexFactory::Create)(nullptr);
 }
 
+constexpr static size_t GetNumEntriesByDimensions(size_t dimensions) {
+  return 1ULL << dimensions;
+}
+
+static size_t GetNumDimensionsByEntries(size_t num_entries) {
+  return std::ceil(std::log2(num_entries));
+}
+
 FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
   FloatVectorLSM::InsertEntries result;
-  for (size_t i = 1; i <= (1ULL << dimensions); ++i) {
+  for (size_t i = 1; i <= GetNumEntriesByDimensions(dimensions); ++i) {
     auto bits = i - 1;
     FloatVector vector(dimensions);
     for (size_t d = 0; d != dimensions; ++d) {
@@ -204,6 +224,7 @@ Status VectorLSMTest::InsertCube(
     FloatVectorLSM& lsm, size_t dimensions, size_t block_size,
     size_t min_entry_idx) {
   inserted_entries_ = CubeInsertEntries(dimensions);
+  size_t num_inserts = 0;
   for (size_t i = 0; i < inserted_entries_.size(); i += block_size) {
     auto begin = inserted_entries_.begin() + i;
     auto end = inserted_entries_.begin() + std::min(i + block_size, inserted_entries_.size());
@@ -223,12 +244,15 @@ Status VectorLSMTest::InsertCube(
           begin->vector_id, begin - inserted_entries_.begin() + 1);
     }
     RETURN_NOT_OK(lsm.Insert(block_entries, { .frontiers = &frontiers }));
+    ++num_inserts;
   }
+  LOG(INFO) << "Inserted " << inserted_entries_.size() << " entries "
+            << "via " << num_inserts << " batches";
   return Status::OK();
 }
 
 Status VectorLSMTest::OpenVectorLSM(
-    FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
+    FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk) {
 
   std::string test_dir;
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&test_dir));
@@ -238,22 +262,32 @@ Status VectorLSMTest::OpenVectorLSM(
     .log_prefix = "Test: ",
     .storage_dir = JoinPathSegments(test_dir, "vector_lsm"),
     .vector_index_factory = [factory = GetVectorIndexFactory(GetParam()), dimensions]() {
-        HNSWOptions hnsw_options = {
-          .dimensions = dimensions,
-        };
-        return factory(hnsw_options);
-      },
-    .points_per_chunk = points_per_chunk,
+      HNSWOptions hnsw_options = {
+        .dimensions = dimensions,
+      };
+      return factory(hnsw_options);
+    },
+    .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
+    .insert_thread_pool = &thread_pool_,
+    .compaction_thread_pool = &priority_thread_pool_,
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
+    .vector_merge_filter_factory = [] {
+      struct DummyFilter : public VectorLSMMergeFilter {
+        rocksdb::FilterDecision Filter(VectorId vector_id) override {
+          return rocksdb::FilterDecision::kKeep;
+        }
+      };
+      return std::make_unique<DummyFilter>();
+    },
   };
   return lsm.Open(std::move(options));
 }
 
 Status VectorLSMTest::InitVectorLSM(
-    FloatVectorLSM& lsm, size_t dimensions, size_t points_per_chunk) {
-  RETURN_NOT_OK(OpenVectorLSM(lsm, dimensions, points_per_chunk));
-  return InsertCube(lsm, dimensions, points_per_chunk);
+    FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk) {
+  RETURN_NOT_OK(OpenVectorLSM(lsm, dimensions, vectors_per_chunk));
+  return InsertCube(lsm, dimensions, vectors_per_chunk);
 }
 
 void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
@@ -283,9 +317,10 @@ void VectorLSMTest::CheckQueryVector(
 
     SearchOptions options = {
       .max_num_results = max_num_results,
+      .ef = 0,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));
-    LOG(INFO) << "Search result: " << AsString(search_result);
+    VLOG(1) << "Search result: " << AsString(search_result);
 
     ASSERT_EQ(search_result.size(), expected_results.size());
 
@@ -298,6 +333,15 @@ void VectorLSMTest::CheckQueryVector(
   }
 }
 
+Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
+  auto files = VERIFY_RESULT(lsm.TEST_GetEnv()->GetChildren(lsm.options().storage_dir));
+  std::erase_if(files, [](const auto& file) {
+    return !boost::ends_with(file, ".meta") && !boost::contains(file, "vectorindex");
+  });
+  std::sort(files.begin(), files.end());
+  return files;
+}
+
 TEST_P(VectorLSMTest, Simple) {
   constexpr size_t kDimensions = 4;
 
@@ -308,18 +352,150 @@ TEST_P(VectorLSMTest, Simple) {
 }
 
 TEST_P(VectorLSMTest, MultipleChunks) {
-  constexpr size_t kDimensions = 4;
-  constexpr size_t kChunkSize = 4;
+  constexpr size_t kDimensions = 9;
+  constexpr size_t kChunkSize  = 2 * kDefaultChunkSize;
+  static_assert(GetNumEntriesByDimensions(kDimensions) > 2 * kChunkSize);
 
   FloatVectorLSM lsm;
   ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
+  ASSERT_GT(lsm.num_immutable_chunks(), 1);
 
   VerifyVectorLSM(lsm, kDimensions);
 }
 
-void VectorLSMTest::TestBootstrap(bool flush) {
+TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   constexpr size_t kDimensions = 4;
-  constexpr size_t kChunkSize = 4;
+  constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
+
+  // Empty compaction, nothing is compacted.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
+
+  ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_EQ(kNumEntries, inserted_entries_.size());
+
+  while (lsm.TEST_HasBackgroundInserts()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  ASSERT_EQ(0, lsm.num_immutable_chunks());
+
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(1, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Compact single file into a single file.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Compact single file into a single file again.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
+}
+
+TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+  static_assert(kNumEntries > 2 * kDefaultChunkSize);
+
+  constexpr size_t kBlocksPerChunk = 5;
+  constexpr size_t kBlockSize = kDefaultChunkSize / kBlocksPerChunk;
+  constexpr size_t kNumInserts = (kNumEntries + kBlockSize - 1) / kBlockSize;
+  constexpr size_t kExpectedNumChunks = (kNumInserts + kBlocksPerChunk - 1) / kBlocksPerChunk;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
+  ASSERT_OK(InsertCube(lsm, kDimensions, kBlockSize));
+  ASSERT_EQ(kNumEntries, inserted_entries_.size());
+
+  while (lsm.TEST_HasBackgroundInserts()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  ASSERT_EQ(kExpectedNumChunks - 1, lsm.num_immutable_chunks());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_EQ(kExpectedNumChunks, lsm.num_immutable_chunks());
+  ASSERT_EQ(1, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Compact all files into a single file.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  auto compacted_idx = kExpectedNumChunks + 1;
+  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, vectorindex_$0]", compacted_idx));
+
+  // Compact again.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  ++compacted_idx;
+  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
+}
+
+TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
+  constexpr size_t kDimensions = 9;
+  constexpr size_t kChunkSize  = 2 * kDefaultChunkSize;
+  static_assert(GetNumEntriesByDimensions(kDimensions) > 2 * kChunkSize);
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
+  while (lsm.TEST_HasBackgroundInserts()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  ASSERT_GT(lsm.num_immutable_chunks(), 1);
+
+  // Pause Vector LSM compactions.
+  const auto merge_timeout = 5s * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(TEST_sleep_on_merged_chunk_populated) = merge_timeout;
+
+  // Spawn a separate thread and start shutting down
+  ThreadHolder threads;
+  threads.AddThreadFunctor([&lsm, merge_timeout] {
+    SleepFor(merge_timeout / 2);
+
+    // Compaction should be already started by this time (and paused).
+    lsm.StartShutdown();
+  });
+
+  auto status = lsm.Compact(/* wait = */ true);
+  ASSERT_TRUE(status.IsShutdownInProgress()) << status;
+}
+
+void VectorLSMTest::TestBootstrap(bool flush) {
+  constexpr size_t kChunkSize  = kDefaultChunkSize;
+  const     size_t kDimensions = GetNumDimensionsByEntries(kChunkSize * 4);
 
   {
     FloatVectorLSM lsm;
@@ -361,7 +537,7 @@ TEST_P(VectorLSMTest, BootstrapWithFlush) {
 
 TEST_P(VectorLSMTest, NotSavedChunk) {
   FLAGS_TEST_vector_index_delay_saving_first_chunk_ms = 1000 * kTimeMultiplier;
-  FLAGS_TEST_vector_index_skip_update_metadata_during_shutdown = true;
+  FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown = true;
   TestBootstrap(/* flush= */ false);
 }
 

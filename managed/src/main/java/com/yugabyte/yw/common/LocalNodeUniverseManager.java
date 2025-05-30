@@ -193,7 +193,7 @@ public class LocalNodeUniverseManager {
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }
-    return ShellResponse.create(ERROR_CODE_SUCCESS, "Success!");
+    return ShellResponse.create(ERROR_CODE_SUCCESS, "Command output: Linux x86_64");
   }
 
   private int runProcess(List<String> commandArguments, Map<String, String> envVars)

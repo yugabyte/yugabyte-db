@@ -2,7 +2,12 @@
 
 import { connect } from 'react-redux';
 import { KeyManagementConfiguration } from '../../config';
-import { fetchCustomerConfigs, fetchCustomerConfigsResponse } from '../../../actions/customers';
+import {
+  fetchCustomerConfigs,
+  fetchCustomerConfigsResponse,
+  fetchCustomerRunTimeConfigs,
+  fetchCustomerRunTimeConfigsResponse
+} from '../../../actions/customers';
 import {
   createKMSProviderConfig,
   createKMSProviderConfigResponse,
@@ -25,6 +30,7 @@ import {
 const mapStateToProps = (state) => {
   return {
     customerConfigs: state.customer.configs,
+    runtimeConfigs: state.customer.runtimeConfigs,
     configList: state.cloud.authConfig,
     visibleModal: state.modal.visibleModal,
     deleteConfig: state.customer.deleteConfig,
@@ -42,7 +48,11 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchCustomerConfigsResponse(response.payload))
       );
     },
-
+    fetchCustomerRuntimeConfigs: () => {
+      return dispatch(fetchCustomerRunTimeConfigs(true)).then((response) =>
+        dispatch(fetchCustomerRunTimeConfigsResponse(response.payload))
+      );
+    },
     fetchKMSConfigList: () => {
       return dispatch(fetchAuthConfigList())
         .then((response) => dispatch(fetchAuthConfigListResponse(response.payload)))
@@ -53,7 +63,7 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(createKMSProviderConfig(provider, body))
         .then?.((response) => {
           if (response.error) {
-            if(handleCACertErrMsg(response.payload)){
+            if (handleCACertErrMsg(response.payload)) {
               return;
             }
             const errorMessage =

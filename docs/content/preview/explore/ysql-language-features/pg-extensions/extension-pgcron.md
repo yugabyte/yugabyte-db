@@ -3,8 +3,6 @@ title: pg_cron extension
 headerTitle: pg_cron extension
 linkTitle: pg_cron
 description: Using the pg_cron extension in YugabyteDB
-tags:
-  feature: tech-preview
 menu:
   preview:
     identifier: extension-pgcron

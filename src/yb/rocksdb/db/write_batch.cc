@@ -251,7 +251,7 @@ uint32_t WriteBatch::ComputeContentFlags() const {
   if ((rv & ContentFlags::DEFERRED) != 0) {
     BatchContentClassifier classifier;
     auto status = Iterate(&classifier);
-    LOG_IF(ERROR, !status.ok()) << "Iterate failed during ComputeContentFlags: " << status;
+    LOG_IF(WARNING, !status.ok()) << "Iterate failed during ComputeContentFlags: " << status;
     rv = classifier.content_flags;
 
     // this method is conceptually const, because it is performing a lazy
@@ -1029,7 +1029,7 @@ Result<size_t> DirectInsert(
   }
   DirectWriteHandlerImpl direct_write_handler(
       current->mem(), mem_table_inserter->sequence_, handler_for_logging);
-  RETURN_NOT_OK(writer->Apply(&direct_write_handler));
+  RETURN_NOT_OK(writer->Apply(direct_write_handler));
   auto result = direct_write_handler.Complete();
   mem_table_inserter->CheckMemtableFull();
   return result;

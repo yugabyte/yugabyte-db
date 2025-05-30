@@ -25,8 +25,9 @@
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
+/* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 static bool
 yb_is_role_allowed_for_tserver_auth(const char *role, const char **logdetail)

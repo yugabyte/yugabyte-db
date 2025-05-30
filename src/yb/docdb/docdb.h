@@ -110,7 +110,7 @@ struct PrepareDocWriteOperationResult {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    tablet::TabletMetrics* tablet_metrics,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
@@ -134,7 +134,7 @@ Status AssembleDocWriteBatch(
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
-    HybridTime* restart_read_ht,
+    ReadRestartData* read_restart_data,
     const std::string& table_name);
 
 struct ExternalTxnApplyStateData {
@@ -228,6 +228,25 @@ struct ApplyTransactionState {
       .write_id = pb.write_id(),
       .aborted = VERIFY_RESULT(SubtxnSet::FromPB(pb.aborted().set())),
     };
+  }
+};
+
+struct ApplyStateWithCommitInfo {
+  ApplyTransactionState state;
+  HybridTime commit_ht;
+  OpId apply_op_id;
+
+  template <class PB>
+  static Result<ApplyStateWithCommitInfo> FromPB(const PB& pb) {
+    return ApplyStateWithCommitInfo {
+      .state = VERIFY_RESULT(ApplyTransactionState::FromPB(pb)),
+      .commit_ht = HybridTime(pb.commit_ht()),
+      .apply_op_id = OpId::FromPB(pb.apply_op_id()),
+    };
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(state, commit_ht, apply_op_id);
   }
 };
 

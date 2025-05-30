@@ -317,7 +317,7 @@ public class RBACControllerTest extends FakeDBApplication {
     // Filling the JSON object to be passed in the request body
     String createRoleRequestBody =
         "{"
-            + "\"name\": \"custom Read UniverseRole 1\","
+            + "\"name\": \"customReadUniverseRole1\","
             + "\"description\": \"test Description\","
             + "\"permissionList\": ["
             + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"},"
@@ -332,13 +332,13 @@ public class RBACControllerTest extends FakeDBApplication {
     Role roleResult = reader.readValue(json);
 
     assertNotNull(roleResult);
-    assertEquals("custom Read UniverseRole 1", roleResult.getName());
+    assertEquals("customReadUniverseRole1", roleResult.getName());
     assertAuditEntry(1, customer.getUuid());
 
     // Get the role from DB and compare with returned result.
     // 6 because of the 1 we created above + 5 built-in roles.
     assertEquals(6, Role.getAll(customer.getUuid()).size());
-    Role roleDb = Role.get(customer.getUuid(), "custom Read UniverseRole 1");
+    Role roleDb = Role.get(customer.getUuid(), "customReadUniverseRole1");
     assertEquals(roleResult, roleDb);
   }
 

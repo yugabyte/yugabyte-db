@@ -32,7 +32,8 @@ public class FileHelperService {
     try {
       tmpFile = Files.createTempFile(tmpDirectoryPath, fileName, fileExtension);
     } catch (IOException e) {
-      log.info("Error creating the tmp file", e.getMessage());
+      log.info(
+          "Error creating the tmp file {} in {} - {}", fileName, tmpDirectoryPath, e.getMessage());
       // Let the caller handle the same.
       throw new RuntimeException("Could not create file", e);
     }

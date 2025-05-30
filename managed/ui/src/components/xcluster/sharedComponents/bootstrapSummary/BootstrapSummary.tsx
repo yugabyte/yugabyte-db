@@ -28,6 +28,11 @@ interface CommonConfigureBootstrapStepProps {
 type ConfigureBootstrapStepProps =
   | (CommonConfigureBootstrapStepProps & {
       isDrInterface: true;
+      isCreateConfig: true;
+    })
+  | (CommonConfigureBootstrapStepProps & {
+      isDrInterface: true;
+      isCreateConfig: false;
       storageConfigUuid: string;
     })
   | (CommonConfigureBootstrapStepProps & { isDrInterface: false });
@@ -46,6 +51,10 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: theme.spacing(2)
   },
   formSectionDescription: {
+    display: 'flex',
+    gap: theme.spacing(1),
+    flexDirection: 'column',
+
     marginBottom: theme.spacing(3)
   },
   fieldLabel: {
@@ -85,7 +94,6 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.shared.bootstrapSummary';
-
 export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
   const { categorizedNeedBootstrapPerTableResponse, isFormDisabled, sourceUniverseUuid } = props;
   const { control, watch } = useFormContext();
@@ -105,10 +113,12 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
         (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
       ) ?? []
   );
-  const storageConfigName = props.isDrInterface
-    ? storageConfigs?.find((storageConfig) => storageConfig.configUUID === props.storageConfigUuid)
-        ?.configName ?? ''
-    : '';
+  const storageConfigName =
+    props.isDrInterface && !props.isCreateConfig
+      ? storageConfigs?.find(
+          (storageConfig) => storageConfig.configUUID === props.storageConfigUuid
+        )?.configName ?? ''
+      : '';
 
   if (categorizedNeedBootstrapPerTableResponse === null) {
     return <Typography variant="body2">{t('error.unableToDetermineBootstrapSummary')}</Typography>;
@@ -161,15 +171,22 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
   const targetUniverseTerm = t(`target.${props.isDrInterface ? 'dr' : 'xClusterReplication'}`, {
     keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
   });
+  const shouldShowBackupStorageConfigField =
+    (props.isDrInterface && props.isCreateConfig) ||
+    (bootstrapTableUuids.length > 0 && !skipBootstrap);
   return (
     <>
-      {bootstrapTableUuids.length > 0 && !skipBootstrap && (
+      {shouldShowBackupStorageConfigField && (
         <>
           <Typography variant="body2" className={classes.instruction}>
             {t('backupStorageConfig.instruction')}
           </Typography>
           <div className={classes.formSectionDescription}>
             <Typography variant="body2">{t('backupStorageConfig.infoText')}</Typography>
+            {}
+            <Typography variant="body2">
+              {t('backupStorageConfig.infoTextDrRequirement')}
+            </Typography>
           </div>
           <div className={classes.fieldLabel}>
             <Typography variant="body2">{t('backupStorageConfig.label')}</Typography>
@@ -190,8 +207,8 @@ export const BootstrapSummary = (props: ConfigureBootstrapStepProps) => {
               <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </div>
-          {/* Backup storage config should already be saved for each DR config. */}
-          {props.isDrInterface ? (
+          {/* Backup storage config should already be saved for existing DR configs. */}
+          {props.isDrInterface && !props.isCreateConfig ? (
             storageConfigName ? (
               <Typography variant="body2">
                 <Trans

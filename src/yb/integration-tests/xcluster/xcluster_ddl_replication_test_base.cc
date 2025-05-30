@@ -13,15 +13,17 @@
 
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 
+#include <rapidjson/error/en.h>
+
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(enable_xcluster_api_v2);
@@ -151,10 +153,11 @@ Result<std::shared_ptr<client::YBTable>> XClusterDDLReplicationTestBase::GetCons
 }
 
 void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsumer(
-    const client::YBTableName& producer_table_name) {
+    const client::YBTableName& producer_table_name, uint32_t start, uint32_t end,
+    const xcluster::ReplicationGroupId replication_group) {
   std::shared_ptr<client::YBTable> producer_table =
       ASSERT_RESULT(GetProducerTable(producer_table_name));
-  ASSERT_OK(InsertRowsInProducer(0, 50, producer_table));
+  ASSERT_OK(InsertRowsInProducer(start, end, producer_table));
 
   // Once the safe time advances, the target should have the new table and its rows.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -166,8 +169,8 @@ void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsume
     // Verify that universe was setup on consumer.
     // Skip for colocated as the table is not tracked in master replication.
     master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(&resp));
-    ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
+    ASSERT_OK(VerifyUniverseReplication(replication_group, &resp));
+    ASSERT_EQ(resp.entry().replication_group_id(), replication_group);
     ASSERT_TRUE(std::any_of(
         resp.entry().tables().begin(), resp.entry().tables().end(),
         [&](const std::string& table) { return table == producer_table_name.table_id(); }));
@@ -203,19 +206,38 @@ Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
   auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
   const auto rows = VERIFY_RESULT((conn.FetchRows<int64_t, int64_t, std::string>(Format(
       "SELECT $0, $1, $2 FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY $0 ASC",
-      xcluster::kDDLQueueStartTimeColumn, xcluster::kDDLQueueQueryIdColumn,
+      xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn))));
 
   std::stringstream ss;
   ss << "DDL Queue Table:" << std::endl;
-  for (const auto& [start_time, query_id, raw_json_data] : rows) {
+  for (const auto& [ddl_end_time, query_id, raw_json_data] : rows) {
     // Serialized JSON string has an extra character at the front.
-    ss << start_time << "\t" << query_id << "\t" << raw_json_data.substr(1, kMaxJsonStrLen)
+    ss << ddl_end_time << "\t" << query_id << "\t" << raw_json_data.substr(1, kMaxJsonStrLen)
        << std::endl;
   }
   LOG(INFO) << ss.str();
 
   return Status::OK();
+}
+
+Result<xcluster::SafeTimeBatch>
+XClusterDDLReplicationTestBase::FetchSafeTimeBatchFromReplicatedDdls() {
+  auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  RETURN_NOT_OK(tserver::XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(&conn));
+  return tserver::XClusterDDLQueueHandler::FetchSafeTimeBatchFromReplicatedDdls(&conn);
+}
+
+Status XClusterDDLReplicationTestBase::StepDownDdlQueueTablet(Cluster& cluster) {
+  auto ddl_queue_table = VERIFY_RESULT(GetYsqlTable(
+      &cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  RETURN_NOT_OK(cluster.client_->GetTabletsFromTableId(ddl_queue_table.table_id(), 1, &tablets));
+  DCHECK_EQ(tablets.size(), 1);
+
+  const auto leader_peer =
+      VERIFY_RESULT(GetLeaderPeerForTablet(cluster.mini_cluster_.get(), tablets[0].tablet_id()));
+  return StepDown(leader_peer, /*new_leader_uuid=*/"", ForceStepDown::kTrue);
 }
 
 Status XClusterDDLReplicationTestBase::CreateInitialColocatedTable() {
@@ -228,4 +250,34 @@ Status XClusterDDLReplicationTestBase::CreateInitialColocatedTable() {
     return Status::OK();
   });
 }
+
+Result<std::string> XClusterDDLReplicationTestBase::GetReplicationRole(
+    Cluster& cluster, const NamespaceName& database) {
+  const auto& db_name = database.empty() ? namespace_name : database;
+  auto conn = VERIFY_RESULT(cluster.ConnectToDB(db_name));
+  return conn.FetchRowAsString("SELECT yb_xcluster_ddl_replication.get_replication_role();");
+}
+
+Status XClusterDDLReplicationTestBase::ValidateReplicationRole(
+    Cluster& cluster, const std::string& expected_role, const NamespaceName& database) {
+  auto actual_role = VERIFY_RESULT(GetReplicationRole(cluster, database));
+  SCHECK_EQ(
+      actual_role, expected_role, IllegalState,
+      Format("Expected replication role $0, got $1", expected_role, actual_role));
+  return Status::OK();
+}
+
+bool XClusterDDLReplicationTestBase::SetReplicationDirection(
+    ReplicationDirection replication_direction) {
+  if (replication_direction_ == replication_direction) {
+    return false;
+  }
+  replication_direction_ = replication_direction;
+  std::swap(consumer_cluster_, producer_cluster_);
+  std::swap(consumer_table_, producer_table_);
+  LOG(INFO) << "Switched replication direction to "
+            << (replication_direction_ == ReplicationDirection::AToB ? "A -> B" : "B -> A");
+  return true;
+}
+
 }  // namespace yb

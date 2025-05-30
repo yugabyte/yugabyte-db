@@ -56,13 +56,11 @@ public class XClusterConfigCreateFormData {
   @ApiModel(description = "Bootstrap parameters")
   @ToString
   public static class BootstrapParams {
-    @Required
     @ApiModelProperty(
         value =
             "Source Universe table IDs that need bootstrapping; must be a subset of tables "
                 + "in the main body",
-        example = "[\"000033df000030008000000000004006\"]",
-        required = true)
+        example = "[\"000033df000030008000000000004006\"]")
     public Set<String> tables;
 
     @Required

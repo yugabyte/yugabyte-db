@@ -37,42 +37,42 @@ yb-ts-cli [other arguments] -- set_flag ysql_select_parallelism -1
     title="ysqlsh"
     body="Interact with YugabyteDB, including querying data, creating and modifying database objects, and executing SQL commands and scripts using YSQL."
     href="ysqlsh/"
-    icon="fa-solid fa-terminal">}}
+    icon="fa-thin fa-terminal">}}
 
   {{<index/item
     title="ycqlsh"
     body="Interact with YugabyteDB, including querying data, creating and modifying database objects, and executing CQL commands and scripts using YCQL."
     href="ycqlsh/"
-    icon="fa-solid fa-terminal">}}
+    icon="fa-thin fa-terminal">}}
 
   {{<index/item
     title="yb-admin"
     body="Administer YugabyteDB cluster configuration and features."
     href="yb-admin/"
-    icon="fa-solid fa-screwdriver-wrench">}}
+    icon="fa-thin fa-screwdriver-wrench">}}
 
   {{<index/item
     title="yb-ctl"
     body="Create and manage local clusters on macOS or Linux."
     href="yb-ctl/"
-    icon="fa-solid fa-toolbox">}}
+    icon="fa-thin fa-toolbox">}}
 
   {{<index/item
     title="ysql_dump"
     body="Extract a single YugabyteDB database into an SQL script file."
     href="ysql-dump/"
-    icon="fa-solid fa-file-export">}}
+    icon="fa-thin fa-file-export">}}
 
   {{<index/item
     title="ysql_dumpall"
     body="Extract all YugabyteDB databases into an SQL script file."
     href="ysql-dumpall/"
-    icon="fa-regular fa-copy">}}
+    icon="fa-thin fa-copy">}}
 
   {{<index/item
     title="yb-ts-cli"
     body="Perform advanced operations on tablet servers."
     href="yb-ts-cli/"
-    icon="fa-solid fa-toolbox">}}
+    icon="fa-thin fa-toolbox">}}
 
 {{</index/block>}}

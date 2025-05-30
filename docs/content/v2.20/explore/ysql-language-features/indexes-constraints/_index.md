@@ -39,49 +39,49 @@ The following table lists different types of indexes and their support in YSQL.
     title="Primary keys"
     body="Explore the use of primary keys in YSQL."
     href="primary-key-ysql/"
-    icon="fa-solid fa-bars">}}
+    icon="fa-thin fa-bars">}}
 
   {{<index/item
     title="Foreign keys"
     body="Explore the use of foreign keys associated with primary keys in YSQL."
     href="foreign-key-ysql/"
-    icon="fa-solid fa-list-ul">}}
+    icon="fa-thin fa-list-ul">}}
 
   {{<index/item
     title="Secondary and multi-column indexes"
     body="Explore indexes to optimize your database performance with examples."
     href="secondary-indexes-ysql/"
-    icon="fa-solid fa-list-ol">}}
+    icon="fa-thin fa-list-ol">}}
 
   {{<index/item
     title="Unique indexes"
     body="Explore unique indexes in YSQL with examples."
     href="unique-index-ysql/"
-    icon="fa-solid fa-bars-staggered">}}
+    icon="fa-thin fa-bars-staggered">}}
 
   {{<index/item
     title="Partial indexes"
     body="Explore partial indexes in YSQL with examples."
     href="partial-index-ysql/"
-    icon="fa-solid fa-list-check">}}
+    icon="fa-thin fa-list-check">}}
 
   {{<index/item
     title="Expression indexes"
     body="Explore Expression indexes in YSQL with examples."
     href="expression-index-ysql/"
-    icon="fa-solid fa-percent">}}
+    icon="fa-thin fa-percent">}}
 
    {{<index/item
     title="Covering indexes"
     body="Explore Covering indexes in YSQL with examples."
     href="covering-index-ysql/"
-    icon="fa-solid fa-table-list">}}
+    icon="fa-thin fa-table-list">}}
 
   {{<index/item
     title="GIN indexes"
     body="Use GIN indexes in YSQL to run efficient queries."
     href="gin/"
-    icon="fa-solid fa-folder-tree">}}
+    icon="fa-thin fa-folder-tree">}}
 
   {{<index/item
     title="Other constraints"

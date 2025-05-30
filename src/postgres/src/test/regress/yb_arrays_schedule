@@ -4,9 +4,9 @@
 # This suite includes tests on array datatypes.  Some are ported from PostgreSQL original tests;
 # others are created from Yugabyte.
 ####################################################################################################
-# Dependency for `yb_pg_arrays`
-test: yb_pg_test_setup
+# Dependency for `yb.port.arrays`
+test: yb.port.test_setup
 
-test: yb_pg_arrays
-test: yb_int2_array
-test: yb_int4_array
+test: yb.port.arrays
+test: yb.orig.int2_array
+test: yb.orig.int4_array

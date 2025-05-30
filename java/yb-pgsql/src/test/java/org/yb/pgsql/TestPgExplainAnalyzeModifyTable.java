@@ -237,20 +237,16 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     PlanCheckerBuilder resultNodeChecker = makePlanBuilder()
         .nodeType(NODE_RESULT);
 
-    PlanCheckerBuilder insertNodeChecker = makePlanBuilder()
-        .nodeType(NODE_MODIFY_TABLE)
-        .operation(OPERATION_INSERT)
-        .relationName(TEST_TABLE)
-        .alias(TEST_TABLE);
-
     // 1. ON CONFLICT DO NOTHING - No Conflict
     {
         Checker checker = topLevelChecker
-            .plan(insertNodeChecker
-                .plans(resultNodeChecker
-                    .storageTableReadRequests(Checkers.equal(1))
-                    .storageTableWriteRequests(Checkers.equal(1))
-                    .build())
+            .plan(makePlanBuilder()
+                .nodeType(NODE_MODIFY_TABLE)
+                .operation(OPERATION_INSERT)
+                .relationName(TEST_TABLE)
+                .alias(TEST_TABLE)
+                .storageTableReadRequests(Checkers.equal(1))
+                .storageTableWriteRequests(Checkers.equal(1))
                 .build())
             .storageFlushRequests(Checkers.equal(1))
             .storageReadRequests(Checkers.equal(1))
@@ -264,11 +260,12 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     // 2. ON CONFLICT DO NOTHING - Conflict
     {
         Checker checker = topLevelChecker
-            .plan(insertNodeChecker
-                .plans(makePlanBuilder()
-                    .nodeType(NODE_RESULT)
-                    .storageTableReadRequests(Checkers.equal(1))
-                    .build())
+            .plan(makePlanBuilder()
+                .nodeType(NODE_MODIFY_TABLE)
+                .operation(OPERATION_INSERT)
+                .relationName(TEST_TABLE)
+                .alias(TEST_TABLE)
+                .storageTableReadRequests(Checkers.equal(1))
                 .build())
             .storageFlushRequests(Checkers.equal(0))
             .storageReadRequests(Checkers.equal(1))
@@ -282,12 +279,14 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     // 3. ON CONFLICT DO UPDATE - No conflict
     {
         Checker checker = topLevelChecker
-            .plan(insertNodeChecker
-                .plans(resultNodeChecker
-                    .storageTableReadRequests(Checkers.equal(1))
-                    .storageTableWriteRequests(Checkers.equal(1))
-                    .storageIndexWriteRequests(Checkers.equal(TEST_NUM_SEC_INDEXES))
-                    .build())
+            .plan(makePlanBuilder()
+                .nodeType(NODE_MODIFY_TABLE)
+                .operation(OPERATION_INSERT)
+                .relationName(TEST_TABLE)
+                .alias(TEST_TABLE)
+                .storageTableReadRequests(Checkers.equal(1))
+                .storageTableWriteRequests(Checkers.equal(1))
+                .storageIndexWriteRequests(Checkers.equal(TEST_NUM_SEC_INDEXES))
                 .build())
             .storageFlushRequests(Checkers.equal(1))
             .storageReadRequests(Checkers.equal(1))
@@ -302,12 +301,13 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     // 4. ON CONFLICT DO UPDATE - Conflict
     {
         Checker checker = topLevelChecker
-            .plan(insertNodeChecker
-                .plans(makePlanBuilder()
-                    .nodeType(NODE_RESULT)
-                    .storageTableReadRequests(Checkers.equal(1))
-                    .storageTableWriteRequests(Checkers.equal(1))
-                    .build())
+            .plan(makePlanBuilder()
+                .nodeType(NODE_MODIFY_TABLE)
+                .operation(OPERATION_INSERT)
+                .relationName(TEST_TABLE)
+                .alias(TEST_TABLE)
+                .storageTableReadRequests(Checkers.equal(1))
+                .storageTableWriteRequests(Checkers.equal(1))
                 .build())
             .storageFlushRequests(Checkers.equal(1))
             .storageReadRequests(Checkers.equal(1))
