@@ -215,7 +215,7 @@ my-multi-region   Dedicated   2.14.7.0-b51   ACTIVE    💚        us-central1,+
 
 ### Scale your cluster
 
-Use the `ybm cluster update` command with `--region-info` flag to scale your cluster by adding or removing nodes, cores, and disk size. You can also change the region name. For example, to change the number of nodes in the `ap-northeast-1` region from 1 to 3, and the number of cores from 2 to 4, enter the following command:
+Use the `ybm cluster update` command with `--region-info` flag to scale your cluster by adding or removing nodes, cores, and disk size. You can also change the region name. For example, to change the number of nodes in the `us-east1` region from 1 to 3, and the number of cores from 2 to 4, enter the following command:
 
 ```sh
 ybm cluster update \
@@ -224,7 +224,7 @@ ybm cluster update \
   --wait
 ```
 
-For more information, see [Scale and configure clusters](../../../../cloud-clusters/configure-clusters/)
+For more information, see [Scale and configure clusters](../../../../cloud-clusters/configure-clusters/).
 
 ## Encryption at rest
 
