@@ -112,3 +112,195 @@ DELETE FROM base WHERE k IN (23, 33);
 DELETE FROM base WHERE k IN (34, 44, 47);
 
 SELECT * FROM base ORDER BY k;
+
+-- GH-25911: Test constraint behavior on row movement between partitions
+--New Scenario: CHECK constraint on partitionB
+CREATE TABLE check_part_test (partid INT, val INT) PARTITION BY RANGE (partid);
+CREATE TABLE part_a PARTITION OF check_part_test FOR VALUES FROM (0) TO (10);
+CREATE TABLE part_b PARTITION OF check_part_test default;
+-- Constraint CHECK on partition B
+ALTER TABLE part_b ADD CONSTRAINT part_b_value_check CHECK (val < 100);
+
+-- Insert a row into partition A
+INSERT INTO check_part_test VALUES (1, 50);
+
+-- Attempt to move to partition B where value fails constraint CHECK
+-- Expected: ERROR
+DO $$
+BEGIN
+    BEGIN
+        UPDATE check_part_test SET partid = 20, val = 900 WHERE partid = 1;
+    EXCEPTION WHEN others THEN
+        RAISE NOTICE 'Expected failure: %', SQLERRM;
+    END;
+END
+$$;
+
+SELECT * FROM part_a;
+SELECT * FROM part_b;
+
+
+-- Drop table for new scenario: CHECK constraint on partitionA
+DROP TABLE IF EXISTS check_part_test CASCADE;
+
+CREATE TABLE check_part_test (partid INT, val INT) PARTITION BY RANGE (partid);
+CREATE TABLE part_a PARTITION OF check_part_test FOR VALUES FROM (0) TO (10);
+CREATE TABLE part_b PARTITION OF check_part_test default;
+-- Constraint CHECK on partition A
+ALTER TABLE part_a ADD CONSTRAINT part_a_value_check CHECK (val < 100);
+
+-- Insert a row into partition A
+INSERT INTO check_part_test VALUES (1, 50);
+
+-- Attempt to move to partition B
+-- Expected: successful
+UPDATE check_part_test SET partid = 20, val = 900 WHERE partid = 1;
+
+SELECT * FROM part_a;
+SELECT * FROM part_b;
+
+-- Drop table for new scenario: CHECK constraint on partitionA and partitionB 
+DROP TABLE IF EXISTS check_part_test CASCADE;
+
+CREATE TABLE check_part_test (partid INT, val INT) PARTITION BY RANGE (partid);
+CREATE TABLE part_a PARTITION OF check_part_test FOR VALUES FROM (0) TO (10);
+CREATE TABLE part_b PARTITION OF check_part_test default;
+-- Constraint CHECK on partition A
+ALTER TABLE part_a ADD CONSTRAINT part_a_value_check CHECK (val < 100);
+-- Constraint CHECK on partition B
+ALTER TABLE part_b ADD CONSTRAINT part_b_value_check CHECK (val < 200);
+
+-- Insert a row into partition A
+INSERT INTO check_part_test VALUES (1, 50);
+
+-- Attempt to move to partition B where value fails constraint CHECK
+-- Expected: ERROR on partition B
+DO $$
+BEGIN
+    BEGIN
+        UPDATE check_part_test SET partid = 20, val = 900 WHERE partid = 1;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Expected failure: %', SQLERRM;
+    END;
+END
+$$;
+
+SELECT * FROM part_a;
+SELECT * FROM part_b;
+
+-- Drop table for new scenario: CHECK constraint on partitionB (two rows) 
+DROP TABLE IF EXISTS check_part_test CASCADE;
+
+CREATE TABLE check_part_test (partid INT, val INT) PARTITION BY RANGE (partid);
+CREATE TABLE part_a PARTITION OF check_part_test FOR VALUES FROM (0) TO (10);
+CREATE TABLE part_b PARTITION OF check_part_test default;
+-- Constraint CHECK on partition B
+ALTER TABLE part_b ADD CONSTRAINT part_b_value_check CHECK (val < 100);
+
+-- Insert two rows into partition A
+INSERT INTO check_part_test VALUES (1, 50);
+INSERT INTO check_part_test VALUES (2, 60);
+
+-- Attempt multi-row update: one fails CHECK on partition B, one stays on partition A
+-- Expected: entire statement fails, error due to partition B constraint
+DO $$
+BEGIN
+    BEGIN
+        UPDATE check_part_test
+        SET
+            val = CASE
+                WHEN partid = 1 THEN 900  -- Fails partition B CHECK
+                WHEN partid = 2 THEN 800  -- OK in partition A
+            END,
+            partid = CASE
+                WHEN partid = 1 THEN 20   -- Moves to partition B
+                WHEN partid = 2 THEN 3    -- Remains in partition A
+            END
+        WHERE partid IN (1, 2);
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Expected failure: %', SQLERRM;
+    END;
+END
+$$;
+
+SELECT * FROM part_a;
+SELECT * FROM part_b;
+
+-- Drop table for new scenario: CHECK constraint on partitionA (two rows)
+DROP TABLE IF EXISTS check_part_test CASCADE;
+
+CREATE TABLE check_part_test (partid INT, val INT) PARTITION BY RANGE (partid);
+CREATE TABLE part_a PARTITION OF check_part_test FOR VALUES FROM (0) TO (10);
+CREATE TABLE part_b PARTITION OF check_part_test default;
+-- Constraint CHECK on partition A
+ALTER TABLE part_a ADD CONSTRAINT part_a_value_check CHECK (val < 100);
+
+-- Insert two rows into partition A
+INSERT INTO check_part_test VALUES (1, 50);
+INSERT INTO check_part_test VALUES (2, 60);
+
+-- Attempt multi-row update: one moves to partition B, one stays on partition A
+-- Expected: successful
+DO $$
+BEGIN
+    BEGIN
+        UPDATE check_part_test
+        SET
+            val = CASE
+                WHEN partid = 1 THEN 900   -- OK in partition B
+                WHEN partid = 2 THEN 70    -- OK in partition A
+            END,
+            partid = CASE
+                WHEN partid = 1 THEN 20    -- Moves to partition B
+                WHEN partid = 2 THEN 3     -- Remains in partition A
+            END
+        WHERE partid IN (1, 2);
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Unexpected failure: %', SQLERRM;
+    END;
+END
+$$;
+
+SELECT * FROM part_a;
+SELECT * FROM part_b;
+
+
+-- Drop table for new scenario: CHECK constraint on partitionA and partitionB (two rows)
+DROP TABLE IF EXISTS check_part_test CASCADE;
+
+CREATE TABLE check_part_test (partid INT, val INT) PARTITION BY RANGE (partid);
+CREATE TABLE part_a PARTITION OF check_part_test FOR VALUES FROM (0) TO (10);
+CREATE TABLE part_b PARTITION OF check_part_test default;
+-- Constraint CHECK on partition A
+ALTER TABLE part_a ADD CONSTRAINT part_a_value_check CHECK (val < 100);
+-- Constraint CHECK on partition B
+ALTER TABLE part_b ADD CONSTRAINT part_b_value_check CHECK (val < 200);
+
+-- Insert two rows into partition A
+INSERT INTO check_part_test VALUES (1, 50);
+INSERT INTO check_part_test VALUES (2, 60);
+
+-- Attempt multi-row update: one fails CHECK on partition B, one stays on partition A
+-- Expected: entire statement fails, error due to partition B constraint
+DO $$
+BEGIN
+    BEGIN
+        UPDATE check_part_test
+        SET
+            val = CASE
+                WHEN partid = 1 THEN 900  -- Should only be evaluated on partition B (fails both)
+                WHEN partid = 2 THEN 70   -- OK in partition A
+            END,
+            partid = CASE
+                WHEN partid = 1 THEN 20   -- Moves to partition B
+                WHEN partid = 2 THEN 3    -- Remains in partition A
+            END
+        WHERE partid IN (1, 2);
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Expected failure: %', SQLERRM;
+    END;
+END
+$$;
+
+SELECT * FROM part_a;
+SELECT * FROM part_b;
