@@ -191,8 +191,20 @@ Status PopulateTransactionRecord(
         VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
     aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
   }
+
   auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
   tablet->metadata()->partition()->ToPB(record->mutable_partition());
+
+  // The partition keys for a hash partitioned table are not encoded, whereas for a range
+  // partitioned table, they are. Encoded keys are encoded in both these cases and provide a uniform
+  // way to compare against the keys of any record.
+  // The consumer will use this information to selectively APPLY only the intents that belong to our
+  // key range. This is important, because in uneven tablet distributions, the consumer will receive
+  // multiple APPLY records for the same transaction from multiple producer tablets.
+  const auto key_bounds = VERIFY_RESULT(tablet->metadata()->MakeEncodedPartitionBounds());
+  *record->mutable_encoded_start_key() = key_bounds.start_key.ToStringBuffer();
+  *record->mutable_encoded_end_key() = key_bounds.end_key.ToStringBuffer();
+
   return Status::OK();
 }
 

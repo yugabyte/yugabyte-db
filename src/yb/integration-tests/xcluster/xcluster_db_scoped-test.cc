@@ -67,6 +67,66 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
       const NamespaceId& namespace_id) {
     return GetXClusterStreams(namespace_id, /*table_names=*/{}, /*pg_schema_names=*/{});
   }
+
+  void VerifyRangedPartitionsWithIndex(bool is_colocated = false) {
+    auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+
+    auto execute_on_both = [&p_conn, &c_conn](const std::string& stmt) -> Status {
+      RETURN_NOT_OK(p_conn.Execute(stmt));
+      return c_conn.Execute(stmt);
+    };
+
+    int64_t row_count = 20;
+    ASSERT_OK(execute_on_both(Format(
+        "CREATE TABLE demo (k int primary key, v text, d timestamp default clock_timestamp()) $0",
+        is_colocated ? "WITH(colocation_id = 44444)" : "")));
+
+    // Insert half of the rows before index creation and the rest after index creation.
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "INSERT INTO demo(k,v) SELECT x,x FROM generate_series(1, $0) x", row_count / 2));
+
+    ASSERT_OK(execute_on_both(Format(
+        "CREATE INDEX ON demo(mod(yb_hash_code(k), 5) ASC, d) $0",
+        is_colocated ? "WITH(colocation_id = 44445)" : "SPLIT AT VALUES ((2), (4))")));
+
+    ASSERT_OK(execute_on_both(Format(
+        "CREATE INDEX ON demo(v DESC) $0",
+        is_colocated ? "WITH(colocation_id = 44446)" : "SPLIT AT VALUES (('10'))")));
+
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "INSERT INTO demo(k,v) SELECT x,x FROM generate_series($0, $1) x", row_count / 2 + 1,
+        row_count));
+
+    auto count_index_rows =
+        [&row_count](pgwrapper::PGConn& conn, const std::string& index_scan_stmt) -> Status {
+      bool is_index_scan = VERIFY_RESULT(conn.HasIndexScan(index_scan_stmt));
+      SCHECK(is_index_scan, IllegalState, "Query does not generate index scan: ", index_scan_stmt);
+      auto rows = VERIFY_RESULT(conn.FetchRow<int64_t>(index_scan_stmt));
+      SCHECK_EQ(
+          rows, row_count, IllegalState,
+          Format("Invalid number of rows in index scan: $0", index_scan_stmt));
+      return Status::OK();
+    };
+
+    auto validate_rows = [&row_count, &count_index_rows](pgwrapper::PGConn& conn) -> Status {
+      auto rows = VERIFY_RESULT(conn.FetchRow<int64_t>("SELECT count(1) FROM demo"));
+      SCHECK_EQ(rows, row_count, IllegalState, "Invalid number of rows in demo table");
+
+      RETURN_NOT_OK(count_index_rows(
+          conn, "SELECT count(1) FROM demo WHERE mod(yb_hash_code(k), 5) in (0,1,2,3,4)"));
+
+      RETURN_NOT_OK(count_index_rows(conn, "SELECT count(d) FROM demo WHERE d IS NOT NULL"));
+
+      RETURN_NOT_OK(count_index_rows(conn, "SELECT count(v) FROM demo WHERE v > '0'"));
+      return Status::OK();
+    };
+
+    ASSERT_OK(validate_rows(p_conn));
+
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(validate_rows(c_conn));
+  }
 };
 
 TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
@@ -992,4 +1052,33 @@ TEST_F(XClusterDBScopedTest, CreateDropTablesWithPITR) {
   ASSERT_OK(VerifyWrittenRecords());
 }
 
+TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
+  ASSERT_OK(SetUpClusters());
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_NO_FATALS(VerifyRangedPartitionsWithIndex(/*is_colocated=*/false));
+}
+
+TEST_F(XClusterDBScopedTest, ColocatedRangedPartitionsWithIndex) {
+  namespace_name = "colocated_db";
+  SetupParams param;
+  param.is_colocated = true;
+
+  // Create clusters with colocated database, and 1 non-colocated table.
+  ASSERT_OK(SetUpClusters(param));
+
+  ASSERT_OK(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/1, &producer_cluster_,
+      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+  ASSERT_OK(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_,
+      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_NO_FATALS(VerifyRangedPartitionsWithIndex(/*is_colocated=*/true));
+}
 }  // namespace yb
