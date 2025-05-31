@@ -33,6 +33,20 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 
 - Install [DBeaver Enterprise Edition](https://dbeaver.com/download/enterprise/).
 
+- `ca.crt` — root certificate file. If the YugabyteDB cluster has encryption in transit enabled, your client needs `root.ca` to establish a connection. You need to download or generate it from the YugabyteDB cluster and add it to the Java TrustStore before using it in DBeaver. For more information, see [Generate the root certificate file](../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) for instructions on how to generate this file.
+
+  {{< note title="Add `root.crt` to Java Keystore" >}}
+
+To add the CA certificate to the Java Keystore, you can use the following command:
+
+```bash
+keytool -importcert -alias root-ca -file root.crt -keystore keystore_name.jks -storetype JKS -storepass <replace_with_your_password_here> -noprompt
+```
+
+Replace `root.crt` with the path to the CA certificate file, `keystore_name.jks` with the path to the Java Keystore file and `password_here`for the YugabyteDB keystore password.
+
+  {{< /note >}}
+
 ## Create a YCQL connection
 
 You can create a connection as follows:
@@ -43,17 +57,24 @@ You can create a connection as follows:
 
     ![DBeaver Select Database](/images/develop/tools/dbeaver/dbeaver-select-db-ycql.png)
 
-- Use **Connection Settings** to specify the following:
-  - **Host**: localhost
-  - **Port**: 9042
+- In the **Main** tab of **Yugabyte CQL Connection Settings** window, use **Connection Settings** to specify the following:
+  - **Host**: Enter the IP address of the YugabyteDB node. If you are running DBeaver on the same machine as YugabyteDB, you can use `localhost`.
+  - **Port**: 9042 (default port for YCQL).
   - **Keyspace**: system
   - **User**: leave blank if YCQL authentication is not enabled. If enabled, enter username.
   - **Password**: leave blank if YCQL authentication is not enabled. If enabled, enter the password.
-  - Select **Show all databases**.
+  - **Dataceter**: Leave blank unless you YugabyteDB server in specific Datacenter.
 
-- Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:
+- If your YugabyteDB cluster has encryption in transit enabled, click the **SSL** tab and select the **Use SSL** checkbox. Then, specify following:
+  - Under **Parameters** select **Keystore**.
+  - **Keystore**: Provide keystore file path having suffix `.jks`
+  - **Keystore Password**: Provide the password for the keystore file.
 
+  Ensure you have stored the CA certificate in the Java Keystore as described in the [Prerequisites](#prerequisites) section.
+
+- Select **Test Connection** to verify that the connection is successful, as shown in the following illustration:
     ![DBeaver Test Connection](/images/develop/tools/dbeaver/dbeaver-test-conn-ycql.png)
+- Click **Finish** to save the connection.
 
 The **Database Navigator** should display "system".
 
