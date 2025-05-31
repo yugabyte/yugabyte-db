@@ -1,15 +1,28 @@
 ---
-title: Verify manual deployment
+title: Verify deployment
 headerTitle: Verify deployment
-linkTitle: 5. Verify deployment
+linkTitle: 4. Verify deployment
 description: How to verify the manual deployment of the YugabyteDB database cluster.
 menu:
   preview:
-    identifier: deploy-manual-deployment-verify-deployment
+    identifier: deploy-verify-2-manual
     parent: deploy-manual-deployment
     weight: 615
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../verify-deployment-yugabyted/" class="nav-link">
+      yugabyted
+    </a>
+  </li>
+  <li >
+    <a href="../verify-deployment/" class="nav-link active">
+      Manual
+    </a>
+  </li>
+</ul>
 
 You now have a cluster/universe on six nodes with a replication factor of `3`. Assume their IP addresses are `172.151.17.130`, `172.151.17.220`, `172.151.17.140`, `172.151.17.150`, `172.151.17.160`, and `172.151.17.170`. YB-Master servers are running on only the first three of these nodes.
 
