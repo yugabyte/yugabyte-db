@@ -70,6 +70,7 @@ class DocVectorIndex {
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
+  virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
@@ -103,6 +104,8 @@ struct DocVectorIndexThreadPools {
 
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
 
+// Doc vector index starts with background compactions disabled, they must be enabled explicitly:
+// don't forget to call EnableAutoCompactions().
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
     const std::string& data_root_dir,

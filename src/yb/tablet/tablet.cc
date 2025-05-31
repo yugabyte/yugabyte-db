@@ -1388,6 +1388,8 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
+  tablet::VectorIndexList{ vector_indexes().List() }.EnableAutoCompactions();
+
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
       { "level0_slowdown_writes_trigger"s,

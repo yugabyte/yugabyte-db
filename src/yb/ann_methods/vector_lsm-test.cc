@@ -22,6 +22,7 @@
 
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/test_util.h"
@@ -34,12 +35,14 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 DECLARE_bool(vector_index_disable_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
 DECLARE_int32(vector_index_max_size_amplification_percent);
-
+DECLARE_int32(vector_index_compaction_size_ratio_percent);
+DECLARE_int32(vector_index_compaction_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
-DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
+DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
 
 namespace yb::vector_index {
 
@@ -167,6 +170,11 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
     FLAGS_TEST_usearch_exact = true;
   }
 
+  void SetUp() override {
+    FLAGS_vector_index_disable_compactions = false;
+    YBTest::SetUp();
+  }
+
   Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
 
   Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
@@ -179,6 +187,16 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   Status InsertRandom(
       FloatVectorLSM& lsm, size_t dimensions, size_t num_entries,
       size_t block_size = std::numeric_limits<size_t>::max());
+
+  Status InsertRandomAndFlush(
+      FloatVectorLSM& lsm, size_t dimensions, size_t num_entries,
+      size_t block_size = std::numeric_limits<size_t>::max());
+
+  Status WaitForBackgroundInsertsDone(
+      const FloatVectorLSM& lsm, MonoDelta timeout = MonoDelta::FromSeconds(20));
+
+  Status WaitForCompactionsDone(
+      const FloatVectorLSM& lsm, MonoDelta timeout = MonoDelta::FromSeconds(20));
 
   void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions);
 
@@ -305,6 +323,25 @@ Status VectorLSMTest::InsertRandom(
   return Status::OK();
 }
 
+Status VectorLSMTest::InsertRandomAndFlush(
+    FloatVectorLSM& lsm, size_t dimensions, size_t num_entries, size_t batch_size) {
+  RETURN_NOT_OK(InsertRandom(lsm, dimensions, num_entries, batch_size));
+  RETURN_NOT_OK(WaitForBackgroundInsertsDone(lsm));
+  return lsm.Flush(/* wait = */ true);
+}
+
+Status VectorLSMTest::WaitForBackgroundInsertsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
+  return LoggedWaitFor(
+      [&lsm] { return !lsm.TEST_HasBackgroundInserts(); }, timeout,
+      "Background inserts done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
+}
+
+Status VectorLSMTest::WaitForCompactionsDone(const FloatVectorLSM& lsm, MonoDelta timeout) {
+  return LoggedWaitFor(
+      [&lsm] { return !lsm.TEST_HasCompactions(); }, timeout,
+      "Compactions done", MonoDelta::FromMilliseconds(100), /* delay_multiplier = */ 1.0);
+}
+
 Status VectorLSMTest::OpenVectorLSM(
     FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk) {
 
@@ -337,7 +374,11 @@ Status VectorLSMTest::OpenVectorLSM(
     },
     .file_extension = "",
   };
-  return lsm.Open(std::move(options));
+  auto status = lsm.Open(std::move(options));
+  if (status.ok()) {
+    lsm.EnableAutoCompactions();
+  }
+  return status;
 }
 
 Status VectorLSMTest::InitVectorLSM(
@@ -389,7 +430,7 @@ void VectorLSMTest::CheckQueryVector(
 }
 
 Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
-  auto files = VERIFY_RESULT(lsm.TEST_GetEnv()->GetChildren(lsm.options().storage_dir));
+  auto files = VERIFY_RESULT(lsm.TEST_GetEnv()->GetChildren(lsm.StorageDir()));
   std::erase_if(files, [](const auto& file) {
     return !boost::ends_with(file, ".meta") && !boost::contains(file, "vectorindex");
   });
@@ -426,7 +467,7 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
 
   // Turn off background compactions to not interfere with manual compaction.
-  FLAGS_vector_index_disable_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
@@ -438,10 +479,7 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
 
   ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
   ASSERT_EQ(kNumEntries, inserted_entries_.size());
-
-  while (lsm.TEST_HasBackgroundInserts()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
   ASSERT_EQ(0, lsm.NumImmutableChunks());
 
   ASSERT_OK(lsm.Flush(/* wait = */ true));
@@ -475,7 +513,7 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   static_assert(kNumEntries > 2 * kDefaultChunkSize);
 
   // Turn off background compactions to not interfere with manual compaction.
-  FLAGS_vector_index_disable_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
 
   constexpr size_t kBlocksPerChunk = 5;
   constexpr size_t kBlockSize = kDefaultChunkSize / kBlocksPerChunk;
@@ -487,10 +525,7 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
   ASSERT_OK(InsertCube(lsm, kDimensions, kBlockSize));
   ASSERT_EQ(kNumEntries, inserted_entries_.size());
-
-  while (lsm.TEST_HasBackgroundInserts()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
   ASSERT_EQ(kExpectedNumChunks - 1, lsm.NumImmutableChunks());
   VerifyVectorLSM(lsm, kDimensions);
 
@@ -531,11 +566,16 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
 TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumChunks  = 6;
-  FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
-  FLAGS_vector_index_max_size_amplification_percent  = narrow_cast<int32_t>((kNumChunks - 1) * 100);
 
   // Make sure background compaction are turned on.
-  FLAGS_vector_index_disable_compactions = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = false;
+
+  // Turn off compactions by size ratio to not interfere with compactions by size amp.
+  FLAGS_vector_index_compaction_size_ratio_percent = -100;
+
+  // Ensure background compaction flags.
+  FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
+  FLAGS_vector_index_max_size_amplification_percent  = narrow_cast<int32_t>((kNumChunks - 1) * 100);
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
@@ -550,17 +590,11 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
       ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
     }
 
-    ASSERT_OK(InsertRandom(lsm, kDimensions, 10));
-    while (lsm.TEST_HasBackgroundInserts()) {
-      SleepFor(MonoDelta::FromSeconds(1));
-    }
-    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, 10));
   }
 
-  // Wait for all compactions completed.
-  while (lsm.TEST_HasCompactions()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForCompactionsDone(lsm));
+
   auto last_chunk_id = kNumChunks + 1;
   auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
   ASSERT_STR_EQ(files, Format("[0.meta, vectorindex_$0]", last_chunk_id));
@@ -584,20 +618,89 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
       ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
     }
 
-    ASSERT_OK(InsertRandom(lsm, kDimensions, 10));
-    while (lsm.TEST_HasBackgroundInserts()) {
-      SleepFor(MonoDelta::FromSeconds(1));
-    }
-    ASSERT_OK(lsm.Flush(/* wait = */ true));
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, 10));
   }
 
-  // Wait for all compactions completed.
-  while (lsm.TEST_HasCompactions()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForCompactionsDone(lsm));
+
   last_chunk_id += kNumChunks + 1;
   files = AsString(ASSERT_RESULT(GetFiles(lsm)));
   ASSERT_STR_EQ(files, Format("[0.meta, vectorindex_$0]", last_chunk_id));
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+}
+
+TEST_P(VectorLSMTest, BackgroundCompactionSizeRatio) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumLargeChunks = 2;
+  constexpr size_t kNumSmallChunks = 6;
+  constexpr size_t kNumMinChunks = 2;
+  constexpr size_t kNumChunks = kNumLargeChunks + kNumSmallChunks + kNumMinChunks;
+  constexpr size_t kMinChunkNumVectors = 1;
+  constexpr size_t kSmallChunkNumVectors = 9 * kMinChunkNumVectors;
+  constexpr size_t kMediumChunkNumVectors = 8 * kSmallChunkNumVectors;
+  constexpr size_t kLargeChunkNumVectors = 4 * kMediumChunkNumVectors;
+  constexpr size_t kChunkSize = 1 + kLargeChunkNumVectors; // To trigger explicit flush.
+
+  // Turn background compaction off to prepare files.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+
+  // Turn off compactions by size ratio to not interfere with compactions by size amp.
+  FLAGS_vector_index_compaction_size_ratio_percent = -1;
+
+  // Ensure background compaction flags.
+  FLAGS_vector_index_compaction_always_include_size_threshold = 0;
+  FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
+  FLAGS_vector_index_compaction_min_merge_width = kNumMinChunks + 1;
+
+  // Round up to the nearest tens (e.g. 1.33 => 40%).
+  FLAGS_vector_index_compaction_size_ratio_percent = -100 + 10 * static_cast<int>(
+      std::ceil((10.0 * kMediumChunkNumVectors) / (kNumSmallChunks * kSmallChunkNumVectors)));
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kChunkSize));
+
+  // Keep chunks initial tree.
+  std::vector<size_t> num_vectors_by_file;
+  num_vectors_by_file.reserve(kNumChunks);
+  for (size_t i = 0; i < kNumChunks; ++i) {
+    num_vectors_by_file.push_back(
+      i == 0 ? kLargeChunkNumVectors :
+          i == 1 ? kMediumChunkNumVectors :
+              i < (kNumChunks - kNumMinChunks) ? kSmallChunkNumVectors : kMinChunkNumVectors);
+  }
+
+  // Write all chunks except the last one to use it as a compaction trigger.
+  std::stringstream expected_files;
+  expected_files << "0.meta";
+  for (size_t i = 1; i < num_vectors_by_file.size(); ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, num_vectors_by_file[i - 1]));
+    expected_files << ", vectorindex_" << i;
+  }
+
+  // Make sure chunks are expected.
+  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
+
+  // Insert the last min chunk to trigger background compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = false;
+  ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, num_vectors_by_file[kNumChunks - 1]));
+  ASSERT_OK(WaitForCompactionsDone(lsm));
+
+  // Check expected files after the compaction. Background compaction won't consider min chunks
+  // because min merge width is greater than the number of min chunks. And the most earlist chunk
+  // doesn't meet the criteria of size ratio as it is too large. So, it is expected to end up
+  // with 1 large chunk, 2 min chunks and 1 new compacted chunk.
+  expected_files.str({});
+  expected_files << "0.meta, vectorindex_1";
+  for (size_t n = kNumChunks - kNumMinChunks + 1; n <= kNumChunks + 1; ++n) {
+    expected_files << ", vectorindex_" << n;
+  }
+  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
 
   // Wait for cleanup is completed and check files on disk.
   while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
@@ -612,9 +715,7 @@ TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
 
   FloatVectorLSM lsm;
   ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
-  while (lsm.TEST_HasBackgroundInserts()) {
-    SleepFor(MonoDelta::FromSeconds(1));
-  }
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
   ASSERT_GT(lsm.NumImmutableChunks(), 1);
 
   // Pause Vector LSM compactions.

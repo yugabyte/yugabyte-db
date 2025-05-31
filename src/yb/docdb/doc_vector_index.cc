@@ -214,7 +214,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   const std::string& path() const override {
-    return lsm_.options().storage_dir;
+    return lsm_.StorageDir();
   }
 
   ColumnId column_id() const override {
@@ -244,7 +244,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
       .vector_merge_filter_factory = [this]() {
         return std::make_unique<VectorMergeFilter>(
-            std::cref(lsm_.options().log_prefix), std::cref(doc_db_));
+            std::cref(lsm_.LogPrefix()), std::cref(doc_db_));
       },
       .file_extension = GetFileExtension(idx_options),
     };
@@ -312,6 +312,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     auto lhs_vec = VERIFY_RESULT(VectorFromYSQL<Vector>(lhs));
     auto rhs_vec = VERIFY_RESULT(VectorFromYSQL<Vector>(rhs));
     return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
+  }
+
+  void EnableAutoCompactions() override {
+    lsm_.EnableAutoCompactions();
   }
 
   Status Compact() override {

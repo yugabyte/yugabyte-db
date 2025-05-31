@@ -45,6 +45,7 @@
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(vector_index_disable_compactions);
 DECLARE_bool(vector_index_use_yb_hnsw);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -96,9 +97,12 @@ class PgVectorIndexTest :
   void SetUp() override {
     FLAGS_TEST_use_custom_varz = true;
     FLAGS_TEST_usearch_exact = true;
+    FLAGS_vector_index_disable_compactions = false;
     FLAGS_vector_index_use_yb_hnsw = UseYbHnsw();
     itest::SetupQuickSplit(1_KB);
+
     PgMiniTestBase::SetUp();
+
     tablet::TEST_fail_on_seq_scan_with_vector_indexes = true;
   }
 
