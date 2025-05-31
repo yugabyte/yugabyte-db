@@ -6,6 +6,7 @@ description: Deploy using transactional xCluster replication between universes
 headContent: Deploy transactional xCluster replication
 aliases:
   - /preview/deploy/multi-dc/async-replication-transactional/
+  - /preview/deploy/multi-dc/async-replication/async-transactional-setup/
 menu:
   preview:
     parent: async-replication
