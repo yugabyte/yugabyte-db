@@ -82,11 +82,21 @@ Some of the factors that the CBO considers in the cost estimation are as follows
 
     The CBO estimates the size and number of tuples that will be transferred, with data sent in pages. The page size is determined by the configuration parameters [yb_fetch_row_limit](../../../reference/configuration/yb-tserver/#yb-fetch-row-limit) and [yb_fetch_size_limit](../../../reference/configuration/yb-tserver/#yb-fetch-size-limit). Because each page requires a network round trip for the request and response, the CBO also estimates the total number of pages that will be transferred. Note that the time spent transferring the data also depends on the network bandwidth.
 
-## Plan selection
+### Plan selection
 
 The CBO evaluates each candidate plan's estimated costs to determine the plan with the lowest cost, which is then selected for execution. This ensures the optimal use of system resources and improved query performance.
 
 After the optimal plan is determined, YugabyteDB generates a detailed execution plan with all the necessary steps, such as scanning tables, joining data, filtering rows, sorting, and computing expressions. This execution plan is then passed to the query executor component, which carries out the plan and returns the final query results.
+
+### Best practices
+
+- If your table already has rows, and you create an additional index (for example, `create index i on t (k);`), you must re-run analyze to populate the index `pg_class.reltuples` with the correct row count. [Issue](https://github.com/yugabyte/yugabyte-db/issues/25394)
+
+    If you need to create a new index to replace a old one while your application is running, create the new one first, run analyze, then drop the old one.
+
+- After you restore a database in YugabyteDB Anywhere or Aeon, you need to run analyze because the statistics that were in the database when it was backed up do not get restored.
+
+    For consistent RTO from restore in a cost model-enabled environment, run analyze manually after restore has finished and before you allow end users into the application. If you allow end users into the application before analyze is finished, initial execution plans won't be correctly optimized.
 
 ## Learn more
 
