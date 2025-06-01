@@ -77,6 +77,11 @@
 static Oid	BLOOM_AM_OID = InvalidOid;
 #endif
 
+#if PG_VERSION_NUM < 180000
+#define CompareType int16
+#define COMPARE_LT BTLessStrategyNumber
+#endif
+
 /*--- Variables exported ---*/
 
 explain_get_index_name_hook_type prev_explain_get_index_name_hook;
@@ -878,7 +883,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			Oid			ltopr;
 			Oid			btopfamily;
 			Oid			btopcintype;
-			int16		btstrategy;
+			CompareType	btstrategy;
 
 			ltopr = get_opfamily_member(entry->opfamily[attn],
 										entry->opcintype[attn],
@@ -890,7 +895,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 										   &btopcintype,
 										   &btstrategy) &&
 				btopcintype == entry->opcintype[attn] &&
-				btstrategy == BTLessStrategyNumber)
+				btstrategy == COMPARE_LT)
 			{
 				/* Successful mapping */
 				entry->sortopfamily[attn] = btopfamily;
