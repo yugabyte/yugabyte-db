@@ -3218,13 +3218,22 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 		case T_CreatedbStmt:
 		case T_DefineStmt:		/* CREATE OPERATOR/AGGREGATE/COLLATION/etc */
 		case T_CommentStmt:		/* COMMENT (create new comment) */
-		case T_RuleStmt:		/* CREATE RULE */
 		case T_YbCreateProfileStmt:
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
 			is_version_increment = false;
+			is_breaking_change = false;
+			break;
+
+		case T_RuleStmt:		/* CREATE RULE */
+			/*
+			 * CREATE RULE sets relhasrules to true in the table's pg_class entry.
+			 * We need to increment the catalog version to ensure this change is
+			 * picked up by other backends.
+			 */
+			is_version_increment = true;
 			is_breaking_change = false;
 			break;
 
