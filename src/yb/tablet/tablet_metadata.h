@@ -49,6 +49,8 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/key_bounds.h"
+
 #include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
 
@@ -383,6 +385,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
+
+  Result<docdb::EncodedPartitionBounds> MakeEncodedPartitionBounds() const;
 
   const std::string& wal_dir() const { return wal_dir_; }
 
