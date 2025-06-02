@@ -70,6 +70,7 @@ Download the application and provide settings specific to your deployment:
 1. Install the application dependencies.
 
    ```sh
+   cd ollama-news-archive
    git lfs fetch --all
    npm install
    cd backend/ && npm install
