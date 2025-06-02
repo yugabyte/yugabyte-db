@@ -544,34 +544,170 @@ Usage: yb-voyager import data to source-replica [ <arguments> ... ]
 The following table lists the valid CLI flags and parameters for `import data to source-replica` command.
 
 When run at the same time, flags take precedence over configuration flag settings.
-
 {{<table>}}
+| <div style="width:150px">Flag</div> | Parameter | Description |
+| :--- | :-------- | :---------- |
+| --batch-size |
 
-| <div style="width:150px">Argument</div> | Description/valid options |
-| :------- | :------------------------ |
-| --batch-size | Size of batches in the number of rows generated for ingestion when you import data to source-replica database. <br> Default: 10000000 (Oracle) or 100000 (PostgreSQL) |
-| --disable-pb | Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --source-replica-db-host | Domain name or IP address of the machine on which source-replica database server is running. <br>Default: 127.0.0.1 |
-| --source-replica-db-name | Name of the database in the source-replica database on which import needs to be done. |
-| --source-replica-db-password | Password to connect to the source-replica database. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
-| --source-replica-db-port | Port number of the source-replica database server. <br>Default: 1521 (Oracle) |
-| --source-replica-db-schema | Schema name of the source-replica database. |
-| --source-replica-db-sid | Oracle System Identifier (SID) that you wish to use while importing data to Oracle instances. Oracle migrations only. |
-| --source-replica-db-user | Username to connect to the source-replica database. |
-| --source-replica-ssl-cert | Source-replica database SSL Certificate path. |
-| --source-replica-ssl-crl | Source-replica database SSL Root Certificate Revocation List (CRL). |
-| --source-replica-ssl-key | Source-replica database SSL key path. |
-| --source-replica-ssl-mode | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
-| --source-replica-ssl-root-cert | Source-replica database SSL Root Certificate path. |
-| -h, --help | Command line help for import data to source-replica. |
-| --oracle-home | Path to set $ORACLE_HOME environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
-| [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| --parallel-jobs | The number of parallel batches issued to the source-replica database. <br> Default: 16 (Oracle); or, if yb-voyager can determine the total number of cores N, then N/2, otherwise 8 (PostgreSQL) |
-| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has any non-empty tables, you are prompted to continue the import without truncating those tables; if you proceed without truncating, then yb-voyager starts ingesting the data present in the data files in non-upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --truncate-tables | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
-| -y, --yes | Answer yes to all prompts during the migration. <br>Default: false |
+```yaml {.nocopy}
+import-data-to-source-replica:
+  batch-size:
+```
+
+| Size of batches in the number of rows generated for ingestion when you import data to source-replica database. <br> Default: 10000000 (Oracle) or 100000 (PostgreSQL) |
+| --disable-pb |
+
+```yaml {.nocopy}
+import-data-to-source-replica:
+  disable-pb:
+```
+
+| Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --parallel-jobs |
+
+```yaml {.nocopy}
+import-data-to-source-replica:
+  parallel-jobs:
+```
+
+| The number of parallel batches issued to the source-replica database. <br> Default: 16 (Oracle); or, if yb-voyager can determine the total number of cores N, then N/2, otherwise 8 (PostgreSQL) |
+| --truncate-tables |
+
+```yaml {.nocopy}
+import-data-to-source-replica:
+  truncate-tables:
+```
+
+| Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
+| -e, --export-dir |
+
+```yaml {.nocopy}
+export-dir:
+```
+
+| Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
+| --send-diagnostics |
+
+```yaml {.nocopy}
+send-diagnostics:
+```
+
+| Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --source-replica-db-host |
+
+```yaml {.nocopy}
+source-replica:
+  db-host:
+```
+
+| Domain name or IP address of the machine on which source-replica database server is running. <br>Default: 127.0.0.1 |
+| --source-replica-db-name |
+
+```yaml {.nocopy}
+source-replica:
+  db-name:
+```
+
+| Name of the database in the source-replica database on which import needs to be done. |
+| --source-replica-db-password |
+
+```yaml {.nocopy}
+source-replica:
+  db-password:
+```
+
+| Password to connect to the source-replica database. Alternatively, you can also specify the password by setting the environment variable `SOURCE_REPLICA_DB_PASSWORD`. If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
+| --source-replica-db-port |
+
+```yaml {.nocopy}
+source-replica:
+  db-port:
+```
+
+| Port number of the source-replica database server. <br>Default: 1521 (Oracle) |
+| --source-replica-db-schema |
+
+```yaml {.nocopy}
+source-replica:
+  db-schema:
+```
+
+| Schema name of the source-replica database. |
+| --source-replica-db-sid |
+
+```yaml {.nocopy}
+source-replica:
+  db-sid:
+```
+
+| Oracle System Identifier (SID) that you wish to use while importing data to Oracle instances. Oracle migrations only. |
+| --source-replica-db-user |
+
+```yaml {.nocopy}
+source-replica:
+  db-user:
+```
+
+| Username to connect to the source-replica database. |
+| --source-replica-ssl-cert |
+
+```yaml {.nocopy}
+source-replica:
+  ssl-cert:
+```
+
+| Source-replica database SSL Certificate path. |
+| --source-replica-ssl-crl |
+
+```yaml {.nocopy}
+source-replica:
+  ssl-crl:
+```
+
+| Source-replica database SSL Root Certificate Revocation List (CRL). |
+| --source-replica-ssl-key |
+
+```yaml {.nocopy}
+source-replica:
+  ssl-key:
+```
+
+| Source-replica database SSL key path. |
+| --source-replica-ssl-mode |
+
+```yaml {.nocopy}
+source-replica:
+  ssl-mode:
+```
+
+| One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| --source-replica-ssl-root-cert |
+
+```yaml {.nocopy}
+source-replica:
+  ssl-root-cert:
+```
+
+| Source-replica database SSL Root Certificate path. |
+| --oracle-home |
+
+```yaml {.nocopy}
+source-replica:
+  oracle-home:
+```
+
+| Path to set $ORACLE_HOME environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only. |
+| [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) |
+
+```yaml {.nocopy}
+source-replica:
+  oracle-tns-alias:
+```
+
+| TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| --start-clean | — | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has any non-empty tables, you are prompted to continue the import without truncating those tables; if you proceed without truncating, then yb-voyager starts ingesting the data present in the data files in non-upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| -h, --help | — | Command line help for import data to source-replica. |
+| -y, --yes | — | Answer yes to all prompts during the migration. <br>Default: false |
 
 {{</table>}}
 
