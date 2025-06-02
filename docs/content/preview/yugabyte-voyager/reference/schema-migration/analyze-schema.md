@@ -68,7 +68,7 @@ send-diagnostics:
 
 Configuration file:
 
-```yaml
+```sh
 yb-voyager analyze-schema --config-file <path-to-config-file>
 ```
 
