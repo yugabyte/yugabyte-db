@@ -2225,4 +2225,15 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
   return updated;
 }
 
+Result<docdb::EncodedPartitionBounds> RaftGroupMetadata::MakeEncodedPartitionBounds() const {
+  const auto partition_schema = RaftGroupMetadata::partition_schema();
+  const auto partition = RaftGroupMetadata::partition();
+  return docdb::EncodedPartitionBounds{
+      .start_key = KeyBuffer(VERIFY_RESULT(
+          partition_schema->GetEncodedPartitionKey(partition->partition_key_start()))),
+      .end_key = KeyBuffer(
+          VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_end()))),
+  };
+}
+
 } // namespace yb::tablet
