@@ -448,20 +448,24 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
   }
   RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshots(
       txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
+  bool include_ddl_in_progress_tables =
+      req->has_include_ddl_in_progress_tables() ? req->include_ddl_in_progress_tables() : false;
   if (req->prepare_for_backup()) {
-    RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
+    RETURN_NOT_OK(RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables));
   }
 
   return Status::OK();
 }
 
-Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
+Status CatalogManager::RepackSnapshotsForBackup(
+    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
 
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode)
+    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode) &&
+                                  include_ddl_in_progress_tables
                               ? kUseRelfilenodeFormatVersion
                               : kUseBackupRowEntryFormatVersion;
     snapshot.set_format_version(format_version);
@@ -495,7 +499,7 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
         TRACE("Locking table");
         auto l = table_info->LockForRead();
-        if (l->has_ysql_ddl_txn_verifier_state()) {
+        if (!include_ddl_in_progress_tables && l->has_ysql_ddl_txn_verifier_state()) {
           return STATUS_FORMAT(IllegalState, "Table $0 is undergoing DDL verification, retry later",
                                table_info->id());
         }
