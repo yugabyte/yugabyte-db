@@ -892,7 +892,8 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE"
           ],
           "type" : "string"
         },
@@ -1068,7 +1069,8 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE"
           ],
           "type" : "string"
         },
@@ -1340,7 +1342,8 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE"
           ],
           "type" : "string"
         },

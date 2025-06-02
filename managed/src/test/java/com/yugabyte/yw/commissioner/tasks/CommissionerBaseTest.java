@@ -438,6 +438,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             return taskInfo;
           }
         } catch (Exception e) {
+          log.error(
+              "Error while fetching task info for taskUUID: {} : {}. Retrying...",
+              taskUUID,
+              e.getMessage());
         }
       }
       Thread.sleep(sleepDuration);

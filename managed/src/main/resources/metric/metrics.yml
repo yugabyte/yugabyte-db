@@ -1148,6 +1148,40 @@ total_rpcs_per_sec:
     xaxis:
       type: "date"
 
+total_ysql_ycql_ops_per_sec:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "ysql_export|cql_export"
+    server_type: "yb_ysqlserver|yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Total Ops / Sec (YSQL + YCQL)"
+    xaxis:
+      type: "date"
+
+total_ysql_ycql_ops_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export|cql_export"
+    server_type: "yb_ysqlserver|yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Average Latency (YSQL + YCQL)"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+
 tserver_rpcs_per_sec_per_node:
   metric: "rpc_irate_rps"
   function: "avg_over_time|avg"

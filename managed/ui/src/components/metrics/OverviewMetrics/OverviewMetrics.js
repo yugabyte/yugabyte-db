@@ -27,7 +27,12 @@ const OVERVIEW_METRICS_INTERVAL_MS = 15000;
 const panelTypes = {
   overview: {
     title: 'Overview',
-    metrics: ['total_rpcs_per_sec', 'tserver_ops_latency', 'cpu_usage', 'disk_usage']
+    metrics: [
+      'total_ysql_ycql_ops_per_sec',
+      'total_ysql_ycql_ops_latency',
+      'cpu_usage',
+      'disk_usage'
+    ]
   }
 };
 const kubernetesMetrics = [
