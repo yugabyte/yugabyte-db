@@ -189,12 +189,12 @@ public class CheckUpgrade extends ServerSubTaskBase {
     UserIntent currentIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (isYsqlMajorVersionUpgrade && currentIntent.enableYSQL) {
       if (Util.compareYBVersions(
-              currentVersion, "2024.2.1.0-b1", "2.25.0.0-b1", true /* suppressFormatError */)
+              currentVersion, "2024.2.3.0-b1", "2.25.0.0-b1", true /* suppressFormatError */)
           < 0) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
-            "YSQL major version upgrade is only supported from 2024.2.1.0-b1. Please upgrade to a"
-                + " version >= 2024.2.1.0-b1 before proceeding with the upgrade.");
+            "YSQL major version upgrade is only supported from 2024.2.3.0-b1. Please upgrade to a"
+                + " version >= 2024.2.3.0-b1 before proceeding with the upgrade.");
       }
 
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
