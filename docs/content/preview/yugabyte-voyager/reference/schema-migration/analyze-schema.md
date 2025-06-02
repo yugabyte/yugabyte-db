@@ -27,7 +27,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| Flag | Parameter | Description |
+| <div style="width:150px">Flag</div> | Parameter | Description |
 | :--- | :-------- | :---------- |
 | --output-format |
 
