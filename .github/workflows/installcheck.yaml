@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Get latest commit id of PostgreSQL 15
         run: |
-          echo "PG_COMMIT_HASH=$(git ls-remote git://git.postgresql.org/git/postgresql.git refs/heads/REL_15_STABLE | awk '{print $1}')" >> $GITHUB_ENV
+          echo "PG_COMMIT_HASH=$(git ls-remote https://git.postgresql.org/git/postgresql.git refs/heads/REL_15_STABLE | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Cache PostgreSQL 15
         uses: actions/cache@v3
@@ -30,7 +30,7 @@ jobs:
       - name: Install PostgreSQL 15 and some extensions
         if: steps.pg15cache.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 --branch REL_15_STABLE git://git.postgresql.org/git/postgresql.git ~/pg15source
+          git clone --depth 1 --branch REL_15_STABLE https://git.postgresql.org/git/postgresql.git ~/pg15source
           cd ~/pg15source
           ./configure --prefix=$HOME/pg15 CFLAGS="-std=gnu99 -ggdb -O0" --enable-cassert
           make install -j$(nproc) > /dev/null
