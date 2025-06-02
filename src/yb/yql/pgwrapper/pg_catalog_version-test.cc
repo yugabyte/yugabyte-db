@@ -2332,8 +2332,7 @@ ALTER TABLE testtable ADD COLUMN value INT;
 TEST_F(PgCatalogVersionTest, InvalMessageSampleDDLs) {
   // Disable auto analyze to prevent unexpected invalidation messages.
   RestartClusterWithInvalMessageEnabled(
-      { "--ysql_enable_auto_analyze_service=false",
-        "--ysql_enable_table_mutation_counter=false",
+      { "--ysql_enable_auto_analyze=false",
         "--ysql_yb_invalidation_message_expiration_secs=36000" });
   const string sample_ddl_script =
         R"#(

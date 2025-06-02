@@ -46,6 +46,9 @@ DECLARE_int32(db_block_cache_size_percentage);
 DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(memory_limit_hard_bytes);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_bool(ysql_enable_table_mutation_counter);
 
 namespace yb {
 
@@ -122,6 +125,42 @@ void AdjustMemoryLimitsIfNeeded(bool is_master) {
   AdjustMemoryLimits(values);
 }
 
+// If auto analyze service is used based on old deprecated flags,
+// adjust new flags' values based on the deprecated flags to make auto analyze
+// service behaves consistently.
+// When using deprecated flags, only setting both FLAGS_ysql_enable_auto_analyze
+// and FLAGS_ysql_enable_table_mutation_counter makes auto analyze service runable,
+// so ysql_enable_auto_analyze is set in the following precedence order
+//    1. Any explicit user set value for ysql_enable_auto_analyze.
+//    2. If not set explicitly,
+//          2.1 If ysql_enable_auto_analyze_service and ysql_enable_table_mutation_counter are set
+//              explicitly. Use their values to set value for ysql_enable_auto_analyze.
+//              ysql_enable_auto_analyze is true only if both ysql_enable_auto_analyze_service and
+//              ysql_enable_table_mutation_counter are true.
+//          2.2 If not both of ysql_enable_auto_analyze_service and
+//              ysql_enable_table_mutation_counter are set explicity,
+//              use ysql_enable_auto_analyze default value.
+void AdjustAutoAnalyzeFlagIfNeeded() {
+  // Check if the flag is explictly set.
+  if (!google::GetCommandLineFlagInfoOrDie("ysql_enable_auto_analyze").is_default)
+    return;
+  bool old_value_of_new_flag = FLAGS_ysql_enable_auto_analyze;
+  // check if the old flags are enabled.
+  bool auto_analyze_enabled_using_old_flags
+    = FLAGS_ysql_enable_auto_analyze_service && FLAGS_ysql_enable_table_mutation_counter;
+  if (auto_analyze_enabled_using_old_flags) {
+    // set new flag default.
+    google::SetCommandLineOptionWithMode("ysql_enable_auto_analyze", "true",
+                                         google::SET_FLAG_IF_DEFAULT);
+
+    LOG(INFO) << "Flag: ysql_enable_auto_analyze was auto-set to "
+              << FLAGS_ysql_enable_auto_analyze
+              << " from its default value of " << old_value_of_new_flag
+              << ". Flags: ysql_enable_auto_analyze_service and "
+              << "ysql_enable_table_mutation_counter are deprecated.";
+  }
+}
+
 }  // anonymous namespace
 
 Status MasterTServerParseFlagsAndInit(
@@ -167,6 +206,9 @@ Status MasterTServerParseFlagsAndInit(
   DLOG(INFO) << "Process id: " << getpid();
 
   AdjustMemoryLimitsIfNeeded(is_master);
+
+  if (!is_master)
+    AdjustAutoAnalyzeFlagIfNeeded();
 
   MemTracker::ConfigureTCMalloc();
   MemTracker::PrintTCMallocConfigs();
