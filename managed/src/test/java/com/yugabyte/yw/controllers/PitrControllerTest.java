@@ -845,7 +845,7 @@ public class PitrControllerTest extends FakeDBApplication {
               universe
                   .getUniverseDetails()
                   .prevYBSoftwareConfig
-                  .setSoftwareVersion("2024.2.1.0-b1");
+                  .setSoftwareVersion("2024.2.3.0-b1");
             });
 
     ObjectNode bodyJson = Json.newObject();
