@@ -1426,7 +1426,7 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
   num_rows_written += kNumRecordsPerBatch;
   // B should still disallow writes as it is still a target.
   ASSERT_NOK_STR_CONTAINS(
-      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_B_),
+      WriteWorkload(num_rows_written, num_rows_written + 1, cluster_B_, table_name),
       "Data modification is forbidden");
 
   LOG(INFO) << "===== Switchover: set up replication from B to A";
@@ -1437,10 +1437,10 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
   ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
   ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
   ASSERT_NOK_STR_CONTAINS(
-      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_A_),
+      WriteWorkload(num_rows_written, num_rows_written + 1, cluster_A_, table_name),
       "Data modification is forbidden");
   ASSERT_NOK_STR_CONTAINS(
-      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_B_),
+      WriteWorkload(num_rows_written, num_rows_written + 1, cluster_B_, table_name),
       "Data modification is forbidden");
 
   LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
@@ -1467,7 +1467,7 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
       kBackwardsReplicationGroupId);
   // Writes on A should be blocked.
   ASSERT_NOK_STR_CONTAINS(
-      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_A_),
+      WriteWorkload(num_rows_written, num_rows_written + 1, cluster_A_, table_name),
       "Data modification is forbidden");
 }
 

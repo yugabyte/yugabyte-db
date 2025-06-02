@@ -116,9 +116,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Status DropYsqlTable(Cluster& cluster, const client::YBTable& table);
 
-  static Status WriteWorkload(
-      const client::YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster);
-
   static Result<pgwrapper::PGResultPtr> ScanToStrings(
       const client::YBTableName& table_name, Cluster* cluster);
 
@@ -152,13 +149,17 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   void BumpUpSchemaVersionsWithAlters(const std::vector<std::shared_ptr<client::YBTable>>& tables);
 
+  // If use_transaction is not set, the workload will be written in a transaction if more than 1 row
+  // is specified.
   Status InsertRowsInProducer(
       uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
-      bool use_transaction = false);
+      std::optional<bool> use_transaction = std::nullopt);
 
+  // If use_transaction is not set, the workload will be written in a transaction if more than 1 row
+  // is specified.
   Status DeleteRowsInProducer(
       uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
-      bool use_transaction = false);
+      std::optional<bool> use_transaction = std::nullopt);
 
   Status InsertGenerateSeriesOnProducer(
       uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {});
@@ -167,9 +168,11 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
       bool commit_transaction = true);
 
+  // If use_transaction is not set, the workload will be written in a transaction if more than 1 row
+  // is specified.
   Status WriteWorkload(
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
-      bool delete_op = false, bool use_transaction = false);
+      bool delete_op = false, std::optional<bool> use_transaction = std::nullopt);
 
   virtual Status CheckpointReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,

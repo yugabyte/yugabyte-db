@@ -512,31 +512,6 @@ Status XClusterYsqlTestBase::DropYsqlTable(Cluster& cluster, const client::YBTab
       table_name.relation_type() == master::INDEX_TABLE_RELATION);
 }
 
-Status XClusterYsqlTestBase::WriteWorkload(
-    const YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
-  std::string table_name_str = GetCompleteTableName(table);
-
-  LOG(INFO) << "Writing " << end - start << " inserts";
-
-  // Use a transaction if more than 1 row is to be inserted.
-  const bool use_tran = end - start > 1;
-  if (use_tran) {
-    RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
-  }
-
-  for (uint32_t i = start; i < end; i++) {
-    RETURN_NOT_OK(
-        conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", table_name_str, kKeyColumnName, i));
-  }
-
-  if (use_tran) {
-    RETURN_NOT_OK(conn.ExecuteFormat("COMMIT"));
-  }
-
-  return Status::OK();
-}
-
 Result<pgwrapper::PGResultPtr> XClusterYsqlTestBase::ScanToStrings(
     const YBTableName& table_name, XClusterTestBase::Cluster* cluster) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(table_name.namespace_name()));
@@ -715,7 +690,7 @@ void XClusterYsqlTestBase::BumpUpSchemaVersionsWithAlters(
 
 Status XClusterYsqlTestBase::InsertRowsInProducer(
     uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table,
-    bool use_transaction) {
+    std::optional<bool> use_transaction) {
   if (!producer_table) {
     producer_table = producer_table_;
   }
@@ -726,7 +701,7 @@ Status XClusterYsqlTestBase::InsertRowsInProducer(
 
 Status XClusterYsqlTestBase::DeleteRowsInProducer(
     uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table,
-    bool use_transaction) {
+    std::optional<bool> use_transaction) {
   if (!producer_table) {
     producer_table = producer_table_;
   }
@@ -782,12 +757,13 @@ Status XClusterYsqlTestBase::WriteTransactionalWorkload(
 
 Status XClusterYsqlTestBase::WriteWorkload(
     uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table, bool delete_op,
-    bool use_transaction) {
+    std::optional<bool> use_transaction_opt) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
   std::string table_name_str = GetCompleteTableName(table);
 
+  bool use_transaction = use_transaction_opt.value_or(end != start);
   LOG(INFO) << "Writing " << end - start << (delete_op ? " deletes" : " inserts")
-            << " using transaction " << use_transaction;
+            << " use_transaction: " << use_transaction;
   if (use_transaction) {
     RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
   }

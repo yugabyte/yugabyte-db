@@ -2247,7 +2247,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
   if (do_explict_transaction) {
     ASSERT_OK(InsertTransactionalBatchOnProducer(0, 10));
   } else {
-    ASSERT_OK(InsertRowsInProducer(0, 10));
+    ASSERT_OK(InsertRowsInProducer(0, 10, /*producer_table=*/nullptr, /*use_transaction=*/false));
   }
 
   // Verify data is written on the producer.
@@ -2297,7 +2297,9 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
   if (do_explict_transaction) {
     ASSERT_OK(InsertTransactionalBatchOnProducer(batch_insert_count, batch_insert_count * 2));
   } else {
-    ASSERT_OK(InsertRowsInProducer(batch_insert_count, batch_insert_count * 2));
+    ASSERT_OK(InsertRowsInProducer(
+        batch_insert_count, batch_insert_count * 2, /*producer_table=*/nullptr,
+        /*use_transaction=*/false));
   }
   // Verify data is written on the producer, which should previous plus
   // current new insert.
@@ -2522,7 +2524,9 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   // Write different numbers of records to the 3 producers, and verify that the
   // corresponding receivers receive the records.
   for (int i = 0; i < kNumTables; i++) {
-    ASSERT_OK(WriteWorkload(0, 2 * (i + 1), &producer_cluster_, producer_table_names[i]));
+    ASSERT_OK(WriteWorkload(
+        0, 2 * (i + 1), &producer_cluster_, producer_table_names[i], /*delete_op=*/false,
+        /*use_transaction=*/false));
     ASSERT_OK(VerifyWrittenRecords(producer_table_names[i], consumer_table_names[i]));
   }
 
