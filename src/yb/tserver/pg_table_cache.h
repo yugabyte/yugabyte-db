@@ -84,7 +84,7 @@ class PgTableCache {
 
   Result<client::YBTablePtr> Get(const TableId& table_id);
   void GetTables(
-      const std::span<const TableId>& table_ids,
+      std::span<const TableId> table_ids,
       const PgTableCacheGetOptions& options,
       PgTablesQueryResult& result,
       const PgTablesQueryListenerPtr& listener);
