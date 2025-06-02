@@ -2316,8 +2316,9 @@ class AcquireObjectLocksGlobalRpc
  public:
   AcquireObjectLocksGlobalRpc(
       YBClient* client, master::AcquireObjectLocksGlobalRequestPB request,
-      StdStatusCallback user_cb, CoarseTimePoint deadline)
-      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+      StdStatusCallback user_cb, CoarseTimePoint deadline, std::function<Status()>&& should_retry)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)),
+        should_retry_(std::move(should_retry)) {
     req_.CopyFrom(request);
   }
 
@@ -2335,7 +2336,14 @@ class AcquireObjectLocksGlobalRpc
   }
 
   bool ShouldRetry(const Status& status) override {
-    return status.IsTryAgain();
+    if (!status.IsTryAgain()) {
+      return false;
+    }
+    if (auto s = should_retry_(); !s.ok()) {
+      error_ = s;
+      return false;
+    }
+    return true;
   }
 
   void CallRemoteMethod() override {
@@ -2349,10 +2357,12 @@ class AcquireObjectLocksGlobalRpc
     if (!status.ok()) {
       LOG(WARNING) << ToString() << " failed: " << status.ToString();
     }
-    user_cb_(status);
+    user_cb_(error_.ok() ? status : status.CloneAndAppend(error_.message()));
   }
 
   StdStatusCallback user_cb_;
+  std::function<Status()> should_retry_;
+  Status error_ = Status::OK();
 };
 
 class ReleaseObjectLocksGlobalRpc
@@ -2663,8 +2673,9 @@ void YBClient::Data::DeleteNotServingTablet(
 
 void YBClient::Data::AcquireObjectLocksGlobalAsync(
     YBClient* client, master::AcquireObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
-    StdStatusCallback callback) {
-  auto rpc = StartRpc<internal::AcquireObjectLocksGlobalRpc>(client, request, callback, deadline);
+    StdStatusCallback callback, std::function<Status()>&& should_retry) {
+  auto rpc = StartRpc<internal::AcquireObjectLocksGlobalRpc>(
+      client, request, callback, deadline, std::move(should_retry));
 }
 
 void YBClient::Data::ReleaseObjectLocksGlobalAsync(

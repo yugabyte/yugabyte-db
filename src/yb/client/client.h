@@ -673,7 +673,7 @@ class YBClient {
 
   void AcquireObjectLocksGlobalAsync(
       const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-      CoarseTimePoint deadline);
+      CoarseTimePoint deadline, std::function<Status()>&& should_retry);
   void ReleaseObjectLocksGlobalAsync(
       const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
       CoarseTimePoint deadline);

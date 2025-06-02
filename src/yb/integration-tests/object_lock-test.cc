@@ -387,7 +387,8 @@ std::future<Status> AcquireLockGloballyAsync(
       lease_epoch, client->Clock(), opt_deadline);
   auto callback = [promise](const Status& s) { promise->set_value(s); };
   client->AcquireObjectLocksGlobalAsync(
-      req, std::move(callback), ToCoarse(MonoTime::Now() + rpc_timeout));
+      req, std::move(callback), ToCoarse(MonoTime::Now() + rpc_timeout),
+      []() { return Status::OK(); } /* should_retry */);
   return future;
 }
 
