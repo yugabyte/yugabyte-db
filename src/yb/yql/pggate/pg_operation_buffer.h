@@ -26,13 +26,11 @@
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/pg_perform_future.h"
+#include "yb/yql/pggate/pg_flush_future.h"
 #include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
 
-class PgDocMetrics;
-class PgSession;
 class PgTableDesc;
 
 class BufferableOperations {
@@ -54,12 +52,9 @@ class BufferableOperations {
 
 class PgOperationBuffer {
  public:
-  using PerformFutureEx = std::pair<PerformFuture, PgSession*>;
-  using OperationsFlusher = std::function<Result<PerformFutureEx>(BufferableOperations&&, bool)>;
+  using Flusher = std::function<Result<FlushFuture>(BufferableOperations&&, bool)>;
 
-  PgOperationBuffer(
-      OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
-      const BufferingSettings& buffering_settings);
+  PgOperationBuffer(Flusher&& flusher, const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
   Status Flush();

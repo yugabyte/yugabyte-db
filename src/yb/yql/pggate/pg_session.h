@@ -34,6 +34,7 @@
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_flush_future.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
@@ -289,7 +290,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
-  Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
+  Result<FlushFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
 
   const std::string LogPrefix() const;
 

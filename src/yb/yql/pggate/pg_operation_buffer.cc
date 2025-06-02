@@ -40,7 +40,6 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/status.h"
 
-#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
@@ -150,47 +149,6 @@ inline bool IsTableUsedByRequest(const LWPgsqlReadRequestPB& request, const Slic
 
 using RowKeys = std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>>;
 
-class FlushFuture {
- public:
-  FlushFuture(PgOperationBuffer::PerformFutureEx&& future, PgDocMetrics* metrics)
-      : future_(std::move(future.first)), session_(future.second), metrics_(metrics) {}
-
-  bool Ready() const {
-    return future_.Ready();
-  }
-
-  Status EnsureCompleted() {
-    uint64_t duration = 0;
-    {
-      auto watcher = session_->StartWaitEvent(ash::WaitStateCode::kStorageFlush);
-      RETURN_NOT_OK(metrics_->CallWithDuration(
-          [this] { return future_.Get(*session_); }, &duration));
-    }
-    metrics_->FlushRequest(duration);
-    return Status::OK();
-  }
-
- private:
-  PerformFuture future_;
-  PgSession* session_;
-  PgDocMetrics* metrics_;
-};
-
-class Flusher {
- public:
-  Flusher(
-      PgOperationBuffer::OperationsFlusher&& ops_flusher, PgDocMetrics& metrics)
-      : ops_flusher_(std::move(ops_flusher)), metrics_(metrics) {}
-
-  Result<FlushFuture> Flush(BufferableOperations&& ops, bool transactional) {
-    return FlushFuture{VERIFY_RESULT(ops_flusher_(std::move(ops), transactional)), &metrics_};
-  }
-
- private:
-  PgOperationBuffer::OperationsFlusher ops_flusher_;
-  PgDocMetrics& metrics_;
-};
-
 struct InFlightOperation {
   RowKeys keys;
   FlushFuture future;
@@ -252,10 +210,8 @@ void BufferableOperations::MoveTo(PgsqlOps& operations, PgObjectIds& relations) 
 
 class PgOperationBuffer::Impl {
  public:
-  Impl(
-      OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
-      const BufferingSettings& buffering_settings)
-      : flusher_(std::move(ops_flusher), metrics),
+  Impl( Flusher&& flusher, const BufferingSettings& buffering_settings)
+      : flusher_(std::move(flusher)),
         buffering_settings_(buffering_settings) {}
 
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
@@ -440,7 +396,7 @@ class PgOperationBuffer::Impl {
 
   Status EnsureCompleted(size_t count) {
     for (; count && !in_flight_ops_.empty(); --count) {
-      RETURN_NOT_OK(in_flight_ops_.front().future.EnsureCompleted());
+      RETURN_NOT_OK(in_flight_ops_.front().future.Get());
       in_flight_ops_.pop_front();
     }
     return Status::OK();
@@ -499,7 +455,7 @@ class PgOperationBuffer::Impl {
         RETURN_NOT_OK(EnsureCompleted(1));
       }
       in_flight_ops_.push_back(
-        InFlightOperation(VERIFY_RESULT(flusher_.Flush(std::move(ops), transactional))));
+        InFlightOperation(VERIFY_RESULT(flusher_(std::move(ops), transactional))));
       return true;
     }
     return false;
@@ -532,9 +488,8 @@ class PgOperationBuffer::Impl {
 };
 
 PgOperationBuffer::PgOperationBuffer(
-    OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
-    const BufferingSettings& buffering_settings)
-    : impl_(new Impl(std::move(ops_flusher), metrics, buffering_settings)) {}
+    Flusher&& flusher, const BufferingSettings& buffering_settings)
+    : impl_(new Impl(std::move(flusher), buffering_settings)) {}
 
 PgOperationBuffer::~PgOperationBuffer() = default;
 
