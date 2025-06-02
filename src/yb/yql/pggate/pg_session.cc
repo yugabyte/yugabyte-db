@@ -476,7 +476,7 @@ class PgSession::RunHelper {
       ops_info_.ops = std::move(ops);
       ops_info_.num_ops_taken_from_buffer = 0;
       RETURN_NOT_OK(VERIFY_RESULT(pg_session_.FlushOperations(
-        std::move(buffered_ops), IsTransactional())).Get(pg_session_));
+          std::move(buffered_ops), IsTransactional())).Get());
     }
     ops_info_.ops.Add(std::move(op), table);
     return Status::OK();
@@ -512,12 +512,10 @@ PgSession::PgSession(
       pg_callbacks_(pg_callbacks),
       buffering_settings_(buffering_settings),
       buffer_(
-          [this](BufferableOperations&& ops, bool transactional)
-              -> Result<PgOperationBuffer::PerformFutureEx> {
-            return PgOperationBuffer::PerformFutureEx{
-                VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
+          [this](BufferableOperations&& ops, bool transactional) {
+            return FlushOperations(std::move(ops), transactional);
           },
-          metrics_, buffering_settings_),
+          buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
       wait_event_watcher_(wait_event_watcher) {
   Update(&buffering_settings_);
@@ -792,7 +790,7 @@ Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
 
-Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool transactional) {
+Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool transactional) {
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
     LOG_WITH_PREFIX(INFO) << "Flushing buffered operations, using "
                           << (transactional ? "transactional" : "non-transactional")
@@ -822,9 +820,9 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, boo
       ? EnsureReadTimeIsSet::kFalse : EnsureReadTimeIsSet::kTrue;
   auto non_transactional_buffered_write =
       pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL;
-  return Perform(std::move(ops),
+  return FlushFuture{VERIFY_RESULT(Perform(std::move(ops),
       {.ensure_read_time_is_set = ensure_read_time,
-       .non_transactional_buffered_write = non_transactional_buffered_write});
+       .non_transactional_buffered_write = non_transactional_buffered_write})), *this, metrics_};
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {

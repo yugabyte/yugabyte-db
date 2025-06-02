@@ -1362,7 +1362,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ancestry SET parent = 'ggparent2', gpa
  Storage Read Requests: 2
  Storage Rows Scanned: 11
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
 (11 rows)
 
 -- This query should throw an error as the parent doesn't exist
