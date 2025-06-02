@@ -54,7 +54,7 @@ The following table describes the type of data that is collected during a migrat
 | Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
 | Server or database credentials | No | No server or database credentials are collected. |
 
-- To detect certain performance optimizations, ensure that [ANALYZE](https://www.postgresql.org/docs/current/sql-analyze.html)(PostgreSQL) or [ANALYZE](https://docs.oracle.com/en/database/oracle/oracle-database/23/sqlrf/ANALYZE.html)(Oracle) is run on the source database.
+- To detect certain performance optimizations, ensure that [ANALYZE](https://www.postgresql.org/docs/current/sql-analyze.html)(PostgreSQL) is run on the source database.
 
 ## Get started with migration assessment
 

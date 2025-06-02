@@ -49,7 +49,7 @@ The valid *arguments* for initiate cutover to target are described in the follow
 | -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for initiate cutover to target. |
 | --prepare-for-fall-back | Prepare for fall-back by streaming changes from the target YugabyteDB database to the source database. Not applicable to the fall-forward workflow.<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --use-yb-grpc-connector | Applicable to fall-forward or fall-back workflows where you export changes from YugabyteDB during [export data from target](../../../reference/data-migration/export-data/#export-data-from-target). If set to true, [YugabyteDB gRPC connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/) is used. Otherwise, [YugabyteDB logical connector](../../../../develop/change-data-capture/using-logical-replication/) is used.<br> .<br>Default: false<br>Accepted parameters: true, false, yes, no, 0, 1. |
+| --use-yb-grpc-connector | Applicable to fall-forward or fall-back workflows where you export changes from YugabyteDB during [export data from target](../../../reference/data-migration/export-data/#export-data-from-target). If set to true, [YugabyteDB gRPC connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/) is used. Otherwise, [YugabyteDB logical connector](../../../../develop/change-data-capture/using-logical-replication/) is used.<br> .<br>Accepted parameters: true, false, yes, no, 0, 1. |
 
 ### Example
 
