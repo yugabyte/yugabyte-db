@@ -350,11 +350,15 @@ Create a new database user, and assign the necessary user permissions.
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< note title="Connecting to Oracle instances" >}}
-You can use only one of the following arguments to connect to your Oracle instance.
 
-- --source-db-schema (Schema name of the source database.)
-- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
+You can use only one of the following arguments in the `source` parameter (configuration file) or CLI flag to connect to your Oracle instance:
+
+| `source` section parameters (configuration file)  | CLI Flag | Description |
+|---|---|---|
+|`db-schema`|`--source-db-schema`|Schema name of the source database.|
+|`oracle-db-sid`|`--oracle-db-sid`|Oracle System Identifier you can use while exporting data from Oracle instances.|
+|`oracle-tns-alias`|`--oracle-tns-alias`|TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.|
+
 {{< /note >}}
 
   </div>
@@ -473,7 +477,7 @@ Turn off the [read-committed](../../../explore/transactions/isolation-levels/#re
 
 Create the target YugabyteDB database in your YugabyteDB cluster. The database name can be the same or different from the source database name.
 
-If you don't provide the target YugabyteDB database name during import, yb-voyager assumes the target YugabyteDB database name is `yugabyte`. To specify the target YugabyteDB database name during import, use the `--target-db-name` argument with the `yb-voyager import` commands.
+If you don't provide the target YugabyteDB database name during import, yb-voyager assumes the target YugabyteDB database name is `yugabyte`. To specify the target YugabyteDB database name during import, use the `db-name`  parameter under the `target` section of the config file or  `--target-db-name` CLI flag with the yb-voyager import commands
 
 ```sql
 CREATE DATABASE target_db_name;
@@ -502,11 +506,10 @@ If you want yb-voyager to connect to the target YugabyteDB database over SSL, re
 
 yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
-Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command in an environment variable.
+Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Ideally, this export directory should be placed inside a parent folder named after your migration for better organization. Next, you should provide the path to the export directory using the mandatory parameter `export-dir` (configuration file) or `--export-dir` flag (CLI) with each invocation of the yb-voyager command.
 
 ```sh
-mkdir $HOME/export-dir
-export EXPORT_DIR=$HOME/export-dir
+mkdir -p $HOME/<migration-name>/export-dir
 ```
 
 The export directory has the following sub-directories and files:
@@ -516,6 +519,61 @@ The export directory has the following sub-directories and files:
 - `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
 - `logs` directory contains the log files for each command.
+
+## Set up a configuration file
+
+Starting with version 2025.5.2, you can use a configuration file to specify the parameters required when running Voyager commands.
+
+To get started, copy the `live-migration.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Linux (apt/yum/airgapped)" lang="linux" %}}
+
+```bash
+/opt/yb-voyager/config-templates/live-migration.yaml
+```
+
+  {{% /tab %}}
+
+  {{% tab header="MacOS (Homebrew)" lang="macos" %}}
+
+```bash
+$(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/live-migration.yaml
+```
+
+Replace `<voyager-version>` with your installed Voyager version, for example, `2025.5.2`.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+Set the export-dir, source, and target arguments in the configuration file:
+
+```yaml
+# Replace the argument values with those applicable for your migration.
+
+export-dir: <absolute-path-to-export-dir>  
+
+source:
+  db-type: <source-db-type>         
+  db-host: <source-db-host>            
+  db-port: <source-db-port>                 
+  db-name: <source-db-name>            
+  db-schema: <source-db-schema> # Not applicable for MySQL           
+  db-user: <source-db-user>             
+  db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.    
+
+target:
+  db-host: <target-db-host> 
+  db-port: <target-db-port> 
+  db-name: <target-db-name>               
+  db-schema: <target-db-schema> # MySQL and Oracle only                
+  db-user: <target-db-username>           
+  db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.   
+```
+
+Refer to the `live-migration.yaml` template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Assess migration
 
@@ -535,13 +593,9 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
-{{< note title="Usage for source_db_schema" >}}
+The `db-schema` key inside the `source` section parameters (configuration file), or the `--source-db-schema` flag (CLI), is used to specify the schema(s) to migrate from the source database.
 
-The `source_db_schema` argument specifies the schema of the source database.
-
-For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
-
-{{< /note >}}
+For Oracle, `source-db-schema` (CLI) or `db-schema` (configuration file) can take only one schema name and you can migrate _only one_ schema at a time.
 
 An example invocation of the command with required arguments is as follows:
 
