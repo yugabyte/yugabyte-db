@@ -616,6 +616,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       int start_index,
       int end_index) REQUIRES(lock_);
   void DoMergeInvalMessagesIntoQueueUnlocked(
+      uint32_t db_oid,
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       int start_index,
       int end_index,
