@@ -7122,10 +7122,13 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 						 bool yb_copy_split_options)
 {
 	bool		isNull;
+	HeapTuple   indexTuple;
 	HeapTuple	tuple;
 	Datum		reloptions = (Datum) 0;
 	Relation	indexedRel;
 	IndexInfo  *indexInfo;
+	oidvector  *indclass = NULL;
+	Datum       indclassDatum;
 
 	tuple = SearchSysCache1(RELOID,
 							ObjectIdGetDatum(RelationGetRelid(indexRel)));
@@ -7142,6 +7145,19 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 	indexInfo = BuildIndexInfo(indexRel);
 
 	YbGetTableProperties(indexRel);
+
+	indexTuple = SearchSysCache1(INDEXRELID,
+								 ObjectIdGetDatum(RelationGetRelid(indexRel)));
+	if (!HeapTupleIsValid(indexTuple))
+		elog(ERROR, "cache lookup failed for index %u",
+			 RelationGetRelid(indexRel));
+
+	indclassDatum = SysCacheGetAttr(INDEXRELID, indexTuple,
+									Anum_pg_index_indclass, &isNull);
+	if (!isNull)
+		indclass = (oidvector *) DatumGetPointer(indclassDatum);
+	ReleaseSysCache(indexTuple);
+
 	YBCCreateIndex(RelationGetRelationName(indexRel),
 				   indexInfo,
 				   RelationGetDescr(indexRel),
@@ -7157,7 +7173,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   indexRel->rd_rel->reltablespace,
 				   newRelfileNodeId,
 				   YbGetRelfileNodeId(indexRel),
-				   NULL /* opclassOids */ );
+				   indclass ? indclass->values : NULL);
 
 	table_close(indexedRel, ShareLock);
 
