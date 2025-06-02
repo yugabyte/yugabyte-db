@@ -271,6 +271,7 @@ func editClusterUtil(
 		Clusters:     clusters,
 		NodeDetailsSet: universeutil.BuildNodeDetailsRespArrayToNodeDetailsArray(
 			universeDetails.GetNodeDetailsSet()),
+    CommunicationPorts: universeDetails.CommunicationPorts,
 	}
 
 	return authAPI, universe, req, nil
