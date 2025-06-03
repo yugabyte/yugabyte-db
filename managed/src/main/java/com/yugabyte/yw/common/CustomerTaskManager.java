@@ -423,6 +423,10 @@ public class CustomerTaskManager {
         }
         CustomerTask customerTask =
             Json.mapper().readValue(restoreCustomerTaskFilePath.toFile(), CustomerTask.class);
+        if (customerTask == null) {
+          log.warn("Restore customer task is null, skipping.");
+          return;
+        }
         Optional<CustomerTask> existingCustomerTask =
             CustomerTask.maybeGet(customerTask.getTaskUUID());
         if (existingCustomerTask.isEmpty()) {

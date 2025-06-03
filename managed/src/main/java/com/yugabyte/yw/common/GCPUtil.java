@@ -877,8 +877,12 @@ public class GCPUtil implements CloudUtil {
       List<Blob> sortedBackups =
           StreamSupport.stream(blobs.iterateAll().spliterator(), false)
               .filter(blob -> backupPattern.matcher(blob.getName()).find())
-              .sorted((b1, b2) -> b2.getUpdateTime().compareTo(b1.getUpdateTime()))
+              .sorted(
+                  (b1, b2) ->
+                      b2.getUpdateTimeOffsetDateTime().compareTo(b1.getUpdateTimeOffsetDateTime()))
               .collect(Collectors.toList());
+
+      log.info("Sorted backups: {} size {}", sortedBackups, sortedBackups.size());
 
       // Only keep the n most recent backups
       int numKeepBackups =
@@ -985,11 +989,9 @@ public class GCPUtil implements CloudUtil {
       Page<Blob> blobs = gcsClient.list(cLInfo.bucket, Storage.BlobListOption.prefix(prefix));
       for (Blob blob : blobs.iterateAll()) {
         String key = blob.getName();
-        if (key.endsWith(YBA_BACKUP_MARKER)) {
-          String[] dirs = key.split("/");
-          if (dirs.length >= 2) {
-            backupDirs.add(dirs[dirs.length - 2]);
-          }
+        String backupDir = extractBackupDirFromKey(key, cLInfo.cloudPath);
+        if (StringUtils.isNotBlank(backupDir)) {
+          backupDirs.add(backupDir);
         }
       }
 
@@ -1020,7 +1022,7 @@ public class GCPUtil implements CloudUtil {
       Page<Blob> blobs = gcsClient.list(cLInfo.bucket, Storage.BlobListOption.prefix(prefix));
 
       for (Blob blob : blobs.iterateAll()) {
-        String version = extractReleaseVersion(blob.getName(), backupDir);
+        String version = extractReleaseVersion(blob.getName(), backupDir, cLInfo.cloudPath);
         if (version != null) {
           releaseVersions.add(version);
         }
@@ -1063,7 +1065,9 @@ public class GCPUtil implements CloudUtil {
         matcher = backupPattern.matcher(blob.getName());
         if (matcher.find()) {
           // Find the most recent backup based on update time
-          if (mostRecentBackup == null || blob.getUpdateTime() > mostRecentBackup.getUpdateTime()) {
+          if (mostRecentBackup == null
+              || blob.getUpdateTimeOffsetDateTime()
+                  .isAfter(mostRecentBackup.getUpdateTimeOffsetDateTime())) {
             mostRecentBackup = blob;
             mostRecentBackupName = matcher.group();
           }
