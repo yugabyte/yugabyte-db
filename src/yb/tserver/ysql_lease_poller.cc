@@ -118,6 +118,7 @@ Status YsqlLeasePoller::Poll() {
       MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms));
   if (!proxy_) {
     auto hostport = VERIFY_RESULT(finder_.UpdateMasterLeaderHostPort(timeout));
+    VLOG_WITH_PREFIX(1) << "Connected to leader master server at " << hostport;
     proxy_ = master::MasterDdlProxy(&finder_.get_proxy_cache(), hostport);
   }
 
