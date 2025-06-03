@@ -59,6 +59,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
@@ -348,6 +349,10 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.listTabletServers()).thenReturn(mockResponse);
       when(mockClient.createRedisTable(any(), anyBoolean())).thenReturn(mockTable);
+      IsServerReadyResponse mockServerReadyResponse = mock(IsServerReadyResponse.class);
+      when(mockServerReadyResponse.getNumNotRunningTablets()).thenReturn(0);
+      when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockServerReadyResponse);
     } catch (Exception e) {
     }
     when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any(), anyBoolean()))
@@ -379,6 +384,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.WaitForDuration,
           TaskType.UpdatePlacementInfo,
+          TaskType.WaitForServerReady,
           TaskType.WaitForServer,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
@@ -405,6 +411,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -449,6 +456,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         parallelTasks,
         1,
         1,
+        3,
         3,
         1,
         1,
