@@ -125,9 +125,11 @@ class XClusterDDLQueueHandler {
   // Persists the new commit_times into replicated_ddls. If we have a complete batch, then also
   // updates safe_time_batch_ with the new commit times and apply safe time.
   Status PersistAndUpdateSafeTimeBatch(
-      const std::set<HybridTime>& commit_times, int64_t apply_safe_time = 0);
+      const std::set<HybridTime>& commit_times, const HybridTime& apply_safe_time);
+  virtual Status DoPersistAndUpdateSafeTimeBatch(
+      const std::set<HybridTime>& commit_times, const HybridTime& apply_safe_time);
 
-  virtual Status ClearSafeTimeBatch();
+  virtual Status UpdateSafeTimeBatchAfterProcessing(const HybridTime& last_commit_time_processed);
 
   Status ResetSafeTimeBatchOnFailure(const Status& s);
 
