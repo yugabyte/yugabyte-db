@@ -40,10 +40,10 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 To add the CA certificate to the Java Keystore, you can use the following command:
 
 ```bash
-keytool -importcert -alias root-ca -file root.crt -keystore keystore_name.jks -storetype JKS -storepass <replace_with_your_password_here> -noprompt
+keytool -importcert -alias root-ca -file root.crt -keystore keystore_name.jks -storetype JKS -storepass <your_password> -noprompt
 ```
 
-Replace `root.crt` with the path to the CA certificate file, `keystore_name.jks` with the path to the Java Keystore file and `password_here`for the YugabyteDB keystore password.
+Replace `root.crt` with the path to the CA certificate file, `keystore_name.jks` with the path to the Java Keystore file, and `<your_password>`with the YugabyteDB keystore password.
 
   {{< /note >}}
 
@@ -63,17 +63,16 @@ You can create a connection as follows:
   - **Keyspace**: system
   - **User**: leave blank if YCQL authentication is not enabled. If enabled, enter username.
   - **Password**: leave blank if YCQL authentication is not enabled. If enabled, enter the password.
-  - **Dataceter**: Leave blank unless you YugabyteDB server in specific Datacenter.
+  - **Datacenter**: Leave blank unless your YugabyteDB server is in a specific data center.
 
-- If your YugabyteDB cluster has encryption in transit enabled, click the **SSL** tab and select the **Use SSL** checkbox. Then, specify following:
+- If your YugabyteDB cluster has encryption in transit enabled, click the **SSL** tab and select the **Use SSL** checkbox. Then, specify the following:
   - Under **Parameters** select **Keystore**.
   - **Keystore**: Provide keystore file path having suffix `.jks`
   - **Keystore Password**: Provide the password for the keystore file.
 
-  Ensure you have stored the CA certificate in the Java Keystore as described in the [Prerequisites](#prerequisites) section.
+  Ensure you have stored the CA certificate in the Java Keystore as described in [Prerequisites](#prerequisites).
 
-- Select **Test Connection** to verify that the connection is successful, as shown in the following illustration:
-    ![DBeaver Test Connection](/images/develop/tools/dbeaver/dbeaver-test-conn-ycql.png)
+- Click **Test Connection** to verify that the connection is successful.
 - Click **Finish** to save the connection.
 
 The **Database Navigator** should display "system".
