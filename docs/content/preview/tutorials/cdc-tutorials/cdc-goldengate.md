@@ -4,7 +4,7 @@ headerTitle: Oracle GoldenGate
 linkTitle: Oracle GoldenGate
 description: Oracle GoldenGate for Change Data Capture in YugabyteDB.
 headcontent: |
-  This tutorial describes how to connect Oracle GoldenGate Classic to YugabyteDB to capture and replicate data in real-time.
+  Connect Oracle GoldenGate Classic to YugabyteDB to capture and replicate data in real-time.
 menu:
   preview_tutorials:
     parent: tutorials-cdc
@@ -12,8 +12,6 @@ menu:
     weight: 30
 type: docs
 ---
-
-This tutorial describes how to connect Oracle GoldenGate Classic to YugabyteDB to capture and replicate data in real-time.
 
 YugabyteDB has a PostgreSQL-compatible query layer that enables connectivity to Oracle GoldenGate using PostgreSQL PostgreSQL-compatible ODBC driver.  This tutorial is specific to Oracle GoldenGate 21c classic version ,which is compatible with the PostgreSQL data store as a  source and target endpoint to capture and deliver.
 
