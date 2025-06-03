@@ -43,7 +43,7 @@ To add the CA certificate to the Java Keystore, you can use the following comman
 keytool -importcert -alias root-ca -file root.crt -keystore keystore_name.jks -storetype JKS -storepass <your_password> -noprompt
 ```
 
-Replace `root.crt` with the path to the CA certificate file, `keystore_name.jks` with the path to the Java Keystore file, and `<your_password>`with the YugabyteDB keystore password.
+Replace `root.crt` with the path to the CA certificate file, `keystore_name.jks` with the path to the Java Keystore file, and `<your_password>`  with the  Keystore password.
 
   {{< /note >}}
 
