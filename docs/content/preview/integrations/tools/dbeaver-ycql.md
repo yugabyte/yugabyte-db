@@ -33,7 +33,7 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 
 - Install [DBeaver Enterprise Edition](https://dbeaver.com/download/enterprise/).
 
-- `ca.crt` — root certificate file. If the YugabyteDB cluster has encryption in transit enabled, your client needs `root.ca` to establish a connection. You need to download or generate it from the YugabyteDB cluster and add it to the Java TrustStore before using it in DBeaver. For more information, see [Generate the root certificate file](../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) for instructions on how to generate this file.
+- `ca.crt` — root certificate file. If the YugabyteDB cluster has encryption in transit enabled, your client needs the root certificate (ca.crt) to establish a secure connection. You need to download or generate this certificate from the YugabyteDB cluster and add it to the Java TrustStore before using it in DBeaver. For more information, see [Generate the root certificate file](../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) for instructions on how to generate this file.
 
   {{< note title="Add `root.crt` to Java Keystore" >}}
 
@@ -43,7 +43,7 @@ To add the CA certificate to the Java Keystore, you can use the following comman
 keytool -importcert -alias root-ca -file root.crt -keystore keystore_name.jks -storetype JKS -storepass <your_password> -noprompt
 ```
 
-Replace `root.crt` with the path to the CA certificate file, `keystore_name.jks` with the path to the Java Keystore file, and `<your_password>`  with the  Keystore password.
+Replace `root.crt` with the path to the CA certificate file, `keystore_name.jks` with the path to the Java Keystore file, and `<your_password>` with the Keystore password.
 
   {{< /note >}}
 
