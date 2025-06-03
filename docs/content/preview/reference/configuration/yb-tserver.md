@@ -640,6 +640,7 @@ Valid values for the policy are:
 
 - `never` — Always use [`--server_broadcast_addresses`](#server-broadcast-addresses).
 - `zone` — Use the private IP inside a zone; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
+- `cloud` — Use the private IP address across all zones in a cloud; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the cloud.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 ### Geo-distribution flags
