@@ -946,26 +946,64 @@ export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
 
 #### get data-migration-report
 
-Run the following command with required arguments to get a consolidated report of the overall progress of data migration concerning all the databases involved (source or target).
+to get a consolidated report of the overall progress of data migration concerning all the databases involved (source or target), you can run the `yb-voyager get data-migration-report` command. You specify the `<EXPORT_DIR>` to push data in using `export-dir` parameter (configuration file), or `--export-dir` flag (CLI).
+
+Run the command as follows:
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Config File" lang="config" %}}
+
+```sh
+yb-voyager get data-migration-report --config-file <path-to-config-file>
+```
+
+  {{% /tab %}}
+
+  {{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
-        --target-db-password <TARGET_DB_PASSWORD>
+yb-voyager get data-migration-report --export-dir <EXPORT_DIR> --target-db-password <TARGET_DB_PASSWORD>
 ```
 
-Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for more information.
 
 ### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command as follows:
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command:
+
+
+Run the command as follows:
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Config File" lang="config" %}}
+
+```sh
+yb-voyager archive changes --config-file <path-to-config-file>
+```
+
+You can specify additional `archive changes` parameters in the `archive-changes` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+
+  {{% /tab %}}
+
+  {{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR>
 ```
 
-Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for more information.
 
 ### Cutover to the target
 
@@ -976,26 +1014,74 @@ Keep monitoring the metrics displayed for export data and import data processes.
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your source database, that is stop application writes.
-1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using `cutover to target` command (CLI) or using the configuration file.
 
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back false
-    ```
+    {{< tabpane text=true >}}
 
-    Refer to [cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
+      {{% tab header="Config File" lang="config" %}}
+
+```sh
+yb-voyager initiate cutover to target --config-file <path-to-config-file>
+```
+
+    {{% /tab %}}
+
+    {{% tab header="CLI" lang="cli" %}}
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back false
+```
+
+      {{% /tab %}}
+
+    {{< /tabpane >}}
+
+    Refer to [cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for more information.
 
     The initiate cutover to target command stops the `export data from source` phase. After this, the `import data to target` phase continues and completes by importing all the exported events into the target YugabyteDB database.
-1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
+1. Wait for the cutover process to complete. Monitor the status of the cutover process using the `cutover status` command (CLI) or configuration file.
+
+    {{< tabpane text=true >}}
+
+      {{% tab header="Config File" lang="config" %}}
+
+```sh
+yb-voyager cutover status --config-file <path-to-config-file>
+```
+
+    {{% /tab %}}
+
+    {{% tab header="CLI" lang="cli" %}}
+
+    
     ```sh
     # Replace the argument values with those applicable for your migration.
     yb-voyager cutover status --export-dir <EXPORT_DIR>
     ```
+      {{% /tab %}}
 
-    Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
+    {{< /tabpane >}}
 
-1. If the source has any NOT VALID constraints, after the `import data` command has completed, create them by running `finalize-schema-post-data-import`. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, you can refresh them by setting the `--refresh-mviews` flag to true.
+    Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for more information.
+
+1. If there are any NOT VALID constraints on the source, create them after the import data command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them by setting the `refresh-mviews` parameter in the `finalize-schema-post-data-import` (configuration file) or use `--refresh-mviews` flag (CLI) with the value true.
+    
+    Run the command as follows:
+
+    {{< tabpane text=true >}}
+
+      {{% tab header="Config File" lang="config" %}}
+
+```sh
+yb-voyager finalize-schema-post-data-import --config-file <path-to-config-file>
+```
+
+    {{% /tab %}}
+
+    {{% tab header="CLI" lang="cli" %}}
+
 
     ```sh
     # Replace the argument values with those applicable for your migration.
@@ -1005,7 +1091,13 @@ Perform the following steps as part of the cutover process:
        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+
     ```
+
+      {{% /tab %}}
+
+    {{< /tabpane >}}
+
 
     {{< note title ="Note" >}}
 The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
@@ -1033,7 +1125,38 @@ For more details, refer to GitHub issue [#360](https://github.com/yugabyte/yb-vo
 
 To complete the migration, you need to clean up the export directory (export-dir), and Voyager state ( Voyager-related metadata) stored in the target YugabyteDB database.
 
-Run the `yb-voyager end migration` command to perform the clean up, and to back up the schema, data, migration reports, and log files by providing the backup related flags (mandatory) as follows:
+
+The `yb-voyager end migration` command performs the cleanup, and backs up the schema, data, migration reports, and log files by providing the backup related arguments.
+
+Run the command as follows:
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Config File" lang="config" %}}
+
+Specify the following parameters in the `end-migration` section of the configuration file:
+
+```yaml
+...
+end-migration:
+  backup-schema-files: <true, false, yes, no, 1, 0>
+  backup-data-files: <true, false, yes, no, 1, 0>
+  save-migration-reports: <true, false, yes, no, 1, 0>
+  backup-log-files: <true, false, yes, no, 1, 0>
+  # Set optional argument to store a back up of any of the above  arguments.
+  backup-dir: <BACKUP_DIR> 
+...
+```
+
+Run the command:
+
+```sh
+yb-voyager end migration --config-file <path-to-config-file>
+```
+
+  {{% /tab %}}
+
+  {{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -1046,9 +1169,15 @@ yb-voyager end migration --export-dir <EXPORT_DIR> \
         --backup-dir <BACKUP_DIR>
 ```
 
-Note that after you end the migration, you will *not* be able to continue further. If you wish to back up the schema, data, log files, and the migration reports (`analyze-schema` report and `get data-migration-report` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+  {{% /tab %}}
 
-Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
+{{< /tabpane >}}
+
+Note that after you end the migration, you will *not* be able to continue further.
+
+If you want to back up the schema, data, log files, and the migration reports (`analyze-schema` report, `get data-migration-report` output) for future reference, use the `backup-dir` argument (configuration file) or `--backup-dir` flag (CLI), and provide the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+
+Refer to [end migration](../../reference/end-migration/) for more information.
 
 ### Delete the ybvoyager user (Optional)
 
