@@ -22,6 +22,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 ### New features
 
 - Added support for the [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
+
 This is required for [YugabyteDB Aeon](/preview/yugabyte-cloud/) or restricted environments where only the YugabyteDB Connector is supported.
 
 ### Enhancements
