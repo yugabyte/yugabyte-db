@@ -161,7 +161,7 @@ DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
 DEFINE_test_flag(bool, check_catalog_version_overflow, false,
                  "Check whether received catalog version is unreasonably too big");
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_invalidation_messages, true,
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
 
 DEFINE_test_flag(bool, ysql_yb_ddl_transaction_block_enabled, false,

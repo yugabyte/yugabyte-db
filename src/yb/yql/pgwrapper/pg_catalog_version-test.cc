@@ -45,14 +45,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
 
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    LibPqTestBase::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
-    options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
-  }
-
   Result<int64_t> GetCatalogVersion(PGConn* conn) {
     const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
         "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
