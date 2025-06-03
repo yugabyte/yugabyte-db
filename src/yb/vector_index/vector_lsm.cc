@@ -1204,6 +1204,19 @@ Result<bool> VectorLSM<Vector, DistanceResult>::HasVectorId(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<size_t> VectorLSM<Vector, DistanceResult>::TotalEntries() const {
+  while (insert_registry_->HasRunningTasks()) {
+    std::this_thread::sleep_for(10ms);
+  }
+  auto indexes = VERIFY_RESULT(AllIndexes());
+  size_t result = 0;
+  for (const auto& index : indexes) {
+    result += index->Size();
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorLSMFileMetaDataPtr VectorLSM<Vector, DistanceResult>::CreateVectorLSMFileMetaData(
     VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk) {
   auto* raw_ptr = new VectorLSMFileMetaData(serial_no, size_on_disk);

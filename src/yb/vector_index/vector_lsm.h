@@ -112,6 +112,7 @@ class VectorLSM {
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
   Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
+  Result<size_t> TotalEntries() const;
 
   Status Flush(bool wait);
   Status WaitForFlush();
