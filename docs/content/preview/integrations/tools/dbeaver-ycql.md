@@ -51,35 +51,37 @@ Replace `root.crt` with the path to the CA certificate file, `keystore_name.jks`
 
 You can create a connection as follows:
 
-- Launch DBeaver.
-- Navigate to **Database > New Database Connection** to open the **Connect to a database** window shown in the following illustration.
-- In the **Select your database** list, select **NoSQL > Yugabyte CQL**, and then click **Next**.
+1. Launch DBeaver.
+1. Navigate to **Database > New Database Connection** to open the **Connect to a database** window shown in the following illustration.
+1. In the **Select your database** list, select **NoSQL > Yugabyte CQL**, and then click **Next**.
 
     ![DBeaver Select Database](/images/develop/tools/dbeaver/dbeaver-select-db-ycql.png)
 
-- In the **Main** tab of **Yugabyte CQL Connection Settings** window, use **Connection Settings** to specify the following:
-  - **Host**: Enter the IP address of the YugabyteDB node. If you are running DBeaver on the same machine as YugabyteDB, you can use `localhost`.
-  - **Port**: 9042 (default port for YCQL).
-  - **Keyspace**: system
-  - **User**: leave blank if YCQL authentication is not enabled. If enabled, enter username.
-  - **Password**: leave blank if YCQL authentication is not enabled. If enabled, enter the password.
-  - **Datacenter**: Leave blank unless your YugabyteDB server is in a specific data center.
+1. In the **Main** tab of **Yugabyte CQL Connection Settings** window, use **Connection Settings** to specify the following:
 
-- If your YugabyteDB cluster has encryption in transit enabled, click the **SSL** tab and select the **Use SSL** checkbox. Then, specify the following:
-  - Under **Parameters** select **Keystore**.
-  - **Keystore**: Provide keystore file path having suffix `.jks`
-  - **Keystore Password**: Provide the password for the keystore file.
+    - **Host**: Enter the IP address of the YugabyteDB node. If you are running DBeaver on the same machine as YugabyteDB, you can use `localhost`.
+    - **Port**: 9042 (default port for YCQL).
+    - **Keyspace**: system
+    - **User**: leave blank if YCQL authentication is not enabled. If enabled, enter username.
+    - **Password**: leave blank if YCQL authentication is not enabled. If enabled, enter the password.
+    - **Datacenter**: Leave blank unless your YugabyteDB server is in a specific data center.
 
-  Ensure you have stored the CA certificate in the Java Keystore as described in [Prerequisites](#prerequisites).
+1. If your YugabyteDB cluster has encryption in transit enabled, click the **SSL** tab and select the **Use SSL** checkbox. Then, specify the following:
 
-- Click **Test Connection** to verify that the connection is successful.
-- Click **Finish** to save the connection.
+    - Under **Parameters** select **Keystore**.
+    - **Keystore**: Provide keystore file path having suffix `.jks`
+    - **Keystore Password**: Provide the password for the keystore file.
 
-The **Database Navigator** should display "system".
+    Ensure you have stored the CA certificate in the Java Keystore as described in [Prerequisites](#prerequisites).
 
-You can expand the list to see all keyspaces available in YugabyteDB cluster, as shown in the following illustration:
+1. Click **Test Connection** to verify that the connection is successful.
+1. Click **Finish** to save the connection.
 
-![DBeaver](/images/develop/tools/dbeaver/dbeaver-ycql-system.png)
+    The **Database Navigator** should display "system".
+
+    You can expand the list to see all keyspaces available in YugabyteDB cluster, as shown in the following illustration:
+
+    ![DBeaver](/images/develop/tools/dbeaver/dbeaver-ycql-system.png)
 
 ## What's Next
 
