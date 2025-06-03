@@ -14,24 +14,20 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
-import { InstanceSettingProps } from './dtos';
 import { mui } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { CPUArchField } from '../../fields';
+import { ProxyAdvancedProps } from './dtos';
+import { EnableProxyServer } from '../../fields';
 // import { useTranslation } from 'react-i18next';
 
 const { Box } = mui;
 
-export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
+export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  //   const { t } = useTranslation('translation', {
-  //     keyPrefix: 'createUniverseV2.resilienceAndRegions'
-  //   });
-
-  const methods = useForm<InstanceSettingProps>({});
+  const methods = useForm<ProxyAdvancedProps>({});
 
   useImperativeHandle(
     forwardRef,
@@ -49,24 +45,9 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <StyledPanel>
-        <StyledHeader>Cluster Instance</StyledHeader>
+        <StyledHeader>Proxy Configuration</StyledHeader>
         <StyledContent>
-          <Box
-            sx={{
-              display: 'flex',
-              width: '734px',
-              flexDirection: 'column',
-              backgroundColor: '#FBFCFD',
-              border: '1px solid #D7DEE4',
-              borderRadius: '8px',
-              padding: '24px'
-            }}
-          >
-            <CPUArchField disabled={false} />
-            <br />
-            <br />
-            <>Remaining fields Work In progress</>
-          </Box>
+          <EnableProxyServer disabled={false} />
         </StyledContent>
       </StyledPanel>
     </FormProvider>

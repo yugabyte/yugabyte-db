@@ -2417,8 +2417,8 @@
         "expand": "Expand",
         "viewLess": "Collapse",
         "showLog": "YugaWare Log",
-        "expandAll":"Expand All",
-        "collapseAll":"Collapse All",
+        "expandAll": "Expand All",
+        "collapseAll": "Collapse All",
         "percentComplete": "<b>{{percent}}</b>% Completed"
       },
       "banner": {
@@ -3006,8 +3006,8 @@
         "security": "Security",
         "securitySettings": "Security Settings",
         "advanced": "Advanced",
-        "proxySettings": "Proxy Settings",
-        "otherAdvancedSettings": "Other Advanced Settings",
+        "proxySettings": "Proxy Settings (Optional)",
+        "otherAdvancedSettings": "Other Advanced Settings (Optional)",
         "review": "Review",
         "summaryAndCost": "Summary and Cost"
       },

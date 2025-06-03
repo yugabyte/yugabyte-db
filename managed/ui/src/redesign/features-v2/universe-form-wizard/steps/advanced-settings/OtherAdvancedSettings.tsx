@@ -1,3 +1,5 @@
+import React from 'react';
+
 /*
  * Created on Tue Mar 25 2025
  *
@@ -14,24 +16,37 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
-import { InstanceSettingProps } from './dtos';
-import { mui } from '@yugabyte-ui-library/core';
+import { mui, YBAccordion } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { CPUArchField } from '../../fields';
+import {
+  DeploymentPortsField,
+  UserTagsField,
+  TimeSyncField,
+  InstanceARNField,
+  SystemDField,
+  AccessKeyField
+} from '../../fields';
+import { OtherAdvancedProps } from './dtos';
+
 // import { useTranslation } from 'react-i18next';
 
 const { Box } = mui;
 
-export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
+export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  //   const { t } = useTranslation('translation', {
-  //     keyPrefix: 'createUniverseV2.resilienceAndRegions'
-  //   });
-
-  const methods = useForm<InstanceSettingProps>({});
+  const methods = useForm<OtherAdvancedProps>({
+    defaultValues: {
+      instanceTags: [
+        {
+          name: '',
+          value: ''
+        }
+      ]
+    }
+  });
 
   useImperativeHandle(
     forwardRef,
@@ -48,25 +63,21 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   return (
     <FormProvider {...methods}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px', mb: 3 }}>
+        <YBAccordion titleContent="Deployment Port Override" sx={{ width: '100%' }}>
+          <DeploymentPortsField disabled={false} />
+        </YBAccordion>
+        <YBAccordion titleContent="User Tags" sx={{ width: '100%' }}>
+          <UserTagsField disabled={false} />
+        </YBAccordion>
+      </Box>
       <StyledPanel>
-        <StyledHeader>Cluster Instance</StyledHeader>
+        <StyledHeader>Other Additional Settings</StyledHeader>
         <StyledContent>
-          <Box
-            sx={{
-              display: 'flex',
-              width: '734px',
-              flexDirection: 'column',
-              backgroundColor: '#FBFCFD',
-              border: '1px solid #D7DEE4',
-              borderRadius: '8px',
-              padding: '24px'
-            }}
-          >
-            <CPUArchField disabled={false} />
-            <br />
-            <br />
-            <>Remaining fields Work In progress</>
-          </Box>
+          <TimeSyncField disabled={false} />
+          <AccessKeyField disabled={false} />
+          <InstanceARNField disabled={false} />
+          <SystemDField disabled={false} />
         </StyledContent>
       </StyledPanel>
     </FormProvider>

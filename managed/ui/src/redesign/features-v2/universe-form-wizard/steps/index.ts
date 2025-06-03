@@ -1,3 +1,4 @@
+export * from './advanced-settings';
 export * from './database-settings';
 export * from './general-settings';
 export * from './hardware-settings';

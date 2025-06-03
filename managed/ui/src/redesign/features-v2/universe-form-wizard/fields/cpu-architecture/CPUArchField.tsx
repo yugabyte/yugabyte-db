@@ -10,7 +10,7 @@
 
 import { FC } from 'react';
 import { useFormContext } from 'react-hook-form';
-import { mui, YBLabel, YBRadioGroup, RadioOrientation } from '@yugabyte-ui-library/core';
+import { mui, YBLabel, RadioOrientation, YBRadioGroupField } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import { ArchitectureType } from '../../helpers/constants';
 import { InstanceSettingProps } from '../../steps/hardware-settings/dtos';
@@ -31,7 +31,7 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
 }));
 
 export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
-  const { setValue } = useFormContext<InstanceSettingProps>();
+  const { setValue, control } = useFormContext<InstanceSettingProps>();
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
 
   const IntelArch = {
@@ -51,7 +51,12 @@ export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
         <YBLabel>{t('cpuArch')}</YBLabel>
         <StyledSubText>| This CANNOT be changed after creation</StyledSubText>
       </Box>
-      <YBRadioGroup options={supportedArch} orientation={RadioOrientation.Horizontal} />
+      <YBRadioGroupField
+        options={supportedArch}
+        orientation={RadioOrientation.Horizontal}
+        control={control}
+        name={CPU_ARCH_FIELD}
+      />
     </Box>
   );
 };
