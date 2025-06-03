@@ -3139,9 +3139,6 @@ class TabletSplitReplaceNodeITest : public TabletSplitExternalMiniClusterITest {
         // - Allow more concurrent adds/removes, so we deal with transaction status tablets
         // faster.
         "--load_balancer_max_concurrent_adds=10", "--load_balancer_max_concurrent_removals=10",
-        // - Allow more over replicated tablets, so temporary child tablets over replication
-        // doesn't block parent tablet move.
-        "--load_balancer_max_over_replicated_tablets=5",
         // To speed up test in case of intermittent failures due to leader re-elections.
         "--retrying_ts_rpc_max_delay_ms=1000",
       }) {

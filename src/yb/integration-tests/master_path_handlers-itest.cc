@@ -1099,7 +1099,6 @@ TEST_F_EX(
     MasterPathHandlersItest, TestTabletUnderReplicationEndpointBootstrapping,
     MasterPathHandlersUnderReplicationTwoTsItest) {
   // Set these to allow multiple tablets bootstrapping at the same time.
-  ASSERT_OK(cluster_->SetFlagOnMasters("load_balancer_max_over_replicated_tablets", "10"));
   ASSERT_OK(cluster_->SetFlagOnMasters(
       "load_balancer_max_concurrent_tablet_remote_bootstraps", "10"));
   ASSERT_OK(cluster_->SetFlagOnMasters(

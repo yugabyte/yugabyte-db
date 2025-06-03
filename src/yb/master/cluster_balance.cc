@@ -75,16 +75,17 @@ DEFINE_RUNTIME_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver, 4,
     "Maximum number of tablets simultaneously remote bootstrapping on a tserver. Past this value, "
     "the load balancer will not add tablets to this tserver.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 1,
-    "Maximum number of running tablet replicas that are allowed to be over the configured "
-    "replication factor.");
+DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 50,
+    "Maximum number of running tablet replicas per table that are allowed to be over the "
+    "configured replication factor. This controls the amount of space amplification in the cluster "
+    "when tablet removal is slow. A value less than 0 means no limit.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_adds, 1,
     "Maximum number of tablet peer replicas to add in any one run of the load balancer.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 1,
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 50,
     "Maximum number of over-replicated tablet peer removals to do in any one run of the "
-    "load balancer.");
+    "load balancer. A value less than 0 means no limit.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 100,
     "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
@@ -983,11 +984,11 @@ Status ClusterLoadBalancer::CanAddReplicas() {
 
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
       get_total_over_replication() >=
-          implicit_cast<size_t>(state_->options_->kMaxOverReplicatedTablets)) {
+          implicit_cast<size_t>(state_->options_->kMaxOverReplicatedTabletsPerTable)) {
     return STATUS_FORMAT(TryAgain,
         "Cannot add replicas. Currently have a total overreplication of $0, when max allowed is $1"
         ", overreplicated tablets: $2",
-        get_total_over_replication(), state_->options_->kMaxOverReplicatedTablets,
+        get_total_over_replication(), state_->options_->kMaxOverReplicatedTabletsPerTable,
         boost::algorithm::join(state_->tablets_over_replicated_, ", "));
   }
 
@@ -1110,6 +1111,21 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
           // the left tserver. Continue and try with the next left tserver.
           break;
         }
+      }
+
+      // There may be lots of over-replicated tablets on the high load tserver that are about to be
+      // removed. If removing those tablets would drop the load variance below the minimum, skip
+      // this pair of tservers to avoid adding extra replicas.
+      // For example, consider the case where tserver A has 100 tablets and tserver B is added to
+      // the same zone. We want to move 50 tablets, but without this check (and with unlimited adds
+      // or laggy removes), we would move 99 tablets to TS B and then remove evenly from both.
+      if (!is_global_balancing_move &&
+          load_variance - state_->GetPossiblyTransientLoad(high_load_uuid) <
+              state_->options_->kMinLoadVarianceToBalance) {
+        VLOG(3) << Format(
+            "Skipping tserver pair $0 and $1 because load variance including "
+            "over-replicated tablets would be too low.", high_load_uuid, low_load_uuid);
+        continue;
       }
 
       // If we don't find a tablet_id to move between these two TSs, advance the state.

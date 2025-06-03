@@ -180,6 +180,9 @@ struct Options {
     if (kMaxTabletRemoteBootstraps < 0) {
       kMaxTabletRemoteBootstraps = std::numeric_limits<int>::max();
     }
+    if (kMaxOverReplicatedTabletsPerTable < 0) {
+      kMaxOverReplicatedTabletsPerTable = std::numeric_limits<int>::max();
+    }
   }
   virtual ~Options() {}
 
@@ -190,7 +193,7 @@ struct Options {
       {"MaxTabletRemoteBootstrapsPerTable", kMaxTabletRemoteBootstrapsPerTable},
       {"MaxInboundRemoteBootstrapsPerTs", kMaxInboundRemoteBootstrapsPerTs},
       {"AllowLimitOverReplicatedTablets", kAllowLimitOverReplicatedTablets},
-      {"MaxOverReplicatedTablets", kMaxOverReplicatedTablets},
+      {"MaxOverReplicatedTablets", kMaxOverReplicatedTabletsPerTable},
       {"MaxConcurrentRemovals", kMaxConcurrentRemovals},
       {"MaxConcurrentAdds", kMaxConcurrentAdds},
       {"MaxConcurrentLeaderMoves", kMaxConcurrentLeaderMoves},
@@ -232,7 +235,7 @@ struct Options {
   bool kAllowLimitOverReplicatedTablets = true;
 
   // Max number of running tablet replicas that are over the configured limit.
-  int kMaxOverReplicatedTablets = FLAGS_load_balancer_max_over_replicated_tablets;
+  int kMaxOverReplicatedTabletsPerTable = FLAGS_load_balancer_max_over_replicated_tablets;
 
   // Max number of over-replicated tablet peer removals to do in any one run of the load balancer.
   int kMaxConcurrentRemovals = FLAGS_load_balancer_max_concurrent_removals;
@@ -344,6 +347,7 @@ class PerTableLoadState {
   // Get the load for a certain TS.
   size_t GetLoad(const TabletServerId& ts_uuid) const;
   size_t GetTabletDriveLoad(const TabletServerId& ts_uuid, const TabletId& tablet_id) const;
+  size_t GetPossiblyTransientLoad(const TabletServerId& ts_uuid) const;
 
   // Get the load for a certain TS.
   size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
