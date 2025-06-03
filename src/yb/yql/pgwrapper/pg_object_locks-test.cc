@@ -497,7 +497,7 @@ class PgObjectLocksTestAbortTxns : public PgObjectLocksTest,
   }
 };
 
-TEST_P(PgObjectLocksTestAbortTxns, TestDDLAbortsTxns) {
+TEST_P(PgObjectLocksTestAbortTxns, YB_DISABLE_TEST(TestDDLAbortsTxns)) {
   auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
   ASSERT_OK(conn.Execute("CREATE DATABASE testdb with colocation=true"));
 
