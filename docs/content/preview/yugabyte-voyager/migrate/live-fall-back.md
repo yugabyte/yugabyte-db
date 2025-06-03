@@ -583,7 +583,7 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 ## Prepare the target database
 
-Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) when using the YugabyteDB gRPC connector to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
+Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) when using the [YugabyteDB gRPC Connector](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
