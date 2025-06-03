@@ -1550,8 +1550,8 @@ void TabletServer::SetYsqlDBCatalogInvalMessagesUnlocked(
     }
   }
   // Merge the last db_oid's list.
-  CHECK_GT(current_db_oid, 0);
-  CHECK_LT(current_start_index, i);
+  DCHECK_GT(current_db_oid, 0);
+  DCHECK_LT(current_start_index, i);
   MergeInvalMessagesIntoQueueUnlocked(current_db_oid, db_catalog_inval_messages_data,
                                       current_start_index, i);
 }
@@ -1732,7 +1732,7 @@ void TabletServer::DoGarbageCollectionOfInvalidationMessages(
     // We do not do frequent garbage collections, take this chance to verify that the
     // queue is in sorted order of catalog versions.
     for (size_t i = 1; i < db_message_lists.size(); ++i) {
-      CHECK_LT(db_message_lists[i-1].first, db_message_lists[i].first)
+      DCHECK_LT(db_message_lists[i-1].first, db_message_lists[i].first)
           << i << " " << db_message_lists.size();
     }
 
@@ -1758,7 +1758,7 @@ void TabletServer::DoGarbageCollectionOfInvalidationMessages(
     }
 
     const auto& local_catalog_versions = it->second;
-    CHECK(!local_catalog_versions.empty()) << db_oid;
+    DCHECK(!local_catalog_versions.empty()) << db_oid;
 
     const auto min_catalog_version = db_message_lists[0].first;
 
