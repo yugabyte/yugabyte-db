@@ -798,7 +798,7 @@ class PgPartitioningVersionTest :
 
     // Make sure SST files appear to be able to split
     RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
-    return InvokeSplitTabletRpcAndWaitForDataCompacted(peer->tablet_id());
+    return InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), peer->tablet_id());
   }
 
   Result<TabletRecordsInfo> GetTabletRecordsInfo(
@@ -969,7 +969,7 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
     // Make sure SST files appear to be able to split
     ASSERT_OK(WaitForAnySstFiles(peer));
 
-    auto status = InvokeSplitTabletRpc(peer->tablet_id());
+    auto status = InvokeSplitTabletRpc(cluster_.get(), peer->tablet_id());
     if (partitioning_version == 0) {
       // Index tablet split is not supported for old index tables with range partitioning
       ASSERT_EQ(status.IsNotSupported(), true) << "Unexpected status: " << status.ToString();
@@ -1048,7 +1048,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       LOG(INFO) << "Split key: " << AsString(split_key);
 
       // Split index table.
-      ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(parent_peer->tablet_id()));
+      ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+          cluster_.get(), parent_peer->tablet_id()));
       ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
       // Keep current numbers of records persisted in tablets for further analyses.
@@ -1159,7 +1160,8 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     LOG(INFO) << "Split key values: t0 = \"" << idx1_t0 << "\", i0 = " << idx1_i0;
 
     // Split unique index table (idx1).
-    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(parent_peer->tablet_id()));
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+        cluster_.get(), parent_peer->tablet_id()));
     ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
     // Turn compaction off to make all subsequent deletes are kept in regular db.
