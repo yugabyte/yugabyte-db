@@ -1895,5 +1895,10 @@ bool TabletPeer::HasSufficientDiskSpaceForWrite() {
   return true;
 }
 
+bool TabletPeer::IsRunning() const {
+  auto state = state_.load(std::memory_order_acquire);
+  return state == RaftGroupStatePB::RUNNING;
+}
+
 }  // namespace tablet
 }  // namespace yb
