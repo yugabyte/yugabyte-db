@@ -1055,11 +1055,12 @@ yb-voyager cutover status --config-file <path-to-config-file>
 
     {{% tab header="CLI" lang="cli" %}}
 
-    
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager cutover status --export-dir <EXPORT_DIR>
-    ```
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager cutover status --export-dir <EXPORT_DIR>
+```
+
       {{% /tab %}}
 
     {{< /tabpane >}}
@@ -1083,16 +1084,16 @@ yb-voyager finalize-schema-post-data-import --config-file <path-to-config-file>
     {{% tab header="CLI" lang="cli" %}}
 
 
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
-       --target-db-host <TARGET_DB_HOST> \
-       --target-db-user <TARGET_DB_USER> \
-       --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-       --target-db-name <TARGET_DB_NAME> \
-       --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
+    --target-db-host <TARGET_DB_HOST> \
+    --target-db-user <TARGET_DB_USER> \
+    --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+    --target-db-name <TARGET_DB_NAME> \
+    --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
 
-    ```
+```
 
       {{% /tab %}}
 
