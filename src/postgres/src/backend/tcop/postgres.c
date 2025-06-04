@@ -4573,8 +4573,11 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	if (consider_retry &&
 		!IsTransactionBlock() &&
 		!YbIsBatchedExecution() &&
-		!YBCGetDisableTransparentCacheRefreshRetry())
+		!YBCGetDisableTransparentCacheRefreshRetry() &&
+		!YBIsDataSent())
 	{
+		YBRestoreOutputBufferPosition();
+
 		/* Clear error state */
 		FlushErrorState();
 
