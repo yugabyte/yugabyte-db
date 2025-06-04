@@ -21,6 +21,7 @@
 #include "yb/client/table.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(TEST_simulate_fs_create_with_empty_uuid);
 DECLARE_int32(num_replicas);
@@ -183,6 +184,56 @@ TEST_F(TabletServerITest, TestProxyAddrsNonDefault) {
     ASSERT_EQ(res, Format("127.0.0.3$0", i));
     ASSERT_NE(res, rpc_host);
   }
+}
+
+/**
+ * Druing the log replay, after a txn is applied we submit a task to tablet peer to remove the
+ * associated intentsdb keys. But the tablet peer is not running yet at that moment, so the intentdb
+ * remove task is not actually scheduled. The test simulates the case and checks the intentdb keys
+ * should be removed once the tablet peer is ready.
+ */
+TEST_F(TabletServerITest, TestNoScheduleRemoveIntentsByDelayTabletPeer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+
+  // Start cluster
+  BuildAndStart(std::vector<std::string>(), std::vector<std::string>(), /* enable_ysql */ true);
+
+  auto* ts = cluster_->tablet_server(0);
+  WaitForTSAndReplicas();
+
+  // set no_schedule_remove_intents=true so the intentsdb keys will not be removed.
+  ASSERT_OK(cluster_->SetFlag(ts, "TEST_no_schedule_remove_intents", "true"));
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test_db"));
+  auto db_conn = ASSERT_RESULT(cluster_->ConnectToDB("test_db"));
+
+  // Create table
+  ASSERT_OK(db_conn.Execute("CREATE TABLE test_table (k INT PRIMARY KEY, v INT)"));
+
+  // Insert a row in a transaction
+  ASSERT_OK(db_conn.Execute("BEGIN"));
+  ASSERT_OK(db_conn.Execute("INSERT INTO test_table (k, v) VALUES (1, 1)"));
+  ASSERT_OK(db_conn.Execute("COMMIT"));
+
+  // Since no_schedule_remove_intents is true, intents should not be removed
+  ASSERT_NOK(WaitForTableIntentsApplied(cluster_.get(), "", MonoDelta::FromSeconds(30)));
+
+  // Verify the intents was applied though not removed
+  auto cnt = ASSERT_RESULT(db_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM test_table WHERE k = 1"));
+  CHECK_EQ(cnt, 1);
+
+  // Restart the tablet server and delay tablet peer init for a while
+  ts->Shutdown();
+  ASSERT_OK(ts->Restart(false, {{"TEST_delay_init_tablet_peer_ms", "10000"}}));
+
+  // Wait for the server to be ready
+  WaitForTSAndReplicas();
+
+  // Intents should be removed after restart
+  ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), "", MonoDelta::FromSeconds(30)));
 }
 
 }  // namespace tserver

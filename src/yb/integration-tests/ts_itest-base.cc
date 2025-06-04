@@ -66,7 +66,8 @@ void TabletServerIntegrationTestBase::AddExtraFlags(
 void TabletServerIntegrationTestBase::CreateCluster(
     const std::string& data_root_path,
     const std::vector<std::string>& non_default_ts_flags,
-    const std::vector<std::string>& non_default_master_flags) {
+    const std::vector<std::string>& non_default_master_flags,
+    bool enable_ysql) {
   LOG(INFO) << "Starting cluster with:";
   LOG(INFO) << "--------------";
   LOG(INFO) << FLAGS_num_tablet_servers << " tablet servers";
@@ -76,6 +77,7 @@ void TabletServerIntegrationTestBase::CreateCluster(
   ExternalMiniClusterOptions opts;
   opts.num_tablet_servers = FLAGS_num_tablet_servers;
   opts.data_root = GetTestPath(data_root_path);
+  opts.enable_ysql = enable_ysql;
 
   // If the caller passed no flags use the default ones, where we stress consensus by setting
   // low timeouts and frequent cache misses.
@@ -157,7 +159,7 @@ void TabletServerIntegrationTestBase::WaitForReplicasAndUpdateLocations() {
 
   tablet_id_ = (*tablet_replicas_.begin()).first;
   CHECK_OK(WaitUntilAllTabletReplicasRunning(TServerDetailsVector(tablet_replicas_), tablet_id_,
-                                               10s * kTimeMultiplier));
+                                             30s * kTimeMultiplier));
 }
 
 // Returns the last committed leader of the consensus configuration. Tries to get it from master
@@ -426,8 +428,9 @@ void TabletServerIntegrationTestBase::CreateTable() {
 // flags to pass to the tablet servers.
 void TabletServerIntegrationTestBase::BuildAndStart(
     const std::vector<std::string>& ts_flags,
-    const std::vector<std::string>& master_flags) {
-  CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
+    const std::vector<std::string>& master_flags,
+    bool enable_ysql) {
+  CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags, enable_ysql);
   client_ = ASSERT_RESULT(CreateClient());
   ASSERT_NO_FATALS(CreateTable());
   WaitForTSAndReplicas();
