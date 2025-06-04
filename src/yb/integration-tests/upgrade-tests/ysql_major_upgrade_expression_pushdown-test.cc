@@ -105,16 +105,11 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
   bool mixed_mode_saop_pushdown_ = false;
   bool mixed_mode_ = false;
 
-  Status SetMixedModeSaopPushdownForPg15(bool value) {
-    if (!mixed_mode_)
-      // We can't set this flag on PG11 servers, so first validate that there is a PG15 server
-      return Status::OK();
-
+  Status SetMixedModeSaopPushdown(bool value) {
     mixed_mode_saop_pushdown_ = value;
 
     const auto saop_flag = "ysql_yb_mixed_mode_saop_pushdown";
-    const auto tserver = cluster_->tablet_server(kMixedModeTserverPg15);
-    RETURN_NOT_OK(cluster_->SetFlag(tserver, saop_flag, value ? "true" : "false"));
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers(saop_flag, value ? "true" : "false"));
     std::this_thread::sleep_for(50ms); // Sometimes the flag takes a while to propagate
     return Status::OK();
   }
@@ -273,13 +268,13 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
 
       if (upgrade_compat == "11" && mixed_mode_expression_pushdown_) {
         /* Retry any SAOP expressions with SAOP pushdown disabled */
-        RETURN_NOT_OK(SetMixedModeSaopPushdownForPg15(false));
+        RETURN_NOT_OK(SetMixedModeSaopPushdown(false));
         for (auto &expr : exprs) {
           if (expr.IsSaopExpression()) {
             RETURN_NOT_OK(check_filters(conn, kLocalFilter, expr, ts_id));
           }
         }
-        RETURN_NOT_OK(SetMixedModeSaopPushdownForPg15(true));
+        RETURN_NOT_OK(SetMixedModeSaopPushdown(true));
       }
 
       return Status::OK();
@@ -287,6 +282,7 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
 
     // All expressions should be pushable in PG11
     mixed_mode_ = false;
+    RETURN_NOT_OK(SetMixedModeSaopPushdown(true));
     RETURN_NOT_OK(check(kMixedModeTserverPg11));
 
     RETURN_NOT_OK(
@@ -300,7 +296,6 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
     RETURN_NOT_OK(UpgradeClusterToMixedMode());
     mixed_mode_ = true;
 
-    RETURN_NOT_OK(SetMixedModeSaopPushdownForPg15(true));
     for (auto mixed_mode_expression_pushdown : {true, false}) {
       RETURN_NOT_OK(SetMixedModePushdown(mixed_mode_expression_pushdown));
       RETURN_NOT_OK(check(kMixedModeTserverPg11));
@@ -523,17 +518,17 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
 TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestScalarArrayOpExprs) {
   ASSERT_OK(TestPushdowns(Format("EXPLAIN $0 SELECT * FROM $1 WHERE", kExplainArgs, kTableName), {
     Expression(Format("($0 = ANY ('{1,2}'::integer[]))", kInt4Column),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
     Expression(Format("($0 <> ALL ('{1,2}'::text[]))", kTextColumn),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
     Expression(Format("(($0 = ANY ('{1,2}'::integer[])) AND ($1 = ANY ('{1,2}'::text[])))",
                       kInt4Column, kTextColumn),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
     Expression(Format("(($0 = ANY ('{1,2}'::integer[])) OR ($1 = ANY ('{1,2}'::text[])))",
                       kInt4Column, kTextColumn),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
     Expression(Format("($0 ~~ ANY ('{1%,2%}'::text[]))", kTextColumn),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
   }));
 }
 
