@@ -87,8 +87,8 @@ extern char *SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id,
 /* If true, any object in this schema is a temporary object. */
 extern bool IsTempSchema(const char *schema_name);
 
-/* Returns the relation's colocation id or 0 if not colocated. */
-extern Oid GetColocationIdFromRelation(Relation *rel);
+/* Returns the relation's colocation id or InvalidOid (0) if not colocated. */
+extern Oid GetColocationIdFromRelation(Relation *rel, bool is_table_rewrite);
 
 extern char *get_typname(Oid pg_type_oid);
 
