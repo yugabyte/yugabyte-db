@@ -52,6 +52,9 @@ class TransactionParticipantContext {
 
   virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
 
+  // Returns true if the context is running
+  virtual bool IsRunning() const = 0;
+
   std::string LogPrefix() const;
 
   HybridTime Now();
