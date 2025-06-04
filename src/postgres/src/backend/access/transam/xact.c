@@ -219,9 +219,8 @@ typedef struct TransactionStateData
 	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to
 										 * frontend as part of current query's
 										 * execution */
-	uint8		ybPostgresOpsInTxn; /* An OR'ed list of operations performed
-									 * on postgres (temp) tables by current
-									 * txn. */
+	bool		ybTxnUsesTempRel; /* True if the transaction operates on a
+								   * temporary table */
 	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
 									 * DocDB operations (e.g. drop
 									 * table/index) until the rest of the txn
@@ -265,7 +264,7 @@ static TransactionStateData TopTransactionStateData = {
 	.topXidLogged = false,
 	.ybDataSent = false,
 	.ybDataSentForCurrQuery = false,
-	.ybPostgresOpsInTxn = 0,
+	.ybTxnUsesTempRel = false,
 	.YBPostponedDdlOps = NULL,
 };
 
@@ -1386,22 +1385,8 @@ RecordTransactionCommit(void)
 	bool		RelcacheInitFileInval = false;
 	bool		wrote_xlog;
 
-	if (IsYugaByteEnabled() && !YbGetPgOpsInCurrentTxn())
+	if (IsYugaByteEnabled() && !YbCurrentTxnUsesTempRel())
 		return InvalidTransactionId;
-
-	/*
-	 * TODO(kramanathan): The bitwise flags returned by
-	 * YbGetPgOpsInCurrentTxn() are not independent of each other. The flag
-	 * YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY only requires a subset of
-	 * YB_TXN_USES_TEMPORARY_RELATIONS's operations at commit. Logical
-	 * equality is used intentionally here to exit early.
-	 */
-	else if (IsYugaByteEnabled() &&
-			 YbGetPgOpsInCurrentTxn() == YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY)
-	{
-		nchildren = xactGetCommittedChildren(&children);
-		return TransactionIdLatest(xid, nchildren, children);
-	}
 
 	/*
 	 * Log pending invalidations for logical decoding of in-progress
@@ -2100,7 +2085,7 @@ static void
 YBStartTransaction(TransactionState s)
 {
 	elog(DEBUG2, "YBStartTransaction");
-	s->ybPostgresOpsInTxn = 0;
+	s->ybTxnUsesTempRel = false;
 	s->ybDataSent = false;
 	s->ybDataSentForCurrQuery = false;
 	s->YBPostponedDdlOps = NULL;
@@ -3317,7 +3302,7 @@ RestoreTransactionCharacteristics(const SavedTransactionCharacteristics *s)
 }
 
 void
-YbSetTxnWithPgOps(uint8 pg_op_type)
+YbSetTxnUsesTempRel()
 {
 	TransactionState s = CurrentTransactionState;
 
@@ -3329,15 +3314,26 @@ YbSetTxnWithPgOps(uint8 pg_op_type)
 	 */
 	while (s != NULL)
 	{
-		s->ybPostgresOpsInTxn |= pg_op_type;
+		s->ybTxnUsesTempRel = true;
 		s = s->parent;
 	}
 }
 
-uint8
-YbGetPgOpsInCurrentTxn(void)
+void
+YBMarkTxnUsesTempRelAndSetTxnId()
 {
-	return CurrentTransactionState->ybPostgresOpsInTxn;
+	YbSetTxnUsesTempRel();
+	/*
+	 * Invoke GetCurrentTransactionId() to assign a txn id
+	 * as we we want to use PG txn code paths for txns that use temp relations.
+	 */
+	GetCurrentTransactionId();
+}
+
+bool
+YbCurrentTxnUsesTempRel(void)
+{
+	return CurrentTransactionState->ybTxnUsesTempRel;
 }
 
 /*

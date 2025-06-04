@@ -6096,14 +6096,6 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		}
 
 		/*
-		 * YB: When rewriting a temp relation, we need to execute the PG
-		 * transaction handling code-paths, as PG uses the transaction ID to
-		 * determine what rows are visible to a specific transaction.
-		 */
-		if (!IsYBRelationById(tab->relid) && tab->rewrite > 0)
-			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
-
-		/*
 		 * If we change column data types, the operation has to be propagated
 		 * to tables that use this table's rowtype as a column type.
 		 * tab->newvals will also be non-NULL in the case where we're adding a
