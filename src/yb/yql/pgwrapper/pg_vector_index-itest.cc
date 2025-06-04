@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <ranges>
+
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -252,6 +254,17 @@ TEST_F_EX(PgVectorIndexITest, CrashAfterRBSDownload, PgVectorIndexRBSITest) {
     return lagging_tablets.status_and_schema()[0].tablet_status().last_op_id().index() >=
            good_tablets.status_and_schema()[0].tablet_status().last_op_id().index();
   }, 5s, "Wait lagging TS to catch up"));
+}
+
+TEST_F(PgVectorIndexITest, Truncate) {
+  constexpr size_t kNumIterations = 25;
+
+  auto conn = ASSERT_RESULT(ConnectAndInit());
+  ASSERT_OK(CreateIndex(conn));
+  for (size_t i = 1; i <= kNumIterations; ++i) {
+    LOG(INFO) << "Iteration: " << i;
+    ASSERT_OK(conn.Execute("TRUNCATE test"));
+  }
 }
 
 } // namespace yb::pgwrapper
