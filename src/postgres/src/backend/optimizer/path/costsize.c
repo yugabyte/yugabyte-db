@@ -7713,12 +7713,13 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 					  (1 - 1 / index_result_num_pages)));
 	}
 
-	if (!is_primary_index && !index_only && !baserel_is_colocated)
+	double		num_baserel_result_pages = 0;
+
+	if (!is_primary_index && !index_only)
 	{
 		/*
-		 * We need a second round trip to the base table only in case this is a
-		 * secondary index scan, not an index only scan and the table is not
-		 * correlated.
+		 * We need to lookup the base table only in case this is a
+		 * secondary index scan.
 		 */
 
 		Cost		baserel_roundtrip_cost;
@@ -7734,7 +7735,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 		/* Add cost of fetching result from base table */
 		startup_cost += baserel_roundtrip_cost;
-		double		num_baserel_result_pages;
 		if (path->path.parallel_workers > 0)
 		{
 			num_baserel_result_pages = ceil(num_baserel_result_rows *

@@ -260,13 +260,11 @@ SELECT * FROM pctest1 WHERE c = 10;
 --secondary index
 EXPLAIN (costs off)
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
-                           QUERY PLAN
-----------------------------------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Limit
-   ->  Gather Merge
-         Workers Planned: 2
-         ->  Parallel Index Scan using pctest1_a_idx on pctest1
-(4 rows)
+   ->  Index Scan using pctest1_a_idx on pctest1
+(2 rows)
 
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
   k   | a |  b  | c  |     d
@@ -371,13 +369,13 @@ SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
                            QUERY PLAN
 ----------------------------------------------------------------
- Nested Loop
-   ->  Gather
-         Workers Planned: 2
+ Gather
+   Workers Planned: 2
+   ->  Nested Loop
          ->  Parallel Index Scan using pctest1_a_idx on pctest1
                Storage Index Filter: ((a % 10) = 0)
-   ->  Index Only Scan using pctest2_b_idx on pctest2
-         Index Cond: (b = pctest1.a)
+         ->  Index Only Scan using pctest2_b_idx on pctest2
+               Index Cond: (b = pctest1.a)
 (7 rows)
 
 /*+
@@ -565,7 +563,7 @@ SELECT * FROM
                Hash Cond: (pctest4.c = pctest1.b)
                ->  Gather
                      Workers Planned: 2
-                     ->  Parallel Index Scan using pctest2_b_idx on pctest2 pctest4
+                     ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest4
                ->  Hash
                      ->  Merge Join
                            Merge Cond: (pctest1.k = pctest2.k)
