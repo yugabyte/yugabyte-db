@@ -23,6 +23,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/cluster_balance_warnings.h"
 #include "yb/master/ts_descriptor.h"
 
 DECLARE_int32(leader_balance_threshold);
@@ -275,6 +276,8 @@ class GlobalLoadState {
       }
     }
     out += "]}, total_starting_tablets: " + std::to_string(total_starting_tablets_) + " }";
+    // Intentionally not printing out errors_ as it can be very long and cause us to hit the glog
+    // line length limit.
     return out;
   }
 
@@ -291,6 +294,9 @@ class GlobalLoadState {
 
   // List of tablet server ids that have pending deletes.
   std::unordered_map<TabletServerId, std::set<TabletId>> pending_deletes_;
+
+  // List of warnings that might prevent the load balancer from making progress.
+  ClusterBalancerWarnings warnings_;
 
  private:
   // Map from tablet server ids to the global metadata we store for each.

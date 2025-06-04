@@ -49,7 +49,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return tables_.FindTableOrNull(table_uuid);
   }
 
-  Result<ReplicationInfoPB> GetTableReplicationInfo(
+  ReplicationInfoPB GetTableReplicationInfo(
       const scoped_refptr<const TableInfo>& table) const override {
     return replication_info_;
   }
