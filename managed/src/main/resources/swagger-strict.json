@@ -42330,6 +42330,14 @@
             "name" : "cUUID",
             "required" : true,
             "type" : "string"
+          },
+          {
+            "default" : "null",
+            "description" : "Optional email to filter user list",
+            "in" : "query",
+            "name" : "email",
+            "required" : false,
+            "type" : "string"
           }
         ],
         "responses" : {
