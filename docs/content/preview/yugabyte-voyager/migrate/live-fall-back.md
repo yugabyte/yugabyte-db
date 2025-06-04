@@ -913,14 +913,42 @@ Keep monitoring the metrics displayed for export data from source and import dat
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your source database, that is stop application writes.
-1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
+1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using `cutover to target` command (CLI) or using the configuration file.
 
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
-    ```
+    {{< tabpane text=true >}}
 
-    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
+    {{% tab header="Config File" lang="config" %}}
+
+Add the following to your configuration file:
+
+```yaml
+...
+inititate-cutover-to-target:
+  prepare-for-fall-back: true
+...
+```
+
+Then run the following command:
+
+```sh
+yb-voyager initiate cutover to target --config-file <PATH-TO-CONFIG-FILE>
+```
+
+      {{% /tab %}}
+
+    {{% tab header="CLI" lang="cli" %}}
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
+```
+
+      {{% /tab %}}
+
+    {{< /tabpane >}}
+
+
+    Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for more information.
 
     As part of the cutover process, the following occurs in the background:
 
