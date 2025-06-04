@@ -547,6 +547,52 @@ TEST_F(XClusterDDLReplicationTest, CreateIndex) {
   ASSERT_OK(c_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
 }
 
+TEST_F(XClusterDDLReplicationTest, IndexCreationImmediatelyAfterInsert) {
+  // Test creating an index soon after inserting rows. Ensures that we are picking an appropriate
+  // backfill time that isn't just the xCluster safe time (which may not work for ddl replication as
+  // the ddl_queue table holds up safe time).
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  int64_t row_count = 20;
+  ASSERT_OK(producer_conn.Execute(
+      "CREATE TABLE demo (k int primary key, v text, d timestamp default clock_timestamp())"));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO demo(k,v) SELECT x,x FROM generate_series(1, $0) x", row_count));
+  ASSERT_OK(producer_conn.Execute(
+      "CREATE INDEX ON demo(mod(yb_hash_code(k), 5) asc, d) SPLIT AT VALUES ((2), (4))"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto query =
+      "SELECT k, mod(yb_hash_code(k), 5) FROM demo WHERE mod(yb_hash_code(k), 5) in (0,1,2,3,4)";
+  auto producer_result = ASSERT_RESULT(producer_conn.FetchAllAsString(query));
+  auto consumer_result = ASSERT_RESULT(consumer_conn.FetchAllAsString(query));
+
+  LOG(INFO) << "producer output: " << producer_result;
+  LOG(INFO) << "consumer output: " << consumer_result;
+  ASSERT_EQ(producer_result, consumer_result);
+
+  // Make sure we have cleared out the xcluster_table_info information by end of backfill.
+  auto& catalog_manager = consumer_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+  {
+    auto table_info = catalog_manager.GetTableInfoFromNamespaceNameAndTableName(
+        YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, "demo", "public");
+    auto& table_info_pb = table_info->LockForRead()->pb;
+    EXPECT_TRUE(!table_info_pb.has_xcluster_table_info())
+        << AsString(table_info_pb.xcluster_table_info());
+  }
+  {
+    auto table_info = catalog_manager.GetTableInfoFromNamespaceNameAndTableName(
+        YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, "demo_mod_d_idx", "public");
+    auto& table_info_pb = table_info->LockForRead()->pb;
+    EXPECT_TRUE(!table_info_pb.has_xcluster_table_info())
+        << AsString(table_info_pb.xcluster_table_info());
+  }
+}
+
 TEST_F(XClusterDDLReplicationTest, NonconcurrentBackfills) {
   // Test commands that trigger nonconcurrent backfills.
   // Want to ensure that we don't trigger the backfill on the target, otherwise we may see duplicate
@@ -1321,8 +1367,8 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
   SyncPoint::GetInstance()->LoadDependency(
-      {{"XClusterDDLQueueHandler::DdlQueueSafeTimeBumped",
-        "XClusterDDLReplicationTest::WaitForIncrementalSafeTimeBump"}});
+      {{.predecessor = "XClusterDDLQueueHandler::DdlQueueSafeTimeBumped",
+        .successor = "XClusterDDLReplicationTest::WaitForIncrementalSafeTimeBump"}});
 
   // Setup the test table, create table with multiple columns and insert data.
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -1330,8 +1376,6 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
       producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key, a int)", kTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 SELECT i, i FROM generate_series(1, 1000) as i", kTableName));
-  const auto original_producer_rows = ASSERT_RESULT(
-      producer_conn.FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   // Fail incremental safe time bump - safe time should not advance but we
@@ -1357,7 +1401,6 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   ASSERT_EQ(producer_rows_after_drop, consumer_rows);
 
   // Get the current safe time on the target.
-  auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client()));
 
   // Allow incremental safe time bumps. But don't allow the batch to fully complete.
   SyncPoint::GetInstance()->EnableProcessing();
