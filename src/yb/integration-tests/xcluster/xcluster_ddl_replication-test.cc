@@ -146,6 +146,26 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name2));
 }
 
+// We have a temporary fix for this test that we are applying only in non-debug builds.  We do this
+// so we will catch other tests that need the same permanent fix.  See #27622.
+TEST_F(XClusterDDLReplicationTest, YB_NEVER_DEBUG_TEST(CheckpointMultipleDatabases)) {
+  ASSERT_OK(SetUpClusters());
+
+  std::vector<NamespaceName> namespaces{namespace_name};
+  for (int i = 0; i < base::NumCPUs() * 2; i++) {
+    auto name = Format("db_$0", i);
+    ASSERT_OK(CreateDatabase(&producer_cluster_, name, false));
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(name));
+    ASSERT_OK(conn.Execute("CREATE TABLE tbl2(a int)"));
+    namespaces.push_back(name);
+  }
+
+  google::SetVLOGLevel("catalog_manager", 2);
+  google::SetVLOGLevel("async_rpc_tests", 1);
+  google::SetVLOGLevel("async_rpc_tests_base", 4);
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces));
+}
+
 TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {
   ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
