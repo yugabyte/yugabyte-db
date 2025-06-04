@@ -219,9 +219,10 @@ class LockablePgClientSession {
   }
 
   Status StartExchange(const std::string& instance_id, ThreadPool& thread_pool) {
-    auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
+    shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
+        instance_id, id(), Create::kTrue));
     exchange_runnable_ = std::make_shared<SharedExchangeRunnable>(
-        std::move(exchange), [this](size_t size) {
+        shared_mem_manager_.exchange(), shared_mem_manager_.session_id(), [this](size_t size) {
       Touch();
       std::unique_lock lock(mutex_);
       session_.ProcessSharedRequest(size, &exchange_runnable_->exchange());
@@ -282,6 +283,7 @@ class LockablePgClientSession {
 
   std::mutex mutex_;
   PgClientSession session_;
+  PgSessionSharedMemoryManager shared_mem_manager_;
   std::shared_ptr<SharedExchangeRunnable> exchange_runnable_;
   const CoarseDuration lifetime_;
   std::atomic<CoarseTimePoint> expiration_;
@@ -575,7 +577,8 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     ScheduleCheckObjectIdAllocators();
     ScheduleCheckYsqlLeaseWithNoLease();
     if (FLAGS_pg_client_use_shared_memory) {
-      WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
+      WARN_NOT_OK(PgSessionSharedMemoryManager::Cleanup(instance_id_),
+                  "Cleanup shared memory failed");
     }
     shared_mem_pool_.Start(messenger->scheduler());
   }
