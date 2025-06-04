@@ -39,4 +39,10 @@ menu:
     href="diagnostics-report/"
     icon="fa-sharp fa-thin fa-stethoscope">}}
 
+  {{<index/item
+    title="Configuration file"
+    body="Configuration file for yb-voyager commands parameters"
+    href="configuration-file/"
+    icon="/images/section_icons/manage/export_import.png">}}
+
 {{</index/block>}}
