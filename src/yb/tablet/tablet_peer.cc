@@ -2019,4 +2019,9 @@ Status BackfillNamespaceIdIfNeeded(
   return metadata.set_namespace_id(namespace_id);
 }
 
+bool TabletPeer::IsRunning() const {
+  auto state = state_.load(std::memory_order_acquire);
+  return state == RaftGroupStatePB::RUNNING;
+}
+
 }  // namespace yb::tablet

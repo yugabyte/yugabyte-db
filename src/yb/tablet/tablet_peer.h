@@ -332,6 +332,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // aborted.
   Result<std::pair<OpId, HybridTime>> GetOpIdAndSafeTimeForXReplBootstrap() const;
 
+  bool IsRunning() const override;
+
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
   // Returns a non-ok status if the tablet isn't running.

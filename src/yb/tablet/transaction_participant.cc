@@ -639,6 +639,12 @@ class TransactionParticipant::Impl
   template <class Queue>
   void CleanTransactionsQueue(
       Queue* queue, MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
+    // The tablet peer is not ready yet, skip the clean up for now. Once the table peer is ready,
+    // Poll will clean up the queue.
+    if (!participant_context_.IsRunning()) {
+      return;
+    }
+
     int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
                                                     : running_requests_.front();
     HybridTime safe_time;
@@ -1812,8 +1818,9 @@ class TransactionParticipant::Impl
     TransactionId txn_id = (**it).id();
     OpId checkpoint_op_id = GetLatestCheckPointUnlocked();
     OpId op_id = (**it).GetApplyOpId();
+    const bool tablet_peer_running = participant_context_.IsRunning();
 
-    if (running_requests_.empty()) {
+    if (running_requests_.empty() && tablet_peer_running) {
       auto result = HandleTransactionCleanup(it, reason, checkpoint_op_id);
 
       if (result.post_apply_metadata_entry.has_value()) {
@@ -1843,8 +1850,10 @@ class TransactionParticipant::Impl
       .transaction_id = (**it).id(),
       .reason = reason,
       .expected_deadlock_status = expected_deadlock_status,
+      .tablet_peer_running = tablet_peer_running,
     });
-    VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id() << ", reason: " << reason;
+    VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id() << ", reason: " << reason
+                        << ", peer running: " << tablet_peer_running;
     return false;
   }
 
@@ -2203,11 +2212,22 @@ class TransactionParticipant::Impl
         decltype(pending_applies_)().swap(pending_applies_);
       }
     }
+
+    if (!participant_context_.IsRunning()) {
+      // The participant is started before Tablet Peer is initialized. At this moment,
+      // the participant_context_(TabletPeer) may not be running, so skip the poll check for now.
+      return;
+    }
+
     {
       MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard lock(mutex_);
 
       ProcessRemoveQueueUnlocked(&min_running_notifier);
+      if (!immediate_cleanup_queue_.empty() &&
+          !immediate_cleanup_queue_.front().tablet_peer_running) {
+        CleanTransactionsQueue(&immediate_cleanup_queue_,  &min_running_notifier);
+      }
       CleanTransactionsQueue(&graceful_cleanup_queue_, &min_running_notifier);
       CleanDeadlockedTransactionsMapUnlocked();
     }
@@ -2430,6 +2450,8 @@ class TransactionParticipant::Impl
     RemoveReason reason;
     // Status containing deadlock info if the transaction was aborted due to deadlock.
     Status expected_deadlock_status = Status::OK();
+    // Whether the state of the tablet peer is running when the entry is inserted to the queue.
+    bool tablet_peer_running = true;
 
     bool Ready(TransactionParticipantContext* participant_context, HybridTime* safe_time) const {
       return true;
