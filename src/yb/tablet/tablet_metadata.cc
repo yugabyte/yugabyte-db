@@ -431,7 +431,6 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .packed_row_version = docdb::PackedRowVersion(
         self->table_type, self->doc_read_context->schema().is_colocated()),
-    .schema = rpc::SharedField(self->doc_read_context, &self->doc_read_context->schema())
   };
 }
 

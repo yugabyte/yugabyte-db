@@ -351,8 +351,7 @@ Status CompleteColumns(size_t packed_columns, Packer* packer) {
   const auto& packing = packer->packing();
   if (packed_columns < packing.columns()) {
     const auto& packing_data = packing.column_packing_data(packing.columns() - 1);
-    const auto& missing_value = VERIFY_RESULT_REF(
-        packer->missing_value_provider().GetMissingValueByColumnId(packing_data.id));
+    const auto& missing_value = packing_data.missing_value;
     if (!IsNull(missing_value)) {
       RETURN_NOT_OK(packer->AddValue(packing_data.id, missing_value));
     } else {
@@ -374,21 +373,17 @@ size_t PackedSizeLimit(size_t value) {
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    const ValueControlFields& control_fields,
-    std::reference_wrapper<const MissingValueProvider> missing_value_provider)
+    const ValueControlFields& control_fields)
     : packing_(packing),
-      packed_size_limit_(PackedSizeLimit(packed_size_limit)),
-      missing_value_provider_(missing_value_provider) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
   control_fields.AppendEncoded(&result_);
 }
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    Slice control_fields,
-    std::reference_wrapper<const MissingValueProvider> missing_value_provider)
+    Slice control_fields)
     : packing_(packing),
-      packed_size_limit_(PackedSizeLimit(packed_size_limit)),
-      missing_value_provider_(missing_value_provider) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
   result_.Append(control_fields);
 }
 
