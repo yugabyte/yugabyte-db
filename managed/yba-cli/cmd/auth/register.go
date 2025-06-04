@@ -178,7 +178,12 @@ var RegisterCmd = &cobra.Command{
 		}
 		logrus.Debugf("API Login response without errors\n")
 
-		authUtil(url, r.GetApiToken())
+		showToken, err := cmd.Flags().GetBool("show-api-token")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		authUtil(url, r.GetApiToken(), showToken)
 	},
 }
 
@@ -202,6 +207,8 @@ func init() {
 	RegisterCmd.Flags().String("environment", "dev",
 		"[Optional] Environment of the installation. "+
 			"Allowed values: dev, demo, stage, prod.")
+	RegisterCmd.Flags().
+		Bool("show-api-token", false, "[Optional] Show the API token after registeration. (default false)")
 	RegisterCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 }
