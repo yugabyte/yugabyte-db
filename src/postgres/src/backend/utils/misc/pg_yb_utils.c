@@ -3393,6 +3393,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 					break;
 				}
 
+				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+					YBMarkTxnUsesTempRelAndSetTxnId();
+
 				is_version_increment = false;
 				break;
 			}
@@ -3466,15 +3469,20 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 					{
 						ListCell   *cell;
 						is_version_increment = false;
+						bool marked_temp = false;
 
 						foreach(cell, stmt->objects)
 						{
 							RangeVar *rel = makeRangeVarFromNameList((List *) lfirst(cell));
 							if (!YbIsRangeVarTempRelation(rel))
-							{
 								is_version_increment = true;
-								break;
+							else if (!marked_temp)
+							{
+								marked_temp = true;
+								YBMarkTxnUsesTempRelAndSetTxnId();
 							}
+							if (is_version_increment && marked_temp)
+								break;
 						}
 
 						if (!is_version_increment)
@@ -3580,6 +3588,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
 					break;
 				}
 
@@ -3634,6 +3643,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				is_breaking_change = false;
 				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level);
@@ -3691,7 +3701,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 					 * which generates a PostgreSQL XID. Mark the transaction
 					 * as such, so that it can be handled at commit time.
 					 */
-					YbSetTxnWithPgOps(YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY);
+					YbSetTxnUsesTempRel();
 				}
 				else
 					/*

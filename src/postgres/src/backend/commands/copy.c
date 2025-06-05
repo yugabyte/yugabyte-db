@@ -135,7 +135,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 
 		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
 			IsYugaByteEnabled())
-			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
+			YbSetTxnUsesTempRel();
 
 		relid = RelationGetRelid(rel);
 

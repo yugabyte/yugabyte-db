@@ -2515,7 +2515,7 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		 */
 		if (plansource->usesPostgresRel)
 		{
-			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
+			YbSetTxnUsesTempRel();
 		}
 
 		spicallbackarg.query = plansource->query_string;
