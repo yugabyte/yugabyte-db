@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Box, makeStyles } from '@material-ui/core';
 import { YBButton, YBInput, YBLabel } from '../../components';
 import { YBPanelItem } from '../../../components/panels';
-import { DeleteTPConfigDialog } from './TroubleshootingDialog/DeleteTPConfigDialog';
-import { EditTPConfigDialog } from './TroubleshootingDialog/EditTPConfigDialog';
+import { UnregisterPerfAdvisorDialog } from './PerfAdvisorDialog/UnregisterPerfAdvisorDialog';
+import { EditPerfAdvisorConfigDialog } from './PerfAdvisorDialog/EditPerfAdvisorConfigDialog';
 
 const useStyles = makeStyles((theme) => ({
   infoBox: {
@@ -23,7 +23,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-interface TroubleshootingConfigInfoProps {
+interface PerfAdvisorUniverseConfigProps {
   tpUrl: string;
   ybaUrl: string;
   metricsUrl: string;
@@ -36,7 +36,7 @@ interface TroubleshootingConfigInfoProps {
   onRefetchConfig: () => void;
 }
 
-export const TroubleshootingConfigInfo = ({
+export const PerfAdvisorUniverseConfig = ({
   tpUrl,
   ybaUrl,
   metricsUrl,
@@ -47,26 +47,26 @@ export const TroubleshootingConfigInfo = ({
   apiToken,
   tpApiToken,
   onRefetchConfig
-}: TroubleshootingConfigInfoProps) => {
+}: PerfAdvisorUniverseConfigProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
-  const [showEditTPConfigDialog, setShowEditTPConfigDialog] = useState<boolean>(false);
-  const [showDeleteTPConfigDialog, setShowDeleteTPConfigDialog] = useState<boolean>(false);
+  const [showEditPaConfigDialog, setShowEditPaConfigDialog] = useState<boolean>(false);
+  const [showDeletePaConfigDialog, setShowDeletePaConfigDialog] = useState<boolean>(false);
 
-  const onEditTPConfigButtonClick = () => {
-    setShowEditTPConfigDialog(true);
+  const onEditPaConfigButtonClick = () => {
+    setShowEditPaConfigDialog(true);
   };
 
-  const onEditTPConfigDialogClose = () => {
-    setShowEditTPConfigDialog(false);
+  const onEditPaConfigDialogClose = () => {
+    setShowEditPaConfigDialog(false);
   };
 
-  const onDeleteTPConfigButtonClick = () => {
-    setShowDeleteTPConfigDialog(true);
+  const onDeletePaConfigButtonClick = () => {
+    setShowDeletePaConfigDialog(true);
   };
 
-  const onDeleteTPConfigDialogClose = () => {
-    setShowDeleteTPConfigDialog(false);
+  const onDeletePaConfigDialogClose = () => {
+    setShowDeletePaConfigDialog(false);
   };
 
   const configData = {
@@ -86,7 +86,7 @@ export const TroubleshootingConfigInfo = ({
       body={
         <Box>
           <Box className={helperClasses.infoBox}>
-            <YBLabel dataTestId="TroubleshootConfigInfo-TpUrlLabel" width="300px">
+            <YBLabel dataTestId="PerfAdvisorUniverseConfig-TpUrlLabel" width="300px">
               {t('clusterDetail.troubleshoot.tpServiceUrlLabel')}
             </YBLabel>
             <YBInput
@@ -98,19 +98,22 @@ export const TroubleshootingConfigInfo = ({
             />
           </Box>
           <Box className={helperClasses.infoBox}>
-            <YBLabel dataTestId="TroubleshootConfigInfo-ybaUrlLabel" width="300px">
+            <YBLabel dataTestId="PerfAdvisorUniverseConfig-ybaUrlLabel" width="300px">
               {t('clusterDetail.troubleshoot.ybPlatformServiceUrlLabel')}
             </YBLabel>
             <YBInput type="text" disabled value={ybaUrl} className={helperClasses.textBox} />
           </Box>
           <Box className={helperClasses.infoBox}>
-            <YBLabel dataTestId="TroubleshootConfigInfo-metricsUrlLabel" width="300px">
+            <YBLabel dataTestId="PerfAdvisorUniverseConfig-metricsUrlLabel" width="300px">
               {t('clusterDetail.troubleshoot.ybPlatformMetricsUrlLabel')}
             </YBLabel>
             <YBInput type="text" disabled value={metricsUrl} className={helperClasses.textBox} />
           </Box>
           <Box className={helperClasses.infoBox}>
-            <YBLabel dataTestId="TroubleshootConfigInfo-metricsScrapePeriodSecLabel" width="300px">
+            <YBLabel
+              dataTestId="PerfAdvisorUniverseConfig-metricsScrapePeriodSecLabel"
+              width="300px"
+            >
               {t('clusterDetail.troubleshoot.metricsScrapePeriodSecLabel')}
             </YBLabel>
             <YBInput
@@ -121,31 +124,31 @@ export const TroubleshootingConfigInfo = ({
             />
           </Box>
           <Box className={helperClasses.buttonBox}>
-            <YBButton variant="primary" size="large" onClick={onEditTPConfigButtonClick}>
+            <YBButton variant="primary" size="large" onClick={onEditPaConfigButtonClick}>
               {t('common.edit')}
             </YBButton>
             <YBButton
               variant="primary"
               size="large"
               className={helperClasses.button}
-              onClick={onDeleteTPConfigButtonClick}
+              onClick={onDeletePaConfigButtonClick}
             >
               {t('common.delete')}
             </YBButton>
           </Box>
-          {showEditTPConfigDialog && (
-            <EditTPConfigDialog
-              open={showEditTPConfigDialog}
+          {showEditPaConfigDialog && (
+            <EditPerfAdvisorConfigDialog
+              open={showEditPaConfigDialog}
               onRefetchConfig={onRefetchConfig}
-              onClose={onEditTPConfigDialogClose}
+              onClose={onEditPaConfigDialogClose}
               data={configData}
             />
           )}
-          {showDeleteTPConfigDialog && (
-            <DeleteTPConfigDialog
-              open={showDeleteTPConfigDialog}
+          {showDeletePaConfigDialog && (
+            <UnregisterPerfAdvisorDialog
+              open={showDeletePaConfigDialog}
               onRefetchConfig={onRefetchConfig}
-              onClose={onDeleteTPConfigDialogClose}
+              onClose={onDeletePaConfigDialogClose}
               data={configData}
             />
           )}

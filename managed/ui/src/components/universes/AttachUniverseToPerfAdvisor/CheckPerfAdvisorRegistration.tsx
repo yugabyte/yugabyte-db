@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { TroubleshootUniverse } from './TroubleshootUniverse';
+import { PerfAdvisorOverviewDashboard } from './PerfAdvisorOverviewDashboard';
 import { YBLoading } from '../../common/indicators';
-import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
+import { AppName } from '../../../redesign/features/PerfAdvisor/PerfAdvisorAnalysisDashboard';
 import {
-  TroubleshootingAPI,
+  PerfAdvisorAPI,
   QUERY_KEY as TROUBLESHOOTING_QUERY_KEY
-} from '../../../redesign/features/Troubleshooting/api';
+} from '../../../redesign/features/PerfAdvisor/api';
 
-interface TroubleshootUniverseRegistrationDetailsProps {
+interface CheckPerfAdvisorRegistrationProps {
   universeUuid: string;
   appName: AppName;
   timezone: string;
@@ -16,13 +16,13 @@ interface TroubleshootUniverseRegistrationDetailsProps {
   tpUuid: string;
 }
 
-export const TroubleshootUniverseRegistrationDetails = ({
+export const CheckPerfAdvisorRegistration = ({
   universeUuid,
   appName,
   timezone,
   apiUrl,
   tpUuid
-}: TroubleshootUniverseRegistrationDetailsProps) => {
+}: CheckPerfAdvisorRegistrationProps) => {
   const [registrationStatus, setRegistrationStatus] = useState<boolean>(false);
   const {
     data: universeRegistrationData,
@@ -31,7 +31,7 @@ export const TroubleshootUniverseRegistrationDetails = ({
     refetch: refetchUniverseRegistration
   } = useQuery(
     TROUBLESHOOTING_QUERY_KEY.fetchUniverseRegistrationDetails,
-    () => TroubleshootingAPI.fetchUniverseRegistrationDetails(tpUuid, universeUuid),
+    () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(tpUuid, universeUuid),
     {
       onSuccess: (data) => {
         setRegistrationStatus(data.success);
@@ -50,7 +50,7 @@ export const TroubleshootUniverseRegistrationDetails = ({
   }
 
   return (
-    <TroubleshootUniverse
+    <PerfAdvisorOverviewDashboard
       tpUuid={tpUuid}
       universeUuid={universeUuid}
       appName={appName}

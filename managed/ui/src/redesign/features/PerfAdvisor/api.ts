@@ -2,13 +2,13 @@ import axios from 'axios';
 import { ROOT_URL } from '../../../config';
 
 export enum QUERY_KEY {
-  fetchTpList = 'fetchTpList',
-  fetchTpByUuid = 'fetchTpByUuid',
-  registerTp = 'registerTp',
-  updateTpMetadata = 'updateTpMetadata',
-  deleteTp = 'deleteTp',
+  fetchPerfAdvisorList = 'fetchPerfAdvisorList',
+  fetchPerfAdvisorUuid = 'fetchPerfAdvisorUuid',
+  registerYBAToPerfAdvisor = 'registerYBAToPerfAdvisor',
+  updatePerfAdvisorMetadata = 'updatePerfAdvisorMetadata',
+  unRegisterPerfAdvisor = 'unRegisterPerfAdvisor',
   fetchUniverseRegistrationDetails = 'fetchUniverseRegistrationDetails',
-  monitorUniverse = 'monitorUniverse',
+  attachUniverseToPerfAdvisor = 'attachUniverseToPerfAdvisor',
   deleteUniverseRegistration = 'deleteUniverseRegistration'
 }
 
@@ -21,51 +21,64 @@ class ApiService {
   }
 
   // Fetches list of all Troubleshooting Platform services
-  fetchTpList = () => {
+  fetchPerfAdvisorList = () => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
   // Fetches info about specific Troubleshooting Platform service
-  fetchTpByUuid = (tpUuid: string) => {
+  fetchPerfAdvisorUuid = (tpUuid: string) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
   // Register current YBA (customer) to a Troubleshooting Platform service
-  registerTp = (tpUrl: string, ybaUrl: string, metricsUrl: string, apiToken: string, tpApiToken: string, metricsScrapePeriodSecs: number) => {
+  registerYBAToPerfAdvisor = (
+    tpUrl: string,
+    ybaUrl: string,
+    metricsUrl: string,
+    apiToken: string,
+    tpApiToken: string,
+    metricsScrapePeriodSecs: number
+  ) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform`;
-    return axios.post(requestURL,  {
-      customerUUID: this.getCustomerId(),
-      tpUrl,
-      ybaUrl,
-      metricsUrl,
-      apiToken,
-      tpApiToken,
-      metricsScrapePeriodSecs
-    }).then((res) => res.data);
+    return axios
+      .post(requestURL, {
+        customerUUID: this.getCustomerId(),
+        tpUrl,
+        ybaUrl,
+        metricsUrl,
+        apiToken,
+        tpApiToken,
+        metricsScrapePeriodSecs
+      })
+      .then((res) => res.data);
   };
 
-  // Edit/Update metadata about Troubleshooting Platform service
-  updateTpMetadata = (data: any, tpUuid: string, forceUpdate: boolean) => {
+  // Edit/Update metadata about Perf Advisor service
+  updatePerfAdvisorMetadata = (data: any, tpUuid: string, forceUpdate: boolean) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
     const params = {
       force: forceUpdate
     };
-    return axios.put(requestUrl, data, {
-      params: params
-    }).then((resp) => resp.data);
+    return axios
+      .put(requestUrl, data, {
+        params: params
+      })
+      .then((resp) => resp.data);
   };
 
   // Delete(Unregister) Troubleshooting Platform service
-  deleteTp = (tpUuid: string, forceUnregister: boolean) => {
+  unRegisterPerfAdvisor = (tpUuid: string, forceUnregister: boolean) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
     const params = {
       force: forceUnregister
     };
-    return axios.delete(requestUrl, {
-      params: params
-    }).then((resp) => resp.data);
+    return axios
+      .delete(requestUrl, {
+        params: params
+      })
+      .then((resp) => resp.data);
   };
 
   // Fetch registration details of universe to Troubleshooting Platform service
@@ -74,8 +87,8 @@ class ApiService {
     return axios.get(requestURL).then((res) => res.data);
   };
 
-  // Register universe to Troubleshooting Platform service
-  monitorUniverse = (tpUuid: string, universeUuid: string) => {
+  // Attach universe to Troubleshooting Platform service
+  attachUniverseToPerfAdvisor = (tpUuid: string, universeUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
     return axios.put(requestUrl).then((resp) => resp.data);
   };
@@ -87,4 +100,4 @@ class ApiService {
   };
 }
 
-export const TroubleshootingAPI = new ApiService();
+export const PerfAdvisorAPI = new ApiService();

@@ -1,16 +1,16 @@
 import { useQuery } from 'react-query';
 import { Box, makeStyles } from '@material-ui/core';
-import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
+import { AppName } from '../../../redesign/features/PerfAdvisor/PerfAdvisorAnalysisDashboard';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBPanelItem } from '../../panels';
-import { TroubleshootUniverseRegistrationDetails } from './TroubleshootUniverseRegistrationDetails';
+import { CheckPerfAdvisorRegistration } from './CheckPerfAdvisorRegistration';
 import {
-  TroubleshootingAPI,
+  PerfAdvisorAPI,
   QUERY_KEY as TROUBLESHOOTING_QUERY_KEY
-} from '../../../redesign/features/Troubleshooting/api';
+} from '../../../redesign/features/PerfAdvisor/api';
 import { isEmptyArray } from '../../../utils/ObjectUtils';
 
-interface TroubleshootRegistrationDetailsProps {
+interface RegisterYBAToPerfAdvisorProps {
   universeUuid: string;
   appName: AppName;
   timezone: string;
@@ -22,18 +22,20 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const TroubleshootRegistrationDetails = ({
+export const RegisterYBAToPerfAdvisor = ({
   universeUuid,
   appName,
   timezone
-}: TroubleshootRegistrationDetailsProps) => {
+}: RegisterYBAToPerfAdvisorProps) => {
   const helperClasses = useStyles();
   const {
-    data: TpListData,
+    data: perfAdvisorListData,
     isLoading: isTpListFetchLoading,
     isError: isTpListFetchError,
     isIdle: isTpListFetchIdle
-  } = useQuery(TROUBLESHOOTING_QUERY_KEY.fetchTpList, () => TroubleshootingAPI.fetchTpList());
+  } = useQuery(TROUBLESHOOTING_QUERY_KEY.fetchPerfAdvisorList, () =>
+    PerfAdvisorAPI.fetchPerfAdvisorList()
+  );
 
   if (isTpListFetchError) {
     return (
@@ -41,20 +43,20 @@ export const TroubleshootRegistrationDetails = ({
     );
   }
 
-  if (isTpListFetchLoading || (isTpListFetchIdle && TpListData === undefined)) {
+  if (isTpListFetchLoading || (isTpListFetchIdle && perfAdvisorListData === undefined)) {
     return <YBLoading />;
   }
 
-  if (isEmptyArray(TpListData)) {
+  if (isEmptyArray(perfAdvisorListData)) {
     return (
       <YBPanelItem
         body={
           <Box>
             {'Please'}
-            <a href={`/config/troubleshoot/config`} className={helperClasses.register}>
+            <a href={`/config/perfAdvisor/register`} className={helperClasses.register}>
               {' register '}
             </a>
-            {'YB Anywhere instance to Troubleshooting Platform Service'}
+            {'YB Anywhere instance to Performance Advisor Service'}
           </Box>
         }
       />
@@ -62,12 +64,12 @@ export const TroubleshootRegistrationDetails = ({
   }
 
   return (
-    <TroubleshootUniverseRegistrationDetails
+    <CheckPerfAdvisorRegistration
       universeUuid={universeUuid}
       appName={appName}
       timezone={timezone}
-      apiUrl={`${TpListData?.[0]?.tpUrl}/api`}
-      tpUuid={TpListData?.[0]?.uuid}
+      apiUrl={`${perfAdvisorListData?.[0]?.tpUrl}/api`}
+      tpUuid={perfAdvisorListData?.[0]?.uuid}
     />
   );
 };

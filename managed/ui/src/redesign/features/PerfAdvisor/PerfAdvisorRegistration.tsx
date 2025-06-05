@@ -4,17 +4,14 @@ import { useMutation } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { YBButton, YBInputField, YBLabel } from '../../components';
-import { TroubleshootingAPI } from './api';
-import { isNonEmptyString } from '../../../utils/ObjectUtils';
+import { PerfAdvisorAPI } from './api';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 
-interface RegisterTroubleshootingServiceProps {
+interface PerfAdvisorRegistrationProps {
   onRefetchConfig: () => void;
 }
 
-export const RegisterTroubleshootingService = ({
-  onRefetchConfig
-}: RegisterTroubleshootingServiceProps) => {
+export const PerfAdvisorRegistration = ({ onRefetchConfig }: PerfAdvisorRegistrationProps) => {
   const { t } = useTranslation();
   const baseUrl = window.location.origin;
 
@@ -35,7 +32,7 @@ export const RegisterTroubleshootingService = ({
 
   const registerTpService = useMutation(
     (payload: any) =>
-      TroubleshootingAPI.registerTp(
+      PerfAdvisorAPI.registerYBAToPerfAdvisor(
         payload.tpUrl,
         payload.ybaUrl,
         payload.metricsUrl,
@@ -48,18 +45,13 @@ export const RegisterTroubleshootingService = ({
         onRefetchConfig();
         toast.success(t('clusterDetail.troubleshoot.registrationSuccess'));
       },
-      onError: (error: any) => {
-        toast.error(
-          isNonEmptyString(error?.response?.data?.error)
-            ? error?.response?.data?.error
-            : t('clusterDetail.troubleshoot.registrationFailed')
-        );
+      onError: () => {
+        toast.error(t('clusterDetail.troubleshoot.registrationFailed'));
       }
     }
   );
 
   const handleFormSubmit = handleSubmit((formValues) => {
-    console.warn('formValues', formValues);
     const payload = { ...formValues };
     registerTpService.mutate(payload);
   });
@@ -72,7 +64,7 @@ export const RegisterTroubleshootingService = ({
           display="flex"
           width="100%"
           flexDirection={'column'}
-          data-testid="RegisterTroubleshootingService-Container"
+          data-testid="PerfAdvisorRegistration-Container"
         >
           <Box display="flex" flexDirection={'row'} mt={2}>
             <YBLabel width="300px" dataTestId="RegisterTSService-Label">

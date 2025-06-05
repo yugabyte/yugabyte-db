@@ -4,9 +4,9 @@ import { useMutation } from 'react-query';
 import { toast } from 'react-toastify';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import { YBCheckbox, YBModal } from '../../../components';
-import { TroubleshootingAPI } from '../api';
+import { PerfAdvisorAPI } from '../api';
 
-interface DeleteTPConfigDialogProps {
+interface UnregisterPerfAdvisorDialogProps {
   open: boolean;
   onRefetchConfig: () => void;
   onClose: () => void;
@@ -22,12 +22,12 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const DeleteTPConfigDialog = ({
+export const UnregisterPerfAdvisorDialog = ({
   open,
   onRefetchConfig,
   onClose,
   data
-}: DeleteTPConfigDialogProps) => {
+}: UnregisterPerfAdvisorDialogProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
 
@@ -36,7 +36,7 @@ export const DeleteTPConfigDialog = ({
 
   // DELETE API call to unregister the Troubleshooting Platform service
   const unregisterTPService = useMutation(
-    () => TroubleshootingAPI.deleteTp(tpUuid, forceUnregister),
+    () => PerfAdvisorAPI.unRegisterPerfAdvisor(tpUuid, forceUnregister),
     {
       onSuccess: (response: any) => {
         toast.success(t('clusterDetail.troubleshoot.deleteDialog.unregistrationSuccess'));
@@ -91,7 +91,7 @@ export const DeleteTPConfigDialog = ({
           onChange={() => setForceUnregister(!forceUnregister)}
           label={t('clusterDetail.troubleshoot.deleteDialog.forceUnregisterCheckBoxLabel')}
           inputProps={{
-            'data-testid': 'DeleteTPConfigDialog-ForceUnregister'
+            'data-testid': 'UnregisterPerfAdvisorDialog-ForceUnregister'
           }}
         />
       }

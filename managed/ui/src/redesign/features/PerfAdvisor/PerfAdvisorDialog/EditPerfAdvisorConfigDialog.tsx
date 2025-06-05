@@ -5,9 +5,9 @@ import { useMutation } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import { YBCheckbox, YBInputField, YBLabel, YBModal } from '../../../components';
-import { TroubleshootingAPI } from '../api';
+import { PerfAdvisorAPI } from '../api';
 
-interface EditTPConfigDialogProps {
+interface EditPerfAdvisorConfigDialogProps {
   open: boolean;
   onRefetchConfig: () => void;
   onClose: () => void;
@@ -23,12 +23,12 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const EditTPConfigDialog = ({
+export const EditPerfAdvisorConfigDialog = ({
   open,
   onRefetchConfig,
   onClose,
   data
-}: EditTPConfigDialogProps) => {
+}: EditPerfAdvisorConfigDialogProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
 
@@ -50,10 +50,10 @@ export const EditTPConfigDialog = ({
   });
   const { control, handleSubmit } = formMethods;
 
-  const updateTPServiceMetadata = useMutation(
-    (payload: any) => TroubleshootingAPI.updateTpMetadata(payload, tpUuid, forceUpdate),
+  const updatePAServiceMetadata = useMutation(
+    (payload: any) => PerfAdvisorAPI.updatePerfAdvisorMetadata(payload, tpUuid, forceUpdate),
     {
-      onSuccess: (response: any) => {
+      onSuccess: () => {
         toast.success(t('clusterDetail.troubleshoot.editDialog.updateMetadataSuccess'));
         onRefetchConfig();
         onClose();
@@ -68,7 +68,7 @@ export const EditTPConfigDialog = ({
     const payload = { ...formValues };
     payload.uuid = tpUuid;
     payload.customerUUID = customerUUID;
-    updateTPServiceMetadata.mutateAsync(payload);
+    updatePAServiceMetadata.mutateAsync(payload);
   });
 
   return (
@@ -109,7 +109,7 @@ export const EditTPConfigDialog = ({
           onChange={() => setForceUpdate(!forceUpdate)}
           label={t('clusterDetail.troubleshoot.editDialog.forceUpdateCheckBoxLabel')}
           inputProps={{
-            'data-testid': 'EditTPConfigDialog-ForceUpdate'
+            'data-testid': 'EditPerfAdvisorConfigDialog-ForceUpdate'
           }}
         />
       }
@@ -123,7 +123,7 @@ export const EditTPConfigDialog = ({
           display="flex"
           width="100%"
           flexDirection={'column'}
-          data-testid="RegisterTroubleshootingService-Container"
+          data-testid="EditPerfAdvisorConfigDialog-Container"
         >
           <Box display="flex" flexDirection={'row'} mt={2}>
             <YBLabel width="250px" dataTestId="RegisterTSService-Label">
