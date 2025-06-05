@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 27380>}}
+| Missing rows on xCluster target on range sharded tables with multiple tablets
+| {{<product "ysql">}}
+| {{<release "2.20.x, 2024.1, 2024.2">}}
+| {{<nobreak "05 June 2025">}}
+|
 | {{<ta 14696>}}
 | DDL Atomicity Health Check Alert is Wrong
 | {{<product "yba">}}
