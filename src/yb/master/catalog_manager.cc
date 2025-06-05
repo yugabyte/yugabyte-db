@@ -10415,65 +10415,38 @@ void CatalogManager::UpdateTabletReplicaLocations(
   tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 }
 
-void CatalogManager::SendLeaderStepDownRequest(
+Result<std::shared_ptr<AsyncTryStepDown>> CatalogManager::ScheduleTryStepDownTask(
     const TabletInfoPtr& tablet, const ConsensusStatePB& cstate,
     const string& change_config_ts_uuid, bool should_remove, const LeaderEpoch& epoch,
-    const string& new_leader_uuid) {
+    const string& reason, const string& new_leader_uuid) {
   auto task = std::make_shared<AsyncTryStepDown>(
-      master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, should_remove, epoch,
+      master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, should_remove, epoch, reason,
       new_leader_uuid);
   tablet->table()->AddTask(task);
-  Status status = ScheduleTask(task);
-  WARN_NOT_OK(status, Substitute("Failed to send new $0 request", task->type_name()));
+  RETURN_NOT_OK(ScheduleTask(task));
+  return task;
 }
 
-// TODO: refactor this into a joint method with the add one.
-void CatalogManager::SendRemoveServerRequest(
+Result<std::shared_ptr<AsyncRemoveServerTask>> CatalogManager::ScheduleRemoveServerTask(
     const TabletInfoPtr& tablet, const ConsensusStatePB& cstate,
-    const string& change_config_ts_uuid, const LeaderEpoch& epoch) {
+    const string& change_config_ts_uuid, const LeaderEpoch& epoch, const std::string& reason) {
   // Check if the user wants the leader to be stepped down.
   auto task = std::make_shared<AsyncRemoveServerTask>(
-      master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, epoch);
+      master_, AsyncTaskPool(), tablet, cstate, change_config_ts_uuid, epoch, reason);
   tablet->table()->AddTask(task);
-  WARN_NOT_OK(ScheduleTask(task), Substitute("Failed to send new $0 request", task->type_name()));
+  RETURN_NOT_OK(ScheduleTask(task));
+  return task;
 }
 
-void CatalogManager::SendAddServerRequest(
+Result<std::shared_ptr<AsyncAddServerTask>> CatalogManager::ScheduleAddServerTask(
     const TabletInfoPtr& tablet, PeerMemberType member_type,
-    const ConsensusStatePB& cstate, const string& change_config_ts_uuid, const LeaderEpoch& epoch) {
+    const ConsensusStatePB& cstate, const string& change_config_ts_uuid, const LeaderEpoch& epoch,
+    const std::string& reason) {
   auto task = std::make_shared<AsyncAddServerTask>(
-      master_, AsyncTaskPool(), tablet, member_type, cstate, change_config_ts_uuid, epoch);
+      master_, AsyncTaskPool(), tablet, member_type, cstate, change_config_ts_uuid, epoch, reason);
   tablet->table()->AddTask(task);
-  WARN_NOT_OK(
-      ScheduleTask(task),
-      Substitute("Failed to send AddServer of tserver $0 to tablet $1",
-                 change_config_ts_uuid, tablet.get()->ToString()));
-}
-
-void CatalogManager::GetPendingServerTasksUnlocked(
-    const TableId &table_uuid,
-    TabletToTabletServerMap *add_replica_tasks_map,
-    TabletToTabletServerMap *remove_replica_tasks_map,
-    TabletToTabletServerMap *stepdown_leader_tasks_map) {
-
-  auto table = GetTableInfoUnlocked(table_uuid);
-  for (const auto& task : table->GetTasks()) {
-    TabletToTabletServerMap* outputMap = nullptr;
-    if (task->type() == server::MonitoredTaskType::kAddServer) {
-      outputMap = add_replica_tasks_map;
-    } else if (task->type() == server::MonitoredTaskType::kRemoveServer) {
-      outputMap = remove_replica_tasks_map;
-    } else if (task->type() == server::MonitoredTaskType::kTryStepDown) {
-      // Store new_leader_uuid instead of change_config_ts_uuid.
-      auto raft_task = static_cast<AsyncTryStepDown*>(task.get());
-      (*stepdown_leader_tasks_map)[raft_task->tablet_id()] = raft_task->new_leader_uuid();
-      continue;
-    }
-    if (outputMap) {
-      auto raft_task = static_cast<CommonInfoForRaftTask*>(task.get());
-      (*outputMap)[raft_task->tablet_id()] = raft_task->change_config_ts_uuid();
-    }
-  }
+  RETURN_NOT_OK(ScheduleTask(task));
+  return task;
 }
 
 void CatalogManager::ExtractTabletsToProcess(

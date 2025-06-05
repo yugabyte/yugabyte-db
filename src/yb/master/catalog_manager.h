@@ -69,6 +69,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_types.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -2029,29 +2030,24 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // the server that is over-replicated. A new tablet server can be specified to start an election
   // immediately to become the new leader. If new_leader_ts_uuid is empty, the election will be run
   // following the protocol's default mechanism.
-  void SendLeaderStepDownRequest(
+  Result<std::shared_ptr<AsyncTryStepDown>> ScheduleTryStepDownTask(
       const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
       const std::string& change_config_ts_uuid, bool should_remove, const LeaderEpoch& epoch,
-      const std::string& new_leader_ts_uuid = "");
+      const std::string& reason, const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
-  void SendRemoveServerRequest(
+  Result<std::shared_ptr<AsyncRemoveServerTask>> ScheduleRemoveServerTask(
       const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
-      const std::string& change_config_ts_uuid, const LeaderEpoch& epoch);
+      const std::string& change_config_ts_uuid, const LeaderEpoch& epoch,
+      const std::string& reason);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
-  void SendAddServerRequest(
+  Result<std::shared_ptr<AsyncAddServerTask>> ScheduleAddServerTask(
       const TabletInfoPtr& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
-      const LeaderEpoch& epoch);
-
-  void GetPendingServerTasksUnlocked(const TableId &table_uuid,
-                                     TabletToTabletServerMap *add_replica_tasks_map,
-                                     TabletToTabletServerMap *remove_replica_tasks_map,
-                                     TabletToTabletServerMap *stepdown_leader_tasks)
-      REQUIRES_SHARED(mutex_);
+      const LeaderEpoch& epoch, const std::string& reason);
 
   // Abort creation of 'table': abort all mutation for TabletInfo and
   // TableInfo objects (releasing all COW locks), abort all pending

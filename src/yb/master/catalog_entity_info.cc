@@ -876,12 +876,6 @@ Status TableInfo::GetCreateTableErrorStatus() const {
   return create_table_error_;
 }
 
-std::size_t TableInfo::NumLBTasks() const {
-  const auto tasks = GetTasks();
-  return std::count_if(
-      tasks.begin(), tasks.end(), [](const auto& task) { return task->started_by_lb(); });
-}
-
 std::size_t TableInfo::NumPartitions() const {
   SharedLock<decltype(lock_)> l(lock_);
   return partitions_.size();

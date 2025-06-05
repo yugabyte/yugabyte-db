@@ -74,7 +74,6 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTaskWithTable {
 
  private:
   TabletId tablet_id() const override;
-  TabletServerId permanent_uuid() const;
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
