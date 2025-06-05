@@ -3425,6 +3425,33 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_speculatively_execute_pl_statements", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If enabled, procedural language statements may be speculatively executed "
+						 "when it is safe to do so without waiting for the successful completion "
+						 "of previous statements. This allows any writes produced by triggers to "
+						 "be batched alongside their parent data-modifying writes such that the "
+						 "number of storages flushes may be minimized."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_speculatively_execute_pl_statements,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_whitelist_extra_statements_for_pl_speculative_execution", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If enabled, additional procedural language constructs are whitelisted "
+						 "for use in speculative execution."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_whitelist_extra_stmts_for_pl_speculative_execution,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

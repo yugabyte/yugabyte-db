@@ -760,6 +760,10 @@ typedef struct YBUpdateOptimizationOptions
 /* GUC variables to control the behavior of optimizing update queries. */
 extern YBUpdateOptimizationOptions yb_update_optimization_options;
 
+/* GUC variables to control the speculative executive of PL statements. */
+extern bool yb_speculatively_execute_pl_statements;
+extern bool yb_whitelist_extra_stmts_for_pl_speculative_execution;
+
 extern bool yb_enable_docdb_vector_type;
 
 /*
