@@ -9391,6 +9391,10 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
  *
  * This function exists because there are scattered nonobvious places that
  * must be kept in sync with this decision.
+ *
+ * YB :  follow the same process for backup dumps of inheritance child table columns
+ * except for dropped columns, which we ignore because docdb snapshot import can
+ * tolerate dropped column differences.
  */
 bool
 shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
@@ -9399,7 +9403,9 @@ shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
 		return true;
 	if (tbinfo->attisdropped[colno])
 		return false;
-	return (tbinfo->attislocal[colno] || tbinfo->ispartition);
+	return tbinfo->attislocal[colno] ||
+		tbinfo->ispartition ||
+		(tbinfo->numParents > 0 && dopt->include_yb_metadata);
 }
 
 
@@ -16677,10 +16683,14 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					 * Not Null constraint --- suppress if inherited, except
 					 * if partition, or in binary-upgrade case where that
 					 * won't work.
+					 * YB: For backups, follow binary-upgrade mode
+					 * for inherited child tables to preserve col order.
 					 */
 					print_notnull = (tbinfo->notnull[j] &&
 									 (!tbinfo->inhNotNull[j] ||
-									  tbinfo->ispartition || dopt->binary_upgrade));
+									  tbinfo->ispartition ||
+									  dopt->binary_upgrade ||
+									  dopt->include_yb_metadata));
 
 					/*
 					 * Skip column if fully defined by reloftype, except in
@@ -16857,9 +16867,11 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			/*
 			 * Emit the INHERITS clause (not for partitions), except in
 			 * binary-upgrade mode.
+			 * YB: For backups, follow binary-upgrade mode
+			 * in inherited child tables to preserve col order.
 			 */
 			if (numParents > 0 && !tbinfo->ispartition &&
-				!dopt->binary_upgrade)
+				!dopt->binary_upgrade && !dopt->include_yb_metadata)
 			{
 				appendPQExpBufferStr(q, "\nINHERITS (");
 				for (k = 0; k < numParents; k++)
@@ -16996,8 +17008,12 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		 * and matviews, even though they have storage, because we don't
 		 * support altering or dropping columns in them, nor can they be part
 		 * of inheritance trees.
+		 *
+		 * YB: For backups, follow the same process as binary-upgrade
+		 * specifically for inherited child tables
+		 * in order to preserve column order, except for dropped columns.
 		 */
-		if (dopt->binary_upgrade &&
+		if ((dopt->binary_upgrade || dopt->include_yb_metadata) &&
 			(tbinfo->relkind == RELKIND_RELATION ||
 			 tbinfo->relkind == RELKIND_FOREIGN_TABLE ||
 			 tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
@@ -17006,29 +17022,36 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			{
 				if (tbinfo->attisdropped[j])
 				{
-					appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
-					appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
-									  "SET attlen = %d, "
-									  "attalign = '%c', attbyval = false\n"
-									  "WHERE attname = ",
-									  tbinfo->attlen[j],
-									  tbinfo->attalign[j]);
-					appendStringLiteralAH(q, tbinfo->attnames[j], fout);
-					appendPQExpBufferStr(q, "\n  AND attrelid = ");
-					appendStringLiteralAH(q, qualrelname, fout);
-					appendPQExpBufferStr(q, "::pg_catalog.regclass;\n");
+					/*
+					 * For YB backups, we don't need to recreate dropped cols because
+					 * docdb snapshot import can handle such gaps in the col order.
+					 */
+					if (!dopt->include_yb_metadata)
+					{
+						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
+						appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
+										"SET attlen = %d, "
+										"attalign = '%c', attbyval = false\n"
+										"WHERE attname = ",
+										tbinfo->attlen[j],
+										tbinfo->attalign[j]);
+						appendStringLiteralAH(q, tbinfo->attnames[j], fout);
+						appendPQExpBufferStr(q, "\n  AND attrelid = ");
+						appendStringLiteralAH(q, qualrelname, fout);
+						appendPQExpBufferStr(q, "::pg_catalog.regclass;\n");
 
-					if (tbinfo->relkind == RELKIND_RELATION ||
-						tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
-						appendPQExpBuffer(q, "ALTER TABLE ONLY %s ",
-										  qualrelname);
-					else
-						appendPQExpBuffer(q, "ALTER FOREIGN TABLE ONLY %s ",
-										  qualrelname);
-					appendPQExpBuffer(q, "DROP COLUMN %s;\n",
+						if (tbinfo->relkind == RELKIND_RELATION ||
+							tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
+							appendPQExpBuffer(q, "ALTER TABLE ONLY %s ",
+											qualrelname);
+						else
+							appendPQExpBuffer(q, "ALTER FOREIGN TABLE ONLY %s ",
+											qualrelname);
+						appendPQExpBuffer(q, "DROP COLUMN %s;\n",
 									  fmtId(tbinfo->attnames[j]));
+					}
 				}
-				else if (!tbinfo->attislocal[j])
+				else if (!tbinfo->attislocal[j] && (IsYugabyteEnabled && !tbinfo->ispartition))
 				{
 					appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate inherited column.\n");
 					appendPQExpBufferStr(q, "UPDATE pg_catalog.pg_attribute\n"
@@ -17081,7 +17104,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				}
 			}
 
-			if (OidIsValid(tbinfo->reloftype))
+			if (OidIsValid(tbinfo->reloftype) && !dopt->include_yb_metadata)
 			{
 				appendPQExpBufferStr(q, "\n-- For binary upgrade, set up typed tables this way.\n");
 				appendPQExpBuffer(q, "ALTER TABLE ONLY %s OF %s;\n",
