@@ -57,12 +57,20 @@ var AuthCmd = &cobra.Command{
 
 		logrus.Infoln("\n")
 
-		authUtil(url, apiToken)
+		showToken, err := cmd.Flags().GetBool("show-api-token")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		authUtil(url, apiToken, showToken)
 	},
 }
 
 func init() {
 	AuthCmd.Flags().SortFlags = false
+	AuthCmd.Flags().
+		Bool("show-api-token", false, "[Optional] Show the API token after authentication. (default false)")
+
 	AuthCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage. "+
 			"Provide the host (--host/-H) and API token (--apiToken/-a) using flags")
