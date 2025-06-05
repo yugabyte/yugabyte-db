@@ -527,6 +527,7 @@ void Batcher::ExecuteOperations(Initial initial) {
   auto transaction = this->transaction();
   ADOPT_TRACE(transaction ? transaction->trace() : Trace::CurrentTrace());
   ops_info_.metadata.background_transaction_meta = background_transaction_meta_;
+  ops_info_.metadata.object_locking_txn_meta = object_locking_txn_meta_;
   if (transaction) {
     // If this Batcher is executed in context of transaction,
     // then this transaction should initialize metadata used by RPC calls.

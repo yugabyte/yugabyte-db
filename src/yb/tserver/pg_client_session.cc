@@ -118,6 +118,7 @@ DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 DECLARE_string(ysql_sequence_cache_method);
 
@@ -605,69 +606,6 @@ class VectorIndexQuery {
   MonoTime fetch_start_;
 };
 using VectorIndexQueryPtr = std::shared_ptr<VectorIndexQuery>;
-
-Result<PgClientSessionOperations> PrepareOperations(
-    PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
-    const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query) {
-  auto write_time = HybridTime::FromPB(req->write_time());
-  PgClientSessionOperations ops;
-  ops.reserve(req->ops().size());
-  client::YBTablePtr table;
-  bool finished = false;
-  auto se = ScopeExit([&finished, session] {
-    if (!finished) {
-      session->Abort();
-    }
-  });
-  const auto read_from_followers = req->options().read_from_followers();
-  for (auto& op : *req->mutable_ops()) {
-    if (op.has_read()) {
-      auto& read = *op.mutable_read();
-      RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
-      if (read.index_request().has_vector_idx_options()) {
-        if (req->ops_size() != 1) {
-          auto status = STATUS_FORMAT(
-              NotSupported, "Only single vector index query is supported, while $0 provided",
-              req->ops_size());
-          LOG(DFATAL) << status << ": " << req->ShortDebugString();
-          return status;
-        }
-        if (!vector_index_query ||
-            !vector_index_query->IsContinuation(read.index_request().paging_state())) {
-          vector_index_query = std::make_shared<VectorIndexQuery>();
-        }
-        vector_index_query->Prepare(read, table, ops);
-      } else {
-        auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
-        if (read_from_followers) {
-          read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
-        }
-        ops.push_back(PgClientSessionOperation {
-          .op = std::move(read_op),
-          .vector_index_read_request = nullptr,
-        });
-      }
-    } else {
-      auto& write = *op.mutable_write();
-      RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
-      auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, *sidecars, &write);
-      if (write_time) {
-        write_op->SetWriteTime(write_time);
-      }
-      ops.push_back(PgClientSessionOperation {
-        .op = std::move(write_op),
-        .vector_index_read_request = nullptr,
-      });
-    }
-  }
-
-  for (const auto& pg_client_session_operation : ops) {
-    session->Apply(pg_client_session_operation.op);
-  }
-
-  finished = true;
-  return ops;
-}
 
 [[nodiscard]] std::vector<RefCntSlice> ExtractRowsSidecar(
     const PgPerformResponsePB& resp, const rpc::Sidecars& sidecars) {
@@ -1163,6 +1101,79 @@ class TransactionProvider {
   const PgClientSession::TransactionBuilder builder_;
   client::YBTransactionPtr next_plain_;
 };
+
+Result<PgClientSessionOperations> PrepareOperations(
+    PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
+    const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
+    bool has_distributed_txn, CoarseTimePoint deadline,
+    TransactionProvider& transaction_provider) {
+  auto write_time = HybridTime::FromPB(req->write_time());
+  PgClientSessionOperations ops;
+  ops.reserve(req->ops().size());
+  client::YBTablePtr table;
+  bool finished = false;
+  auto se = ScopeExit([&finished, session] {
+    if (!finished) {
+      session->Abort();
+    }
+  });
+  const auto read_from_followers = req->options().read_from_followers();
+  bool set_object_locking_txn = false;
+  for (auto& op : *req->mutable_ops()) {
+    if (op.has_read()) {
+      auto& read = *op.mutable_read();
+      RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
+      if (read.index_request().has_vector_idx_options()) {
+        if (req->ops_size() != 1) {
+          auto status = STATUS_FORMAT(
+              NotSupported, "Only single vector index query is supported, while $0 provided",
+              req->ops_size());
+          LOG(DFATAL) << status << ": " << req->ShortDebugString();
+          return status;
+        }
+        if (!vector_index_query ||
+            !vector_index_query->IsContinuation(read.index_request().paging_state())) {
+          vector_index_query = std::make_shared<VectorIndexQuery>();
+        }
+        vector_index_query->Prepare(read, table, ops);
+      } else {
+        auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
+        if (read_from_followers) {
+          read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+        }
+        ops.push_back(PgClientSessionOperation {
+          .op = std::move(read_op),
+          .vector_index_read_request = nullptr,
+        });
+      }
+    } else {
+      auto& write = *op.mutable_write();
+      RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
+      auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, *sidecars, &write);
+      if (write_time) {
+        write_op->SetWriteTime(write_time);
+      }
+      ops.push_back(PgClientSessionOperation {
+        .op = std::move(write_op),
+        .vector_index_read_request = nullptr,
+      });
+      set_object_locking_txn = true;
+    }
+  }
+
+  for (const auto& pg_client_session_operation : ops) {
+    session->Apply(pg_client_session_operation.op);
+  }
+  set_object_locking_txn = set_object_locking_txn && !has_distributed_txn &&
+                           GetAtomicFlag(&FLAGS_enable_object_locking_for_table_locks);
+  if (set_object_locking_txn) {
+    session->SetObjectLockingTxnMeta(
+        VERIFY_RESULT(transaction_provider.NextTxnMetaForPlain(deadline)));
+  }
+
+  finished = true;
+  return ops;
+}
 
 struct RpcPerformQuery : public PerformData {
   rpc::RpcContext context;
@@ -2628,7 +2639,8 @@ class PgClientSession::Impl {
     data->subtxn_id = options.active_sub_transaction_id();
 
     data->ops = VERIFY_RESULT(PrepareOperations(
-        &data->req, session, &data->sidecars, tables, vector_index_query_data_));
+        &data->req, session, &data->sidecars, tables, vector_index_query_data_,
+        transaction ? true : false /* has_distributed_txn */, deadline, transaction_provider_));
     data->vector_index_query = vector_index_query_data_;
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {

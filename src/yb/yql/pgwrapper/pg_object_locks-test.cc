@@ -747,4 +747,37 @@ TEST_F(PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
   ASSERT_STR_CONTAINS(s.ToString(), "aborted due to a deadlock");
 }
 
+TEST_F_EX(
+    PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlockFastPath),
+    TestWithTransactionalDDL) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE test SET v=v+1 WHERE k=1"));
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestDeadlockFastPath"}});
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.Execute("UPDATE test SET v=v+1 WHERE k=1");
+  });
+  TEST_SYNC_POINT("TestDeadlockFastPath");
+  auto s = conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  if (s.ok()) {
+    s = conn.Execute("UPDATE test SET v=v+1 WHERE k=1");
+  }
+  if (s.ok()) {
+    ASSERT_NOK(status_future.get());
+    ASSERT_OK(conn.CommitTransaction());
+  } else {
+    ASSERT_OK(status_future.get());
+    ASSERT_OK(conn.RollbackTransaction());
+  }
+}
+
 }  // namespace yb::pgwrapper

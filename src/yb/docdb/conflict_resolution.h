@@ -123,8 +123,8 @@ Status ResolveTransactionConflicts(
 Status ResolveOperationConflicts(
     const DocOperations& doc_ops,
     const ConflictManagementPolicy conflict_management_policy,
+    const LWKeyValueWriteBatchPB& write_batch,
     HybridTime intial_resolution_ht,
-    int64_t txn_start_us,
     uint64_t req_start_us,
     int64_t request_id,
     const DocDB& doc_db,

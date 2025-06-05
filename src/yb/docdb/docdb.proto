@@ -99,6 +99,9 @@ message KeyValueWriteBatchPB {
   optional uint64 pg_session_req_version = 15;
 
   optional bytes delete_vector_ids = 17;
+
+  // Used to detect deadlocks between fast path transactions and transactional DDLs.
+  optional TransactionMetadataPB object_locking_txn_meta = 18;
 }
 
 message PerDbFilterPB {

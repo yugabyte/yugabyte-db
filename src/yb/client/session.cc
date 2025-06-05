@@ -418,6 +418,10 @@ void YBSession::SetBatcherBackgroundTransactionMeta(
   Batcher().SetBackgroundTransactionMeta(background_transaction_meta);
 }
 
+void YBSession::SetObjectLockingTxnMeta(const TransactionMetadata& object_locking_txn_meta) {
+  Batcher().SetObjectLockingTxnMeta(object_locking_txn_meta);
+}
+
 bool ShouldSessionRetryError(const Status& status) {
   return IsRetryableClientError(status) ||
          tserver::TabletServerError(status) == tserver::TabletServerErrorPB::TABLET_SPLIT ||
