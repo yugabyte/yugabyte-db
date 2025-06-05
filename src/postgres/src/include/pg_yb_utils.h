@@ -78,6 +78,15 @@
 #define YB_RELCACHE_MSGS (1)
 
 /*
+ * Postgres code uses process-level storage (e.g. static variables) to store
+ * long-lived data in a backend process. During expression pushdown, we may be
+ * reading & writing to the same variable from multiple threads in the same
+ * process, so using process-level storage is not safe. We use thread-local
+ * storage to ensure thread safety for these variables.
+ */
+#define YB_THREAD_LOCAL __thread
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
