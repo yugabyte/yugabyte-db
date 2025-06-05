@@ -2392,23 +2392,6 @@ CommitTransaction(void)
 			break;
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
-		/*
-		 * Firing the triggers may abort current transaction.
-		 * At this point all the them has been fired already.
-		 * It is time to commit YB transaction.
-		 * Postgres transaction can be aborted at this point without an issue
-		 * in case of YBCCommitTransaction failure.
-		 */
-		YBCCommitTransaction();
-		if (increment_pg_txns)
-			YbIncrementPgTxnsCommitted();
-	}
-
-
-
 	/*
 	 * The remaining actions cannot call any user-defined code, so it's safe
 	 * to start shutting down within-transaction services.  But note that most
@@ -2465,6 +2448,23 @@ CommitTransaction(void)
 
 	/* Commit updates to the relation map --- do this as late as possible */
 	AtEOXact_RelationMap(true, is_parallel_worker);
+
+	if (IsYugaByteEnabled())
+	{
+		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+		/*
+		 * Firing the triggers may abort current transaction.
+		 * At this point all the them has been fired already.
+		 * Also, we have executed the ON COMMIT actions which may include
+		 * truncating temp tables.
+		 * It is time to commit YB transaction.
+		 * Postgres transaction can be aborted at this point without an issue
+		 * in case of YBCCommitTransaction failure.
+		 */
+		YBCCommitTransaction();
+		if (increment_pg_txns)
+			YbIncrementPgTxnsCommitted();
+	}
 
 	/*
 	 * set the current transaction state information appropriately during
