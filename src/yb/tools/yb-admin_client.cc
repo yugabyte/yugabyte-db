@@ -2666,11 +2666,18 @@ Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver(
       tables, VERIFY_RESULT(yb_client_->ListTables()), std::move(namespace_ids));
 }
 
-Result<ListSnapshotsResponsePB> ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
+Result<ListSnapshotsResponsePB> ClusterAdminClient::ListSnapshots(
+    const ListSnapshotsFlags& flags, const TxnSnapshotId& snapshot_id,
+    bool prepare_for_backup, bool include_ddl_in_progress_tables) {
   ListSnapshotsResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListSnapshotsRequestPB req;
+    if (!snapshot_id.IsNil()) {
+      req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    }
     req.set_list_deleted_snapshots(flags.Test(ListSnapshotsFlag::SHOW_DELETED));
+    req.set_prepare_for_backup(prepare_for_backup);
+    req.set_include_ddl_in_progress_tables(include_ddl_in_progress_tables);
     auto* flags_pb = req.mutable_detail_options();
     // Explicitly set all boolean fields as the defaults of this proto are inconsistent.
     if (flags.Test(ListSnapshotsFlag::SHOW_DETAILS)) {
