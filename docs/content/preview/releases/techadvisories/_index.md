@@ -23,7 +23,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 | Missing rows on xCluster target on range sharded tables with multiple tablets
 | {{<product "ysql">}}
 | {{<release "2.20.x, 2024.1, 2024.2">}}
-| {{<nobreak "05 June 2025">}}
+| {{<nobreak "03 June 2025">}}
 |
 | {{<ta 14696>}}
 | DDL Atomicity Health Check Alert is Wrong
