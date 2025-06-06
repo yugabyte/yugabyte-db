@@ -417,6 +417,16 @@ static bool yb_is_avoid_enquoting_guc_var(char *name)
 	return false;
 }
 
+static inline bool yb_only_white_space(char *value)
+{
+	for (int i = 0; value[i] != '\0'; i++)
+	{
+		if (value[i] != ' ')
+			return false;
+	}
+	return true;
+}
+
 __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 						     kiwi_vars_t *server,
 						     char *query, int query_len)
@@ -468,8 +478,12 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 			 * 1. var_name=; - It would lead to failure of deploy query.
 			 * 2. var_name=""; - PG will throw ERROR msg:
 			 * 			zero-length delimited identifier at or near """".
+			 * 3. var_name='  '; - On setting via set_config function, it returns empty white space
+			 * 			which can also lead to deploy query failure.
 			*/
-			if (strlen(var->value) == 0 || strcmp(var->value, "\"\"") == 0)
+			if (strlen(var->value) == 0 ||
+				strcmp(var->value, "\"\"") == 0 ||
+				yb_only_white_space(var->value))
 			{
 				memcpy(query + pos, "\'\'", 2);
 				if (query_len < pos + 2)
