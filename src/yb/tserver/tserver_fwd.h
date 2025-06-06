@@ -39,6 +39,7 @@ class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
 class PgTableCache;
+class PgTablesQueryResult;
 class PgResponseCache;
 class PgSequenceCache;
 class PgSharedMemoryPool;

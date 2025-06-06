@@ -59,6 +59,7 @@ DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_write_buffer_number);
+DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_bool(TEST_skip_applying_truncate);
@@ -1875,6 +1876,47 @@ TEST_F(PgSingleTServerTest, BackwardScanOnIndexDescendingColumn) {
 
   const auto result = ASSERT_RESULT(conn.FetchAllAsString(stmt));
   ASSERT_STR_EQ(ToUpperCase(result), "NULL");
+}
+
+class PgSmallRpcWorkersTest : public PgSingleTServerTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_read_request_caching) = false;
+
+    PgSingleTServerTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ManyYsqlConnections),
+          PgSmallRpcWorkersTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGINT PRIMARY KEY, value BIGINT)"));
+  ThreadHolder threads;
+  std::atomic<int> key = 0;
+  for (unsigned int i = 0; i != 64; ++i) {
+    threads.AddThread([this, &stop = threads.stop_flag(), &key] {
+      auto new_conn = ASSERT_RESULT(Connect());
+      while (!stop.load()) {
+        auto k = ++key;
+        auto res = new_conn.ExecuteFormat("INSERT INTO test (key, value) VALUES ($0, -$0)", k);
+        if (res.ok()) {
+          continue;
+        }
+        auto msg = res.ToString();
+        ASSERT_TRUE(msg.find("Invalid column number") != std::string::npos ||
+                    msg.find("marked for deletion in table") != std::string::npos ||
+                    msg.find("schema version mismatch for table") != std::string::npos) << res;
+      }
+    });
+  }
+  for (unsigned int i = 0; i != 3; ++i) {
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 BIGINT"));
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
+  }
+  threads.WaitAndStop(1s);
 }
 
 }  // namespace pgwrapper

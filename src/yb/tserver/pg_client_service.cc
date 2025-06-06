@@ -415,8 +415,6 @@ auto MakeSharedOldTxnMetadataVariant(OldTxnMetadataVariant&& txn_meta_variant) {
   return shared_txn_meta;
 }
 
-} // namespace
-
 template <class Extractor>
 class ApplyToValue {
  public:
@@ -431,7 +429,96 @@ class ApplyToValue {
   Extractor extractor_;
 };
 
-class PgClientServiceImpl::Impl {
+class SessionProvider {
+ public:
+  virtual ~SessionProvider() = default;
+  virtual Result<PgClientSessionLocker> GetSession(uint64_t session_id) = 0;
+  virtual rpc::Messenger& Messenger() = 0;
+};
+
+class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public rpc::ThreadPoolTask,
+                     public PgTablesQueryListener {
+ public:
+  using ContextHolder = rpc::TypedPBRpcContextHolder<PgPerformRequestPB, PgPerformResponsePB>;
+
+  PerformQuery(
+      SessionProvider& provider, ContextHolder&& context)
+      : provider_(provider), context_(std::move(context)), tid_(Thread::UniqueThreadId()) {
+  }
+
+  void Ready() override {
+    if (Thread::UniqueThreadId() == tid_) {
+      Run();
+    } else {
+      retained_self_ = shared_from_this();
+      provider_.Messenger().ThreadPool().Enqueue(this);
+    }
+  }
+
+  PgTablesQueryResult& tables() {
+    return tables_;
+  }
+
+ private:
+  PgPerformRequestPB& req() {
+    return context_.req();
+  }
+
+  PgPerformResponsePB& resp() {
+    return context_.resp();
+  }
+
+  void Run() override {
+    auto session = provider_.GetSession(req().session_id());
+    auto status = session.ok()
+        ? (*session)->Perform(&req(), &resp(), &context_.context(), tables_) : session.status();
+    if (!status.ok()) {
+      Respond(status, &resp(), &context_.context());
+    }
+  }
+
+  void Done(const Status& status) override {
+    retained_self_ = nullptr;
+  }
+
+  SessionProvider& provider_;
+  rpc::TypedPBRpcContextHolder<PgPerformRequestPB, PgPerformResponsePB> context_;
+  const int64_t tid_;
+  PgTablesQueryResult tables_;
+  std::shared_ptr<PerformQuery> retained_self_;
+};
+
+class OpenTableQuery : public PgTablesQueryListener {
+ public:
+  using ContextHolder = rpc::TypedPBRpcContextHolder<PgOpenTableRequestPB, PgOpenTableResponsePB>;
+
+  explicit OpenTableQuery(ContextHolder&& context) : context_(std::move(context)) {
+  }
+
+  PgTablesQueryResult& tables() {
+    return tables_;
+  }
+
+  void Ready() override {
+    auto res = tables_.GetInfo(context_.req().table_id());
+    auto& resp = context_.resp();
+    if (!res.ok()) {
+      Respond(res.status(), &resp, &context_.context());
+      return;
+    }
+    *resp.mutable_info() = *res->schema;
+    GetTablePartitionList(res->table, resp.mutable_partitions());
+    context_->RespondSuccess();
+  }
+
+ private:
+  ContextHolder context_;
+  PgTablesQueryResult tables_;
+};
+
+}  // namespace
+
+class PgClientServiceImpl::Impl : public SessionProvider {
  public:
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
@@ -561,8 +648,8 @@ class PgClientServiceImpl::Impl {
     ScheduleCheckExpiredSessions(now);
   }
 
-  Status OpenTable(
-      const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
+  void OpenTable(
+      const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext context) {
     if (req.invalidate_cache_time_us()) {
       const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(req.table_id()));
       std::unordered_set<uint32_t> db_oids_updated = { db_oid };
@@ -572,13 +659,13 @@ class PgClientServiceImpl::Impl {
     if (req.reopen()) {
       table_cache_.Invalidate(req.table_id());
     }
-
-    client::YBTablePtr table;
-    RETURN_NOT_OK(table_cache_.GetInfo(
-        req.table_id(), master::IncludeHidden(req.include_hidden()), &table,
-        resp->mutable_info()));
-    tserver::GetTablePartitionList(table, resp->mutable_partitions());
-    return Status::OK();
+    PgTableCacheGetOptions options = {
+      .include_hidden = master::IncludeHidden(req.include_hidden()),
+    };
+    auto query = std::make_shared<OpenTableQuery>(
+        MakeTypedPBRpcContextHolder(req, resp, std::move(context)));
+    table_cache_.GetTables(
+        std::span(&req.table_id(), 1), options, query->tables(), query);
   }
 
   Status GetTablePartitionList(
@@ -1657,10 +1744,11 @@ class PgClientServiceImpl::Impl {
   }
 
   void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-    auto status = DoPerform(req, resp, context);
-    if (!status.ok()) {
-      Respond(status, resp, context);
-    }
+    boost::container::small_vector<TableId, 4> table_ids;
+    PreparePgTablesQuery(*req, table_ids);
+    auto query = std::make_shared<PerformQuery>(
+      *this, MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
+    table_cache_.GetTables(table_ids, {}, query->tables(), query);
   }
 
   void InvalidateTableCache() {
@@ -1975,8 +2063,12 @@ class PgClientServiceImpl::Impl {
     return result;
   }
 
-  Result<PgClientSessionLocker> GetSession(uint64_t session_id) {
+  Result<PgClientSessionLocker> GetSession(uint64_t session_id) override {
     return PgClientSessionLocker(VERIFY_RESULT(DoGetSession(session_id)));
+  }
+
+  rpc::Messenger& Messenger() override {
+    return messenger_;
   }
 
   void ScheduleCheckExpiredSessions(CoarseTimePoint now) REQUIRES(mutex_) {
@@ -2079,10 +2171,6 @@ class PgClientServiceImpl::Impl {
 
       cdc_service->DestroyVirtualWALBatchForCDC(cdc_expired_session_ids);
     }
-  }
-
-  Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-    return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(

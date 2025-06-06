@@ -153,7 +153,8 @@ class PgClientSession {
 
   uint64_t id() const { return id_; }
 
-  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
+  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
+                 const PgTablesQueryResult& tables);
 
   void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
@@ -277,7 +278,8 @@ class PgClientSession {
   }
 
   template <class DataPtr>
-  Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context);
+  Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context,
+                   const PgTablesQueryResult& tables);
 
   // Resets the session's current read point.
   //
@@ -351,6 +353,9 @@ class PgClientSession {
   std::vector<WriteBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
 };
 
+void PreparePgTablesQuery(
+    const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids);
+
 template <class Pb>
 concept PbWith_AshMetadataPB = requires (const Pb& t) {
   t.ash_metadata();
@@ -379,4 +384,4 @@ inline void TryUpdateAshWaitState(const PgGetDatabaseInfoRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgIsInitDbDoneRequestPB&) {}
 inline void TryUpdateAshWaitState(const PgCreateSequencesDataTableRequestPB&) {}
 
-}  // namespace yb::tserver
+} // namespace yb::tserver

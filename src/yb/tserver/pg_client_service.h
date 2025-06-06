@@ -80,7 +80,6 @@ class TserverXClusterContextIf;
     (ListClones) \
     (ListLiveTabletServers) \
     (ListReplicationSlots) \
-    (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
     (GetNewObjectId) \
@@ -104,6 +103,7 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (OpenTable) \
     (GetTableKeyRanges) \
     /**/
 
