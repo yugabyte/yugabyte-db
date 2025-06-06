@@ -553,7 +553,7 @@ TEST_F(PgMiniTest, Simple) {
 class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
     PgMiniTest::SetUp();
