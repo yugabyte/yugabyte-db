@@ -23,6 +23,7 @@
 
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
@@ -164,7 +165,8 @@ TEST_F(XClusterDDLReplicationTest, ExtensionRoleUpdating) {
   auto& catalog_manager =
       ASSERT_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
   auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
-  const auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name));
+  const auto namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name));
   auto* tserver = producer_cluster_.mini_cluster_->mini_tablet_server(0);
   auto& xcluster_context = tserver->server()->GetXClusterContext();
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -313,7 +315,8 @@ TEST_F(XClusterDDLReplicationTest, BootstrappingEmptyTable) {
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
 
   ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
-  auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name));
+  auto namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name));
   auto bootstrap_required =
       ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, namespace_id));
   EXPECT_EQ(bootstrap_required, true);
