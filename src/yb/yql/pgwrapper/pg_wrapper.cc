@@ -886,7 +886,7 @@ Status PgWrapper::Start() {
   proc_->SetEnv("FLAGS_tmp_dir", FLAGS_tmp_dir);
 
   // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
-  proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGQUIT));
+  proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   proc_->InheritNonstandardFd(address_negotiator_fd_);
   SetCommonEnv(&*proc_, /* yb_enabled */ true);
 
@@ -1213,8 +1213,8 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 #ifdef THREAD_SANITIZER
     // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
     // signal handlers on shutdown.
-    // Disable thread leak detection since we use SIGQUIT to terminate Postgres which internally
-    // uses _exit. This causes TSAN to report false positives.
+    // Disable thread leak detection since we use SIGINT to terminate the postmaster,
+    // which may send SIGKILL to its backends. This causes TSAN to report false positives.
     static const std::string kTSANOptionsEnvName = "TSAN_OPTIONS";
     const char* tsan_options = getenv(kTSANOptionsEnvName.c_str());
     proc->SetEnv(
@@ -1251,6 +1251,34 @@ Status PgWrapper::CleanupPreviousPostgres() {
   return Status::OK();
 }
 
+bool is_postgres_process_found(pid_t postgres_pid) {
+  bool postgres_process_found = false;
+  #ifdef __linux__
+      const auto cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
+      std::ifstream postmaster_cmd_file;
+      postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
+      if (postmaster_cmd_file.good()) {
+        std::string cmdline = "";
+        postmaster_cmd_file >> cmdline;
+        postgres_process_found = (cmdline.find("/postgres") != std::string::npos);
+        postmaster_cmd_file.close();
+      }
+  #else
+      struct proc_bsdshortinfo info;
+      auto result = proc_pidinfo(
+          postgres_pid, PROC_PIDT_SHORTBSDINFO, 0 /*SHOW_ZOMBIES*/, &info,
+          PROC_PIDT_SHORTBSDINFO_SIZE);
+
+      if (result == PROC_PIDT_SHORTBSDINFO_SIZE) {
+        postgres_process_found = (strcmp(info.pbsi_comm, "postgres") == 0);
+      } else if (errno != ESRCH && errno != EPERM) {
+        LOG(WARNING) << "proc_pidinfo failed for pid " << postgres_pid << ". result: " << result
+                     << ", error: " << ErrnoToString(errno) << "," << errno;
+      }
+  #endif
+  return postgres_process_found;
+}
+
 Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
   auto env = Env::Default();
   if (!env->FileExists(lock_file)) {
@@ -1277,33 +1305,24 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
     LOG(WARNING) << Format(
         "Error reading postgres process ID from lock file $0. $1 $2", lock_file,
         ErrnoToString(errno), errno);
+  } else if (!is_postgres_process_found(postgres_pid)) {
+    // A process with this PID may not be a postgres process.
+    LOG(WARNING) << "Found older postgres process: " << postgres_pid
+                 << ". It is not currently a PG process, so it will not be killed.";
   } else {
-    bool postgres_process_found = false;
-#ifdef __linux__
-    const auto cmd_filename = "/proc/" + std::to_string(postgres_pid) + "/cmdline";
-    std::ifstream postmaster_cmd_file;
-    postmaster_cmd_file.open(cmd_filename, std::ios_base::in);
-    if (postmaster_cmd_file.good()) {
-      std::string cmdline = "";
-      postmaster_cmd_file >> cmdline;
-      postgres_process_found = (cmdline.find("/postgres") != std::string::npos);
-      postmaster_cmd_file.close();
-    }
-#else
-    struct proc_bsdshortinfo info;
-    auto result = proc_pidinfo(
-        postgres_pid, PROC_PIDT_SHORTBSDINFO, 0 /*SHOW_ZOMBIES*/, &info,
-        PROC_PIDT_SHORTBSDINFO_SIZE);
+    // It is a PG process, but it may be in the process of gracefully shutting down and allowing
+    // its children to exit. The postmaster will wait SIGKILL_CHILDREN_AFTER_SECS before forcibly
+    // killing its children, so lets give it a bit of time to do that.
+    LOG(WARNING) << "Found older postgres process: " << postgres_pid << ". "
+                 << "Waiting SIGKILL_CHILDREN_AFTER_SECS + 1 seconds before killing postgres, to "
+                 << "allow children a chance to gracefully exit.";
+    SleepFor(5s + 1s); // SIGKILL_CHILDREN_AFTER_SECS + 1s
 
-    if (result == PROC_PIDT_SHORTBSDINFO_SIZE) {
-      postgres_process_found = (strcmp(info.pbsi_comm, "postgres") == 0);
-    } else if (errno != ESRCH && errno != EPERM) {
-      LOG(WARNING) << "proc_pidinfo failed for pid " << postgres_pid << ". result: " << result
-                   << ", error: " << ErrnoToString(errno) << "," << errno;
-    }
-#endif
-
-    if (postgres_process_found) {
+    if (!is_postgres_process_found(postgres_pid)) {
+      LOG(WARNING) << "Postgres process " << postgres_pid
+                   << " exited on its own within the timeout.";
+    } else {
+      // If the process is still running and still a PG process, kill it.
       LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
       // If process does not exist, system may return "process does not exist" or
       // "operation not permitted" error. Ignore those errors.

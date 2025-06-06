@@ -80,6 +80,14 @@ YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kCompaction));
 class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false>> {
  protected:
 
+  Result<PGConn> ConnectToDB(const std::string& dbname) const {
+    return PGConnBuilder({
+      .host = pg_ts->bound_rpc_addr().host(),
+      .port = pg_ts->ysql_port(),
+      .dbname = dbname
+    }).Connect();
+  }
+
   void FlushTableById(string table_id) {
     DoFlushOrCompact(table_id, /* namespace_name= */ "", FlushOrCompaction::kFlush);
   }
@@ -310,6 +318,46 @@ TEST_F(PgWrapperTest, InsertSelect) {
   }
 }
 
+TEST_F(PgWrapperTest, TestHungPg) {
+  const std::string kTableName = "test_table";
+  const auto SIGKILL_CHILDREN_AFTER_SECS = 5s;
+  const auto kQuery = Format("EXPLAIN ANALYZE SELECT * FROM $0", kTableName);
+
+  auto conn = ASSERT_RESULT(ConnectToDB(std::string()));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn.FetchAllAsString(kQuery)); // Sanity check
+
+  LOG(INFO) << "Killing the other two tservers: " << cluster_->num_tablet_servers();
+  ASSERT_EQ(cluster_->num_tablet_servers(), 3);
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    if (cluster_->tablet_server(i) != pg_ts)
+      kill(cluster_->tablet_server(i)->pid(), SIGKILL);
+  }
+
+  std::atomic<bool> select_complete = false;
+  auto select_thread = std::thread([&conn, &select_complete, kQuery] {
+    ASSERT_NOK(conn.FetchAllAsString(kQuery));
+    select_complete = true;
+  });
+
+  // The select should still be running because it's stuck waiting for other tservers
+  std::this_thread::sleep_for(5s);
+  ASSERT_FALSE(select_complete.load());
+
+  LOG(INFO) << "Sending interrupt to the postmaster";
+  ASSERT_OK(pg_ts->SignalPostmaster(SIGINT));
+
+  ASSERT_OK(LoggedWaitFor([&select_complete]() -> Result<bool> {
+    return select_complete.load();
+  }, SIGKILL_CHILDREN_AFTER_SECS + 1s, "Waiting for query started before the postmaster signal"));
+
+  // The select should have completed
+  ASSERT_TRUE(select_complete.load());
+
+  // Wrap things up
+  select_thread.join();
+}
+
 class PgWrapperOneNodeClusterTest : public PgWrapperTest {
  public:
   int GetNumTabletServers() const override {
@@ -319,14 +367,6 @@ class PgWrapperOneNodeClusterTest : public PgWrapperTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgCommandTestBase::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back("--replication_factor=1");
-  }
-
-  Result<PGConn> ConnectToDB(const std::string& dbname) const {
-    return PGConnBuilder({
-      .host = pg_ts->bound_rpc_addr().host(),
-      .port = pg_ts->ysql_port(),
-      .dbname = dbname
-    }).Connect();
   }
 
   Status WaitForPostgresToStart(MonoDelta timeout) {
@@ -417,6 +457,34 @@ TEST_F(PgWrapperOneNodeClusterTest, TestPostgresLockFiles) {
     ASSERT_OK(restart_tserver_and_validate(Format("$0\n$1", my_pid, pid_file)));
     ASSERT_FALSE(kill_mgs_watcher.IsEventOccurred());
   }
+}
+
+TEST_F(PgWrapperOneNodeClusterTest, TestPgStatUserTablesPersistence) {
+
+  const std::string kTableName = "test_table";
+  {
+    auto conn = ASSERT_RESULT(ConnectToDB(std::string()));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+    ASSERT_OK(conn.ExecuteFormat("ANALYZE $0", kTableName));
+  }
+
+  const auto get_last_analyze_time = [this]() -> Result<MonoDelta> {
+    auto conn = VERIFY_RESULT(ConnectToDB(std::string()));
+    auto result = VERIFY_RESULT(conn.FetchRow<MonoDelta>(
+        "SELECT last_analyze FROM pg_stat_user_tables WHERE relname = 'test_table'"));
+    return result;
+  };
+
+  auto last_analyze_time_before_restart = ASSERT_RESULT(get_last_analyze_time());
+
+  pg_ts->Shutdown(SafeShutdown::kFalse);
+  LOG(INFO) << "Starting the tablet server again";
+  ASSERT_OK(pg_ts->Restart(/* start_cql_proxy= */ false));
+
+  auto last_analyze_time_after_restart = ASSERT_RESULT(get_last_analyze_time());
+  ASSERT_EQ(
+      last_analyze_time_before_restart.ToMicroseconds(),
+      last_analyze_time_after_restart.ToMicroseconds());
 }
 
 class PgWrapperSingleNodeLongTxnTest : public PgWrapperOneNodeClusterTest {
