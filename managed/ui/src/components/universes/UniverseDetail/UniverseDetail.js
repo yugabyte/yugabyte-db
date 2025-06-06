@@ -182,10 +182,11 @@ class UniverseDetail extends Component {
       }
       this.props.getUniverseInfo(uuid).then((response) => {
         const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
+        const isUniverseTaskInProgress = response.payload.data?.universeDetails?.updateInProgress;
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
         this.props.fetchProviderRunTimeConfigs(providerUUID);
-        this.props.getUniverseLbState(uuid);
+        !isUniverseTaskInProgress && this.props.getUniverseLbState(uuid);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -213,7 +214,8 @@ class UniverseDetail extends Component {
       prevProps.params.uuid !== this.props.params.uuid
     ) {
       this.props.getUniverseInfo(this.props.params.uuid);
-      this.props.getUniverseLbState(this.props.params.uuid);
+      const isUpdateInProgress = currentUniverse?.data?.universeDetails?.updateInProgress;
+      !isUpdateInProgress && this.props.getUniverseLbState(this.props.params.uuid);
     }
     if (
       getPromiseState(currentUniverse).isSuccess() &&
