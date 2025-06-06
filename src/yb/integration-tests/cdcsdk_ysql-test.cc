@@ -5587,17 +5587,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginCommitRecordValidationWi
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, insert_count);
 
-  int expected_begin_records = 2;
-  int expected_commit_records = 2;
+  int expected_begin_records = 1;
+  int expected_commit_records = 1;
   int actual_begin_records = 0;
   int actual_commit_records = 0;
   std::vector<std::string> excepted_table_list{"test1", "test2"};
   for (uint32_t i = 0; i < record_size; ++i) {
     const auto record = change_resp.cdc_sdk_proto_records(i);
     LOG(INFO) << "Record found: " << record.ShortDebugString();
-    if (std::find(
+    if (record.row_message().op() != RowMessage::BEGIN &&
+        record.row_message().op() != RowMessage::COMMIT &&
+        std::find(
             excepted_table_list.begin(), excepted_table_list.end(), record.row_message().table()) ==
-        excepted_table_list.end()) {
+            excepted_table_list.end()) {
       LOG(INFO) << "Tablename got in the record is wrong: " << record.row_message().table();
       FAIL();
     }
@@ -6817,8 +6819,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   int expected_key2 = 0;
   int ddl_count = 0;
   std::unordered_set<string> ddl_tables;
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const auto record = change_resp.records[i];
+  for (const auto& record : change_resp.records) {
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -6863,8 +6864,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   expected_key1 = 30;
   expected_key2 = 30;
   ddl_count = 0;
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const auto record = change_resp.records[i];
+  for (const auto& record : change_resp.records) {
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
