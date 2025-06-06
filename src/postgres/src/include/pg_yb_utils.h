@@ -1390,4 +1390,6 @@ extern bool YbRefreshMatviewInPlace();
 
 extern void YbForceSendInvalMessages();
 
+extern long YbGetPeakRssKb();
+
 #endif							/* PG_YB_UTILS_H */

@@ -5932,6 +5932,8 @@ PostgresMain(const char *dbname, const char *username)
 	if (IsUnderPostmaster && Log_disconnections)
 		on_proc_exit(log_disconnections, 0);
 
+	YbSetupHeapSnapshotProcExit();
+
 	pgstat_report_connect(MyDatabaseId);
 
 	/* Perform initialization specific to a WAL sender process. */

@@ -372,6 +372,12 @@ DEFINE_RUNTIME_PG_FLAG(
 TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, advanced);
 TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, hidden);
 
+DEFINE_RUNTIME_PG_FLAG(
+    int32, yb_log_heap_snapshot_on_exit_threshold, -1,
+    "When a process exits, log a peak heap snapshot showing the "
+    "approximate memory usage of each malloc call stack if its peak RSS "
+    "is greater than or equal to this threshold in KB. Set to -1 to disable.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
