@@ -490,8 +490,6 @@ main(int argc, char **argv)
 		{"rows-per-insert", required_argument, NULL, 10},
 		{"include-foreign-data", required_argument, NULL, 11},
 
-		/* YB: has short option letter */
-		{"masters", required_argument, NULL, 'm'},
 		/* YB: does not have short option letter */
 		{"no-serializable-deferrable", no_argument, &no_serializable_deferrable, 1},
 		{"no-tablegroups", no_argument, &dopt.no_tablegroups, 1},
@@ -531,7 +529,7 @@ main(int argc, char **argv)
 
 	InitDumpOptions(&dopt);
 
-	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:m:n:N:Op:RsS:t:T:U:vwWxXZ:",
+	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:n:N:Op:RsS:t:T:U:vwWxXZ:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -586,10 +584,6 @@ main(int argc, char **argv)
 									  PG_MAX_JOBS,
 									  &numWorkers))
 					exit_nicely(1);
-				break;
-
-			case 'm':			/* DEPRECATED and NOT USED: YB master hosts */
-				dopt.master_hosts = pg_strdup(optarg);
 				break;
 
 			case 'n':			/* include schema(s) */
@@ -927,12 +921,6 @@ main(int argc, char **argv)
 	/* YB */
 	if (dopt.cparams.pghost == NULL || dopt.cparams.pghost[0] == '\0')
 		dopt.cparams.pghost = DefaultHost;
-
-	/*
-	 * DEPRECATED: Custom YB-Master host/port to use.
-	 */
-	if (dopt.master_hosts)
-		pg_log_info("WARNING: ignoring the deprecated argument --masters (-m)");
 
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
@@ -1295,8 +1283,6 @@ help(const char *progname)
 	printf(_("  -w, --no-password        never prompt for password\n"));
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(_("  --role=ROLENAME          do SET ROLE before dump\n"));
-	printf(_("  -m, --masters=HOST:PORT  DEPRECATED and NOT USED\n"
-			 "                           comma-separated list of YB-Master hosts and ports\n"));
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));

@@ -106,8 +106,6 @@ static char *filename = NULL;
 static SimpleStringList database_exclude_patterns = {NULL, NULL};
 static SimpleStringList database_exclude_names = {NULL, NULL};
 
-static char *masterHosts = NULL;
-
 #define exit_nicely(code) exit(code)
 
 static int	include_yb_metadata = 0;	/* In this mode DDL statements include
@@ -146,7 +144,6 @@ main(int argc, char *argv[])
 		{"password", no_argument, NULL, 'W'},
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
-		{"masters", required_argument, NULL, 'm'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
@@ -246,7 +243,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:m:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -285,10 +282,6 @@ main(int argc, char *argv[])
 
 			case 'l':
 				pgdb = pg_strdup(optarg);
-				break;
-
-			case 'm':			/* DEPRECATED and NOT USED: YB master hosts */
-				masterHosts = pg_strdup(optarg);
 				break;
 
 			case 'O':
@@ -736,8 +729,6 @@ help(void)
 	printf(_("  --with-data                  dump the data\n"));
 	printf(_("  --with-schema                dump the schema\n"));
 	printf(_("  --with-statistics            dump the statistics\n"));
-	printf(_("  -m, --masters=HOST:PORT      DEPRECATED and NOT USED\n"
-			 "                               comma-separated list of YB-Master hosts and ports\n"));
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR     connect using connection string\n"));
@@ -1649,12 +1640,6 @@ runPgDump(const char *dbname, const char *create_opts)
 
 	appendPQExpBuffer(cmd, "\"%s\" %s %s", pg_dump_bin,
 					  pgdumpopts->data, create_opts);
-
-	/*
-	 * DEPRECATED: Custom YB-Master host/port to use.
-	 */
-	if (masterHosts != NULL)
-		fprintf(stderr, "WARNING: ignoring the deprecated argument --masters (-m)\n");
 
 	/*
 	 * If we have a filename, use the undocumented plain-append pg_dump
