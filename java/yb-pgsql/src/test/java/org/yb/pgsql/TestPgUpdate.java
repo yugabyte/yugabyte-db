@@ -310,4 +310,32 @@ public class TestPgUpdate extends BasePgSQLTest {
       assertEquals(expectedRows, getSortedRowList(returning));
     }
   }
+
+  @Test
+  public void testUpdateAcrossPartitionsWithCheckConstraint() throws SQLException {
+    String tableName = "parpar";
+    String partitionChild = "parchild";
+    String partitionDefault = "pardef";
+
+    try (Statement stmt = connection.createStatement()) {
+      // Create the partitioned table and its partitions
+      stmt.execute("CREATE TABLE " + tableName + "(partid int, value int) PARTITION BY RANGE (partid)");
+      stmt.execute("CREATE TABLE " + partitionChild + " PARTITION OF " + tableName + " FOR VALUES FROM (0) TO (10)");
+      stmt.execute("CREATE TABLE " + partitionDefault + " PARTITION OF " + tableName + " DEFAULT");
+
+      // Add check constraints
+      stmt.execute("ALTER TABLE " + partitionChild + " ADD CONSTRAINT parchid_value_check CHECK (value < 100)");
+      stmt.execute("ALTER TABLE " + partitionDefault + " ADD CONSTRAINT pardef_value_check CHECK (value < 1000)");
+
+      // Insert a row into the first partition
+      stmt.execute("INSERT INTO " + tableName + " VALUES (1, 90)");
+
+      // Move the row to a different partition (Should no longer check constraints of original partition)
+      stmt.execute("UPDATE " + tableName + " SET partid = 20, value = 900 WHERE partid = 1");
+
+      assertOneRow(stmt, "SELECT partid, value FROM " + partitionDefault + " WHERE partid = 20", 20, 900);
+
+      assertNoRows(stmt, "SELECT partid, value FROM " + partitionChild + " WHERE partid = 1");
+    }
+  }
 }
