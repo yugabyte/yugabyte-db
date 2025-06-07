@@ -20,6 +20,15 @@
     "build-storybook": "storybook build -s public",
     "generateV2JSApiClient": "[ -f ../src/main/resources/openapi.yaml ] && orval --config ./v2Api.config.ts"
   },
+  "jest": {
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(vis-timeline)/)"
+    ],
+    "moduleNameMapper": {
+      "\\.(css|less|scss)$": "<rootDir>/__mocks__/styleMock.js",
+      "\\.css\\?inline$": "<rootDir>/__mocks__/styleMock.js"
+    }
+  },
   "engines": {
     "node": ">=16.10.x",
     "npm": ">=7.24.x"
