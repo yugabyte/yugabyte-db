@@ -373,6 +373,16 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   }
 }
 
+void SetFastPathObjectLockingTxnMetadata(
+    const InFlightOpsTransactionMetadata& metadata, tserver::WriteRequestPB* req) {
+  if (metadata.object_locking_txn_meta) {
+    auto* txn_meta_pb = req->mutable_write_batch()->mutable_object_locking_txn_meta();
+    metadata.object_locking_txn_meta->TransactionIdToPB(txn_meta_pb);
+    txn_meta_pb->set_status_tablet(metadata.object_locking_txn_meta->status_tablet);
+    txn_meta_pb->set_pg_txn_start_us(MonoTime::Now().ToUint64());
+  }
+}
+
 } // namespace
 
 void AsyncRpc::SendRpcToTserver(int attempt_num) {
@@ -662,6 +672,10 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
       batcher_->RegisterRequest(request_pair.first, request_pair.second);
     }
     FillRequestIds(req_.request_id(), &ops_);
+  }
+
+  if (batcher_->in_flight_ops().metadata.object_locking_txn_meta) {
+    SetFastPathObjectLockingTxnMetadata(batcher_->in_flight_ops().metadata, &req_);
   }
 }
 
