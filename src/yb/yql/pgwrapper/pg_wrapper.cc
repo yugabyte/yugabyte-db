@@ -343,6 +343,12 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
 
 DECLARE_bool(enable_pg_cron);
 
+DEFINE_RUNTIME_PG_FLAG(
+    int32, yb_log_heap_snapshot_on_exit_threshold, -1,
+    "When a process exits, log a peak heap snapshot showing the "
+    "approximate memory usage of each malloc call stack if its peak RSS "
+    "is greater than or equal to this threshold in KB. Set to -1 to disable.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;

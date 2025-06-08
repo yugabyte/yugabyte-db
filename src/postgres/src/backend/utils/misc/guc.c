@@ -100,6 +100,7 @@
 #include "utils/syscache.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
+#include "yb_tcmalloc_utils.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -4513,6 +4514,22 @@ static struct config_int ConfigureNamesInt[] =
 	 NULL,
 	 assign_tcmalloc_sample_period,
 	 show_tcmalloc_sample_period},
+
+	{
+		{"yb_log_heap_snapshot_on_exit_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When a process exits, log a peak heap snapshot showing the "
+						 "approximate memory usage of each malloc call stack if its peak RSS "
+						 "is greater than or equal to this threshold in KB. "
+						 "Set to -1 to disable."),
+			NULL,
+			GUC_UNIT_KB | GUC_NOT_IN_SAMPLE
+		},
+		&yb_log_heap_snapshot_on_exit_threshold,
+		-1,
+		-1,
+		INT_MAX,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{

@@ -1275,4 +1275,6 @@ extern Oid YbGetDatabaseOidToIncrementCatalogVersion();
 
 extern bool YbRefreshMatviewInPlace();
 
+extern long YbGetPeakRssKb();
+
 #endif /* PG_YB_UTILS_H */

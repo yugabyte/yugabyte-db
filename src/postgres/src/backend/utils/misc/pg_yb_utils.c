@@ -29,6 +29,12 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <inttypes.h>
+#ifdef HAVE_SYS_PRCTL_H
+#include <sys/prctl.h>
+#endif
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -93,6 +99,9 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "parser/parse_utilcmd.h"
+#ifndef HAVE_GETRUSAGE
+#include "rusagestub.h"
+#endif
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -5698,4 +5707,27 @@ YbRefreshMatviewInPlace()
 {
 	return yb_refresh_matview_in_place ||
 		yb_major_version_upgrade_compatibility > 0;
+}
+
+/*
+ * Scale the ru_maxrss value according to the platform.
+ * On Linux, the maxrss is in kilobytes.
+ * On OSX, the maxrss is in bytes and scale it to kilobytes.
+ * https://www.manpagez.com/man/2/getrusage/osx-10.12.3.php
+ */
+static long
+scale_rss_to_kb(long maxrss)
+{
+#ifdef __APPLE__
+	maxrss = maxrss / 1024;
+#endif
+	return maxrss;
+}
+
+long
+YbGetPeakRssKb()
+{
+	struct rusage r;
+	getrusage(RUSAGE_SELF, &r);
+	return scale_rss_to_kb(r.ru_maxrss);
 }
