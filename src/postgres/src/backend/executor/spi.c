@@ -64,7 +64,8 @@ static void _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan);
 
 static int _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 				  Snapshot snapshot, Snapshot crosscheck_snapshot,
-				  bool read_only, bool fire_triggers, uint64 tcount);
+				  bool read_only, bool fire_triggers, uint64 tcount,
+				  bool yb_reuse_existing_snapshot_in_read_committed);
 
 static ParamListInfo _SPI_convert_params(int nargs, Oid *argtypes,
 					Datum *Values, const char *Nulls);
@@ -462,7 +463,8 @@ SPI_execute(const char *src, bool read_only, long tcount)
 
 	res = _SPI_execute_plan(&plan, NULL,
 							InvalidSnapshot, InvalidSnapshot,
-							read_only, true, tcount);
+							read_only, true, tcount,
+							false /* yb_reuse_existing_snapshot_in_read_committed */ );
 
 	_SPI_end_call(true);
 	return res;
@@ -496,7 +498,8 @@ SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 							_SPI_convert_params(plan->nargs, plan->argtypes,
 												Values, Nulls),
 							InvalidSnapshot, InvalidSnapshot,
-							read_only, true, tcount);
+							read_only, true, tcount,
+							false /* yb_reuse_existing_snapshot_in_read_committed */ );
 
 	_SPI_end_call(true);
 	return res;
@@ -514,6 +517,15 @@ int
 SPI_execute_plan_with_paramlist(SPIPlanPtr plan, ParamListInfo params,
 								bool read_only, long tcount)
 {
+	return SPI_yb_execute_plan_with_paramlist(plan, params, read_only, tcount,
+											  false /* yb_reuse_existing_snapshot_in_read_committed */ );
+}
+
+int
+SPI_yb_execute_plan_with_paramlist(SPIPlanPtr plan, ParamListInfo params,
+								   bool read_only, long tcount,
+								   bool yb_reuse_existing_snapshot_in_read_committed)
+{
 	int			res;
 
 	if (plan == NULL || plan->magic != _SPI_PLAN_MAGIC || tcount < 0)
@@ -525,7 +537,8 @@ SPI_execute_plan_with_paramlist(SPIPlanPtr plan, ParamListInfo params,
 
 	res = _SPI_execute_plan(plan, params,
 							InvalidSnapshot, InvalidSnapshot,
-							read_only, true, tcount);
+							read_only, true, tcount,
+							yb_reuse_existing_snapshot_in_read_committed);
 
 	_SPI_end_call(true);
 	return res;
@@ -566,7 +579,8 @@ SPI_execute_snapshot(SPIPlanPtr plan,
 							_SPI_convert_params(plan->nargs, plan->argtypes,
 												Values, Nulls),
 							snapshot, crosscheck_snapshot,
-							read_only, fire_triggers, tcount);
+							read_only, fire_triggers, tcount,
+							false /* yb_reuse_existing_snapshot_in_read_committed */ );
 
 	_SPI_end_call(true);
 	return res;
@@ -613,7 +627,8 @@ SPI_execute_with_args(const char *src,
 
 	res = _SPI_execute_plan(&plan, paramLI,
 							InvalidSnapshot, InvalidSnapshot,
-							read_only, true, tcount);
+							read_only, true, tcount,
+							false /* yb_reuse_existing_snapshot_in_read_committed */ );
 
 	_SPI_end_call(true);
 	return res;
@@ -2051,7 +2066,8 @@ _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan)
 static int
 _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 				  Snapshot snapshot, Snapshot crosscheck_snapshot,
-				  bool read_only, bool fire_triggers, uint64 tcount)
+				  bool read_only, bool fire_triggers, uint64 tcount,
+				  bool yb_reuse_existing_snapshot_in_read_committed)
 {
 	int			my_res = 0;
 	uint64		my_processed = 0;
@@ -2179,8 +2195,20 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 		/*
 		 * In the default non-read-only case, get a new snapshot, replacing
 		 * any that we pushed in a previous cycle.
+		 * YB: When batching of writes across queries is requested in Read
+		 * Committed isolation, skip creating a new snapshot (and
+		 * consequently a read point) as this would cause previously
+		 * buffered writes to be flushed. As a result, all the statements in
+		 * the batch share the same snapshot. In case of a serialization
+		 * error, the entire top level statement will be retried and not just
+		 * individual statements in the batch. So, skipping the snapshot does
+		 * not alter the retry logic.
+		 * TODO(kramanathan): Use this as a workaround until we can explicitly
+		 * specify that multiple statements share a read point in RC mode if
+		 * they do not perform any reads.
 		 */
-		if (snapshot == InvalidSnapshot && !read_only && !plan->no_snapshots)
+		if (snapshot == InvalidSnapshot && !read_only && !plan->no_snapshots &&
+			!yb_reuse_existing_snapshot_in_read_committed)
 		{
 			if (pushed_active_snap)
 				PopActiveSnapshot();
@@ -2229,9 +2257,10 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 
 			/*
 			 * If not read-only mode, advance the command counter before each
-			 * command and update the snapshot.
+			 * command and update the snapshot. (But skip it if the snapshot
+			 * isn't under our control.)
 			 */
-			if (!read_only && !plan->no_snapshots)
+			if (!read_only && pushed_active_snap)
 			{
 				CommandCounterIncrement();
 				UpdateActiveSnapshotCommandId();

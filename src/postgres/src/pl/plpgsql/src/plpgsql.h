@@ -867,6 +867,11 @@ typedef struct PLpgSQL_stmt_execsql
 	bool		strict;			/* INTO STRICT flag */
 	bool		mod_stmt_set;	/* is mod_stmt valid yet? */
 	PLpgSQL_variable *target;	/* INTO target (record or row) */
+
+	/* YB fields */
+	/* are write buffers required to be flushed before stmt execution? */
+	bool		yb_flush_before_stmt;
+	bool		yb_flush_before_stmt_set; /* is yb_flush_before_stmt valid yet? */
 } PLpgSQL_stmt_execsql;
 
 /*
