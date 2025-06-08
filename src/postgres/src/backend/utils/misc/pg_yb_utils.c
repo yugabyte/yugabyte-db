@@ -1501,6 +1501,9 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.max_cols_size_to_compare = 10 * 1024
 };
 
+bool yb_speculatively_execute_pl_statements = false;
+bool yb_whitelist_extra_stmts_for_pl_speculative_execution = false;
+
 //------------------------------------------------------------------------------
 // YB Debug utils.
 

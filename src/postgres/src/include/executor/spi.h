@@ -88,6 +88,10 @@ extern int SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 extern int SPI_execute_plan_with_paramlist(SPIPlanPtr plan,
 								ParamListInfo params,
 								bool read_only, long tcount);
+extern int SPI_yb_execute_plan_with_paramlist(SPIPlanPtr plan,
+											  ParamListInfo params,
+											  bool read_only, long tcount,
+											  bool yb_reuse_existing_snapshot_in_read_committed);
 extern int	SPI_exec(const char *src, long tcount);
 extern int SPI_execp(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 		  long tcount);
