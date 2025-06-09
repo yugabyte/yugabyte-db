@@ -2041,7 +2041,9 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       break;
     }
     case FlushTabletsRequestPB::COMPACT: {
-      AdminCompactionOptions options { /* should_wait = */ true };
+      AdminCompactionOptions options(
+          ShouldWait::kTrue,
+          rocksdb::SkipCorruptDataBlocksUnsafe(req->remove_corrupt_data_blocks_unsafe()));
       if (HasVectorIndex(*req)) {
         options.vector_index_ids = std::make_shared<TableIds>(
             req->all_vector_indexes() ? TableIds{} : CopyVectorIndexIds(*req));
