@@ -98,19 +98,27 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           boolean catalogUpgradeCompleted = false;
 
           if (ysqlMajorVersionUpgrade) {
-            if (requireAdditionalSuperUserForCatalogUpgrade) {
-              if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
-                YsqlMajorCatalogUpgradeState state =
-                    softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
-                if (state.equals(
-                    YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
-                  log.info(
-                      "YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
-                  createRollbackYsqlMajorVersionCatalogUpgradeTask();
-                } else if (!state.equals(
-                    YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
-                  catalogUpgradeCompleted = true;
-                }
+            if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
+              YsqlMajorCatalogUpgradeState state =
+                  softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
+              log.info(
+                  "YSQL catalog upgrade state for universe {}: {}",
+                  universe.getUniverseUUID(),
+                  state.toString());
+              if (requireAdditionalSuperUserForCatalogUpgrade
+                  && state.equals(
+                      YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
+                log.info(
+                    "YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
+                createRollbackYsqlMajorVersionCatalogUpgradeTask();
+              } else if (state.equals(
+                  YsqlMajorCatalogUpgradeState
+                      .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK)) {
+                catalogUpgradeCompleted = true;
+              } else {
+                log.info(
+                    "YSQL catalog upgrade is in a pending state. Proceeding with all upgrade"
+                        + " subtasks.");
               }
             }
 
