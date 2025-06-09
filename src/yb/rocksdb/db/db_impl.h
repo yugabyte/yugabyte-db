@@ -318,14 +318,10 @@ class DBImpl : public DB {
 
   virtual Status GetDbIdentity(std::string* identity) const override;
 
-  Status RunManualCompaction(ColumnFamilyData* cfd, int input_level,
-                             int output_level, uint32_t output_path_id,
-                             const Slice* begin, const Slice* end,
-                             bool exclusive,
-                             CompactionReason compaction_reason,
-                             uint64_t file_number_upper_bound,
-                             uint64_t input_size_limit_per_job,
-                             bool disallow_trivial_move = false);
+  Status RunManualCompaction(
+      ColumnFamilyData* cfd, int input_level, int output_level,
+      const CompactRangeOptions& options, const Slice* begin, const Slice* end,
+      bool disallow_trivial_move = false);
 
   // Return an internal iterator over the current state of the database.
   // The keys of this iterator are internal keys (see format.h).
@@ -918,7 +914,6 @@ class DBImpl : public DB {
     ColumnFamilyData* cfd;
     int input_level;
     int output_level;
-    uint32_t output_path_id;
     Status status;
     bool done;
     bool in_progress;             // compaction request being processed?

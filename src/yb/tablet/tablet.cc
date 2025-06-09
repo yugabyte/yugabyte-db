@@ -3628,10 +3628,12 @@ Status Tablet::ForceManualRocksDBCompact(docdb::SkipFlush skip_flush) {
 }
 
 Status Tablet::ForceRocksDBCompact(
-    rocksdb::CompactionReason compaction_reason, docdb::SkipFlush skip_flush) {
+    rocksdb::CompactionReason compaction_reason, docdb::SkipFlush skip_flush,
+    rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   rocksdb::CompactRangeOptions options;
   options.skip_flush = skip_flush;
   options.compaction_reason = compaction_reason;
+  options.skip_corrupt_data_blocks_unsafe = skip_corrupt_data_blocks_unsafe;
   if (compaction_reason != rocksdb::CompactionReason::kPostSplitCompaction) {
     options.exclusive_manual_compaction = FLAGS_tablet_exclusive_full_compaction;
     return ForceRocksDBCompact(options, options);
@@ -4164,8 +4166,7 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
       std::bind(&Tablet::TriggerManualCompactionSync, this, compaction_reason));
 }
 
-Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
-    std::function<void()> on_compaction_completion) {
+Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options) {
   if (!admin_triggered_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Admin triggered compaction thread pool unavailable.");
   }
@@ -4176,26 +4177,25 @@ Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
         admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return admin_full_compaction_task_pool_token_->SubmitFunc([this, on_compaction_completion]() {
-    TriggerManualCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
-    on_compaction_completion();
+  return admin_full_compaction_task_pool_token_->SubmitFunc([this, options]() {
+    Status status = TriggerManualCompactionSyncUnsafe(
+        rocksdb::CompactionReason::kAdminCompaction, options.skip_corrupt_data_blocks_unsafe);
+    if (options.compaction_completion_callback) {
+      options.compaction_completion_callback(status);
+    }
   });
 }
 
-Status Tablet::TriggerAdminFullCompactionIfNeeded() {
-  return TriggerAdminFullCompactionIfNeededHelper();
-}
-
-Status Tablet::TriggerAdminFullCompactionWithCallbackIfNeeded(
-    std::function<void()> on_compaction_completion) {
-  return TriggerAdminFullCompactionIfNeededHelper(on_compaction_completion);
-}
-
-void Tablet::TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
+Status Tablet::TriggerManualCompactionSyncUnsafe(
+    rocksdb::CompactionReason reason,
+    rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_full_compaction);
+  auto status =
+      ForceRocksDBCompact(reason, docdb::SkipFlush::kFalse, skip_corrupt_data_blocks_unsafe);
   WARN_WITH_PREFIX_NOT_OK(
-      ForceRocksDBCompact(reason),
+      status,
       Format("$0: Failed tablet full compaction ($1)", log_prefix_suffix_, ToString(reason)));
+  return status;
 }
 
 bool Tablet::HasActiveTTLFileExpiration() {

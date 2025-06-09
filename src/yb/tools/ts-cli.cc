@@ -128,6 +128,14 @@ DEFINE_UNKNOWN_bool(force, false, "set_flag: If true, allows command to set a fl
             "from the memory, otherwise tablet metadata will be kept in memory with state "
             "TOMBSTONED.");
 
+DEFINE_NON_RUNTIME_bool(
+    remove_corrupt_data_blocks_unsafe, false,
+    "UNSAFE: If true, allows command to remove corrupt data blocks if found. This will result in "
+    "data loss. Use with extra care only when/while no other options are available.");
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, advanced);
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, hidden);
+TAG_FLAG(remove_corrupt_data_blocks_unsafe, unsafe);
+
 DEFINE_UNKNOWN_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
@@ -594,6 +602,9 @@ Status TsAdminClient::FlushTablets(const std::string& tablet_id, bool is_compact
   } else {
     req.set_all_tablets(true);
   }
+
+  req.set_remove_corrupt_data_blocks_unsafe(FLAGS_remove_corrupt_data_blocks_unsafe);
+
   req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
   req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
                                   : tserver::FlushTabletsRequestPB::FLUSH);

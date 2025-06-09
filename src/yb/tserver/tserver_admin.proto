@@ -237,6 +237,10 @@ message FlushTabletsRequestPB {
 
   // Only flush/compact regular RocksDB, not intents RocksDB.
   optional bool regular_only = 6;
+
+  // UNSAFE: For compaction only: remove corrupt data blocks during in tablet if found. This will
+  // result in data loss. Use with extra care only when/while no other options are available.
+  optional bool remove_corrupt_data_blocks_unsafe = 10;
 }
 
 message FlushTabletsResponsePB {

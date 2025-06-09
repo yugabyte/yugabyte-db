@@ -76,6 +76,7 @@
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
@@ -124,6 +125,12 @@ class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
 
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
+
+struct AdminCompactionOptions {
+  StdStatusCallback compaction_completion_callback;
+  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+      rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
+};
 
 struct TabletScopedRWOperationPauses {
   ScopedRWOperationPause blocking_rocksdb_shutdown_start;
@@ -604,7 +611,9 @@ class Tablet : public AbstractTablet,
 
   Status ForceRocksDBCompact(
       rocksdb::CompactionReason compaction_reason,
-      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
 
   rocksdb::DB* regular_db() const {
     return regular_db_.get();
@@ -798,11 +807,7 @@ class Tablet : public AbstractTablet,
   Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
-  Status TriggerAdminFullCompactionIfNeeded();
-  // Triggers an admin full compaction on this tablet with a callback to execute once the compaction
-  // completes.
-  Status TriggerAdminFullCompactionWithCallbackIfNeeded(
-      std::function<void()> on_compaction_completion);
+  Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
 
   bool HasActiveFullCompaction();
 
@@ -978,7 +983,13 @@ class Tablet : public AbstractTablet,
       const std::string& partition_key,
       size_t row_count) const;
 
-  void TriggerManualCompactionSync(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionSyncUnsafe(
+      rocksdb::CompactionReason reason,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
+
+  Status TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
+    return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
+  }
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,
@@ -1001,9 +1012,6 @@ class Tablet : public AbstractTablet,
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
-
-  Status TriggerAdminFullCompactionIfNeededHelper(
-      std::function<void()> on_compaction_completion = []() {});
 
   std::unique_ptr<const Schema> key_schema_;
 

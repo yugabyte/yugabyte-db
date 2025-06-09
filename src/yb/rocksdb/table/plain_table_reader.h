@@ -93,10 +93,13 @@ class PlainTableReader: public TableReader {
 
   bool IsSplitSst() const override { return false; }
 
-  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
+  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override {
+    assert(false);
+  }
 
-  InternalIterator* NewIterator(const ReadOptions&, Arena* arena = nullptr,
-                                bool skip_filters = false) override;
+  InternalIterator* NewIterator(
+      const ReadOptions&, Arena* arena, bool skip_filters,
+      SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) override;
 
   void Prepare(const Slice& target) override;
 

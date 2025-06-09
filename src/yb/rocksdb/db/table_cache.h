@@ -77,11 +77,12 @@ class TableCache {
   // @param skip_filters Disables loading/accessing the filter block
   InternalIterator* NewIterator(
       const ReadOptions& options, const EnvOptions& toptions,
-      const InternalKeyComparatorPtr& internal_comparator,
-      const FileDescriptor& file_fd, Slice filter,
-      TableReader** table_reader_ptr = nullptr,
-      HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
-      Arena* arena = nullptr, bool skip_filters = false);
+      const InternalKeyComparatorPtr& internal_comparator, const FileDescriptor& file_fd,
+      Slice filter, TableReader** table_reader_ptr = nullptr,
+      HistogramImpl* file_read_hist = nullptr, bool for_compaction = false, Arena* arena = nullptr,
+      bool skip_filters = false,
+      SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+          SkipCorruptDataBlocksUnsafe::kFalse);
 
   // Return table reader wrapped in internal structure for future use to create iterator.
   // Parameters meaning is the same as for NewIterator function above.
@@ -95,9 +96,10 @@ class TableCache {
   // Version of NewIterator which uses provided table reader instead of getting it by
   // itself.
   InternalIterator* NewIterator(
-      const ReadOptions& options, TableReaderWithHandle* trwh,
-      Slice filter, bool for_compaction = false,
-      Arena* arena = nullptr, bool skip_filters = false);
+      const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
+      bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false,
+      SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+          SkipCorruptDataBlocksUnsafe::kFalse);
 
   // If a seek to internal key "k" in specified file finds an entry,
   // call (*handle_result)(arg, found_key, found_value) repeatedly until
@@ -183,8 +185,8 @@ class TableCache {
       bool skip_filters = false);
 
   InternalIterator* DoNewIterator(
-      const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
-      bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
+      const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter, bool for_compaction,
+      Arena* arena, bool skip_filters, SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
 
   const ImmutableCFOptions& ioptions_;
   const EnvOptions& env_options_;
