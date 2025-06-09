@@ -128,6 +128,22 @@ YB_DEFINE_ENUM(TabletDirType, (kData)(kWal));
 YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
 
 YB_STRONGLY_TYPED_BOOL(MarkDirtyAfterRegister);
+YB_STRONGLY_TYPED_BOOL(ShouldWait);
+
+struct AdminCompactionOptions {
+  ShouldWait should_wait;
+  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+      rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
+
+  AdminCompactionOptions() = delete;
+
+  AdminCompactionOptions(
+      ShouldWait should_wait_,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe_ =
+          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse)
+      : should_wait(should_wait_),
+        skip_corrupt_data_blocks_unsafe(skip_corrupt_data_blocks_unsafe_) {}
+};
 
 // Keeps track of the tablets hosted on the tablet server side.
 //
@@ -392,7 +408,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Trigger admin full compactions concurrently on the provided tablets.
   // should_wait determines whether this function is asynchronous or not.
-  Status TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait);
+  Status TriggerAdminCompaction(const TabletPtrs& tablets, const AdminCompactionOptions& options);
 
   // Create Metadata cache atomically and return the metadata cache object.
   client::YBMetaDataCache* CreateYBMetaDataCache();

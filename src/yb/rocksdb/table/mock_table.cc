@@ -28,6 +28,7 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/get_context.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
@@ -49,8 +50,13 @@ stl_wrappers::KVMap MakeMockFile(
   return stl_wrappers::KVMap(l, stl_wrappers::LessOfComparator(&icmp_));
 }
 
-InternalIterator* MockTableReader::NewIterator(const ReadOptions&, Arena* arena,
-                                               bool skip_filters) {
+InternalIterator* MockTableReader::NewIterator(
+    const ReadOptions&, Arena* arena, bool skip_filters,
+    SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
+  if (skip_corrupt_data_blocks_unsafe) {
+    return NewErrorInternalIterator(
+        STATUS(InvalidArgument, "skip_corrupt_data_blocks_unsafe not supported"), arena);
+  }
   return new MockTableIterator(table_);
 }
 

@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
@@ -31,7 +32,10 @@
 #include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/dockv/doc_ttl_util.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
@@ -44,6 +48,8 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
@@ -68,6 +74,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
@@ -83,29 +90,45 @@
 
 using namespace std::literals; // NOLINT
 
-DECLARE_int32(replication_factor);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
-DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_bool(tablet_enable_ttl_file_filter);
-DECLARE_int32(rocksdb_base_background_compactions);
-DECLARE_int32(rocksdb_max_background_compactions);
-DECLARE_uint64(rocksdb_max_file_size_for_compaction);
-DECLARE_bool(file_expiration_ignore_value_ttl);
-DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
+DECLARE_bool(TEST_disable_adding_last_compaction_to_tablet_metadata);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
-DECLARE_int32(scheduled_full_compaction_frequency_hours);
-DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
-DECLARE_int32(auto_compact_check_interval_sec);
-DECLARE_uint32(auto_compact_stat_window_seconds);
-DECLARE_uint32(auto_compact_min_obsolete_keys_found);
-DECLARE_double(auto_compact_percent_obsolete);
 DECLARE_bool(TEST_pause_before_full_compaction);
-DECLARE_bool(TEST_disable_adding_last_compaction_to_tablet_metadata);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(file_expiration_ignore_value_ttl);
+DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
+DECLARE_bool(tablet_enable_ttl_file_filter);
+DECLARE_bool(use_priority_thread_pool_for_compactions);
+
+DECLARE_double(auto_compact_percent_obsolete);
+
+DECLARE_int32(auto_compact_check_interval_sec);
 DECLARE_int32(full_compaction_pool_max_queue_size);
 DECLARE_int32(full_compaction_pool_max_threads);
-DECLARE_bool(enable_load_balancing);
+DECLARE_int32(priority_thread_pool_size);
+DECLARE_int32(replication_factor);
+DECLARE_int32(replication_factor);
+DECLARE_int32(rocksdb_base_background_compactions);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(rocksdb_max_background_compactions);
+DECLARE_int32(scheduled_full_compaction_frequency_hours);
+DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
+
+DECLARE_string(allow_compaction_failures_for_tablet_ids);
+
+DECLARE_uint32(auto_compact_min_obsolete_keys_found);
+DECLARE_uint32(auto_compact_stat_window_seconds);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+
+DECLARE_string(allow_compaction_failures_for_tablet_ids);
 
 namespace yb {
 
@@ -234,6 +257,10 @@ class CompactionTest : public YBTest {
     workload_->set_table_ttl(table_ttl_to_use());
     workload_->set_sequential_write(sequential_write());
     workload_->Setup();
+
+    const auto workload_table_info =
+        ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+    workload_table_id_ = workload_table_info->id();
   }
 
  protected:
@@ -350,12 +377,30 @@ class CompactionTest : public YBTest {
       const bool trigger_manual_compaction);
   void TestCompactionTaskMetrics(const int num_files, bool manual_compactions);
 
+  Status TriggerAdminCompactions(
+      ShouldWait should_wait, rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+                                  rocksdb::SkipCorruptDataBlocksUnsafe::kFalse) {
+    for (int i = 0; i < NumTabletServers(); i++) {
+      auto ts_tablet_manager = cluster_->GetTabletManager(i);
+      const auto tablet_peers = ts_tablet_manager->GetTabletPeersWithTableId(workload_table_id_);
+      TSTabletManager::TabletPtrs workload_tablet_ptrs;
+      for (const auto& tablet_peer : tablet_peers) {
+        workload_tablet_ptrs.push_back(tablet_peer->shared_tablet());
+      }
+      RETURN_NOT_OK(ts_tablet_manager->TriggerAdminCompaction(
+          workload_tablet_ptrs,
+          AdminCompactionOptions{should_wait, skip_corrupt_data_blocks_unsafe}));
+    }
+    return Status::OK();
+  }
+
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<client::YBClient> client_;
   server::ClockPtr clock_{new server::HybridClock()};
   std::unique_ptr<client::TransactionManager> transaction_manager_;
   std::unique_ptr<client::TransactionPool> transaction_pool_;
   std::unique_ptr<TestWorkload> workload_;
+  TableId workload_table_id_;
   std::shared_ptr<RocksDbListener> rocksdb_listener_;
 };
 
@@ -1769,9 +1814,6 @@ class FullCompactionMonitoringTest : public CompactionTest {
   void SetUp() override {
     CompactionTest::SetUp();
     SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
-    const auto workload_table_info =
-        ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
-    workload_table_id_ = workload_table_info->id();
 
     // Disable automatic compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
@@ -1781,19 +1823,6 @@ class FullCompactionMonitoringTest : public CompactionTest {
   void TearDown() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
     CompactionTest::TearDown();
-  }
-
-  // should_wait determines whether the function is asynchronous or synchronous.
-  void TriggerAdminCompactions(bool should_wait) {
-    for (int i = 0; i < NumTabletServers(); i++) {
-      auto ts_tablet_manager = cluster_->GetTabletManager(i);
-      const auto tablet_peers = ts_tablet_manager->GetTabletPeersWithTableId(workload_table_id_);
-      TSTabletManager::TabletPtrs workload_tablet_ptrs;
-      for (const auto& tablet_peer : tablet_peers) {
-        workload_tablet_ptrs.push_back(tablet_peer->shared_tablet());
-      }
-      ASSERT_OK(ts_tablet_manager->TriggerAdminCompaction(workload_tablet_ptrs, should_wait));
-    }
   }
 
   Status WaitForAllTabletsToHaveFullCompactionState(tablet::FullCompactionState expected_state) {
@@ -1819,19 +1848,17 @@ class FullCompactionMonitoringTest : public CompactionTest {
         30s /* timeout */,
         description);
   }
-
-  TableId workload_table_id_;
 };
 
 TEST_F(FullCompactionMonitoringTest, IdleStateAfterAdminCompactionCompleted) {
   ASSERT_OK(WaitForAllTabletsToHaveFullCompactionState(tablet::IDLE));
-  TriggerAdminCompactions(true /* should_wait */);
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kTrue));
   ASSERT_OK(WaitForAllTabletsToHaveFullCompactionState(tablet::IDLE));
 }
 
 TEST_F(FullCompactionMonitoringTest, CompactingStateDuringAdminCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
-  TriggerAdminCompactions(false /* should_wait */);
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kFalse));
   ASSERT_OK(WaitForAllTabletsToHaveFullCompactionState(tablet::COMPACTING));
 }
 
@@ -1956,7 +1983,7 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
 
 TEST_F(MasterFullCompactionMonitoringTest, CompactionStateDuringAdminCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
-  TriggerAdminCompactions(false /* should_wait */);
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kFalse));
   ASSERT_OK(WaitForCompactionStatusesToSatisfy(
       test_tablets_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
         return status.full_compaction_state == tablet::COMPACTING &&
@@ -1965,12 +1992,158 @@ TEST_F(MasterFullCompactionMonitoringTest, CompactionStateDuringAdminCompaction)
 }
 
 TEST_F(MasterFullCompactionMonitoringTest, IdleStateAfterAdminCompactionCompletion) {
-  TriggerAdminCompactions(true /* should_wait */);
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kTrue));
   ASSERT_OK(WaitForCompactionStatusesToSatisfy(
       test_tablets_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
         return status.full_compaction_state == tablet::IDLE &&
                status.last_full_compaction_time.ToUint64() > 0;
       }));
+}
+
+namespace {
+
+Status IterateTabletRows(
+    tablet::Tablet* tablet, ColumnIdRep key_column_id,
+    std::function<Status(const yb::qlexpr::QLTableRow& row)> callback) {
+  const SchemaPtr schema = tablet->metadata()->schema();
+  dockv::ReaderProjection projection(*schema);
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection));
+  qlexpr::QLTableRow row;
+  std::unordered_set<int32_t> tablet_keys;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    auto key_opt = row.GetValue(key_column_id);
+    SCHECK(key_opt.is_initialized(), InternalError, "Key is not initialized");
+    auto key = key_opt->int32_value();
+    SCHECK(
+        tablet_keys.insert(key).second,
+        InternalError,
+        Format("Duplicate key $0 in tablet $1", key, tablet->tablet_id()));
+    RETURN_NOT_OK(callback(row));
+  }
+  return Status::OK();
+}
+
+size_t RoundUpToBlockSize(size_t size) {
+  return (size + FLAGS_db_block_size_bytes - 1) / FLAGS_db_block_size_bytes *
+         FLAGS_db_block_size_bytes;
+}
+
+} // namespace
+
+TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
+  constexpr auto kNumFilesToWrite = 3;
+  const size_t kCorruptionOffset = FLAGS_db_block_size_bytes * 2;
+  const size_t kCorruptionSize = FLAGS_db_block_size_bytes * 3;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = kCorruptionSize * 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+  const auto tablets = table_info->GetTablets();
+  ASSERT_GE(tablets.size(), 1);
+
+  const auto tablet_id = tablets[0]->tablet_id();
+  const auto tablet_peers = ASSERT_RESULT(ListTabletActivePeers(cluster_.get(), tablet_id));
+
+  // RF=1
+  ASSERT_EQ(tablet_peers.size(), 1);
+
+  const auto tablet_peer = tablet_peers[0];
+  const auto shared_tablet = tablet_peer->shared_tablet();
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(workload_->table_name(), client_.get()));
+  const auto key_column_id =  table.schema().ColumnId(0);
+
+  std::unordered_map<int32_t, qlexpr::QLTableRow> original_data;
+  ASSERT_OK(IterateTabletRows(
+      shared_tablet.get(), key_column_id,
+      [&original_data, key_column_id](const qlexpr::QLTableRow& row) {
+        original_data.emplace(row.GetValue(key_column_id)->int32_value(), row);
+        return Status::OK();
+      }));
+
+  rocksdb::TablePropertiesCollection all_sst_props;
+  ASSERT_OK(shared_tablet->regular_db()->GetPropertiesOfAllTables(&all_sst_props));
+
+  const auto tablet_num_keys = original_data.size();
+
+  size_t num_max_corrupt_keys_estimate = 0;
+  size_t tablet_num_corrupt_data_blocks_estimate = 0;
+  size_t tablet_num_total_data_blocks = 0;
+
+  for (auto& sst_file : shared_tablet->regular_db()->GetLiveFilesMetaData()) {
+    const auto base_file_path = sst_file.BaseFilePath();
+    const auto data_file_path = sst_file.DataFilePath();
+    const auto& sst_props = *all_sst_props[base_file_path];
+    tablet_num_total_data_blocks += sst_props.num_data_blocks;
+    const double compression_ratio =
+        1.0 * (sst_props.raw_key_size + sst_props.raw_value_size) / sst_props.data_size;
+
+    struct CorruptRange {
+      size_t offset;
+      size_t size;
+    };
+    for (auto corrupt_range :
+         {CorruptRange{0, static_cast<size_t>(FLAGS_db_block_size_bytes / 5)},
+          CorruptRange{kCorruptionOffset, kCorruptionSize}}) {
+      ASSERT_OK(yb::CorruptFile(
+          data_file_path, corrupt_range.offset, corrupt_range.size, CorruptionType::kZero));
+      tablet_num_corrupt_data_blocks_estimate +=
+          RoundUpToBlockSize(corrupt_range.size * compression_ratio) / FLAGS_db_block_size_bytes;
+      // RocksDB record started before or ending after corrupt region is likely to be also corrupt.
+      num_max_corrupt_keys_estimate += 2;
+    }
+  }
+
+  LOG(INFO) << "num_total_data_blocks: " << tablet_num_total_data_blocks;
+
+  num_max_corrupt_keys_estimate +=
+      tablet_num_keys * tablet_num_corrupt_data_blocks_estimate / tablet_num_total_data_blocks;
+
+  LOG(INFO) << "tablet_num_total_data_blocks: " << tablet_num_total_data_blocks
+            << ", tablet_num_keys: " << tablet_num_keys
+            << ", tablet_num_corrupt_data_blocks_estimate: "
+            << tablet_num_corrupt_data_blocks_estimate
+            << ", num_max_corrupt_keys_estimate: " << num_max_corrupt_keys_estimate;
+
+  // Clear block cache.
+  cluster_->GetTabletManager(0)->TEST_tablet_options()->block_cache->Evict(
+      std::numeric_limits<size_t>::max() / 2);
+
+  ASSERT_OK(SET_FLAG(allow_compaction_failures_for_tablet_ids, tablet_id));
+
+  // Should fail.
+  auto status = TriggerAdminCompactions(ShouldWait::kTrue);
+  ASSERT_TRUE(status.IsCorruption()) << status;
+
+  // Should success.
+  ASSERT_OK(
+      TriggerAdminCompactions(ShouldWait::kTrue, rocksdb::SkipCorruptDataBlocksUnsafe::kTrue));
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kTrue));
+
+  // Check that expected number of rows disappeared.
+  // Check that remaining rows have the same values are before corruption.
+  size_t num_keys_remained = 0;
+  ASSERT_OK(IterateTabletRows(
+      shared_tablet.get(), key_column_id,
+      [&original_data, &num_keys_remained, key_column_id](const qlexpr::QLTableRow& row) -> Status {
+        const auto key = row.GetValue(key_column_id)->int32_value();
+        auto it = original_data.find(key);
+        SCHECK(it != original_data.end(), InternalError, "");
+        SCHECK_EQ(row.ToString(), it->second.ToString(), InternalError, "");
+        ++num_keys_remained;
+        return Status::OK();
+      }));
+
+  const auto num_keys_lost = tablet_num_keys - num_keys_remained;
+  LOG(INFO) << "num_keys_lost: " << num_keys_lost
+            << ", num_max_corrupt_keys_estimate: " << num_max_corrupt_keys_estimate;
+  ASSERT_LE(num_keys_lost, num_max_corrupt_keys_estimate);
 }
 
 } // namespace tserver
