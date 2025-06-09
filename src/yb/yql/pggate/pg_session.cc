@@ -318,6 +318,14 @@ bool IsTableAffectedByOperations(
       [&table_id, &index_id] (const auto& rel) { return table_id == rel || index_id == rel; });
 }
 
+std::optional<ReadTimeAction> MakeReadTimeActionForFlush(const PgTxnManager& txn_manager) {
+  if (txn_manager.IsDdlMode()) {
+    return std::nullopt;
+  }
+  return txn_manager.GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL
+      ? ReadTimeAction::RESET : ReadTimeAction::ENSURE_IS_SET;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -810,15 +818,13 @@ Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool 
   // for the safe time on docdb to catch up with an already chosen read time, and allowing docdb to
   // internally retry the request in case of read restart/ conflict errors.
   //
-  // EnsureReadTimeIsSet helps PgClientService to determine whether it can safely use the
-  // optimization of allowing docdb (which serves the operation) to pick the read time.
-  auto ensure_read_time = pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL
-      ? EnsureReadTimeIsSet::kFalse : EnsureReadTimeIsSet::kTrue;
-  auto non_transactional_buffered_write =
-      pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL;
-  return FlushFuture{VERIFY_RESULT(Perform(std::move(ops),
-      {.ensure_read_time_is_set = ensure_read_time,
-       .non_transactional_buffered_write = non_transactional_buffered_write})), *this, metrics_};
+  // ReadTimeAction helps to determine whether it can safely use the optimization of allowing
+  // docdb (which serves the operation) to pick the read time.
+
+  return FlushFuture{
+      VERIFY_RESULT(Perform(
+          std::move(ops), { .read_time_action = MakeReadTimeActionForFlush(*pg_txn_manager_) })),
+      *this, metrics_};
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
@@ -830,9 +836,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(
-        &options, ops_options.ensure_read_time_is_set,
-        ops_options.non_transactional_buffered_write));
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options, ops_options.read_time_action));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
