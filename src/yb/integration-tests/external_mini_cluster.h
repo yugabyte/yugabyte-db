@@ -210,6 +210,9 @@ struct ExternalMiniClusterOptions {
   // Cluster id used to create fs path when we create tests with multiple clusters.
   std::string cluster_id;
 
+  // Used to emit cluster identifier in the logs.
+  std::string cluster_short_name;
+
   // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
@@ -744,6 +747,7 @@ class ExternalMaster : public ExternalDaemon {
  public:
   ExternalMaster(
     size_t master_index,
+    const std::string& cluster_short_name,
     rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const std::string& exe,
@@ -775,12 +779,12 @@ class ExternalMaster : public ExternalDaemon {
 class ExternalTabletServer : public ExternalDaemon {
  public:
   ExternalTabletServer(
-      size_t tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
-      const std::string& exe, const std::string& data_dir, uint16_t num_drives,
-      std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
-      uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,
-      uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port, uint16_t pgsql_http_port,
-      const std::vector<HostPort>& master_addrs,
+      size_t tablet_server_index, const std::string& cluster_short_name, rpc::Messenger* messenger,
+      rpc::ProxyCache* proxy_cache, const std::string& exe, const std::string& data_dir,
+      uint16_t num_drives, std::string bind_host, uint16_t rpc_port, uint16_t http_port,
+      uint16_t redis_rpc_port, uint16_t redis_http_port, uint16_t cql_rpc_port,
+      uint16_t cql_http_port, uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port,
+      uint16_t pgsql_http_port, const std::vector<HostPort>& master_addrs,
       const std::vector<std::string>& extra_flags);
 
   Status Start(

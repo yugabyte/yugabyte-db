@@ -131,6 +131,7 @@ void YBTableTestBase::SetUp() {
         .extra_tserver_flags = {},
         .extra_master_flags = {},
         .cluster_id = {},
+        .cluster_short_name = {},
     };
     CustomizeExternalMiniCluster(&opts);
 

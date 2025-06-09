@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/yb_table_name.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/common/common.pb.h"
@@ -2643,7 +2644,8 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
 
   for (auto& conn : consumer_conns) {
     auto namespace_name = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_database()"));
-    auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace_name));
+    auto namespace_id =
+        ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace_name));
     ASSERT_OK(
         WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, &consumer_cluster_));
   }

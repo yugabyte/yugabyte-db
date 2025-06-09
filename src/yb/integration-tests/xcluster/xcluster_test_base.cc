@@ -12,6 +12,7 @@
 //
 
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include <string>
 
@@ -164,37 +165,13 @@ void XClusterTestBase::TearDown() {
 }
 
 Status XClusterTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster) {
-  auto producer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
-    return run_on_cluster(producer_cluster());
-  });
-  auto consumer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
-    return run_on_cluster(consumer_cluster());
-  });
-
-  auto producer_status = producer_future.get();
-  auto consumer_status = consumer_future.get();
-
-  RETURN_NOT_OK(producer_status);
-  return consumer_status;
+  return XClusterTestUtils::RunOnBothClusters(
+      producer_cluster(), consumer_cluster(), run_on_cluster);
 }
 
 Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster) {
-  auto producer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
-    return run_on_cluster(&producer_cluster_);
-  });
-  auto consumer_future = std::async(std::launch::async, [&] {
-    CDSAttacher attacher;
-    return run_on_cluster(&consumer_cluster_);
-  });
-
-  auto producer_status = producer_future.get();
-  auto consumer_status = consumer_future.get();
-
-  RETURN_NOT_OK(producer_status);
-  return consumer_status;
+  return XClusterTestUtils::RunOnBothClusters(
+      &producer_cluster_, &consumer_cluster_, run_on_cluster);
 }
 
 Status XClusterTestBase::WaitForLoadBalancersToStabilize() {

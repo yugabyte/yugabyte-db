@@ -73,7 +73,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   static std::string GetCompleteTableName(const client::YBTableName& table);
 
   Result<NamespaceId> GetNamespaceId(YBClient* client);
-  Result<NamespaceId> GetNamespaceId(YBClient* client, const NamespaceName& ns_name);
   Result<std::string> GetUniverseId(Cluster* cluster);
   Result<master::SysClusterConfigEntryPB> GetClusterConfig(Cluster& cluster);
 
@@ -187,11 +186,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       const std::string& target_master_addresses = {},
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
       std::vector<NamespaceName> namespace_names = {});
-
-  // A empty list for namespace_names (the default) means just the namespace namespace_name.
-  Status WaitForCreateReplicationToFinish(
-      const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {},
-      xcluster::ReplicationGroupId replication_group_id = kReplicationGroupId);
 
   Status DeleteOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
