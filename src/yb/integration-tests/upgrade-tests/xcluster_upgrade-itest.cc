@@ -42,9 +42,38 @@ const auto kCountIdxRowsStmt = Format("SELECT COUNT(1) FROM $0 WHERE $1 IN (0,1,
 
 YB_STRONGLY_TYPED_BOOL(RangePartitioned);
 
-class XClusterUpgradeTest : public UpgradeTestBase {
+class XClusterUpgradeTestBase : public UpgradeTestBase {
  public:
-  XClusterUpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
+  explicit XClusterUpgradeTestBase(const std::string& from_version)
+      : UpgradeTestBase(from_version) {}
+
+  void SetUp() override {
+    TEST_SETUP_SUPER(UpgradeTestBase);
+
+    ExternalMiniClusterOptions opts;
+    opts.num_masters = 3;
+    opts.num_tablet_servers = 3;
+
+    opts.cluster_id = "producer_cluster";
+    opts.cluster_short_name = "P";
+    ASSERT_OK(StartClusterInOldVersion(opts));
+    producer_cluster_ = cluster_.get();
+    producer_client_ = client_.get();
+
+#if !defined(NDEBUG)
+    if (IsYsqlMajorVersionUpgrade()) {
+      GTEST_SKIP() << "xCluster major YSQL Upgrade testing not supported in debug mode";
+    }
+#endif
+
+    SwitchToConsumerCluster();
+    opts.cluster_id = "consumer_cluster";
+    opts.cluster_short_name = "C";
+    ASSERT_OK(StartClusterInOldVersion(opts));
+    consumer_cluster_ = cluster_.get();
+    consumer_client_ = client_.get();
+    SwitchToProducerCluster();
+  }
 
   void TearDown() override {
     SwitchToConsumerCluster();
@@ -52,29 +81,6 @@ class XClusterUpgradeTest : public UpgradeTestBase {
 
     SwitchToProducerCluster();
     UpgradeTestBase::TearDown();
-  }
-
-  Status StartClustersInOldVersion(RangePartitioned ranged_partitioned = RangePartitioned::kFalse) {
-    ExternalMiniClusterOptions opts;
-    opts.num_masters = 3;
-    opts.num_tablet_servers = 3;
-
-    opts.cluster_id = "producer_cluster";
-    opts.cluster_short_name = "P";
-    RETURN_NOT_OK(StartClusterInOldVersion(opts));
-    producer_cluster_ = cluster_.get();
-    producer_client_ = client_.get();
-
-    SwitchToConsumerCluster();
-    opts.cluster_id = "consumer_cluster";
-    opts.cluster_short_name = "C";
-    RETURN_NOT_OK(StartClusterInOldVersion(opts));
-    consumer_cluster_ = cluster_.get();
-    consumer_client_ = client_.get();
-    SwitchToProducerCluster();
-
-    RETURN_NOT_OK(CreateTablesAndSetupXCluster(ranged_partitioned));
-    return Status::OK();
   }
 
   Status RunOnBothClusters(const std::function<Status(ExternalMiniCluster*)>& run_on_cluster) {
@@ -245,7 +251,7 @@ class XClusterUpgradeTest : public UpgradeTestBase {
   }
 
   void SimpleReplicationTest(RangePartitioned ranged_partitioned) {
-    ASSERT_OK(StartClustersInOldVersion());
+    ASSERT_OK(CreateTablesAndSetupXCluster(ranged_partitioned));
 
     TestThreadHolder thread_holder;
     std::atomic<int64_t> rows_inserted = 0;
@@ -307,13 +313,24 @@ class XClusterUpgradeTest : public UpgradeTestBase {
   client::YBClient *producer_client_, *consumer_client_;
 };
 
-TEST_F(XClusterUpgradeTest, UpgradeHashPartitionedTable) {
+class XClusterUpgradeTest : public XClusterUpgradeTestBase,
+                            public ::testing::WithParamInterface<std::string> {
+ public:
+  XClusterUpgradeTest() : XClusterUpgradeTestBase(GetParam()) {}
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    UpgradeFrom_2024_2_4_0, XClusterUpgradeTest, ::testing::Values(kBuild_2024_2_4_0));
+INSTANTIATE_TEST_SUITE_P(
+    UpgradeFrom_2_25_0_0, XClusterUpgradeTest, ::testing::Values(kBuild_2_25_0_0));
+
+TEST_P(XClusterUpgradeTest, UpgradeHashPartitionedTable) {
   ASSERT_NO_FATAL_FAILURE(SimpleReplicationTest(RangePartitioned::kFalse));
 }
 
 // #27380 added support for range partitioned tables in xCluster replication.
 // Enable this test once the from build with the fix is available.
-TEST_F(XClusterUpgradeTest, YB_DISABLE_TEST(UpgradeRangePartitionedTable)) {
+TEST_P(XClusterUpgradeTest, YB_DISABLE_TEST(UpgradeRangePartitionedTable)) {
   ASSERT_NO_FATAL_FAILURE(SimpleReplicationTest(RangePartitioned::kTrue));
 }
 
