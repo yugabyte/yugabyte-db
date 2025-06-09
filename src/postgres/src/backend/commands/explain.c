@@ -165,7 +165,15 @@ static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
 
 /* YB declarations */
+static void show_yb_planning_stats_common(double num_seeks,
+										  double num_nexts_prevs,
+										  double num_table_pages,
+										  double num_index_pages,
+										  int docdb_result_width,
+										  ExplainState *es);
 static void show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es);
+static void show_yb_bitmap_scan_planning_stats(YbPlanInfo *planinfo,
+											   ExplainState *es);
 static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void YbAggregateExplainableRPCRequestStat(ExplainState *es,
@@ -2820,7 +2828,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, es);
 			if (is_yb_planning_stats_required)
-				show_yb_planning_stats(&((YbBitmapIndexScan *) plan)->yb_plan_info, es);
+				show_yb_bitmap_scan_planning_stats(&((YbBitmapIndexScan *) plan)->yb_plan_info,
+												   es);
 			break;
 		case T_BitmapHeapScan:
 			show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
@@ -4865,27 +4874,50 @@ show_buffer_usage(ExplainState *es, const BufferUsage *usage, bool planning)
 }
 
 static void
-show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
+show_yb_planning_stats_common(double num_seeks, double num_nexts_prevs,
+							  double num_table_pages, double num_index_pages,
+							  int docdb_result_width, ExplainState *es)
 {
-	ExplainPropertyFloat("Estimated Seeks", NULL,
-						 planinfo->estimated_num_seeks, 0, es);
-	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL,
-						 planinfo->estimated_num_nexts_prevs, 0, es);
+	ExplainPropertyFloat("Estimated Seeks", NULL, num_seeks, 0, es);
+	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL, num_nexts_prevs, 0,
+						 es);
 
 	/*
 	 * YB_TODO(#27210): Do not print values of estimated_num_table_result_pages
 	 * or estimated_num_index_result_pages if == 0.
 	 */
-	if (planinfo->estimated_num_table_result_pages >= 0)
+	if (num_table_pages >= 0)
 		ExplainPropertyFloat("Estimated Table Roundtrips", NULL,
-							 planinfo->estimated_num_table_result_pages, 0, es);
+							 num_table_pages, 0, es);
 
-	if (planinfo->estimated_num_index_result_pages >= 0)
+	if (num_index_pages >= 0)
 		ExplainPropertyFloat("Estimated Index Roundtrips", NULL,
-							 planinfo->estimated_num_index_result_pages, 0, es);
+							 num_index_pages, 0, es);
 
 	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
-						   planinfo->estimated_docdb_result_width, es);
+						   docdb_result_width, es);
+}
+
+static void
+show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
+{
+	show_yb_planning_stats_common(planinfo->estimated_num_seeks,
+								  planinfo->estimated_num_nexts_prevs,
+								  planinfo->estimated_num_table_result_pages,
+								  planinfo->estimated_num_index_result_pages,
+								  planinfo->estimated_docdb_result_width,
+								  es);
+}
+
+static void
+show_yb_bitmap_scan_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
+{
+	show_yb_planning_stats_common(planinfo->estimated_num_bmscan_seeks,
+								  planinfo->estimated_num_bmscan_nexts_prevs,
+								  -1,
+								  planinfo->estimated_num_bmscan_result_pages,
+								  planinfo->estimated_docdb_result_width,
+								  es);
 }
 
 /*

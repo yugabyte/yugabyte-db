@@ -118,7 +118,7 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder estimatedNextsAndPrevs(ValueChecker<Double> checker);
 
     // Roundtrips Estimation
-    PlanCheckerBuilder estimatedTableRoundtrips(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedTableRoundtrips(Checker checker);
     PlanCheckerBuilder estimatedIndexRoundtrips(ValueChecker<Double> checker);
 
     // Estimated Docdb Result Width
