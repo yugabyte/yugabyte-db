@@ -1766,7 +1766,7 @@ is_jenkins() {
 }
 
 should_gzip_test_logs() {
-  is_jenkins || [[ ${YB_GZIP_TEST_LOGS:-0} == "1" ]]
+  [[ ${YB_GZIP_TEST_LOGS:-0} == "1" ]]
 }
 
 # For each file provided as an argument, gzip the given file if it exists and is not already

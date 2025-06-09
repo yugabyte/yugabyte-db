@@ -372,7 +372,6 @@ def copy_spark_stderr(
     try:
         from pyspark import SparkFiles  # type: ignore
         spark_stderr_src = os.path.join(os.path.abspath(SparkFiles.getRootDirectory()), 'stderr')
-        csi_report.upload_attachment(csi_id, time.time(), 'Spark Log stderr', spark_stderr_src)
 
         test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
         error_output_path = join_build_root_with(test_descriptor.rel_error_output_path)
@@ -383,6 +382,7 @@ def copy_spark_stderr(
 
         logging.info(f"Copying spark stderr {spark_stderr_src} to {spark_stderr_dest}")
         shutil.copyfile(spark_stderr_src, spark_stderr_dest)
+        csi_report.upload_log(csi_id, time.time(), [spark_stderr_dest])
         return copy_to_host(
             artifact_paths=[spark_stderr_dest],
             dest_host=build_host)
@@ -412,7 +412,6 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     except Exception as e:
         build_host = os.environ.get('YB_BUILD_HOST', None)
         if build_host:
-            # TODO: Create csi_id earlier to log this spark init failure to?
             copy_spark_stderr(test_descriptor_str, '', build_host)
         raise e
 
@@ -454,15 +453,24 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     logging.info("Setting YB_TEST_ARTIFACT_LIST_PATH to %s", artifact_list_path)
 
     timer_thread = None
+    build_host = os.environ.get('YB_BUILD_HOST')
+    assert build_host is not None
+
+    from pyspark import TaskContext  # type: ignore
+    attempt = TaskContext.get().attemptNumber()
+
     try:
         start_time_sec = time.time()
 
-        csi_id = csi_report.create_test(test_descriptor, start_time_sec)
+        csi_id = csi_report.create_test(test_descriptor, start_time_sec, attempt)
 
         error_log_dir_path = os.path.dirname(os.path.abspath(error_output_path))
         file_util.mkdir_p(error_log_dir_path)
+        # For debugging purpose, we could send output to both test log and spark log, but
+        # generally, timestamps should be enough to correlate any issues.
+        #    'set -o pipefail; cd %s; "%s" %s 2>&1 | tee "%s"; exit ${PIPESTATUS[0]}' % (
         runner_oneline = \
-            'set -o pipefail; cd %s; "%s" %s 2>&1 | tee "%s"; exit ${PIPESTATUS[0]}' % (
+            'cd %s; "%s" %s > "%s" 2>&1' % (
                 shlex.quote(get_build_root()),
                 global_conf.get_run_test_script_path(),
                 test_descriptor.args_for_run_test,
@@ -473,21 +481,22 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
         )
 
         # Terminate extremely long running tests using a timer thread.
-        def handle_timeout() -> None:
+        def handle_timeout(csi_id: str, build_host: str, error_output_path: str) -> None:
             if process.poll() is None:
                 final_time_sec = time.time()
                 elapsed_time_sec = final_time_sec - start_time_sec
                 logging.warning("Test %s is being terminated due to timeout after %.1f seconds",
                                 test_descriptor, elapsed_time_sec)
                 if csi_id:
-                    csi_report.close_item(csi_id, final_time_sec, 'interrupted')
+                    csi_report.close_item(csi_id, final_time_sec, 'interrupted', [])
                     csi_report.upload_log(csi_id, final_time_sec, [error_output_path])
                     if build_host:
                         copy_spark_stderr(test_descriptor_str, csi_id, build_host)
                 process.kill()
 
         timer_thread = threading.Timer(
-            interval=TEST_TIMEOUT_UPPER_BOUND_SEC, function=handle_timeout, args=[])
+            interval=TEST_TIMEOUT_UPPER_BOUND_SEC, function=handle_timeout,
+            args=(csi_id, build_host, error_output_path))
         timer_thread.start()
         exit_code = process.wait()
         end_time_sec = time.time()
@@ -520,6 +529,7 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                 failed_without_output = True
 
         artifact_paths = []
+        csi_tags = []
 
         rel_artifact_paths = None
         if global_conf.archive_for_workers:
@@ -545,14 +555,14 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                         result_summary = json.load(trf)
                         if 'num_skipped' in result_summary and result_summary['num_skipped'] == 1:
                             csi_result = 'skipped'
+                        if 'fail_tags' in result_summary:
+                            csi_tags = result_summary['fail_tags']
 
                 if csi_result in ['failed', 'skipped']:
                     csi_report.upload_log(csi_id, end_time_sec, artifact_paths)
             else:
                 logging.warning("Artifact list does not exist: '%s'", artifact_list_path)
 
-            build_host = os.environ.get('YB_BUILD_HOST')
-            assert build_host is not None
             artifact_copy_result = copy_to_host(artifact_paths, build_host)
             if exit_code != 0:
                 spark_error_copy_result = copy_spark_stderr(test_descriptor_str, csi_id, build_host)
@@ -561,7 +571,7 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                 os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
                 for artifact_path in artifact_paths]
 
-        csi_report.close_item(csi_id, end_time_sec, csi_result)
+        csi_report.close_item(csi_id, end_time_sec, csi_result, csi_tags)
 
         test_results.add(yb_dist_tests.TestResult(
             exit_code=exit_code,
@@ -1439,8 +1449,14 @@ def main() -> None:
         logging.info("Propagating env var %s (value: %s) to Spark workers",
                      'YB_CSI_REPS', num_repetitions)
         for suite_name, num_tests in num_planned_by_language.items():
+            if args.test_filter_re:
+                method = "RegEx"
+            elif args.test_list:
+                method = "Requested"
+            else:
+                method = "All"
             (csi_var_name, csi_var_value) = csi_report.create_suite(
-                suite_name, os.getenv('YB_CSI_SUITE', ''), num_tests, num_repetitions,
+                suite_name, os.getenv('YB_CSI_SUITE', ''), method, num_tests, num_repetitions,
                 test_phase_start_time)
             csi_suites[suite_name] = csi_var_value
             propagated_env_vars[csi_var_name] = csi_var_value
@@ -1516,7 +1532,7 @@ def main() -> None:
                  total_artifact_upload_time_sec, total_retry_wait_time_sec)
 
     for suite_name in csi_suites.keys():
-        csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '')
+        csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '', [])
 
     if had_errors_copying_artifacts and global_exit_code == 0:
         logging.info("Will return exit code 1 due to errors copying artifacts to build host")
