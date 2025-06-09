@@ -21,7 +21,7 @@ Universes deployed using YugabyteDB Anywhere include following node [alerts](../
 - DB Node Restart. The operating system rebooted.
 - DB Instance Restart. A YugabyteDB process restarted (outside of a universe update).
 
-If you are notified of an alert, take the following measures.
+If you are notified of one of these alerts, you can take the following steps.
 
 ## DB Instance Down
 
