@@ -72,7 +72,8 @@ public enum Type {
   NULL_VALUE_TYPE (PersistentDataType.NULL_VALUE_TYPE, "null_value_type"),
   GIN_NULL (PersistentDataType.GIN_NULL, "gin_null"),
   TYPEARGS (PersistentDataType.TYPEARGS, "typeargs"),
-  TUPLE (PersistentDataType.TUPLE, "tuple");
+  TUPLE (PersistentDataType.TUPLE, "tuple"),
+  VECTOR (PersistentDataType.VECTOR, "vector");
 
   private final PersistentDataType dataType;
   private final String name;
@@ -141,6 +142,7 @@ public enum Type {
       case BINARY:
       case TYPEARGS:
       case TUPLE:
+      case VECTOR:
         return 8 + 8; // offset then string length
       case BOOL:
       case INT8: return 1;
@@ -197,6 +199,7 @@ public enum Type {
       case GIN_NULL: return GIN_NULL;
       case TYPEARGS: return TYPEARGS;
       case TUPLE: return TUPLE;
+      case VECTOR: return VECTOR;
 
       default:
         throw new IllegalArgumentException("The provided data type doesn't map" +
