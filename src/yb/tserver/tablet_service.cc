@@ -3658,7 +3658,7 @@ void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
   if (!FLAGS_enable_object_locking_for_table_locks) {
-    SetupErrorAndRespond(
+    return SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
@@ -3668,7 +3668,7 @@ void TabletServiceImpl::AcquireObjectLocks(
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
-    SetupErrorAndRespond(
+    return SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
   }
   const auto deadline = context.GetClientDeadline();
@@ -3681,7 +3681,7 @@ void TabletServiceImpl::ReleaseObjectLocks(
     const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
   if (!PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
-    SetupErrorAndRespond(
+    return SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
