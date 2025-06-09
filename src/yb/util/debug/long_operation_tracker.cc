@@ -152,9 +152,8 @@ LongOperationTracker::~LongOperationTracker() {
   }
   auto now = CoarseMonoClock::now();
   if (now > tracked_operation_->time) {
-    YB_LOG_EVERY_N_SECS(WARNING, 1)
-        << tracked_operation_->message << " took a long time: "
-        << MonoDelta(now - tracked_operation_->start);
+    LOG(WARNING) << tracked_operation_->message << " took a long time: "
+                 << MonoDelta(now - tracked_operation_->start);
   }
 }
 

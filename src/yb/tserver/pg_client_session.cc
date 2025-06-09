@@ -404,7 +404,7 @@ std::byte* SerializeWithCachedSizesToArray(
   return pointer_cast<std::byte*>(msg.SerializeWithCachedSizesToArray(pointer_cast<uint8_t*>(out)));
 }
 
-struct PerformData {
+struct PerformData : public PgResponseCacheWaiter {
   uint64_t session_id;
   PgTableCache& table_cache;
 
@@ -426,7 +426,6 @@ struct PerformData {
         sidecars(*sidecars_) {}
 
   virtual ~PerformData() = default;
-  virtual void SendResponse() = 0;
 
   void FlushDone(client::FlushStatus* flush_status) {
     PgClientSession::ReadTimeData used_read_time;
@@ -462,6 +461,10 @@ struct PerformData {
       used_read_time_applier(std::move(used_read_time));
     }
     SendResponse();
+  }
+
+  std::pair<PgPerformResponsePB&, rpc::Sidecars&> ResponseAndSidecars() override {
+    return std::pair<PgPerformResponsePB&, rpc::Sidecars&>(resp, sidecars);
   }
 
  private:
@@ -1376,9 +1379,9 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
     VLOG_WITH_PREFIX(3)
         << "Executing read from response cache for session " << data->req.session_id();
     data->cache_setter = VERIFY_RESULT(response_cache_.Get(
-        options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
+        options.mutable_caching_info(), deadline, data));
     if (!data->cache_setter) {
-      data->SendResponse();
+
       return Status::OK();
     }
   }
