@@ -53,31 +53,32 @@ hostssl mydb myuser myhost cert,hostssl all all all reject
 
 ## Examples
 
-To begin, generate and configure certificates:
+To begin, generate and configure certificates using the following steps:
 
-Generate the certificates and keys for the local IP address (`127.0.0.1` in this example) using the `cert generate_server_certs` command, see [create certificates for a secure local cluster](../../../reference/configuration/yugabyted/#create-certificates-for-a-secure-local-multi-node-cluster) for more information.
+1. Generate the certificates and keys for the local IP address (`127.0.0.1` in this example) using the `cert generate_server_certs` command. See [create certificates for a secure local cluster](../../../reference/configuration/yugabyted/#create-certificates-for-a-secure-local-multi-node-cluster) for more information.
 
-```sh
-./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1
-```
+    ```sh
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1
+    ```
 
-Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` directory.
+    Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` directory.
 
-```sh
-127.0.0.1
-├── ca.crt
-├── node.127.0.0.1.crt
-└── node.127.0.0.1.key
-```
+    ```sh
+    127.0.0.1
+    ├── ca.crt
+    ├── node.127.0.0.1.crt
+    └── node.127.0.0.1.key
+    ```
 
-Now, set the `ENABLE_TLS` variable with directory where the certificates are stored, and the `use_client_to_server_encryption` flag to enable TLS encryption:
+1. Enable TLS encryption by setting the `ENABLE_TLS` variable to point to the directory where the certificates are stored, and set the `use_client_to_server_encryption` flag to true as follows:
 
-```sh
-$ CERTS=`pwd`
-$ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"
-```
+    ```sh
+    $ CERTS=`pwd`
+    $ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"
+    ```
 
-`node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively use `ysql_pg_conf_csv` to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
+1. `node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively, use [ysql_pg_conf_csv](../../../reference/configuration/all-flags-yb-tserver/#ysql-pg-conf-csv) to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
+
 
 ### TLS without authentication
 
