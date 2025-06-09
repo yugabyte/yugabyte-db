@@ -164,6 +164,10 @@ DEFINE_RUNTIME_PREVIEW_bool(
     "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
     "and SET TRANSACTION SNAPSHOT");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
+    "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
+    " right away without incurring a master lookup");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 
@@ -2215,6 +2219,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
+      .ysql_enable_neghit_full_inheritscache =
+        &FLAGS_ysql_enable_neghit_full_inheritscache,
   };
   // clang-format on
   return &accessor;
