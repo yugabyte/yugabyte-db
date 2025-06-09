@@ -85,8 +85,6 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 </dependency>
 ```
 
-Note that v4 of HikariCP is required because the YugabyteDB JDBC Driver requires Java 8.
-
 Install the added dependency using `mvn install`.
 
 #### Gradle dependency
