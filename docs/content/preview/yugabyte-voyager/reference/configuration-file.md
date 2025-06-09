@@ -61,19 +61,19 @@ All supported configuration keys are described in the following sections.
 export-dir: <export-dir-name>
 
 # Log level for yb-voyager.
-# Accepted values: trace, debug, info, warn, error, fatal, panic
-# Default - info
+# Accepted values - (trace, debug, info, warn, error, fatal, panic)
+# Default : info
 log-level: info
 
 # Enable or disable sending diagnostics to Yugabyte
 # Accepted values - (true, false, yes, no, 1, 0)
-# Default - true
+# Default : true
 send-diagnostics: true
 
 # Run guardrails checks before the command is run
 # Note - This is only valid for PostgreSQL source database
 # Accepted values - (true, false, yes, no, 1, 0)
-# Default - true
+# Default : true
 run-guardrails-checks: true
 
 # Control plane type refers to the deployment type of YugabyteDB.
@@ -95,11 +95,11 @@ source:
   db-type: postgresql
 
   # Source database server host
-  # Default - localhost
+  # Default : localhost
   db-host: localhost
 
   # Source database server port number
-  # Default - Oracle(1521), MySQL(3306), PostgreSQL(5432)
+  # Default : Oracle(1521), MySQL(3306), PostgreSQL(5432)
   db-port: 5432
 
   # Source database name to be migrated to YugabyteDB
@@ -122,7 +122,7 @@ source:
 
   # Source SSL mode
   # Accepted values - disable, allow, prefer, require, verify-ca, verify-full
-  # Default - prefer
+  # Default : prefer
   ssl-mode: prefer
 
   # Path to source SSL Key
@@ -158,11 +158,11 @@ source:
 ```yaml
 target:
   # Host for YugabyteDB
-  # Default - 127.0.0.1
+  # Default : 127.0.0.1
   db-host: 127.0.0.1
 
   # Port for YugabyteDB YSQL API
-  # Default - 5433
+  # Default : 5433
   db-port: 5433
 
   # YugabyteDB database name
@@ -184,7 +184,7 @@ target:
 
   # SSL mode for target
   # Accepted values - disable, allow, prefer, require, verify-ca, verify-full
-  # Default - prefer
+  # Default : prefer
   ssl-mode: prefer
 
   # Path to SSL Key
@@ -205,7 +205,7 @@ source-replica:
   db-host: replica-host
 
   # Port for source-replica
-  # Default - 1521 (Oracle)
+  # Default : 1521 (Oracle)
   db-port: 1521
 
   # Replica DB name
