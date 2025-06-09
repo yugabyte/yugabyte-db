@@ -7,15 +7,15 @@ menu:
   preview_yugabyte-voyager:
     identifier: voyager-configuration-file
     parent: reference-voyager
-    weight: 110
+    weight: 101
 type: docs
 rightNav:
   hideH4: true
 ---
 
-The YB-Voyager configuration file provides a structured way to define all parameters required for a migration in a single place. Instead of specifying flags through the command line, you can supply a **YAML**-based config file to simplify and standardize migrations across environments.
+The YugabyteDB Voyager configuration file lets you define all the parameters required for a migration in one place, instead of passing flags through the command line repeatedly. You can use a **YAML**-based configuration file to simplify and standardize migrations across environments.
 
-Note This feature is available starting from version **2025.5.2**.
+This feature is available in YugabyteDB Voyager releases `2025.5.2` or later.
 
 You can pass the configuration file to any Voyager command using the `--config-file` flag. When this flag is used, Voyager reads parameters from the provided YAML file instead of the CLI flags and arguments.
 
@@ -35,7 +35,7 @@ source:
 yb-voyager export schema --config-file config.yaml --source-db-user cli_user
 ```
 
-In this case, `cli_user` (via CLI) overrides `config_user` (via configuration file), and CLI flag value be used during the migration.
+In this case, `cli_user` (via CLI) overrides `config_user` (via configuration file), and CLI flag value is used for migration.
 
 ## Overview of configuration file structure
 
@@ -43,25 +43,25 @@ The configuration file groups parameters into logical sections based on their us
 
 * Global parameters are defined at the top level of the YAML file.
 * The `source`, `source-replica`, and `target` sections contain database-specific configurations.
-* Command-specific sections such as `export-schema`, `import-data`, etc., can override command-level parameters.
+* Command-specific sections such as `export-schema`, `import-data`, and others, can override parameters for individual commands.
 
-You can have a look at the available config file templates:
+You can refer to the following config file templates:
 
 * [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml)
 * live-migration.yaml
 * live-migration-with-fall-back.yaml
 * live-migration-with-fall-forward.yaml
 
-All the available keys are described in the following sections.
+All supported configuration keys are described in the following sections.
 
 ### Global parameters
 
 ```yaml
-# Export directory is the workspace used to keep the exported schema, data, state, and logs
+# Export directory is a local directory used to store the exported schema, data, migration state, logs, and reports.
 export-dir: <export-dir-name>
 
-# Log level for yb-voyager
-# Accepted values - (trace, debug, info, warn, error, fatal, panic)
+# Log level for yb-voyager.
+# Accepted values: trace, debug, info, warn, error, fatal, panic
 # Default - info
 log-level: info
 
@@ -76,7 +76,7 @@ send-diagnostics: true
 # Default - true
 run-guardrails-checks: true
 
-# Control plane type refers to the deployment type of YugabyteDB
+# Control plane type refers to the deployment type of YugabyteDB.
 # Accepted value - (yugabyted)
 # Optional
 control-plane-type: yugabyted
