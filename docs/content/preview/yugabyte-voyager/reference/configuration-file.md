@@ -248,6 +248,6 @@ source-replica:
 
 ### Command-specific parameters
 
-In addition to the sections described above, the configuration file can also include command-specific sections like `export-schema`, `import-data`, `cutover`, etc. These sections allow you to specify parameters applicable only to that command.
+Additionally, the configuration file can include command-specific sections like `export-schema`, `import-data`, `cutover`, and so on. These sections allow you to specify parameters applicable only to the corresponding command.
 
 To view the complete list of available command-specific keys, refer to the [command specific CLI references](../../reference/yb-voyager-cli/#commands).
