@@ -350,8 +350,7 @@ YbcStatus YBCPgAlterTableDropColumn(YbcPgStatement handle, const char *name);
 
 YbcStatus YBCPgAlterTableSetReplicaIdentity(YbcPgStatement handle, const char identity_type);
 
-YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *db_name,
-                                     const char *newname);
+YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *newname);
 
 YbcStatus YBCPgAlterTableIncrementSchemaVersion(YbcPgStatement handle);
 

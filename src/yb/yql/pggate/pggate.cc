@@ -993,9 +993,8 @@ Status PgApiImpl::AlterTableSetReplicaIdentity(PgStatement* handle, char identit
   return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).SetReplicaIdentity(identity_type);
 }
 
-Status PgApiImpl::AlterTableRenameTable(
-    PgStatement* handle, const char* db_name, const char* newname) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).RenameTable(db_name, newname);
+Status PgApiImpl::AlterTableRenameTable(PgStatement* handle, const char* newname) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).RenameTable(newname);
 }
 
 Status PgApiImpl::AlterTableIncrementSchemaVersion(PgStatement* handle) {

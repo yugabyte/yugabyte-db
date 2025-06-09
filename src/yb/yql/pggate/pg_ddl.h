@@ -257,7 +257,7 @@ class PgAlterTable final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterTable
 
   Status DropColumn(const char *name);
 
-  Status RenameTable(const char *db_name, const char *newname);
+  Status RenameTable(const char *newname);
 
   Status IncrementSchemaVersion();
 

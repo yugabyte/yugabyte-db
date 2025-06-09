@@ -1187,9 +1187,8 @@ YbcStatus YBCPgAlterTableSetReplicaIdentity(YbcPgStatement handle, const char id
   return ToYBCStatus(pgapi->AlterTableSetReplicaIdentity(handle, identity_type));
 }
 
-YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *db_name,
-                                     const char *newname) {
-  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
+YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *newname) {
+  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, newname));
 }
 
 YbcStatus YBCPgAlterTableIncrementSchemaVersion(YbcPgStatement handle) {
