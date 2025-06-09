@@ -57,6 +57,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
 #include "yb/util/cast.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/os-util.h"
@@ -4339,32 +4340,58 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
+
+  void TestInheritsNegCache(bool minimal_preload) {
+    google::SetVLOGLevel("libpq_utils", 1);
+    auto conn = ASSERT_RESULT(Connect());
+
+    // Prepare schema
+    ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
+      "PARTITION BY RANGE(r);"
+      "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
+      "CREATE UNIQUE INDEX ON foo (v1, r);"
+      "INSERT INTO foo VALUES (1,1,1,1);"));
+
+    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+    // Run the query on a fresh conn
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto str = conn2.FetchAllAsString(
+        "EXPLAIN (ANALYZE, DIST) INSERT INTO foo VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
+        "v2=foo.v2+1");
+    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+    int32_t updated_v2 = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+        "SELECT v2 FROM foo WHERE h=1 AND r=1"));
+    ASSERT_EQ(2, updated_v2);
+
+    // Given we are preloaded, we should not have any cache misses (incl neg misses)
+    // for the query above which should cause lookups for ancestors of a table in pg_inherits
+    if (!minimal_preload)
+      ASSERT_EQ(end_value.value, start_value.value);
+    else
+      ASSERT_GT(end_value.value, start_value.value);
+  }
 };
 
+class PgLibPqPgInheritsNegCacheMinimalPreloadTest : public PgLibPqPgInheritsNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_minimal_catalog_caches_preload=true");
+    PgLibPqPgInheritsNegCacheTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+
 TEST_F_EX(PgLibPqTest, PgInheritsNegCacheTest, PgLibPqPgInheritsNegCacheTest) {
-  auto conn = ASSERT_RESULT(Connect());
+  TestInheritsNegCache(false /*minimal preload*/);
+}
 
-  // Prepare schema
-  ASSERT_OK(conn.Execute(
-    "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
-    "PARTITION BY RANGE(r);"
-    "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
-    "CREATE UNIQUE INDEX ON foo (v1, r);"
-    "INSERT INTO FOO VALUES (1,1,1,1);"));
-
-  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
-
-  // Run the query on a fresh conn
-  auto conn2 = ASSERT_RESULT(Connect());
-  auto str = conn2.FetchAllAsString(
-      "EXPLAIN (ANALYZE, DIST) INSERT INTO FOO VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
-      "v2=foo.v2+1");
-
-  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
-
-  // Given we are preloaded, we should not have any cache misses (incl neg misses)
-  // for the query above which should cause lookups for ancestors of a table in pg_inherits
-  ASSERT_EQ(end_value.value, start_value.value);
+TEST_F_EX(PgLibPqTest, PgInheritsNegCacheMinPreloadTest,
+            PgLibPqPgInheritsNegCacheMinimalPreloadTest) {
+  TestInheritsNegCache(true /*minimal preload*/);
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
