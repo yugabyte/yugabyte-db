@@ -35,7 +35,7 @@ This alert fires when Prometheus is unable to scrape a node for metrics for (by 
 
 1. If the host is down, restart it from the cloud console or equivalent.
 
-    If necessary, follow the steps in [Replace a live or unreachable node](../../manage-deployments/remove-nodes/#replace-a-live-or-unreachable-node) to replace the node.
+    If necessary, follow the steps in [Eliminate an unresponsive node](../../manage-deployments/remove-nodes/#eliminate-an-unresponsive-node) to replace the node.
 
 1. If the host is running, check the status of the node_exporter process. Prometheus uses the node_exporter service to export metrics, and if the service is down, the node will appear unreachable.
 
