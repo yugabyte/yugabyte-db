@@ -157,9 +157,21 @@ struct Identity {
   }
 };
 
+struct AsVoidPtr {
+  template <class T>
+  const void* operator()(const T* t) const {
+    return t;
+  }
+};
+
 template <class Collection>
 decltype(auto) CollectionToString(const Collection& collection) {
   return CollectionToString(collection, Identity());
+}
+
+template <class Collection>
+decltype(auto) PointerCollectionToString(const Collection& collection) {
+  return CollectionToString(collection, AsVoidPtr());
 }
 
 std::string CStringArrayToString(char** elements, size_t length);

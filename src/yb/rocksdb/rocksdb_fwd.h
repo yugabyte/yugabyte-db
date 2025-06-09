@@ -59,5 +59,6 @@ using MergeIteratorBuilder = MergeIteratorBuilderBase<IteratorWrapper>;
 using CompactionContextPtr = std::unique_ptr<CompactionContext>;
 
 YB_STRONGLY_TYPED_BOOL(AllowCompactionFailures);
+YB_STRONGLY_TYPED_BOOL(SkipCorruptDataBlocksUnsafe);
 
 } // namespace rocksdb

@@ -199,9 +199,13 @@ Status PlainTableReader::Open(const ImmutableCFOptions& ioptions,
 void PlainTableReader::SetupForCompaction() {
 }
 
-InternalIterator* PlainTableReader::NewIterator(const ReadOptions& options,
-                                                Arena* arena,
-                                                bool skip_filters) {
+InternalIterator* PlainTableReader::NewIterator(
+    const ReadOptions& options, Arena* arena, bool skip_filters,
+    SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
+  if (skip_corrupt_data_blocks_unsafe) {
+    return NewErrorInternalIterator(
+        STATUS(InvalidArgument, "skip_corrupt_data_blocks_unsafe not supported"), arena);
+  }
   if (options.total_order_seek && !IsTotalOrderMode()) {
     return NewErrorInternalIterator(
         STATUS(InvalidArgument, "total_order_seek not supported"), arena);

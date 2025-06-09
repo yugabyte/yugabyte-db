@@ -2211,30 +2211,50 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   tablet_metadata_validator_->ScheduleValidation(*tablet->metadata());
 }
 
-Status TSTabletManager::TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait) {
+Status TSTabletManager::TriggerAdminCompaction(
+    const TabletPtrs& tablets, const AdminCompactionOptions& options) {
   CountDownLatch latch(tablets.size());
+  Status first_compaction_error;
+  std::mutex first_compaction_error_mutex;
   std::vector<TabletId> tablet_ids;
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
+
+  tablet::AdminCompactionOptions tablet_compaction_options{
+      .compaction_completion_callback =
+          options.should_wait ? [&latch, &first_compaction_error,
+                                 &first_compaction_error_mutex](const Status& status) {
+            {
+              std::lock_guard lock(first_compaction_error_mutex);
+              if (first_compaction_error.ok()) {
+                first_compaction_error = status;
+              }
+            }
+            latch.CountDown();
+          } : StdStatusCallback{},
+      .skip_corrupt_data_blocks_unsafe = options.skip_corrupt_data_blocks_unsafe};
+
   for (auto tablet : tablets) {
-    Status status;
-    if (should_wait) {
-      status = tablet->TriggerAdminFullCompactionWithCallbackIfNeeded(latch.CountDownCallback());
-    } else {
-      status = tablet->TriggerAdminFullCompactionIfNeeded();
-    }
-    RETURN_NOT_OK(status);
+    RETURN_NOT_OK(tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options));
     tablet_ids.push_back(tablet->tablet_id());
     total_size += tablet->GetCurrentVersionSstFilesSize();
   }
   VLOG(1) << yb::Format(
       "Beginning batch admin compaction for tablets $0, $1 bytes", tablet_ids, total_size);
 
-  if (should_wait) {
+  if (options.should_wait) {
     latch.Wait();
-    LOG(INFO) << yb::Format(
-        "Admin compaction finished for tablets $0, $1 bytes took $2 seconds", tablet_ids,
-        total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+    std::lock_guard lock(first_compaction_error_mutex);
+    const auto log_message = Format(
+        "Admin compaction $0 for tablets $1, $2 bytes took $3 seconds",
+        first_compaction_error.ok() ? "finished" : "failed", tablet_ids, total_size,
+        ToSeconds(CoarseMonoClock::Now() - start_time));
+    if (first_compaction_error.ok()) {
+      LOG(INFO) << log_message;
+    } else {
+      LOG(WARNING) << log_message << ": " << first_compaction_error;
+      return first_compaction_error;
+    }
   }
   return Status::OK();
 }

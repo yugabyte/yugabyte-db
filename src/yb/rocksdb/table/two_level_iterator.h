@@ -24,6 +24,8 @@
 #pragma once
 
 #include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+
 #include "yb/rocksdb/table/internal_iterator.h"
 
 namespace rocksdb {
@@ -59,8 +61,11 @@ struct TwoLevelIteratorState {
 //        all the states but those allocated in arena.
 // need_free_iter_and_state: free `state` and `first_level_iter` if
 //                           true. Otherwise, just call destructor.
+// skip_corrupt_data_blocks_unsafe: see CompactRangeOptions for more details.
 extern InternalIterator* NewTwoLevelIterator(
     TwoLevelIteratorState* state, InternalIterator* first_level_iter, Arena* arena = nullptr,
-    bool need_free_iter_and_state = true);
+    bool need_free_iter_and_state = true,
+    SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+        SkipCorruptDataBlocksUnsafe::kFalse);
 
 }  // namespace rocksdb
