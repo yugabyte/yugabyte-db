@@ -2409,9 +2409,12 @@ class PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill :
   }
 };
 
+// TODO(bkolagani): The test relies on transparent query layer retries to succeed. Until
+// GHI#24877 is addressed, retries are disabled when table locking feature in on. Run the
+// test with table locking enabled after enabling back statement retries.
 INSTANTIATE_TEST_CASE_P(,
                         PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill,
-                        ::testing::Bool());
+                        ::testing::Values(false));
 
 // Make sure backends wait for catalog version waits on the correct version and ignores the backend
 // running the CREATE INDEX.
