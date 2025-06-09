@@ -147,9 +147,12 @@ class BlockBasedTable : public TableReader {
   // Returns a new iterator over the table contents.
   // The result of NewIterator() is initially invalid (caller must
   // call one of the Seek methods on the iterator before using it).
-  // @param skip_filters Disables loading/accessing the filter block
-  InternalIterator* NewIterator(const ReadOptions&, Arena* arena = nullptr,
-                                bool skip_filters = false) override;
+  // skip_filters Disables loading/accessing the filter block
+  // skip_corrupt_data_blocks_unsafe See CompactRangeOptions::skip_corrupt_data_blocks_unsafe
+  InternalIterator* NewIterator(
+      const ReadOptions&, Arena* arena = nullptr, bool skip_filters = false,
+      SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+          SkipCorruptDataBlocksUnsafe::kFalse) override;
 
   // @param skip_filters Disables loading/accessing the filter block.
   // key should be internal key in case bloom filters are used.

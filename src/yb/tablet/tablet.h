@@ -80,6 +80,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
@@ -121,8 +122,10 @@ YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
 struct AdminCompactionOptions {
-  std::function<void()> compaction_completion_callback;
+  StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
+  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+      rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
 };
 
 struct TabletScopedRWOperationPauses {
@@ -610,7 +613,9 @@ class Tablet : public AbstractTablet,
 
   Status ForceRocksDBCompact(
       rocksdb::CompactionReason compaction_reason,
-      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
 
   rocksdb::DB* regular_db() const {
     return regular_db_.get();
@@ -1049,7 +1054,14 @@ class Tablet : public AbstractTablet,
       const std::string& partition_key,
       size_t row_count) const;
 
-  void TriggerManualCompactionSync(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionSyncUnsafe(
+      rocksdb::CompactionReason reason,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
+
+  Status TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
+    return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
+  }
+
   void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
