@@ -1639,6 +1639,10 @@ public class UniverseCRUDHandler {
         if (!universe.getUniverseDetails().useNewHelmNamingStyle) {
           checkK8sProviderAvailability(provider, customer);
         }
+        // Override cert details passed in request payload.
+        taskParams.rootCA = universe.getUniverseDetails().rootCA;
+        taskParams.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
+        taskParams.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
         taskType = TaskType.ReadOnlyKubernetesClusterCreate;
       } catch (IllegalArgumentException e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
