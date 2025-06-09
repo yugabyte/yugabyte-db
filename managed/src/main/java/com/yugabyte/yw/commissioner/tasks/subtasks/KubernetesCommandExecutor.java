@@ -378,6 +378,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 overridesFile);
         break;
       case HELM_UPGRADE:
+        handleHelmUpgradeAutoRecovery();
         overridesFile = this.generateHelmOverride();
         kubernetesManagerFactory
             .getManager()
@@ -1832,5 +1833,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
     return certManager;
+  }
+
+  /**
+   * Helper method to handle auto-recovery from pending Helm upgrade state. Checks if auto-recovery
+   * is enabled for the universe and performs recovery if needed.
+   */
+  private void handleHelmUpgradeAutoRecovery() {
+    Universe helmUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    if (confGetter.getConfForScope(helmUniverse, UniverseConfKeys.autoRecoverFromPendingUpgrade)) {
+      kubernetesManagerFactory
+          .getManager()
+          .checkAndRecoverFromHelmPendingState(
+              getConfig(), taskParams().helmReleaseName, taskParams().namespace);
+    }
   }
 }
