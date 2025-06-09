@@ -489,7 +489,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 {{< /tabpane >}}
 
-By default, yb-voyager imports data in parallel using multiple connections, and adapts the parallelism based on the resource usage of the cluster. Refer to [Techniques to improve performance](../../reference/reference/performance/#techniques-to-improve-performance) for more details on tuning performance.
+By default, yb-voyager imports data in parallel using multiple connections, and adapts the parallelism based on the resource usage of the cluster. Refer to [Techniques to improve performance](../../reference/performance/#techniques-to-improve-performance) for more details on tuning performance.
 
 Refer to [import data](../../reference/data-migration/import-data/) for more information.
 
@@ -551,8 +551,7 @@ Refer to [import data status](../../reference/data-migration/import-data/#import
 
 ### Finalize schema post data import
 
-If there are any NOT VALID constraints on the source, create them after the import data command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them by setting the `refresh-mviews` parameter in the `finalize-schema-post-data-import` (configuration file) or use `--refresh-mviews` flag (CLI) with the value true.
-
+If there are any NOT VALID constraints on the source, create them after the import data command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB database, you can refresh them by setting the `refresh-mviews` parameter in the `finalize-schema-post-data-import` (configuration file) or use `--refresh-mviews` flag (CLI) with the value true.
 Run the command as follows:
 
 {{< tabpane text=true >}}
@@ -583,7 +582,7 @@ yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
 
 Refer to [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) for more information.
 
-{{< note title ="Note" >}}
+{{< note title ="Deprecated flags" >}}
 The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
 {{< /note >}}
 

@@ -23,7 +23,7 @@ Usage: yb-voyager archive changes [ <arguments> ... ]
 
 ### Arguments
 
-The following table lists the valid CLI flags and parameters for `archieve changes` command.
+The following table lists the valid CLI flags and parameters for `archive changes` command.
 
 When run at the same time, flags take precedence over configuration flag settings.
 

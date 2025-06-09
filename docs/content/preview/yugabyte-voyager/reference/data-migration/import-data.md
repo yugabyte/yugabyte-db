@@ -85,7 +85,7 @@ import-data:
   table-list:
 ```
 
-| Comma-separated list of names of source database tables whose data is to be imported. Table names can also be glob patterns containing wildcard characters, such as an asterisk (\*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration. |
+| Comma-separated list of names of source database tables whose data is to be imported. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration. |
 | --exclude-table-list |
 
 ```yaml{.nocopy}
@@ -346,7 +346,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">Flag</div> | Parameter | Description |
 | :--- | :-------- | :---------- |
 | -e, --export-dir |
 

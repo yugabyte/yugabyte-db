@@ -236,7 +236,7 @@ yb-voyager import schema --export-dir /dir/export-dir \
         --target-db-schema target_schema
 ```
 
-Example of [post-import data](../../../migrate/migrate-steps/#post-snapshot-import) phase is as follows:
+Example of import schema with [--post-snapshot-import](../../../migrate/migrate-steps/#post-snapshot-import) and --refresh-mviews flags are as follows:
 
 ```sh
 
