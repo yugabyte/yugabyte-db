@@ -3776,8 +3776,10 @@ yb_cancel_transaction(PG_FUNCTION_ARGS)
 		ereport(NOTICE,
 				(errmsg("failed to cancel transaction"),
 				 errdetail("%s", YBCMessageAsCString(status))));
+		YBCFreeStatus(status);
 		PG_RETURN_BOOL(false);
 	}
+	YBCFreeStatus(status);
 	PG_RETURN_BOOL(true);
 }
 
