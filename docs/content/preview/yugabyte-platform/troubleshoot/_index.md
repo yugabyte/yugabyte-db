@@ -2,8 +2,8 @@
 title: Troubleshoot YugabyteDB Anywhere
 headerTitle: Troubleshoot
 linkTitle: Troubleshoot
-description: Troubleshoot issues in YugabyteDB Anywhere
-headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere
+headcontent: Troubleshoot issues in YugabyteDB Anywhere
+description: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere
 aliases:
   - /troubleshoot/enterprise-edition/
   - /preview/troubleshoot/enterprise-edition/

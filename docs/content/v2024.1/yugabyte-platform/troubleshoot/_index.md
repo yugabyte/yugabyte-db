@@ -2,8 +2,8 @@
 title: Troubleshoot YugabyteDB Anywhere
 headerTitle: Troubleshoot
 linkTitle: Troubleshoot
-description: Troubleshoot issues in YugabyteDB Anywhere
-headcontent: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere
+headcontent: Troubleshoot issues in YugabyteDB Anywhere
+description: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere
 menu:
   v2024.1_yugabyte-platform:
     parent: yugabytedb-anywhere
