@@ -283,9 +283,11 @@ Default: `true`
 
 These flags are used to determine how the RAM of a node is split between the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including the PostgreSQL processes and a [Master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
 
-{{< warning title="Warning" >}}
+{{< warning title="Do not oversubscribe memory" >}}
 
-Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for the Master process and TServer (if present) leaves enough memory on the node for PostgreSQL and any required other processes like monitoring agents, plus the memory needed by the kernel.
+Ensure you do not oversubscribe memory when changing these flags.
+
+When reserving memory for TServer and Master (if present), you must leave enough memory on the node for PostgreSQL, any required other processes like monitoring agents, and the memory needed by the kernel.
 
 {{< /warning >}}
 

@@ -48,6 +48,6 @@ The defaults for the [split of memory _within_ a TServer](../yb-tserver/#flags-c
 | --db_block_cache_size_percentage | 32 |
 | --tablet_overhead_size_percentage | 10 |
 
-The default value of `--db_block_cache_size_percentage` here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead. (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
+The default value of `--db_block_cache_size_percentage` has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead. (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
 
 Currently, the defaults for the [split of memory _within_ a Master process](../yb-master/#flags-controlling-the-split-of-memory-within-a-master) do not depend on node size, and are not affected by the `--use_memory_defaults_optimized_for_ysql` setting. This could change in future releases.
