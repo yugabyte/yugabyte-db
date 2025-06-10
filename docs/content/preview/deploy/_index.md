@@ -29,8 +29,12 @@ type: indexpage
     href="checklist/"
     icon="fa-thin fa-list-check">}}
 
+{{</index/block>}}
+
+{{<index/block>}}
+
   {{<index/item
-    title="Manual deployment"
+    title="On-premises"
     body="Deploy YugabyteDB manually in a private data center using basic administration commands."
     href="manual-deployment/"
     icon="fa-thin fa-helmet-safety">}}

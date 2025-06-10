@@ -1,6 +1,6 @@
 ---
 title: Verify deployment
-headerTitle: Verify deployment
+headerTitle: 4. Verify deployment
 linkTitle: 4. Verify deployment
 description: How to verify the manual deployment of the YugabyteDB database cluster.
 menu:
@@ -20,8 +20,8 @@ type: docs
   </li>
   <li >
     <a href="../verify-deployment/" class="nav-link">
-      Manual
       <i class="icon-shell"></i>
+      Manual
     </a>
   </li>
 </ul>

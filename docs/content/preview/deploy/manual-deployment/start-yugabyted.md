@@ -1,6 +1,6 @@
 ---
 title: Deploy YugabyteDB
-headerTitle: Deploy
+headerTitle: 3. Deploy
 linkTitle: 3. Deploy
 description: How to start your YugabyteDB database cluster.
 menu:

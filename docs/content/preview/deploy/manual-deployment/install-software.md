@@ -1,6 +1,6 @@
 ---
 title: Manual software installation
-headerTitle: Install software
+headerTitle: 2. Install software
 linkTitle: 2. Install software
 description: How to manually install YugabyteDB database on each node.
 menu:
