@@ -468,7 +468,12 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === VM_PATCHING_RUNTIME_CONFIG)
         ?.value === 'true';
 
-    const isPerfAdvisorEnabled =
+    const isPerfAdvisorUIEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
+      )?.value === 'true';
+
+    const isPerfAdvisorServiceEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING
       )?.value === 'true';
@@ -694,7 +699,7 @@ class UniverseDetail extends Component {
             onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <QueriesViewer isPerfAdvisorEnabled={isPerfAdvisorEnabled} />
+            <QueriesViewer isPerfAdvisorUIEnabled={isPerfAdvisorUIEnabled} />
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
@@ -744,7 +749,7 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.perfAdvisor') &&
-          isPerfAdvisorEnabled && (
+          isPerfAdvisorServiceEnabled && (
             <Tab.Pane
               eventKey={'perfAdvisor'}
               tabtitle="Perf Advisor"
@@ -1556,7 +1561,7 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       </RbacValidator>
                     )}
-                    {!universePaused && isPerfAdvisorEnabled && (
+                    {!universePaused && isPerfAdvisorServiceEnabled && (
                       <RbacValidator
                         isControl
                         accessRequiredOn={{
