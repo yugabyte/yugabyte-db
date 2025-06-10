@@ -115,9 +115,9 @@
       "precheckInitiatedMsg": "Running Prechecks...",
       "runPrecheckOnlyButton": "Run Pre-check Only",
       "lbState": {
-        "loadBalancerEnabled": "Tablet Load Balancer",
-        "loadIsBalanced": "Tablet load is balanced",
-        "loadBalanceInProgress": "Tablet load balancing in progress"
+        "loadBalancerEnabled": "Cluster Load Balancer",
+        "loadIsBalanced": "Cluster load is balanced",
+        "loadBalanceInProgress": "Cluster load balancing in progress"
       },
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
