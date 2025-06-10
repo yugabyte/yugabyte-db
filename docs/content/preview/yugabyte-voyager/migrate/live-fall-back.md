@@ -1126,13 +1126,7 @@ Perform the following steps as part of the cutover process:
 1. Quiesce your source database, that is stop application writes.
 1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using `cutover to target` command (CLI) or using the configuration file.
 
-    ```sh
-    Replace the argument values with those applicable for your migration.
-    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> \
-      --prepare-for-fall-back true \
-      --use-yb-grpc-connector true
-    ```
-
+    {{< tabpane text=true >}}
 
     {{% tab header="Config File" lang="config" %}}
 
@@ -1148,7 +1142,10 @@ inititate-cutover-to-target:
 Then run the following command:
 
 ```sh
-yb-voyager initiate cutover to target --config-file <PATH-TO-CONFIG-FILE>
+# Replace the argument values with those applicable for your migration.
+yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> \
+  --prepare-for-fall-back true \
+  --use-yb-grpc-connector true
 ```
 
       {{% /tab %}}
