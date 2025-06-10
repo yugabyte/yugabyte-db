@@ -18,7 +18,7 @@ Create indexes and triggers in the target schema, and refresh the materialized v
 ## Syntax
 
 ```text
-Usage: yb-voyager finalize-schema-post-data-import [ <arguments> ...] 
+Usage: yb-voyager finalize-schema-post-data-import [ <arguments> ...]
 ```
 
 ### Arguments
@@ -65,7 +65,8 @@ export-dir:
 | --run-guardrails-checks |
 
 ```yaml{.nocopy}
-run-guardrails-checks:
+finalize-schema-post-data-import:
+  run-guardrails-checks:
 ```
 
 |Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |

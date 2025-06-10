@@ -553,27 +553,27 @@ Set the export-dir, source, and target arguments in the configuration file:
 ```yaml
 # Replace the argument values with those applicable for your migration.
 
-export-dir: <absolute-path-to-export-dir>  
+export-dir: <absolute-path-to-export-dir>
 
 source:
-  db-type: <source-db-type>         
-  db-host: <source-db-host>            
-  db-port: <source-db-port>                 
-  db-name: <source-db-name>            
-  db-schema: <source-db-schema> # Not applicable for MySQL           
-  db-user: <source-db-user>             
-  db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.    
+  db-type: <source-db-type>
+  db-host: <source-db-host>
+  db-port: <source-db-port>
+  db-name: <source-db-name>
+  db-schema: <source-db-schema> # Not applicable for MySQL
+  db-user: <source-db-user>
+  db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
 
 target:
-  db-host: <target-db-host> 
-  db-port: <target-db-port> 
-  db-name: <target-db-name>               
-  db-schema: <target-db-schema> # MySQL and Oracle only                
-  db-user: <target-db-username>           
-  db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.   
+  db-host: <target-db-host>
+  db-port: <target-db-port>
+  db-name: <target-db-name>
+  db-schema: <target-db-schema> # MySQL and Oracle only
+  db-user: <target-db-username>
+  db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
-Refer to the `live-migration.yaml` template for more information on the available global, source, and target configuration parameters supported by Voyager.
+Refer to the [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Assess migration
 
@@ -607,7 +607,7 @@ Run the command as follows:
 yb-voyager export schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the `online-migration.yaml` template.
+You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -659,7 +659,7 @@ Then run the command as follows:
 yb-voyager analyze-schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -676,7 +676,7 @@ yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 
 The preceding command generates a report file under the `EXPORT_DIR/reports/` directory.
 
-Refer to [analyze schema](../../reference/schema-migration/analyze-schema/)for more information on the use of the command.
+Refer to [analyze schema](../../reference/schema-migration/analyze-schema/) for more information on the use of the command.
 
 #### Manually edit the schema
 
@@ -710,7 +710,7 @@ Run the command as follows:
 yb-voyager import schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -756,7 +756,7 @@ Run the command as follows:
 yb-voyager export data from source --config-file <path-to-config-file>
 ```
 
-You can specify additional `export data` parameters in the `export-data` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `export data` parameters in the `export-data` section of the configuration file. For more details, refer to the [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -834,7 +834,7 @@ Run the command as follows:
 yb-voyager get data-migration-report --config-file <path-to-config-file>
 ```
 
-You can specify additional `get data-migration-report` parameters in the `get-data-migration-report` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `get data-migration-report` parameters in the `get-data-migration-report` section of the configuration file. For more details, refer to the [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -917,9 +917,9 @@ If the `yb-voyager import data to target` command terminates before completing t
 
 {{< /tip >}}
 
-{{< note title= "Migrating Oracle source databases with large row sizes" >}}
+##### Migrating Oracle source databases with large row sizes
 
-When migrating from Oracle source, when the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the `csv-reader-max-buffer-size-bytes` parameter in the `import-data-to-target` (configuration file) or export the environment variable `CSV_READER_MAX_BUFFER_SIZE_BYTES`with the value.
+When migrating from Oracle source, when the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the `csv-reader-max-buffer-size-bytes` parameter in the `import-data-to-target` (configuration file) or export the environment variable `CSV_READER_MAX_BUFFER_SIZE_BYTES` with the value.
 
 {{< tabpane text=true >}}
 
@@ -941,8 +941,6 @@ export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
 {{< /tab >}}
 
 {{< /tabpane >}}
-
-{{< /note >}}
 
 #### get data-migration-report
 
@@ -988,7 +986,7 @@ Run the command as follows:
 yb-voyager archive changes --config-file <path-to-config-file>
 ```
 
-You can specify additional `archive changes` parameters in the `archive-changes` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `archive changes` parameters in the `archive-changes` section of the configuration file. For more details, refer to the [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -1016,24 +1014,24 @@ Perform the following steps as part of the cutover process:
 1. Quiesce your source database, that is stop application writes.
 1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using `cutover to target` command (CLI) or using the configuration file.
 
-    {{< tabpane text=true >}}
+    <br/>{{< tabpane text=true >}}
 
-      {{% tab header="Config File" lang="config" %}}
+{{% tab header="Config File" lang="config" %}}
 
 ```sh
 yb-voyager initiate cutover to target --config-file <path-to-config-file>
 ```
 
-    {{% /tab %}}
+{{% /tab %}}
 
-    {{% tab header="CLI" lang="cli" %}}
+{{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back false
 ```
 
-      {{% /tab %}}
+{{% /tab %}}
 
     {{< /tabpane >}}
 
@@ -1043,45 +1041,42 @@ yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fa
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the `cutover status` command (CLI) or configuration file.
 
-    {{< tabpane text=true >}}
+    <br/>{{< tabpane text=true >}}
 
-      {{% tab header="Config File" lang="config" %}}
+{{% tab header="Config File" lang="config" %}}
 
 ```sh
 yb-voyager cutover status --config-file <path-to-config-file>
 ```
 
-    {{% /tab %}}
+{{% /tab %}}
 
-    {{% tab header="CLI" lang="cli" %}}
-
+{{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager cutover status --export-dir <EXPORT_DIR>
 ```
 
-      {{% /tab %}}
+{{% /tab %}}
 
     {{< /tabpane >}}
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for more information.
 
-1. If there are any NOT VALID constraints on the source, create them after the import data command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB database, you can refresh them by setting the `refresh-mviews` parameter in the `finalize-schema-post-data-import` (configuration file) or use `--refresh-mviews` flag (CLI) with the value true.    
-    Run the command as follows:
+1. If there are any NOT VALID constraints on the source, create them after the import data command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB database, you can refresh them by setting the `refresh-mviews` parameter in the `finalize-schema-post-data-import` (configuration file) or use `--refresh-mviews` flag (CLI) with the value true. Run the command as follows:
 
-    {{< tabpane text=true >}}
+    <br/>{{< tabpane text=true >}}
 
-      {{% tab header="Config File" lang="config" %}}
+{{% tab header="Config File" lang="config" %}}
 
 ```sh
 yb-voyager finalize-schema-post-data-import --config-file <path-to-config-file>
 ```
 
-    {{% /tab %}}
+{{% /tab %}}
 
-    {{% tab header="CLI" lang="cli" %}}
-
+{{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -1094,7 +1089,7 @@ yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
 
 ```
 
-      {{% /tab %}}
+{{% /tab %}}
 
     {{< /tabpane >}}
 
@@ -1143,8 +1138,8 @@ end-migration:
   backup-data-files: <true, false, yes, no, 1, 0>
   save-migration-reports: <true, false, yes, no, 1, 0>
   backup-log-files: <true, false, yes, no, 1, 0>
-  # Set optional argument to store a back up of any of the above  arguments.
-  backup-dir: <BACKUP_DIR> 
+  # Set optional argument to store a back up of any of the above arguments.
+  backup-dir: <BACKUP_DIR>
 ...
 ```
 

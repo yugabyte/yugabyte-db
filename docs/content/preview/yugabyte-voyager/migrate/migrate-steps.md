@@ -165,27 +165,27 @@ Set the export-dir, source, and target arguments in the configuration file:
 ```yaml
 # Replace the argument values with those applicable for your migration.
 
-export-dir: <absolute-path-to-export-dir>  
+export-dir: <absolute-path-to-export-dir>
 
 source:
-  db-type: <source-db-type>         
-  db-host: <source-db-host>            
-  db-port: <source-db-port>                 
-  db-name: <source-db-name>            
-  db-schema: <source-db-schema> # Not applicable for MySQL           
-  db-user: <source-db-user>             
-  db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.    
+  db-type: <source-db-type>
+  db-host: <source-db-host>
+  db-port: <source-db-port>
+  db-name: <source-db-name>
+  db-schema: <source-db-schema> # Not applicable for MySQL
+  db-user: <source-db-user>
+  db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
 
 target:
-  db-host: <target-db-host> 
-  db-port: <target-db-port> 
-  db-name: <target-db-name>               
-  db-schema: <target-db-schema> # MySQL and Oracle only                
-  db-user: <target-db-username>           
-  db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.   
+  db-host: <target-db-host>
+  db-port: <target-db-port>
+  db-name: <target-db-name>
+  db-schema: <target-db-schema> # MySQL and Oracle only
+  db-user: <target-db-username>
+  db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
-Refer to the `offline-migration.yaml` template for more information on the available global, source, and target configuration parameters supported by Voyager.
+Refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Assess migration
 
@@ -231,7 +231,7 @@ Run the command as follows:
 yb-voyager export schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the `offline-migration.yaml` template.
+You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -272,7 +272,7 @@ Run the command as follows:
 yb-voyager analyze-schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the `offline-migration.yaml` template.
+You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml) template.
 
  {{% /tab %}}
 
@@ -321,7 +321,7 @@ Run the command as follows:
 yb-voyager import schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the `offline-migration.yaml` template.
+You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -367,7 +367,7 @@ Run the command as follows:
 yb-voyager export data --config-file <path-to-config-file>
 ```
 
-You can specify additional `export data` parameters in the `export-data` section of the configuration file. For more details, refer to the `offline-migration.yaml` template.
+You can specify additional `export data` parameters in the `export-data` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -427,7 +427,7 @@ Run the command as follows:
 yb-voyager export data status --config-file <path-to-config-file>
 ```
 
-You can specify additional `export data status` parameters in the `export-data-status` section of the configuration file. For more details, refer to the `offline-migration.yaml` template.
+You can specify additional `export data status` parameters in the `export-data-status` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -469,7 +469,7 @@ Run the command as follows:
 yb-voyager import data --config-file <path-to-config-file>
 ```
 
-You can specify additional `import data` parameters in the `import-data` section of the configuration file. For more details, refer to the `offline-migration.yaml` template.
+You can specify additional `import data` parameters in the `import-data` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -533,7 +533,7 @@ Run the command as follows:
 yb-voyager import data status --config-file <path-to-config-file>
 ```
 
-You can specify additional `import data status` parameters in the `import-data-status` section of the configuration file. For more details, refer to the `offline-migration.yaml` template.
+You can specify additional `import data status` parameters in the `import-data-status` section of the configuration file. For more details, refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml) template.
 
   {{% /tab %}}
 
@@ -626,7 +626,7 @@ end-migration:
   save-migration-reports: <true, false, yes, no, 1, 0>
   backup-log-files: <true, false, yes, no, 1, 0>
   # Set optional argument to store a back up of any of the above  arguments.
-  backup-dir: <BACKUP_DIR> 
+  backup-dir: <BACKUP_DIR>
 ...
 ```
 

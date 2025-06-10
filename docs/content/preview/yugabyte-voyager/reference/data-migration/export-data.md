@@ -118,7 +118,8 @@ export-dir:
 | --run-guardrails-checks |
 
 ```yaml{.nocopy}
-run-guardrails-checks:
+export-data:
+  run-guardrails-checks:
 ```
 
 | Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
@@ -435,7 +436,7 @@ target:
 Configuration file:
 
 ```yaml
-yb-voyager get data-migration-report --config-file <path-to-config-file>  
+yb-voyager get data-migration-report --config-file <path-to-config-file>
 ```
 
 CLI:

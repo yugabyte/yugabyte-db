@@ -57,7 +57,7 @@ export-schema:
 
 ```yaml{.nocopy}
 export-schema:
-  object-type-list: 
+  object-type-list:
   exclude-object-type-list:
 ```
 
@@ -88,7 +88,8 @@ send-diagnostics:
 | --run-guardrails-checks |
 
 ```yaml{.nocopy}
-run-guardrails-checks:
+export-schema:
+  run-guardrails-checks:
 ```
 
 | Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |

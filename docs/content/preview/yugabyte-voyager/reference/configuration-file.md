@@ -70,12 +70,6 @@ log-level: info
 # Default : true
 send-diagnostics: true
 
-# Run guardrails checks before the command is run
-# Note - This is only valid for PostgreSQL source database
-# Accepted values - (true, false, yes, no, 1, 0)
-# Default : true
-run-guardrails-checks: true
-
 # Control plane type refers to the deployment type of YugabyteDB.
 # Accepted value - (yugabyted)
 # Optional

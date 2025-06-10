@@ -681,20 +681,20 @@ CREATE USER ybvoyager_ff with password 'password' superuser;
 ## Set up a configuration file
 
 Starting with version 2025.5.2, you can use a configuration file to specify the parameters required when running Voyager commands.
-To get started, copy the `live-migration.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):
+To get started, copy the `live-migration-with-fall-forward.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):
 
 {{< tabpane text=true >}}
   {{% tab header="Linux (apt/yum/airgapped)" lang="linux" %}}
 
 ```bash
-/opt/yb-voyager/config-templates/live-migration.yaml
+/opt/yb-voyager/config-templates/live-migration-with-fall-forward.yaml
 ```
 
   {{% /tab %}}
   {{% tab header="MacOS (Homebrew)" lang="macos" %}}
 
 ```bash
-$(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/live-migration.yaml
+$(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/live-migration-with-fall-forward.yaml
 ```
 
 Replace `<voyager-version>` with your installed Voyager version, for example, `2025.5.2`.
@@ -706,16 +706,16 @@ Set the export-dir, source, and target arguments in the configuration file:
 
 ```yaml
 # Replace the argument values with those applicable for your migration.
-source-replica:     
-  db-host: <HOST>            
-  db-port: <source-db-port>                 
-  db-name: <source-db-name>            
-  db-schema: <source-db-schema> # Not applicable for MySQL           
-  db-user: <source-db-user>             
+source-replica:
+  db-host: <HOST>
+  db-port: <source-db-port>
+  db-name: <source-db-name>
+  db-schema: <source-db-schema> # Not applicable for MySQL
+  db-user: <source-db-user>
   db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
-Refer to the `live-migration.yaml` template for more information on the available global, source, and target configuration parameters supported by Voyager.
+Refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Assess migration
 
@@ -802,7 +802,7 @@ Then run the command as follows:
 yb-voyager analyze-schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template.
 
   {{% /tab %}}
 
@@ -853,7 +853,7 @@ Run the command as follows:
 yb-voyager import schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template.
 
   {{% /tab %}}
 
@@ -907,7 +907,7 @@ Run the command as follows:
 yb-voyager export data from source --config-file <path-to-config-file>
 ```
 
-You can specify additional `export data` parameters in the `export-data` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `export data` parameters in the `export-data` section of the configuration file. For more details, refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template.
 
   {{% /tab %}}
 
@@ -981,7 +981,7 @@ Run the command as follows:
 yb-voyager get data-migration-report --config-file <path-to-config-file>
 ```
 
-You can specify additional `get data-migration-report` parameters in the `get-data-migration-report` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `get data-migration-report` parameters in the `get-data-migration-report` section of the configuration file. For more details, refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template.
 
   {{% /tab %}}
 
@@ -1064,9 +1064,9 @@ If the `yb-voyager import data to target` command terminates before completing t
 
 {{< /tip >}}
 
-{{< note title= "Migrating Oracle source databases with large row sizes" >}}
+##### Migrating Oracle source databases with large row sizes
 
-When migrating from Oracle source, when the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the `csv-reader-max-buffer-size-bytes` parameter in the `import-data-to-target` (configuration file) or export the environment variable `CSV_READER_MAX_BUFFER_SIZE_BYTES`with the value.
+When migrating from Oracle source, when the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the `csv-reader-max-buffer-size-bytes` parameter in the `import-data-to-target` (configuration file) or export the environment variable `CSV_READER_MAX_BUFFER_SIZE_BYTES` with the value.
 
 {{< tabpane text=true >}}
 
@@ -1088,8 +1088,6 @@ export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
 {{< /tab >}}
 
 {{< /tabpane >}}
-
-{{< /note >}}
 
 #### get data-migration-report
 
@@ -1187,7 +1185,7 @@ Run the command as follows:
 yb-voyager archive changes --config-file <path-to-config-file>
 ```
 
-You can specify additional `archive changes` parameters in the `archive-changes` section of the configuration file. For more details, refer to the `live-migration.yaml` template.
+You can specify additional `archive changes` parameters in the `archive-changes` section of the configuration file. For more details, refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template.
 
   {{% /tab %}}
 
@@ -1217,23 +1215,23 @@ Perform the following steps as part of the cutover process:
 1. Quiesce your source database, that is stop application writes.
 1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using `cutover to target` command (CLI) or using the configuration file.
 
-      {{< tabpane text=true >}}
-      {{% tab header="Config File" lang="config" %}}
+      <br/>{{< tabpane text=true >}}
+{{% tab header="Config File" lang="config" %}}
 
 ```sh
 yb-voyager initiate cutover to target --config-file <path-to-config-file>
 ```
 
-      {{% /tab %}}
+{{% /tab %}}
 
-    {{% tab header="CLI" lang="cli" %}}
+{{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --use-yb-grpc-connector true
 ```
 
-      {{% /tab %}}
+{{% /tab %}}
 
     {{< /tabpane >}}
 
@@ -1247,22 +1245,22 @@ yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --use-yb-grpc-co
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database to the source-replica database.
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart process using the `export data from target` command as suggested in the `import data to target` output.
 
-       {{<note title="Event duplication">}}
+       {{< note title="Event duplication" >}}
 The `export data from target` command may result in duplicated events if you restart Voyager, or there is a change in the YugabyteDB database server state. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
-       {{</note>}}
+       {{</ note >}}
 
 1. If there are any NOT VALID constraints on the source, create them after the import data command is completed by using the `finalize-schema-post-data-import` command. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB database, you can refresh them by setting the `refresh-mviews` parameter in the `finalize-schema-post-data-import` (configuration file) or use `--refresh-mviews` flag (CLI) with the value true.
     Run the command as follows:
 
-    {{< tabpane text=true >}}
-      {{% tab header="Config File" lang="config" %}}
+    <br/>{{< tabpane text=true >}}
+{{% tab header="Config File" lang="config" %}}
 
 ```sh
 yb-voyager finalize-schema-post-data-import --config-file <path-to-config-file>
 ```
 
-    {{% /tab %}}
-    {{% tab header="CLI" lang="cli" %}}
+{{% /tab %}}
+{{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -1274,7 +1272,7 @@ yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
   --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
 ```
 
-      {{% /tab %}}
+{{% /tab %}}
 
     {{< /tabpane >}}
 
@@ -1309,24 +1307,24 @@ Perform the following steps as part of the cutover process:
 1. Quiesce your target YugabyteDB database, that is stop application writes.
 1. Perform a cutover after the exported events rate ("Export rate" in the metrics table) drops to 0 using the following command:
 
-    {{< tabpane text=true >}}
+    <br/>{{< tabpane text=true >}}
 
-      {{% tab header="Config File" lang="config" %}}
+{{% tab header="Config File" lang="config" %}}
 
 ```sh
 yb-voyager initiate cutover to source-replica --config-file <path-to-config-file>
 ```
 
-      {{% /tab %}}
+{{% /tab %}}
 
-      {{% tab header="CLI" lang="cli" %}}
+{{% tab header="CLI" lang="cli" %}}
 
 ```sh
 # Replace the argument values with those applicable for your migration.
 yb-voyager initiate cutover to source-replica --export-dir <EXPORT_DIR>
 ```
 
-      {{% /tab %}}
+{{% /tab %}}
 
     {{< /tabpane >}}
 
@@ -1336,10 +1334,26 @@ yb-voyager initiate cutover to source-replica --export-dir <EXPORT_DIR>
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager cutover status --export-dir <EXPORT_DIR>
-    ```
+    <br/>{{< tabpane text=true >}}
+
+{{% tab header="Config File" lang="config" %}}
+
+```sh
+yb-voyager cutover status --config-file <path-to-config-file>
+```
+
+{{% /tab %}}
+
+{{% tab header="CLI" lang="cli" %}}
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager cutover status --export-dir <EXPORT_DIR>
+```
+
+{{% /tab %}}
+
+    {{< /tabpane >}}
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
@@ -1383,7 +1397,7 @@ end-migration:
   save-migration-reports: <true, false, yes, no, 1, 0>
   backup-log-files: <true, false, yes, no, 1, 0>
   # Set optional argument to store a back up of any of the above  arguments.
-  backup-dir: <BACKUP_DIR> 
+  backup-dir: <BACKUP_DIR>
 ...
 ```
 
