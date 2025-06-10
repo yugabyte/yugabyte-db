@@ -372,12 +372,14 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
-  // Send at most "parallelism_level_" number of requests at one time.
-  size_t send_count = std::min(parallelism_level_, active_op_count_);
-  VLOG(1) << "Number of operations to send: " << send_count;
-  response_ = VERIFY_RESULT(sender_(
-      pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
-      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+  if (active_op_count_ > 0) {
+    // Send at most "parallelism_level_" number of requests at one time.
+    size_t send_count = std::min(parallelism_level_, active_op_count_);
+    VLOG(1) << "Number of operations to send: " << send_count;
+    response_ = VERIFY_RESULT(sender_(
+        pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
+        HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+  }
   return Status::OK();
 }
 
