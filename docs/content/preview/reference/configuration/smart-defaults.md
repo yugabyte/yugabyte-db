@@ -41,7 +41,7 @@ For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the 
 
 Some defaults for the split of memory _within_ processes (as opposed to between processes on a node) are also affected by the `--use_memory_defaults_optimized_for_ysql` setting.
 
-The defaults for the [split of memory _within_ a TServer](../yb-tserver/#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
+The defaults for the [split of memory _within_ a TServer](../yb-tserver/#flags-controlling-the-split-of-memory-within-a-tserver) that change when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
 
 | flag | default |
 | :--- | :--- |
