@@ -3,7 +3,7 @@ title: Smart defaults
 headerTitle: Smart defaults
 linkTitle: Smart defaults
 description: Smart defaults for YugabyteDB settings.
-headContent: Set smart defaults when configuring YugabyteDB
+headContent: Set smart memory defaults when configuring YugabyteDB
 menu:
   preview:
     identifier: smart-defaults
