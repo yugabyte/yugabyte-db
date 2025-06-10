@@ -48,9 +48,9 @@ The configuration file groups parameters into logical sections based on their us
 You can refer to the following config file templates:
 
 * [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml)
-* live-migration.yaml
-* live-migration-with-fall-back.yaml
-* live-migration-with-fall-forward.yaml
+* [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml)
+* [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml)
+* [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-forward.yaml)
 
 All supported configuration keys are described in the following sections.
 
@@ -114,7 +114,7 @@ source:
   db-user: test_user
 
   # Source password to connect as the specified user
-  # Can be specified via SOURCE_DB_PASSWORD env var
+  # Can be specified via SOURCE_DB_PASSWORD environmental variable
   db-password: test_password
 
   # Path to source SSL Certificate
@@ -176,7 +176,7 @@ target:
   db-user: target_user
 
   # Password to connect to YugabyteDB
-  # Can be specified via TARGET_DB_PASSWORD env var
+  # Can be specified via TARGET_DB_PASSWORD environmental variable
   db-password: target_password
 
   # Path to SSL Certificate
@@ -218,7 +218,7 @@ source-replica:
   db-user: replica_user
 
   # Password to connect to replica DB
-  # Can be specified via SOURCE_REPLICA_DB_PASSWORD env var
+  # Can be specified via SOURCE_REPLICA_DB_PASSWORD environmental variable
   db-password: replica_password
 
   # Path to SSL Certificate
