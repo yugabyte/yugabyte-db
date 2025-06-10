@@ -21,6 +21,7 @@
 #include "postgres.h"
 
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "parser/parser.h"
 
 #include "parser/cypher_gram.h"
@@ -259,15 +260,9 @@ static Node *build_comparison_expression(Node *left_grammar_node,
                                          char *opr_name, int location);
 
 /* list_comprehension */
-static Node *verify_rule_as_list_comprehension(Node *expr, Node *expr2,
-                                               Node *where, Node *mapping_expr,
-                                               int var_loc, int expr_loc,
-                                               int where_loc, int mapping_loc);
-
-static Node *build_list_comprehension_node(ColumnRef *var_name, Node *expr,
+static Node *build_list_comprehension_node(Node *var, Node *expr,
                                            Node *where, Node *mapping_expr,
-                                           int var_loc, int expr_loc,
-                                           int where_loc,int mapping_loc);
+                                           int location);
 
 %}
 %%
@@ -1078,8 +1073,6 @@ unwind:
 
             n = make_ag_node(cypher_unwind);
             n->target = res;
-            n->where = NULL;
-            n->collect = NULL;
             $$ = (Node *) n;
         }
 
@@ -2083,6 +2076,7 @@ expr_literal:
     | map
     | map_projection
     | list
+    | list_comprehension
     ;
 
 map:
@@ -2202,7 +2196,6 @@ list:
 
             $$ = (Node *)n;
         }
-    | list_comprehension
     ;
 
 /*
@@ -2213,40 +2206,28 @@ list:
 list_comprehension:
     '[' expr IN expr ']'
         {
-            Node *n = $2;
-            Node *result = NULL;
-            
             /*
-             * If the first expr is a ColumnRef(variable), then the rule
-             * should evaluate as a list comprehension. Otherwise, it should
-             * evaluate as an IN operator.
+             * If the first expr is not a ColumnRef(variable), then the rule
+             * should evaluate as an IN operator.
              */
-            if (nodeTag(n) == T_ColumnRef)
+            if (!IsA($2, ColumnRef))
             {
-                ColumnRef *cref = (ColumnRef *)n;
-                result = build_list_comprehension_node(cref, $4, NULL, NULL,
-                                                       @2, @4, 0, 0);
+                $$ = (Node *)makeSimpleA_Expr(AEXPR_IN, "=", $2, $4, @3);
             }
-            else
-            {
-                result = (Node *)makeSimpleA_Expr(AEXPR_IN, "=", n, $4, @3);
-            }
-            $$ = result;
+
+            $$ = build_list_comprehension_node($2, $4, NULL, NULL, @1);
         }
     | '[' expr IN expr WHERE expr ']'
         {
-            $$ = verify_rule_as_list_comprehension($2, $4, $6, NULL,
-                                                   @2, @4, @6, 0);
+            $$ = build_list_comprehension_node($2, $4, $6, NULL, @1);
         }
     | '[' expr IN expr '|' expr ']'
         {
-            $$ = verify_rule_as_list_comprehension($2, $4, NULL, $6,
-                                                   @2, @4, 0, @6);
+            $$ = build_list_comprehension_node($2, $4, NULL, $6, @1);
         }
     | '[' expr IN expr WHERE expr '|' expr ']'
         {
-            $$ = verify_rule_as_list_comprehension($2, $4, $6, $8,
-                                                   @2, @4, @6, @8);
+            $$ = build_list_comprehension_node($2, $4, $6, $8, @1);
         }
     ;
 
@@ -2897,6 +2878,10 @@ static FuncCall *node_to_agtype(Node * fnode, char *type, int location)
     {
         funcname = lappend(funcname, makeString("bool_to_agtype"));
     }
+    else if (pg_strcasecmp(type, "agtype[]") == 0)
+    {
+        funcname = lappend(funcname, makeString("agtype_array_to_agtype"));
+    }
     else
     {
         ereport(ERROR,
@@ -3277,90 +3262,51 @@ static cypher_relationship *build_VLE_relation(List *left_arg,
     return cr;
 }
 
-/* Helper function to verify that the rule is a list comprehension */
-static Node *verify_rule_as_list_comprehension(Node *expr, Node *expr2,
-                                               Node *where, Node *mapping_expr,
-                                               int var_loc, int expr_loc,
-                                               int where_loc, int mapping_loc)
+/* helper function to build a list_comprehension grammar node */
+static Node *build_list_comprehension_node(Node *var, Node *expr,
+                                           Node *where, Node *mapping_expr,
+                                           int location)
 {
-    Node *result = NULL;
+    SubLink *sub;
+    String *val;
+    ColumnRef *cref = NULL;
+    cypher_list_comprehension *list_comp = NULL;
 
-    /*
-     * If the first expression is a ColumnRef, then we can build a
-     * list_comprehension node.
-     * Else its an invalid use of IN operator.
-     */
-    if (nodeTag(expr) == T_ColumnRef)
-    {
-        ColumnRef *cref = (ColumnRef *)expr;
-        result = build_list_comprehension_node(cref, expr2, where,
-                                               mapping_expr, var_loc,
-                                               expr_loc, where_loc,
-                                               mapping_loc);
-    }
-    else
+    if (!IsA(var, ColumnRef))
     {
         ereport(ERROR,
                 (errcode(ERRCODE_SYNTAX_ERROR),
                  errmsg("Syntax error at or near IN")));
     }
-    return result;
-}
 
-/* helper function to build a list_comprehension grammar node */
-static Node *build_list_comprehension_node(ColumnRef *cref, Node *expr,
-                                           Node *where, Node *mapping_expr,
-                                           int var_loc, int expr_loc,
-                                           int where_loc, int mapping_loc)
-{
-    ResTarget *res = NULL;
-    cypher_unwind *unwind = NULL;
-    char *var_name = NULL;
-    String *val;
-
-    /* Extract name from cref */
+    cref = (ColumnRef *)var;
     val = linitial(cref->fields);
-
     if (!IsA(val, String))
     {
         ereport(ERROR,
-                (errmsg_internal("unexpected Node for cypher_clause")));
+                (errcode(ERRCODE_SYNTAX_ERROR),
+                 errmsg("Invalid list comprehension variable name")));
     }
 
-    var_name = val->sval;
+    /* build the list comprehension node */
+    list_comp = make_ag_node(cypher_list_comprehension);
+    list_comp->varname = val->sval;
+    list_comp->expr = expr;
+    list_comp->where = where;
+    list_comp->mapping_expr = (mapping_expr != NULL) ? mapping_expr :
+                                                       (Node *) cref;
 
     /*
-     * Build the ResTarget node for the UNWIND variable var_name attached to
-     * expr.
+     * Build an ARRAY sublink and attach list_comp as sub-select,
+     * it will be transformed in to query tree by us and reattached for 
+     * pg to process.
      */
-    res = makeNode(ResTarget);
-    res->name = var_name;
-    res->val = (Node *)expr;
-    res->location = expr_loc;
+    sub = makeNode(SubLink);
+    sub->subLinkType = ARRAY_SUBLINK;
+    sub->subLinkId = 0;
+    sub->testexpr = NULL;
+    sub->subselect = (Node *)list_comp;
+    sub->location = location;
 
-    /* build the UNWIND node */
-    unwind = make_ag_node(cypher_unwind);
-    unwind->target = res;
-    unwind->where = where;
-
-    /* if there is a mapping function, add its arg to collect */
-    if (mapping_expr != NULL)
-    {
-        unwind->collect = make_function_expr(list_make1(makeString("collect")),
-                                             list_make1(mapping_expr),
-                                             mapping_loc);
-    }
-    /*
-     * Otherwise, we need to add in the ColumnRef of the variable var_name as
-     * the arg to collect instead. This implies that the RETURN variable is
-     * var_name.
-     */
-    else
-    {
-        unwind->collect = make_function_expr(list_make1(makeString("collect")),
-                                             list_make1(cref), mapping_loc);
-    }
-
-    /* return the UNWIND node */
-    return (Node *)unwind;
+    return (Node *) node_to_agtype((Node *)sub, "agtype[]", location);
 }

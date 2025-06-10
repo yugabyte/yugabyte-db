@@ -23,6 +23,14 @@
 
 #include "optimizer/cypher_createplan.h"
 #include "optimizer/cypher_pathnode.h"
+#include "parser/cypher_analyze.h"
+#include "executor/cypher_utils.h"
+#include "optimizer/subselect.h"
+#include "nodes/makefuncs.h"
+
+static Const *convert_sublink_to_subplan(PlannerInfo *root,
+                                         List *custom_private);
+static bool expr_has_sublink(Node *node, void *context);
 
 const CustomPathMethods cypher_create_path_methods = {
     CREATE_PATH_NAME, plan_cypher_create_path, NULL};
@@ -183,10 +191,80 @@ CustomPath *create_cypher_merge_path(PlannerInfo *root, RelOptInfo *rel,
 
     /* Make the original paths the children of the new path */
     cp->custom_paths = rel->pathlist;
-    /* Store the metadata Delete will need in the execution phase. */
-    cp->custom_private = custom_private;
+
+    /*
+     * Store the metadata Merge will need in the execution phase.
+     * We may have a sublink here in case the user used a list
+     * comprehension in merge.
+     */
+    if (rel->subroot->parse->hasSubLinks)
+    {
+        cp->custom_private = list_make1(convert_sublink_to_subplan(root, custom_private));
+    }
+    else
+    {
+        cp->custom_private = custom_private;
+    }
+
     /* Tells Postgres how to turn this path to the correct CustomScan */
     cp->methods = &cypher_merge_path_methods;
 
     return cp;
+}
+
+/*
+ * Deserializes the merge information and checks if any property
+ * expression (prop_expr) contains a SubLink.
+ * If found, converts the SubLink to a SubPlan, updates the
+ * structure accordingly, and serializes it back.
+ */
+static Const *convert_sublink_to_subplan(PlannerInfo *root, List *custom_private)
+{
+    cypher_merge_information *merge_information;
+    char *serialized_data = NULL;
+    Const *c = NULL;
+    ListCell *lc = NULL;
+    StringInfo str = makeStringInfo();
+
+    c = linitial(custom_private);
+    serialized_data = (char *)c->constvalue;
+    merge_information = stringToNode(serialized_data);
+
+    Assert(is_ag_node(merge_information, cypher_merge_information));
+
+    /* Only part where we can expect a sublink is in prop_expr. */
+    foreach (lc, merge_information->path->target_nodes)
+    {
+        cypher_target_node *node = (cypher_target_node *)lfirst(lc);
+        Node *prop_expr = (Node *) node->prop_expr;
+
+        if (expr_has_sublink(prop_expr, NULL))
+        {
+            node->prop_expr = (Expr *) SS_process_sublinks(root, prop_expr, false);
+        }
+    }
+
+    /* Serialize the information again and return it. */
+    outNode(str, (Node *)merge_information);
+
+    return makeConst(INTERNALOID, -1, InvalidOid, str->len,
+                     PointerGetDatum(str->data), false, false);
+}
+
+/*
+ * Helper function to check if the node has a sublink.
+ */
+static bool expr_has_sublink(Node *node, void *context)
+{
+    if (node == NULL)
+    {
+        return false;
+    }
+
+    if (IsA(node, SubLink))
+    {
+        return true;
+    }
+
+    return cypher_expr_tree_walker(node, expr_has_sublink, context);
 }

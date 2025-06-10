@@ -67,7 +67,6 @@ typedef struct cypher_with
 {
     ExtensibleNode extensible;
     bool distinct;
-    bool subquery_intermediate; /* flag that denotes a subquery node */
     List *items; /* a list of ResTarget's */
     List *order_by;
     Node *skip;
@@ -118,10 +117,6 @@ typedef struct cypher_unwind
 {
     ExtensibleNode extensible;
     ResTarget *target;
-
-    /* for list comprehension */
-    Node *where;
-    Node *collect;
 } cypher_unwind;
 
 typedef struct cypher_merge
@@ -218,6 +213,15 @@ typedef struct cypher_map_projection
     List *map_elements; /* list of cypher_map_projection_element */
     int location;
 } cypher_map_projection;
+
+ typedef struct cypher_list_comprehension
+ {
+    ExtensibleNode extensible;
+    char *varname;
+    Node *expr;
+    Node *where;
+    Node *mapping_expr;
+ } cypher_list_comprehension;
 
 typedef enum cypher_map_projection_element_type
 {

@@ -98,8 +98,6 @@ static Node *transform_WholeRowRef(ParseState *pstate, ParseNamespaceItem *pnsi,
 static ArrayExpr *make_agtype_array_expr(List *args);
 static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
                                                   ColumnRef *cr);
-static Node *transform_cypher_list_comprehension(cypher_parsestate *cpstate,
-                                                 cypher_unwind *expr);
 static Node *transform_external_ext_FuncCall(cypher_parsestate *cpstate,
                                              FuncCall *fn, List *targs,
                                              Form_pg_proc procform,
@@ -242,12 +240,6 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
             return transform_cypher_comparison_boolexpr(cpstate,
                                              (cypher_comparison_boolexpr *)expr);
         }
-        if (is_ag_node(expr, cypher_unwind))
-        {
-            return transform_cypher_list_comprehension(cpstate,
-                                                       (cypher_unwind *) expr);
-        }
-
         ereport(ERROR,
                 (errmsg_internal("unrecognized ExtensibleNode: %s",
                                  ((ExtensibleNode *)expr)->extnodename)));
@@ -258,7 +250,9 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
         return transform_FuncCall(cpstate, (FuncCall *)expr);
     case T_SubLink:
         return transform_SubLink(cpstate, (SubLink *)expr);
-        break;
+    case T_Const:
+        /* Already transformed */
+        return expr;
     default:
         ereport(ERROR, (errmsg_internal("unrecognized node type: %d",
                                         nodeTag(expr))));
@@ -390,26 +384,8 @@ static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
                 Assert(IsA(field1, String));
                 colname = strVal(field1);
 
-                if (cpstate->p_list_comp &&
-                    (pstate->p_expr_kind == EXPR_KIND_WHERE ||
-                     pstate->p_expr_kind == EXPR_KIND_SELECT_TARGET) &&
-                     list_length(pstate->p_namespace) > 0)
-                {
-                    /*
-                     * Just scan through the last pnsi(that is for list comp)
-                     * to find the column.
-                     */
-                    node = scanNSItemForColumn(pstate,
-                                               llast(pstate->p_namespace),
-                                               0, colname, cref->location);
-                }
-                else
-                {
-                    /* Try to identify as an unqualified column */
-                    node = colNameToVar(pstate, colname, false,
-                                        cref->location);
-                }
-
+                /* Try to identify as an unqualified column */
+                node = colNameToVar(pstate, colname, false, cref->location);
                 if (node != NULL)
                 {
                         break;
@@ -1321,7 +1297,7 @@ static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
     }
 
     /* find the properties column of the NSI and return a var for it */
-    node = scanNSItemForColumn(pstate, pnsi, levels_up, "properties",
+    node = scanNSItemForColumn(pstate, pnsi, levels_up, "properties", 
                                cr->location);
 
     /*
@@ -2372,6 +2348,7 @@ static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink)
         case EXPR_KIND_SELECT_TARGET:
         case EXPR_KIND_FROM_SUBSELECT:
         case EXPR_KIND_WHERE:
+        case EXPR_KIND_INSERT_TARGET:
             /* okay */
             break;
         default:
@@ -2411,7 +2388,7 @@ static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink)
         sublink->operName = NIL;
     }
     else if (sublink->subLinkType == EXPR_SUBLINK ||
-            sublink->subLinkType == ARRAY_SUBLINK)
+             sublink->subLinkType == ARRAY_SUBLINK)
     {
         /*
          * Make sure the subselect delivers a single column (ignoring resjunk
@@ -2442,32 +2419,4 @@ static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink)
         elog(ERROR, "unsupported SubLink type");
 
     return result;
-}
-
-static Node *transform_cypher_list_comprehension(cypher_parsestate *cpstate,
-                                                 cypher_unwind *unwind)
-{
-    cypher_clause cc;
-    Node* expr;
-    ParseNamespaceItem *pnsi;
-    ParseState *pstate = (ParseState *)cpstate;
-
-    cpstate->p_list_comp = true;
-    pstate->p_lateral_active = true;
-
-    cc.prev = NULL;
-    cc.next = NULL;
-    cc.self = (Node *)unwind;
-
-    pnsi = transform_cypher_clause_as_subquery(cpstate,
-                                               transform_cypher_clause,
-                                               &cc, NULL, true);
-
-    expr = transform_cypher_expr(cpstate, unwind->collect,
-                                 EXPR_KIND_SELECT_TARGET);
-
-    pnsi->p_cols_visible = false;
-    pstate->p_lateral_active = false;
-
-    return expr;
 }

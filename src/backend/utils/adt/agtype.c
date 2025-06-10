@@ -1836,6 +1836,19 @@ static void array_to_agtype_internal(Datum array, agtype_in_state *result)
     pfree_if_not_null(nulls);
 }
 
+PG_FUNCTION_INFO_V1(agtype_array_to_agtype);
+Datum agtype_array_to_agtype(PG_FUNCTION_ARGS)
+{
+    agtype_in_state result;
+
+    result.parse_state = NULL;
+    result.res = NULL;
+
+    array_to_agtype_internal(PG_GETARG_DATUM(0), &result);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
 /*
  * Turn a composite / record into agtype.
  */
@@ -11910,7 +11923,6 @@ PG_FUNCTION_INFO_V1(age_unnest);
 Datum age_unnest(PG_FUNCTION_ARGS)
 {
     agtype *agtype_arg = NULL;
-    bool list_comprehension = false;
     ReturnSetInfo *rsi;
     Tuplestorestate *tuple_store;
     TupleDesc tupdesc;
@@ -11921,35 +11933,13 @@ Datum age_unnest(PG_FUNCTION_ARGS)
     agtype_value v;
     agtype_iterator_token r;
 
-    /* verify that we have the correct number of args */
-    if (PG_NARGS() != 2)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("invalid number of arguments to unnest")));
-    }
-
-    /* verify that our flags are not null */
-    if (PG_ARGISNULL(1))
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("invalid unnest boolean flags passed")));
-    }
-
     /* check for a NULL expr */
     if (PG_ARGISNULL(0))
     {
         PG_RETURN_NULL();
     }
 
-    /* get our flags */
-    list_comprehension = PG_GETARG_BOOL(1);
-
-    /* get the input expression */
     agtype_arg = AG_GET_ARG_AGTYPE_P(0);
-
-    /* verify that it resolves to an array */
     if (!AGT_ROOT_IS_ARRAY(agtype_arg))
     {
         ereport(ERROR,
@@ -12004,25 +11994,6 @@ Datum age_unnest(PG_FUNCTION_ARGS)
             MemoryContextSwitchTo(old_cxt);
             MemoryContextReset(tmp_cxt);
         }
-    }
-
-    /*
-     * If this is for list_comprehension, we need to add a NULL as the last row.
-     * This NULL will allow empty lists (either filtered out by where, creating
-     * an empty list, or just a generic empty list) to be preserved.
-     */
-    if (list_comprehension)
-    {
-        Datum values[1] = {0};
-        bool nulls[1] = {true};
-
-        old_cxt = MemoryContextSwitchTo(tmp_cxt);
-
-        tuplestore_puttuple(tuple_store,
-                            heap_form_tuple(ret_tdesc, values, nulls));
-
-        MemoryContextSwitchTo(old_cxt);
-        MemoryContextReset(tmp_cxt);
     }
 
     MemoryContextDelete(tmp_cxt);

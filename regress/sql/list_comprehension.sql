@@ -117,9 +117,6 @@ SELECT * FROM cypher('list_comprehension', $$ MATCH(u {list: [0, 2, 4, 6, 8, 10,
 -- invalid use of aggregation in SET
 SELECT * FROM cypher('list_comprehension', $$ MATCH(u {list: [0, 2, 4, 6, 8, 10, 12]}) SET u.c = collect(u.list) RETURN u $$) AS (u agtype);
 
--- Known issue
-SELECT * FROM cypher('list_comprehension', $$ MERGE (u {list:[i IN [1,2,3]]}) RETURN u $$) AS (result agtype);
-
 -- List comprehension variable scoping
 SELECT * FROM cypher('list_comprehension', $$ WITH 1 AS m, [m IN [1, 2, 3]] AS n RETURN [m IN [1, 2, 3]] $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ WITH 1 AS m RETURN [m IN [1, 2, 3]], m $$) AS (result agtype, result2 agtype);
@@ -163,6 +160,19 @@ SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WHERE u.list=[i IN u.lis
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u) WHERE size([e in u.list where e starts with "a"])>0 RETURN u $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u ={list:[i IN u.list | i+1]}) RETURN u $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u ={list:[i IN u.list WHERE i>0]}) RETURN u$$) AS (result agtype);
+
+-- List comprehension in MERGE
+SELECT * FROM cypher('list_comprehension', $$ MERGE (u {list:[i IN [1,2,3]]}) RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MERGE (u ={list:[i IN [1,2,3] WHERE i>1]}) RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MERGE (u ={list:[i IN [1,2,3] WHERE i>1 | i^2]}) RETURN u $$) AS (result agtype);
+
+-- Issue 1850
+SELECT * FROM cypher('list_comprehension', $$ CREATE (u {list: [0, 2, 4, 6, 8, 10, 12]}) $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ WITH [1, 2, 3] AS u UNWIND collect(u) AS v RETURN v $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u {list: [0, 2, 4, 6, 8, 10, 12]}) WITH u, collect(u.list) AS v SET u += {b: [u IN range(0, 5)]} SET u.c = [u IN v[0]] RETURN u $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u {list: [0, 2, 4, 6, 8, 10, 12]}) SET u.c = collect(u.list) RETURN u $$) AS (u agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u {list: [0, 2, 4, 6, 8, 10, 12]}) WHERE u.list = [u IN [1, u]] RETURN u $$) AS (u agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u {list: [0, 2, 4, 6, 8, 10, 12]}) WHERE u.list IN [u IN [1, u.list]] RETURN u $$) AS (u agtype);
 
 -- Clean up
 SELECT * FROM drop_graph('list_comprehension', true);

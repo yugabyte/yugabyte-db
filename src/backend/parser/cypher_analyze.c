@@ -67,12 +67,6 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
                                         const char *query_str, int query_loc,
                                         char *graph_name, uint32 graph_oid,
                                         Param *params);
-cypher_clause *build_subquery_node(cypher_clause *next);
-
-/* expr tree walker */
-bool expr_contains_node(cypher_expression_condition is_expr, Node *expr);
-bool expr_has_subquery(Node * expr);
-
 
 void post_parse_analyze_init(void)
 {
@@ -681,148 +675,40 @@ static int get_query_location(const int location, const char *source_str)
     return strchr(p + 1, '$') - source_str + 1;
 }
 
+
 /*
- * This is a specialized expression tree walker for finding exprs of a specified
- * type. Create a function that checks for the type you want, and this function
- * will iterate through the tree.
+ * This is an extension of postgres's raw_expression_tree_walker() function.
+ * It can walk cypher-specific nodes found in the expression tree during
+ * parse analysis.
+ * 
+ * More nodes can be added to this function as needed.
  */
-
-bool expr_contains_node(cypher_expression_condition is_expr, Node *expr)
+bool cypher_raw_expr_tree_walker(Node *node,
+                                 bool (*walker)(),
+                                 void *context)
 {
-    if (!expr)
-    {
+    ListCell *temp;
+
+    if (node == NULL)
         return false;
-    }
 
-    switch (nodeTag(expr))
+#define WALK(n) walker((Node *) (n), context)
+#define LIST_WALK(l) cypher_raw_expr_tree_walker((Node *) (l), walker, context)
+
+    if (IsA(node, ExtensibleNode))
     {
-    case T_A_Const:
-    case T_ColumnRef:
-    case T_A_Indirection:
+        if (is_ag_node(node, cypher_bool_const) ||
+            is_ag_node(node, cypher_integer_const) ||
+            is_ag_node(node, cypher_param) ||
+            is_ag_node(node, cypher_sub_pattern) ||
+            is_ag_node(node, cypher_sub_query))
+            /* Add more non-recursible node types here as needed */
         {
-            break;
+            return false;
         }
-    case T_A_Expr:
-    {
-        A_Expr *a = (A_Expr *)expr;
-
-        switch (a->kind)
+        else if (is_ag_node(node, cypher_map))
         {
-        case AEXPR_OP:
-        case AEXPR_IN:
-            {
-                if (expr_contains_node(is_expr, a->lexpr) ||
-                    expr_contains_node(is_expr, a->rexpr))
-                {
-                    return true;
-                }
-                break;
-            }
-        default:
-            ereport(ERROR, (errmsg_internal("unrecognized A_Expr kind: %d",
-                                            a->kind)));
-        }
-        break;
-    }
-    case T_BoolExpr:
-    {
-        BoolExpr *b = (BoolExpr *)expr;
-        ListCell *la;
-
-        foreach(la, b->args)
-        {
-            Node *arg = lfirst(la);
-
-            if (expr_contains_node(is_expr, arg))
-            {
-                return true;
-            }
-        }
-        break;
-    }
-    case T_NullTest:
-    {
-        NullTest *n = (NullTest *)expr;
-
-        if (expr_contains_node(is_expr, (Node *)n->arg))
-        {
-            return true;
-        }
-        break;
-    }
-    case T_CaseExpr:
-    {
-        CaseExpr *cexpr = (CaseExpr *)expr;
-        ListCell   *l;
-
-        if (cexpr->arg && expr_contains_node(is_expr, (Node *) cexpr->arg))
-        {
-            return true;
-        }
-
-        foreach(l, cexpr->args)
-        {
-            CaseWhen *w = lfirst_node(CaseWhen, l);
-            Node *warg;
-
-            warg = (Node *) w->expr;
-
-            if (expr_contains_node(is_expr, warg))
-            {
-                return true;
-            }
-            warg = (Node *)w->result;
-
-            if (expr_contains_node(is_expr, warg))
-            {
-                return true;
-            }
-        }
-
-        if (expr_contains_node(is_expr , (Node *)cexpr->defresult))
-        {
-            return true;
-        }
-
-        break;
-    }
-    case T_CaseTestExpr:
-    {
-        break;
-    }
-    case T_CoalesceExpr:
-    {
-        CoalesceExpr *cexpr = (CoalesceExpr *) expr;
-        ListCell *args;
-
-        foreach(args, cexpr->args)
-        {
-            Node *e = (Node *)lfirst(args);
-
-            if (expr_contains_node(is_expr, e))
-            {
-                return true;
-            }
-        }
-        break;
-    }
-    case T_ExtensibleNode:
-    {
-        if (is_ag_node(expr, cypher_bool_const))
-        {
-            return is_expr(expr);
-        }
-        if (is_ag_node(expr, cypher_integer_const))
-        {
-            return is_expr(expr);
-        }
-        if (is_ag_node(expr, cypher_param))
-        {
-            return is_expr(expr);
-        }
-        if (is_ag_node(expr, cypher_map))
-        {
-            cypher_map *cm = (cypher_map *)expr;
+            cypher_map *cm = (cypher_map *)node;
             ListCell *le;
 
             Assert(list_length(cm->keyvals) % 2 == 0);
@@ -837,7 +723,7 @@ bool expr_contains_node(cypher_expression_condition is_expr, Node *expr)
 
                 val = lfirst(le);
 
-                if (expr_contains_node(is_expr, val))
+                if (WALK(val))
                 {
                     return true;
                 }
@@ -845,216 +731,163 @@ bool expr_contains_node(cypher_expression_condition is_expr, Node *expr)
                 le = lnext(cm->keyvals, le);
 
             }
-            break;
         }
-        if (is_ag_node(expr, cypher_map_projection))
+        else if (is_ag_node(node, cypher_map_projection))
         {
-            cypher_map_projection *cmp = (cypher_map_projection *)expr;
-            ListCell *lc;
+            cypher_map_projection *cmp = (cypher_map_projection *)node;
 
-            foreach(lc, cmp->map_elements)
-            {
-                cypher_map_projection_element *elem;
-
-                elem = lfirst(lc);
-
-                if (expr_contains_node(is_expr, elem->value))
-                {
-                    return true;
-                }
-            }
-
-            break;
-        }
-        if (is_ag_node(expr, cypher_list))
-        {
-            cypher_list *cl = (cypher_list *)expr;
-            ListCell *le = NULL;
-
-            foreach(le, cl->elems)
-            {
-                Node *texpr = lfirst(le);
-
-                if (expr_contains_node(is_expr, texpr))
-                {
-                    return true;
-                }
-            }
-            break;
-        }
-        if (is_ag_node(expr, cypher_string_match))
-        {
-            cypher_string_match *csm = (cypher_string_match *)expr;
-
-            if (expr_contains_node(is_expr, csm->lhs) ||
-                expr_contains_node(is_expr, csm->rhs))
+            if (LIST_WALK(cmp->map_elements))
             {
                 return true;
             }
-            break;
         }
-        if (is_ag_node(expr, cypher_typecast))
+        else if (is_ag_node(node, cypher_list))
         {
-            cypher_typecast *t = (cypher_typecast *) expr;
-
-            if (expr_contains_node(is_expr, t->expr))
+            cypher_list *cl = (cypher_list *)node;
+            
+            if (LIST_WALK(cl->elems))
             {
                 return true;
             }
-            break;
         }
-        if (is_ag_node(expr, cypher_comparison_aexpr))
+        else if (is_ag_node(node, cypher_string_match))
         {
-            cypher_comparison_aexpr *a = (cypher_comparison_aexpr *) expr;
+            cypher_string_match *csm = (cypher_string_match *)node;
 
-            if (expr_contains_node(is_expr, a->lexpr) ||
-                expr_contains_node(is_expr, a->rexpr))
+            if (WALK(csm->lhs))
             {
                 return true;
             }
-            break;
-        }
-        if (is_ag_node(expr, cypher_comparison_boolexpr))
-        {
-            cypher_comparison_boolexpr *b = (cypher_comparison_boolexpr *) expr;
-            ListCell *la;
 
-            foreach(la, b->args)
-            {
-                Node *arg = lfirst(la);
-
-                if (expr_contains_node(is_expr, arg))
-                {
-                    return true;
-                }
-            }
-            break;
-        }
-        if (is_ag_node(expr, cypher_unwind))
-        {
-            cypher_unwind* lc = (cypher_unwind *)expr;
-
-            if (expr_contains_node(is_expr, lc->where) ||
-                expr_contains_node(is_expr, lc->collect))
+            if (WALK(csm->rhs))
             {
                 return true;
             }
-            break;
         }
-
-        if (is_ag_node(expr, cypher_sub_pattern))
+        else if (is_ag_node(node, cypher_typecast))
         {
-            break;
-        }
+            cypher_typecast *t = (cypher_typecast *)node;
 
-        if (is_ag_node(expr, cypher_sub_query))
+            if (WALK(t->expr))
+            {
+                return true;
+            }
+        }
+        else if (is_ag_node(node, cypher_comparison_aexpr))
         {
-            break;
+            cypher_comparison_aexpr *a = (cypher_comparison_aexpr *)node;
+
+            if (WALK(a->lexpr))
+            {
+                return true;
+            }
+
+            if (WALK(a->rexpr))
+            {
+                return true;
+            }
+        }
+        else if (is_ag_node(node, cypher_comparison_boolexpr))
+        {
+            cypher_comparison_boolexpr *b = (cypher_comparison_boolexpr *)node;
+            
+            if (LIST_WALK(b->args))
+            {
+                return true;
+            }
+        }
+        else if (is_ag_node(node, cypher_unwind))
+        {
+            cypher_unwind *unw = (cypher_unwind *)node;
+
+            if (WALK(unw->target))
+            {
+                return true;
+            }
         }
 
-        ereport(ERROR,
+        else if (is_ag_node(node, cypher_list_comprehension))
+        {
+            cypher_list_comprehension *lc = (cypher_list_comprehension *)node;
+
+            if (WALK(lc->expr))
+            {
+                return true;
+            }
+
+            if (WALK(lc->where))
+            {
+                return true;
+            }
+
+            if (WALK(lc->mapping_expr))
+            {
+                return true;
+            }
+        }
+        /* Add more node types here as needed */
+        else
+        {
+            ereport(ERROR,
                 (errmsg_internal("unrecognized ExtensibleNode: %s",
-                                 ((ExtensibleNode *)expr)->extnodename)));
-
-        break;
+                                 ((ExtensibleNode *)node)->extnodename)));
+        }
     }
-    case T_FuncCall:
+    /*
+     * postgres's raw expresssion tree walker does not handle List
+     */
+    else if (IsA(node, List))
     {
-        FuncCall *fn = (FuncCall *)expr;
-        ListCell *arg;
-
-        foreach(arg, fn->args)
+        foreach(temp, (List *) node)
         {
-            Node *farg = NULL;
-
-            farg = (Node *)lfirst(arg);
-
-            if (expr_contains_node(is_expr, farg))
-            {
+            if (WALK((Node *) lfirst(temp)))
                 return true;
-            }
-        }
-        break;
-    }
-    case T_SubLink:
-    {
-       SubLink *s = (SubLink *)expr;
-
-        if (expr_contains_node(is_expr, s->subselect))
-        {
-            return true;
-        }
-      break;
-    }
-    default:
-        ereport(ERROR, (errmsg_internal("unrecognized node type: %d",
-                                        nodeTag(expr))));
-    }
-
-    return (is_expr(expr));
-}
-
-/*
- * Function that checks if an expr is a cypher_sub_query. Used in tandem with
- * expr_contains_node. Can write more similar to this to find similar nodes.
- */
-
-bool expr_has_subquery(Node * expr)
-{
-    if (expr == NULL)
-    {
-        return false;
-    }
-
-    if (IsA(expr, ExtensibleNode))
-    {
-        if (is_ag_node(expr, cypher_sub_query))
-        {
-            return true;
         }
     }
+
+#undef LIST_WALK
+    else
+    {
+        return raw_expression_tree_walker(node, walker, context);
+    }
+    
     return false;
 }
 
 /*
- * This function constructs an intermediate WITH node for processing subqueries
+ * This is an extension of postgres's expression_tree_walker() function.
+ * It is meant to walk cypher-specific nodes found in the expression tree
+ * post parse analysis.
+ *
+ * More nodes can be added to this function as needed.
  */
-cypher_clause *build_subquery_node(cypher_clause *next)
+bool cypher_expr_tree_walker(Node *node,
+                             bool (*walker)(),
+                             void *context)
 {
-    cypher_match *match = (cypher_match *)next->self;
-    cypher_clause *where_container_clause;
-    cypher_with *with_clause = make_ag_node(cypher_with);
-    ColumnRef *cr;
-    ResTarget *rt;
+    if (node == NULL)
+    {
+        return false;
+    }
 
-    /* construct the column ref star */
-    cr = makeNode(ColumnRef);
-    cr->fields = list_make1(makeNode(A_Star));
-    cr->location = exprLocation((Node *)next);
+#define LIST_WALK(l) cypher_expr_tree_walker((Node *) (l), walker, context)
 
-    /*construct the restarget */
-    rt = makeNode(ResTarget);
-    rt->name = NULL;
-    rt->indirection = NIL;
-    rt->val = (Node *)cr;
-    rt->location = exprLocation((Node *)next);
+    if (IsA(node, ExtensibleNode))
+    {
+        /* Add our nodes that can appear post parsing stage */
 
+        ereport(ERROR,
+                (errmsg_internal("unrecognized ExtensibleNode: %s",
+                                 ((ExtensibleNode *)node)->extnodename)));
+    }
+#undef WALK
+#undef LIST_WALK
+    else
+    {
+        return expression_tree_walker(node, walker, context);
+    }
 
-    /* construct the with_clause */
-    with_clause->items = list_make1(rt);
-    with_clause->where = match->where;
-    with_clause->subquery_intermediate = true;
-
-    /*
-     * create the where container, and set the match (next) as the
-     * prev of the where container
-     */
-    where_container_clause = palloc(sizeof(*where_container_clause));
-    where_container_clause->self = (Node *)with_clause;
-    where_container_clause->next = NULL;
-    where_container_clause->prev = next;
-
-    return where_container_clause;
+    return false;
 }
 
 static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
@@ -1082,23 +915,6 @@ static Query *analyze_cypher(List *stmt, ParseState *parent_pstate,
         next->next = NULL;
         next->self = lfirst(lc);
         next->prev = clause;
-
-        /* check for subqueries in match */
-        if (is_ag_node(next->self, cypher_match))
-        {
-            cypher_match *match = (cypher_match *)next->self;
-
-            if (match->where != NULL && expr_contains_node(expr_has_subquery, match->where))
-            {
-               /* advance the clause iterator to the intermediate clause position */
-               clause = build_subquery_node(next);
-
-               /* set the next of the match to the where_container_clause */
-               match->where = NULL;
-               next->next = clause;
-               continue;
-            }
-        }
 
         if (clause != NULL)
         {

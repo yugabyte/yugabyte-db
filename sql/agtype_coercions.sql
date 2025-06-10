@@ -173,3 +173,14 @@ AS 'MODULE_PATHNAME';
 
 CREATE CAST (agtype AS json)
     WITH FUNCTION ag_catalog.agtype_to_json(agtype);
+
+CREATE FUNCTION ag_catalog.agtype_array_to_agtype(agtype[])
+    RETURNS agtype
+    LANGUAGE c
+    IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (agtype[] AS agtype)
+    WITH FUNCTION ag_catalog.agtype_array_to_agtype(agtype[]);

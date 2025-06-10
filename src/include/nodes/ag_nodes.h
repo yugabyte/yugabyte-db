@@ -50,6 +50,7 @@ typedef enum ag_node_tag
     cypher_map_projection_t,
     cypher_map_projection_element_t,
     cypher_list_t,
+    cypher_list_comprehension_t,
     /* comparison expression */
     cypher_comparison_aexpr_t,
     cypher_comparison_boolexpr_t,
@@ -106,6 +107,5 @@ static inline bool _is_ag_node(Node *node, const char *extnodename)
 }
 
 #define is_ag_node(node, type) _is_ag_node((Node *)(node), CppAsString(type))
-#define get_ag_node_tag(node) ((ag_node_tag)(((ExtensibleNode *)(node))->extnodename))
 
 #endif

@@ -248,6 +248,11 @@ static void get_res_cols(ParseState *pstate, ParseNamespaceItem *l_pnsi,
 /* unwind */
 static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
                                       cypher_clause *clause);
+
+/* list comprehension */
+static Query *transform_cypher_list_comprehension(cypher_parsestate *cpstate,
+                                                  cypher_clause *clause);
+
 /* merge */
 static Query *transform_cypher_merge(cypher_parsestate *cpstate,
                                      cypher_clause *clause);
@@ -290,7 +295,7 @@ static Query *transform_cypher_call_subquery(cypher_parsestate *cpstate,
 #define transform_prev_cypher_clause(cpstate, prev_clause, add_rte_to_query) \
     transform_cypher_clause_as_subquery(cpstate, transform_cypher_clause, \
                                         prev_clause, NULL, add_rte_to_query)
-ParseNamespaceItem
+static ParseNamespaceItem
 *transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
                                      transform_method transform,
                                      cypher_clause *clause,
@@ -326,9 +331,9 @@ static FuncExpr *make_clause_func_expr(char *function_name,
 /* for VLE support */
 static ParseNamespaceItem *transform_RangeFunction(cypher_parsestate *cpstate,
                                                    RangeFunction *r);
-static Node *transform_VLE_Function(cypher_parsestate *cpstate, Node *n,
-                                    RangeTblEntry **top_rte, int *top_rti,
-                                    List **namespace);
+static Node *transform_from_clause_item(cypher_parsestate *cpstate, Node *n,
+                                        RangeTblEntry **top_rte, int *top_rti,
+                                        List **namespace);
 static ParseNamespaceItem *append_VLE_Func_to_FromClause(cypher_parsestate *cpstate,
                                                          Node *n);
 static void setNamespaceLateralState(List *namespace, bool lateral_only,
@@ -336,6 +341,7 @@ static void setNamespaceLateralState(List *namespace, bool lateral_only,
 static bool isa_special_VLE_case(cypher_path *path);
 
 static ParseNamespaceItem *find_pnsi(cypher_parsestate *cpstate, char *varname);
+static bool has_list_comp_or_subquery(Node *expr, void *context);
 
 /*
  * transform a cypher_clause
@@ -398,18 +404,15 @@ Query *transform_cypher_clause(cypher_parsestate *cpstate,
     }
     else if (is_ag_node(self, cypher_unwind))
     {
-        cypher_unwind *n = (cypher_unwind *) self;
-        if (n->collect != NULL)
-        {
-            cpstate->p_list_comp = true;
-        }
-        result = transform_cypher_clause_with_where(cpstate,
-                                                    transform_cypher_unwind,
-                                                    clause, n->where);
+        result = transform_cypher_unwind(cpstate, clause);
     }
     else if (is_ag_node(self, cypher_call))
     {
         result = transform_cypher_call_stmt(cpstate, clause);
+    }
+    else if (is_ag_node(self, cypher_list_comprehension))
+    {
+        result = transform_cypher_list_comprehension(cpstate, clause);
     }
     else
     {
@@ -445,23 +448,6 @@ static cypher_clause *make_cypher_clause(List *stmt)
         next->next = NULL;
         next->self = lfirst(lc);
         next->prev = clause;
-
-        /* check for subqueries in match */
-        if (is_ag_node(next->self, cypher_match))
-        {
-            cypher_match *match = (cypher_match *)next->self;
-
-            if (match->where != NULL && expr_contains_node(expr_has_subquery, match->where))
-            {
-               /* advance the clause iterator to the intermediate clause position */
-               clause = build_subquery_node(next);
-
-               /* set the next of the match to the where_container_clause */
-               match->where = NULL;
-               next->next = clause;
-               continue;
-            }
-        }
 
         if (clause != NULL)
         {
@@ -660,6 +646,7 @@ static Query *transform_cypher_union(cypher_parsestate *cpstate,
     qry->rtable = pstate->p_rtable;
     qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     qry->hasAggs = pstate->p_hasAggs;
+    qry->hasSubLinks = pstate->p_hasSubLinks;
 
     assign_query_collations(pstate, qry);
 
@@ -1259,6 +1246,7 @@ static Query *transform_cypher_call_subquery(cypher_parsestate *cpstate,
     query->rtable = cpstate->pstate.p_rtable;
     query->jointree = makeFromExpr(cpstate->pstate.p_joinlist, (Node *)where_qual);
     query->hasAggs = pstate->p_hasAggs;
+    query->hasSubLinks = pstate->p_hasSubLinks;
 
     assign_query_collations(pstate, query);
 
@@ -1330,6 +1318,8 @@ static Query *transform_cypher_delete(cypher_parsestate *cpstate,
 
     query->rtable = pstate->p_rtable;
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+    query->hasAggs = pstate->p_hasAggs;
+    query->hasSubLinks = pstate->p_hasSubLinks;
 
     return query;
 }
@@ -1353,9 +1343,6 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
     Node *funcexpr;
     TargetEntry *te;
     ParseNamespaceItem *pnsi;
-    bool is_list_comp = self->collect != NULL;
-    bool has_agg =
-        is_list_comp || has_a_cypher_list_comprehension_node(self->target->val);
 
     query = makeNode(Query);
     query->commandType = CMD_SELECT;
@@ -1384,13 +1371,14 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
         ereport(ERROR,
                 (errcode(ERRCODE_DUPLICATE_ALIAS),
                         errmsg("duplicate variable \"%s\"", self->target->name),
-                        parser_errposition(pstate, target_syntax_loc)));
+                        parser_errposition((ParseState *) cpstate,
+                                           target_syntax_loc)));
     }
 
     expr = transform_cypher_expr(cpstate, self->target->val,
                                  EXPR_KIND_SELECT_TARGET);
 
-    if (!has_agg && nodeTag(expr) == T_Aggref)
+    if (nodeTag(expr) == T_Aggref)
     {
         ereport(ERROR, errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                 errmsg("Invalid use of aggregation in this context"),
@@ -1403,12 +1391,11 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
     old_expr_kind = pstate->p_expr_kind;
     pstate->p_expr_kind = EXPR_KIND_SELECT_TARGET;
     funcexpr = ParseFuncOrColumn(pstate, unwind->funcname,
-                                 list_make2(expr, makeBoolConst(is_list_comp, false)),
+                                 list_make1(expr),
                                  pstate->p_last_srf, unwind, false,
                                  target_syntax_loc);
 
     pstate->p_expr_kind = old_expr_kind;
-    pstate->p_hasAggs = has_agg;
 
     te = makeTargetEntry((Expr *) funcexpr,
                          (AttrNumber) pstate->p_next_resno++,
@@ -1419,8 +1406,90 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     query->hasTargetSRFs = pstate->p_hasTargetSRFs;
     query->hasAggs = pstate->p_hasAggs;
+    query->hasSubLinks = pstate->p_hasSubLinks;
 
     assign_query_collations(pstate, query);
+
+    return query;
+}
+
+/*
+ * [i IN u WHERE i<2 | i^2]
+ *
+ *   |    |    |    |    |
+ *  \|/  \|/  \|/  \|/  \|/
+ *
+ * SELECT i^2 FROM age_unnest(u) AS i WHERE i>2;
+ */
+static Query *transform_cypher_list_comprehension(cypher_parsestate *cpstate,
+                                                  cypher_clause *clause)
+{
+    Query *query;
+    RangeFunction *rf;
+    cypher_list_comprehension *list_comp = (cypher_list_comprehension *) clause->self;
+    FuncCall *func_call;
+    Node *return_expr, *qual, *n;
+    RangeTblEntry *rte = NULL;
+    int rtindex;
+    List *namespace = NULL;
+    TargetEntry *te;
+    cypher_parsestate *child_cpstate = make_cypher_parsestate(cpstate);
+    ParseState *child_pstate = (ParseState *) child_cpstate;
+
+    query = makeNode(Query);
+    query->commandType = CMD_SELECT;
+
+    func_call = makeFuncCall(list_make1(makeString("unnest")),
+                             list_make1(list_comp->expr),
+                             COERCE_SQL_SYNTAX, -1);
+
+    rf = makeNode(RangeFunction);
+    rf->lateral = false;
+    rf->ordinality = false;
+    rf->is_rowsfrom = false;
+    rf->functions = list_make1(list_make2((Node *) func_call, NIL));
+    rf->alias = makeAlias(list_comp->varname, NIL);
+    rf->coldeflist = NIL;
+
+    n = transform_from_clause_item(child_cpstate, (Node *) rf,
+                                   &rte, &rtindex, &namespace);
+    checkNameSpaceConflicts(child_pstate, child_pstate->p_namespace, namespace);
+    child_pstate->p_joinlist = lappend(child_pstate->p_joinlist, n);
+    child_pstate->p_namespace = list_concat(child_pstate->p_namespace, namespace);
+
+    /* make all namespace items unconditionally visible */
+    setNamespaceLateralState(child_pstate->p_namespace, false, true);
+
+    return_expr = transform_cypher_expr(child_cpstate, list_comp->mapping_expr,
+                                        EXPR_KIND_SELECT_TARGET);
+    
+    te = makeTargetEntry((Expr *) return_expr,
+                         (AttrNumber) child_pstate->p_next_resno++,
+                         list_comp->varname, false);
+
+    qual = transform_cypher_expr(child_cpstate, list_comp->where,
+                                 EXPR_KIND_WHERE);
+    if (qual)
+    {
+        qual = coerce_to_boolean(child_pstate, qual, "WHERE");
+    }
+
+    query->targetList = lappend(query->targetList, te);
+    query->jointree = makeFromExpr(child_pstate->p_joinlist, (Node *) qual);
+    query->rtable = child_pstate->p_rtable;
+    query->hasAggs = child_pstate->p_hasAggs;
+    query->hasSubLinks = child_pstate->p_hasSubLinks;
+    query->hasTargetSRFs = child_pstate->p_hasTargetSRFs;
+
+    assign_query_collations(child_pstate, query);
+
+    if (child_pstate->p_hasAggs ||
+        query->groupClause || query->groupingSets || query->havingQual)
+    {
+        parse_check_aggregates(child_pstate, query);
+    }
+
+    free_cypher_parsestate(child_cpstate);
 
     return query;
 }
@@ -1560,6 +1629,8 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
 
     query->rtable = pstate->p_rtable;
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
+    query->hasAggs = pstate->p_hasAggs;
+    query->hasSubLinks = pstate->p_hasSubLinks;
 
     return query;
 }
@@ -1833,12 +1904,7 @@ cypher_update_information *transform_cypher_set_item_list(
                                             EXPR_KIND_SELECT_TARGET, NULL,
                                             false);
 
-        if (has_a_cypher_list_comprehension_node(set_item->expr))
-        {
-            query->hasAggs = true;
-        }
-
-        if (!query->hasAggs && nodeTag(target_item->expr) == T_Aggref)
+        if (nodeTag(target_item->expr) == T_Aggref)
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                     errmsg("Invalid use of aggregation in this context"),
@@ -2169,6 +2235,7 @@ static Query *transform_cypher_return(cypher_parsestate *cpstate,
     query->rtable = pstate->p_rtable;
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     query->hasAggs = pstate->p_hasAggs;
+    query->hasSubLinks = pstate->p_hasSubLinks;
 
     assign_query_collations(pstate, query);
 
@@ -2357,7 +2424,6 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
 {
     ParseState *pstate = (ParseState *)cpstate;
     Query *query;
-    Node *self = clause->self;
     Node *where_qual = NULL;
 
     if (where)
@@ -2370,10 +2436,8 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
 
         pnsi = transform_cypher_clause_as_subquery(cpstate, transform, clause,
                                                    NULL, true);
-        
         Assert(pnsi != NULL);
         rtindex = list_length(pstate->p_rtable);
-
         /* rte is the only RangeTblEntry in pstate */
         if (rtindex != 1)
         {
@@ -2388,78 +2452,14 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
          * next clause
          */
         query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
-
         markTargetListOrigins(pstate, query->targetList);
-
         query->rtable = pstate->p_rtable;
 
         where_qual = transform_cypher_expr(cpstate, where, EXPR_KIND_WHERE);
-
         where_qual = coerce_to_boolean(pstate, where_qual, "WHERE");
 
-        /* check if we have a list comprehension in the where clause */
-        if (cpstate->p_list_comp &&
-            has_a_cypher_list_comprehension_node(where))
-        {
-            List *groupClause = NIL;
-            ListCell *li;
-            bool has_a_star;
-
-            has_a_star = false;
-            query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
-            query->havingQual = where_qual;
-
-            foreach (li, ((cypher_return *)self)->items)
-            {
-                ResTarget *item = lfirst(li);
-                ColumnRef *cref;
-                
-                /*
-                 * We need to handle the case where the item is a A_star. In this
-                 * case we will need to build group by using targetList.
-                 */
-                if (IsA(item->val, ColumnRef))
-                {
-                    cref = (ColumnRef *)item->val;
-                    if (IsA(linitial(cref->fields), A_Star))
-                    {
-                        has_a_star = true;
-                        continue;
-                    }
-                }
-
-                groupClause = lappend(groupClause, item->val);
-            }
-
-            /*
-             * If there is A_star flag, build the group by clause
-             * using the targetList.
-             */
-            if (has_a_star)
-            {
-                ListCell *lc;
-                foreach (lc, query->targetList)
-                {
-                    TargetEntry *te = lfirst(lc);
-                    ColumnRef *cref = makeNode(ColumnRef);
-
-                    cref->fields = list_make1(makeString(te->resname));
-                    cref->location = exprLocation((Node *)te->expr);
-
-                    groupClause = lappend(groupClause, cref);
-                }
-            }
-            query->groupClause = transform_group_clause(cpstate, groupClause,
-                                                        &query->groupingSets,
-                                                        &query->targetList,
-                                                        query->sortClause,
-                                                        EXPR_KIND_GROUP_BY);
-            
-        }
-        else
-        {
-            query->jointree = makeFromExpr(pstate->p_joinlist, where_qual);
-        }
+        query->jointree = makeFromExpr(pstate->p_joinlist, where_qual);
+        assign_query_collations(pstate, query);
     }
     else
     {
@@ -2470,8 +2470,6 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
     query->hasTargetSRFs = pstate->p_hasTargetSRFs;
     query->hasAggs = pstate->p_hasAggs;
 
-    assign_query_collations(pstate, query);
-
     return query;
 }
 
@@ -2479,6 +2477,7 @@ static Query *transform_cypher_match(cypher_parsestate *cpstate,
                                      cypher_clause *clause)
 {
     cypher_match *match_self = (cypher_match*) clause->self;
+    Node *where = match_self->where;
 
     if(!match_check_valid_label(match_self, cpstate))
     {
@@ -2496,7 +2495,37 @@ static Query *transform_cypher_match(cypher_parsestate *cpstate,
                                                      (Node *)r, -1);
     }
 
+    if (has_list_comp_or_subquery((Node *)match_self->where, NULL))
+    {
+        match_self->where = NULL;
+        return transform_cypher_clause_with_where(cpstate,
+                transform_cypher_match_pattern, clause, where);
+    }
+
     return transform_cypher_match_pattern(cpstate, clause);
+}
+
+/*
+ * Function that checks if an expr has a cypher_sub_query or
+ * cypher_list_comprehension.
+ */
+static bool has_list_comp_or_subquery(Node *expr, void *context)
+{
+    if (expr == NULL)
+    {
+        return false;
+    }
+
+    if (IsA(expr, ExtensibleNode))
+    {
+        if (is_ag_node(expr, cypher_sub_query) ||
+            is_ag_node(expr, cypher_list_comprehension))
+        {
+            return true;
+        }
+    }
+
+    return cypher_raw_expr_tree_walker(expr, has_list_comp_or_subquery, context);
 }
 
 /*
@@ -2679,18 +2708,6 @@ static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
     {
         cypher_clause *next = clause->next;
 
-        /*
-         * check if optional match has a subquery node-- it could still
-         * be following a match
-         */
-        if(is_ag_node(next->self, cypher_with))
-        {
-            cypher_with *next_with = (cypher_with *)next->self;
-            if (next_with->subquery_intermediate == true)
-            {
-                next = next->next;
-            }
-        }
         if (is_ag_node(next->self, cypher_match))
         {
             cypher_match *next_self = (cypher_match *)next->self;
@@ -2950,9 +2967,9 @@ static Query *transform_cypher_sub_query(cypher_parsestate *cpstate,
  * will transform the VLE function, depending on type. Currently, only
  * RangeFunctions are supported. But, others may be in the future.
  */
-static Node *transform_VLE_Function(cypher_parsestate *cpstate, Node *n,
-                                    RangeTblEntry **top_rte, int *top_rti,
-                                    List **namespace)
+static Node *transform_from_clause_item(cypher_parsestate *cpstate, Node *n,
+                                        RangeTblEntry **top_rte, int *top_rti,
+                                        List **namespace)
 {
     ParseState *pstate = &cpstate->pstate;
 
@@ -3020,7 +3037,7 @@ static ParseNamespaceItem *append_VLE_Func_to_FromClause(cypher_parsestate *cpst
      * Following PG's FROM clause logic, just in case we need to expand it in
      * the future, we process the items in another function.
      */
-    n = transform_VLE_Function(cpstate, n, &rte, &rtindex, &namespace);
+    n = transform_from_clause_item(cpstate, n, &rte, &rtindex, &namespace);
 
     /* this should not happen */
     Assert(n != NULL);
@@ -3212,36 +3229,7 @@ static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
     }
 
     query->rtable = cpstate->pstate.p_rtable;
-
-    if (cpstate->p_list_comp)
-    {
-        List *groupList = NIL;
-
-        query->jointree = makeFromExpr(cpstate->pstate.p_joinlist, NULL);
-        query->havingQual = (Node *)expr;
-
-        foreach (lc, query->targetList)
-        {
-            TargetEntry *te = lfirst(lc);
-            ColumnRef *cref = makeNode(ColumnRef);
-
-            cref->fields = list_make1(makeString(te->resname));
-            cref->location = exprLocation((Node *)te->expr);
-
-            groupList = lappend(groupList, cref);
-        }
-
-        query->groupClause = transform_group_clause(cpstate, groupList,
-                                                    &query->groupingSets,
-                                                    &query->targetList,
-                                                    query->sortClause,
-                                                    EXPR_KIND_GROUP_BY);
-    }
-    else
-    {
-        query->jointree = makeFromExpr(cpstate->pstate.p_joinlist,
-                                       (Node *)expr);
-    }
+    query->jointree = makeFromExpr(cpstate->pstate.p_joinlist, (Node *)expr);
 }
 
 /*
@@ -5610,6 +5598,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     query->rtable = pstate->p_rtable;
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     query->hasAggs = pstate->p_hasAggs;
+    query->hasSubLinks = pstate->p_hasSubLinks;
 
     return query;
 }
@@ -6245,7 +6234,7 @@ static Expr *cypher_create_properties(cypher_parsestate *cpstate,
  * This function is similar to transformFromClause() that is called with a
  * single RangeSubselect.
  */
-ParseNamespaceItem *
+static ParseNamespaceItem *
 transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
                                     transform_method transform,
                                     cypher_clause *clause,
@@ -6267,8 +6256,7 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
            pstate->p_expr_kind == EXPR_KIND_OTHER ||
            pstate->p_expr_kind == EXPR_KIND_WHERE ||
            pstate->p_expr_kind == EXPR_KIND_SELECT_TARGET ||
-           pstate->p_expr_kind == EXPR_KIND_FROM_SUBSELECT ||
-           pstate->p_expr_kind == EXPR_KIND_INSERT_TARGET);
+           pstate->p_expr_kind == EXPR_KIND_FROM_SUBSELECT);
 
     /*
      * As these are all sub queries, if this is just of type NONE, note it as a
@@ -6472,6 +6460,12 @@ Query *cypher_parse_sub_analyze(Node *parseTree,
     cypher_clause *clause;
     Query *query;
 
+    if (IsA(parseTree, Query))
+    {
+        /* Already transformed, just return it */
+        return (Query *)parseTree;
+    }
+
     pstate->p_parent_cte = parentCTE;
     pstate->p_locked_from_parent = locked_from_parent;
     pstate->p_resolve_unknowns = resolve_unknowns;
@@ -6621,7 +6615,6 @@ static Query *transform_cypher_merge(cypher_parsestate *cpstate,
     query->rtable = pstate->p_rtable;
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     query->hasAggs = pstate->p_hasAggs;
-
     query->hasSubLinks = pstate->p_hasSubLinks;
 
     assign_query_collations(pstate, query);
