@@ -32,12 +32,10 @@ This section covers manual deployment for a single region or data center in a mu
 
 For instructions on running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to [Multi-DC deployments](../../../deploy/multi-dc/).
 
-For information about YB-Master and YB-TServer, refer to [YB-Master service](../../../architecture/yb-master/) and [YB-TServer service](../../../architecture/yb-tserver/).
-
 ## Example scenario
 
 - Create a six-node cluster with replication factor of 3.
-  - YB-Master server should run on only three nodes, the YB-TServer server should run on all six nodes.
+  - [YB-Master](../../../architecture/yb-master/) server should run on only three nodes, the [YB-TServer](../../../architecture/yb-tserver/) server should run on all six nodes.
   - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
   - Cloud will be `aws`, region will be `us-west`, and the three AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that one replica for each tablet (aka shard) gets placed in any one node for each AZ.
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.

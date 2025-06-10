@@ -14,14 +14,12 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../verify-deployment-yugabyted/" class="nav-link">
-      <img src="/icons/database.svg" alt="Server Icon">
       yugabyted
     </a>
   </li>
   <li >
     <a href="../verify-deployment/" class="nav-link active">
       Manual
-      <i class="icon-shell"></i>
     </a>
   </li>
 </ul>
@@ -46,15 +44,21 @@ If this is a public cloud deployment, remember to use the public IP for the node
 
 Clients can connect to YSQL API at the following addresses:
 
-```sh
-172.151.17.130:5433,172.151.17.220:5433,172.151.17.140:5433,172.151.17.150:5433,172.151.17.160:5433,172.151.17.170:5433
-```
+- 172.151.17.130:5433
+- 172.151.17.220:5433
+- 172.151.17.140:5433
+- 172.151.17.150:5433
+- 172.151.17.160:5433
+- 172.151.17.170:5433
 
 Clients can connect to YCQL API at the following addresses:
 
-```sh
-172.151.17.130:9042,172.151.17.220:9042,172.151.17.140:9042,172.151.17.150:9042,172.151.17.160:9042,172.151.17.170:9042
-```
+- 172.151.17.130:9042
+- 172.151.17.220:9042
+- 172.151.17.140:9042
+- 172.151.17.150:9042
+- 172.151.17.160:9042
+- 172.151.17.170:9042
 
 ## Default ports reference
 
