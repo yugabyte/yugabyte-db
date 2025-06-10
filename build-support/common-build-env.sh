@@ -2030,7 +2030,7 @@ find_or_download_ysql_snapshots() {
   # Just one snapshot for now.
   # (disabling a code checker error about a singular loop iteration)
   # shellcheck disable=SC2043
-  for ver in "2025.1.0.0-pg15-12-4"; do
+  for ver in "2025.1.0.0-pg15-12-6"; do
     for bt in "release" "sanitizers" "mac"; do
       local name="${prefix}_${ver}_${bt}"
       if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then

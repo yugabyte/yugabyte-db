@@ -3935,10 +3935,12 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	 */
 
 	/*
-	 * YB expects system tables to be altered only during YSQL cluster upgrade.
+	 * YB expects system tables to be altered only during initdb / YSQL cluster
+	 * upgrade.
 	 */
 	cxt.isSystem = IsCatalogNamespace(RelationGetNamespace(rel));
-	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
+	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade &&
+		!YBCIsInitDbModeEnvVarSet())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to alter \"%s\"",
