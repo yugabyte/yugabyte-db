@@ -1651,6 +1651,8 @@ The percentage of available RAM to use for this process if [--memory_limit_hard_
 
 #### Flags controlling the split of memory within a TServer
 
+These settings control the division of memory available to the TServer process.
+
 ##### --db_block_cache_size_bytes
 
 {{% tags/wrap %}}

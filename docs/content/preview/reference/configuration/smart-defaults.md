@@ -35,11 +35,11 @@ To read this table, take your node's available memory in GiB, call it _M_, and f
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
 
-The defaults for the Master process partitioning flags when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
+Currently, the defaults for the [split of memory _within_ a Master process](../../../reference/configuration/yb-master/#flags-controlling-the-split-of-memory-within-a-master) (as opposed to between processes on a node) do not depend on node size, and are not affected by the `--use_memory_defaults_optimized_for_ysql` setting.
 
 | flag | default |
 | :--- | :--- |
 | --db_block_cache_size_percentage | 25 |
 | --tablet_overhead_size_percentage | 0 |
 
-Currently these are the same as the defaults when `--use_memory_defaults_optimized_for_ysql` is `false`, but may change in future releases.
+This could change in future releases.
