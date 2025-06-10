@@ -118,7 +118,7 @@ Remember to add the command with which you launched yb-master to a cron to resta
 
 ### Run YB-TServer with command line flags
 
-The number of nodes in a cluster running YB-TServers must equal or exceed the replication factor in order for any table to get created successfully.
+The number of nodes in a cluster running YB-TServers must equal or exceed the replication factor for any table to be created successfully.
 
 Run the yb-tserver server on each of the six nodes as follows.
 

@@ -14,12 +14,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../verify-deployment-yugabyted/" class="nav-link active">
+      <img src="/icons/database.svg" alt="Server Icon">
       yugabyted
     </a>
   </li>
   <li >
     <a href="../verify-deployment/" class="nav-link">
       Manual
+      <i class="icon-shell"></i>
     </a>
   </li>
 </ul>
