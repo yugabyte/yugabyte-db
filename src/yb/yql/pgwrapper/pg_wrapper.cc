@@ -249,6 +249,10 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
+DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
+    "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
+    "'off', and 'on'");
+
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
     "Maximum number of rows to fetch per scan.");
 
@@ -474,6 +478,10 @@ DEFINE_validator(ysql_pg_conf_csv, &ValidateConfCsv);
 
 DEFINE_validator(ysql_hba_conf_csv, &ValidateConfCsv);
 DEFINE_validator(ysql_ident_conf_csv, &ValidateConfCsv);
+
+// Keep the value list in sync with `yb_cost_model_options` in `guc.c`.
+DEFINE_validator(ysql_yb_enable_cbo,
+    FLAG_IN_SET_VALIDATOR("off", "on", "legacy_mode", "legacy_stats_mode"));
 
 namespace {
 // Append any Pg gFlag with non default value, or non-promoted AutoFlag
