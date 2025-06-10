@@ -9229,7 +9229,10 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   // Only allow YSQL database deletion if it does not contain any replicated tables. No need to
   // check this for YCQL keyspaces, as YCQL does not allow drops of non-empty keyspaces, regardless
   // of their replication status.
-  RETURN_NOT_OK(CheckIfDatabaseHasReplication(database));
+  // Skip this check during major YSQL upgrade since we are not actually dropping the database.
+  if (!ysql_manager_->IsMajorUpgradeInProgress()) {
+    RETURN_NOT_OK(CheckIfDatabaseHasReplication(database));
+  }
 
   // Set the Namespace to DELETING.
   TRACE("Locking database");
