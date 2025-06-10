@@ -22,35 +22,34 @@ mkdir -p "$mount_cores_dir"
 chown -R {{ yb_user }}:{{ yb_user }} "$mount_cores_dir"
 chmod 0755 "$mount_cores_dir"
 
-{% if mount_cores_dir != yb_cores_dir %}
-resolved_core_dir="$(readlink -f "{{ yb_cores_dir }}")"
-if [ ! -L "{{ yb_cores_dir }}" ] || [ "$resolved_core_dir" != "{{ mount_cores_dir }}" ]; then
-  ln -sf "{{ mount_cores_dir }}" "{{ yb_cores_dir }}"
-  chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_cores_dir }}"
-  chmod 755 "{{ yb_cores_dir }}"
+# Only create symlink if not already pointing to the mount path
+if [ ! -L "$yb_cores_dir" ] || [ "$(readlink -f "$yb_cores_dir")" != "$mount_cores_dir" ]; then
+  echo "Updating symlink: $yb_cores_dir -> $mount_cores_dir"
+  ln -sf "$mount_cores_dir" "$yb_cores_dir"
+  chown -R {{ yb_user }}:{{ yb_user }} "$yb_cores_dir"
+  chmod 0755 "$yb_cores_dir"
 fi
-{% endif %}
 
 # Add clean cores script
-cat > "{{ yb_bin_dir }}/clean_cores.sh" << 'EOF'
+cat > "$yb_bin_dir/clean_cores.sh" << 'EOF'
 {% include 'clean_cores.sh.j2' %}
 EOF
-chmod 755 "{{ yb_bin_dir }}/clean_cores.sh"
-chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_bin_dir }}/clean_cores.sh"
+chmod 755 "$yb_bin_dir/clean_cores.sh"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_bin_dir/clean_cores.sh"
 
 # Add purge logs script
-cat > "{{ yb_bin_dir }}/zip_purge_yb_logs.sh" << 'EOF'
+cat > "$yb_bin_dir/zip_purge_yb_logs.sh" << 'EOF'
 {% include 'zip_purge_yb_logs.sh.j2' %}
 EOF
-chmod 755 "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
-chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
+chmod 755 "$yb_bin_dir/zip_purge_yb_logs.sh"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_bin_dir/zip_purge_yb_logs.sh"
 
 # Add collect metrics wrapper script
-cat > "{{ yb_bin_dir }}/collect_metrics_wrapper.sh" << 'EOF'
+cat > "$yb_bin_dir/collect_metrics_wrapper.sh" << 'EOF'
 {% include 'collect_metrics_wrapper.sh.j2' %}
 EOF
-chmod 755 "{{ yb_bin_dir }}/collect_metrics_wrapper.sh"
-chown -R {{ yb_user }}:{{ yb_user }} "{{ yb_bin_dir }}/collect_metrics_wrapper.sh"
+chmod 755 "$yb_bin_dir/collect_metrics_wrapper.sh"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_bin_dir/collect_metrics_wrapper.sh"
 
 # Create Master/Tserver conf directory
 {% for yb_process_type in ['master', 'tserver'] %}
@@ -106,6 +105,11 @@ mkdir -p $dest_path
 chown -R {{ yb_user }}:{{ yb_user }} "$dest_path"
 chmod 0755 "$dest_path"
 
+temp_binary_path="$yb_software_dir/TEMPORARY"
+mkdir -p $temp_binary_path
+chown -R {{ yb_user }}:{{ yb_user }} "$temp_binary_path"
+chmod 0755 "$temp_binary_path"
+
 s3_package_path={{ s3_package_path }}
 
 # Only run if s3_package_path is defined
@@ -114,12 +118,12 @@ retries=5
 delay=10
 
 # Check if package already exists
-if [ ! -f "$dest_path/$package_name" ]; then
-  echo "Downloading $package_name from $s3_package_path to $dest_path"
+if [ ! -f "$temp_binary_path/$package_name" ]; then
+  echo "Downloading $package_name from $s3_package_path to $temp_binary_path/$package_name"
 
   attempt=1
   while [ $attempt -le $retries ]; do
-    if curl -o "$dest_path/$package_name" "$s3_package_path"; then
+    if curl -o "$temp_binary_path/$package_name" "$s3_package_path"; then
       echo "Download succeeded"
       break
     else
@@ -129,7 +133,7 @@ if [ ! -f "$dest_path/$package_name" ]; then
     fi
   done
 
-  if [ ! -f "$dest_path/$package_name" ]; then
+  if [ ! -f "$temp_binary_path/$package_name" ]; then
     echo "ERROR: Failed to download package after $retries attempts"
     exit 1
   fi
@@ -138,16 +142,23 @@ else
 fi
 {% endif %}
 
-tar --strip-components=1 -xzf "$dest_path/$package_name" -C "$yb_package_folder"
-chown -R {{ yb_user }}:{{ yb_user }} "$yb_package_folder"
-chmod 0755 "$yb_package_folder"
-
 # Move the package to the home user directory
 rm -rf {{ yb_home_dir }}/$release_folder
 mkdir -p {{ yb_home_dir }}/$release_folder
 chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/$release_folder
 chmod 0755 {{ yb_home_dir }}/$release_folder
-mv "$dest_path" {{ yb_home_dir }}/$release_folder
+cp "$temp_binary_path/$package_name" {{ yb_home_dir }}/$release_folder
+
+# Extract yugabyte binary to /home/yugabyte/yb-software/
+tar --strip-components=1 -xzf "$temp_binary_path/$package_name" -C "$yb_package_folder"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_package_folder"
+chmod 0755 "$yb_package_folder"
+
+# Remove temp_binary_path directory
+rm -rf $temp_binary_path
+
+# Delete the empty top-level directory if it exists
+rm -rf "$yb_software_dir/$release_name"
 
 chmod +x "$yb_package_folder/bin/post_install.sh"
 # Run the post install script.

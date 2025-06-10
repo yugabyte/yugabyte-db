@@ -13085,7 +13085,7 @@ LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
 opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 			| /*EMPTY*/
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
 			    	$$ = AccessExclusiveLock;
 				}
@@ -13094,43 +13094,43 @@ opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 lock_type:	ACCESS SHARE					{ $$ = AccessShareLock; }
 			| ROW SHARE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ROW SHARE");
 			    	$$ = RowShareLock;
 				}
 			| ROW EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ROW EXCLUSIVE");
 			    	$$ = RowExclusiveLock;
 				}
 			| SHARE UPDATE EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
 			    	$$ = ShareUpdateExclusiveLock;
 				}
 			| SHARE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE");
 			    	$$ = ShareLock;
 				}
 			| SHARE ROW EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
 			    	$$ = ShareRowExclusiveLock;
 				}
 			| EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "EXCLUSIVE");
 			    	$$ = ExclusiveLock;
 				}
 			| ACCESS EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
 			    	$$ = AccessExclusiveLock;
 				}

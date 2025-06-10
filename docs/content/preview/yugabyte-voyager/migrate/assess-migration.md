@@ -28,6 +28,7 @@ Voyager then generates a report that includes:
 - **Recommended cluster sizing:** Estimates the resources needed for the target environment based on table sizes, number of tables, and throughput requirements.
 - **Recommended data distribution:** Suggests effective sharding strategies for tables and indexes.
 - **Performance metrics:** Analyzes workload characteristics to recommend optimizations in YugabyteDB.
+- **Performance optimizations:** Identifies schema DDLs that may impact application performance after migrating to YugabyteDB. It highlights potentially inefficient DDLs and provides recommendations to optimize them for better performance.
 - **Migration time estimate:** Provides an estimated time for data import into YugabyteDB based on experimental data.
 - **Unsupported query constructs:** Identifies SQL features and constructs not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, and provides a list of queries containing these constructs.
 - **Unsupported PL/pgSQL objects:** Identifies SQL features and constructs that are not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, within PL/pgSQL objects in the source schema. It reports the individual queries within these objects that are not supported, such as queries in the PL/pgSQL block for functions and procedures, or the select statements in views and materialized views that contain unsupported constructs.
@@ -52,6 +53,8 @@ The following table describes the type of data that is collected during a migrat
 | Database name | Yes | Voyager collects database and schema names to be used in the generated report. |
 | Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
 | Server or database credentials | No | No server or database credentials are collected. |
+
+- To detect certain performance optimizations, ensure that [ANALYZE](https://www.postgresql.org/docs/current/sql-analyze.html)(PostgreSQL) is run on the source database.
 
 ## Get started with migration assessment
 

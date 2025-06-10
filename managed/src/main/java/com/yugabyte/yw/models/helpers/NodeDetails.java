@@ -94,6 +94,9 @@ public class NodeDetails {
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.3.0.0")
   public boolean autoSyncMasterAddrs;
 
+  @ApiModelProperty(hidden = true, value = "YbaApi Internal. OSS migration pending for this node")
+  public boolean migrationPending;
+
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.

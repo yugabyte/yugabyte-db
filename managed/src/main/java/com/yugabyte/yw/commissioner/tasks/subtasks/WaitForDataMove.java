@@ -56,9 +56,8 @@ public class WaitForDataMove extends UniverseTaskBase {
     int numIters = 0;
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
-    log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
-    try (YBClient client =
-        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+    log.info("Running {} on masterAddresses = {}.", getName(), masterAddresses);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       log.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
       String taskUUIDString = getTaskUUID().toString();
       while (percent < 100) {

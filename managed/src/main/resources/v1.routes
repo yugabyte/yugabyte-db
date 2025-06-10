@@ -265,6 +265,8 @@ POST    /customers/:cUUID/universe_update_options                              c
 PUT     /customers/:cUUID/universes/:uniUUID                                   com.yugabyte.yw.controllers.UniverseUiOnlyController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade                           com.yugabyte.yw.controllers.UniverseUiOnlyController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/update_tls                        com.yugabyte.yw.controllers.UniverseUiOnlyController.tlsConfigUpdate(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/universes/import_oss                                 com.yugabyte.yw.controllers.UniverseUiOnlyController.importUniverse(cUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/universes/:uniUUID/migrate_oss                       com.yugabyte.yw.controllers.UniverseUiOnlyController.migrateUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # TODO: migrate to new API
 POST    /customers/:cUUID/universes/:uniUUID/disk_update                       com.yugabyte.yw.controllers.UniverseUiOnlyController.updateDiskSize(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
@@ -503,7 +505,7 @@ DELETE /customers/:cUUID/schedules/:sUUID                                      c
 GET    /customers/:cUUID/universes/:uniUUID/tablet-servers                     com.yugabyte.yw.controllers.TabletServerController.listTabletServers(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # User Management API
-GET    /customers/:cUUID/users                                                 com.yugabyte.yw.controllers.UsersController.list(cUUID: java.util.UUID)
+GET    /customers/:cUUID/users                                                 com.yugabyte.yw.controllers.UsersController.list(cUUID: java.util.UUID, email: String ?= null)
 GET    /customers/:cUUID/users/:uUUID                                          com.yugabyte.yw.controllers.UsersController.index(cUUID: java.util.UUID, uUUID: java.util.UUID)
 POST   /customers/:cUUID/users                                                 com.yugabyte.yw.controllers.UsersController.create(cUUID: java.util.UUID, request: Request)
 PUT    /customers/:cUUID/users/:uUUID                                          com.yugabyte.yw.controllers.UsersController.changeRole(cUUID: java.util.UUID, uUUID: java.util.UUID, role: String, request: Request)

@@ -10,6 +10,8 @@ import {
   FETCH_PASSWORD_POLICY_RESPONSE,
   FETCH_ADMIN_NOTIFICATIONS,
   FETCH_ADMIN_NOTIFICATIONS_RESPONSE,
+  FETCH_PERF_ADVISOR_DETAILS,
+  FETCH_PERF_ADVISOR_DETAILS_RESPONSE,
   LOGIN,
   LOGIN_RESPONSE,
   INVALID_CUSTOMER_TOKEN,
@@ -134,6 +136,7 @@ const INITIAL_STATE = {
   authToken: getInitialState({}),
   apiToken: getInitialState(null),
   adminNotifications: getInitialState({}),
+  perfAdvisorDetails: getInitialState([]),
   tasks: [],
   status: null,
   error: null,
@@ -201,6 +204,11 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'adminNotifications', {});
     case FETCH_ADMIN_NOTIFICATIONS_RESPONSE:
       return setPromiseResponse(state, 'adminNotifications', action);
+
+    case FETCH_PERF_ADVISOR_DETAILS:
+      return setLoadingState(state, 'perfAdvisorDetails', []);
+    case FETCH_PERF_ADVISOR_DETAILS_RESPONSE:
+      return setPromiseResponse(state, 'perfAdvisorDetails', action);
 
     case LOGIN:
       return setLoadingState(state, 'authToken', {});

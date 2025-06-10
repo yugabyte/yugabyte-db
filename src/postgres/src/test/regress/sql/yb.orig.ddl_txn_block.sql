@@ -184,3 +184,23 @@ BEGIN ISOLATION LEVEL REPEATABLE READ;
 CREATE TABLE test13 (a int primary key, b int);
 SAVEPOINT test13_sp;
 ROLLBACK;
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TEMPORARY TABLE temp_table (
+    a INT PRIMARY KEY
+) ON COMMIT DELETE ROWS;
+INSERT INTO temp_table VALUES (1);
+INSERT INTO temp_table VALUES (2);
+SELECT * FROM temp_table;
+COMMIT;
+SELECT * FROM temp_table;
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TEMP TABLE temp_table_commit_drop (
+    id INT PRIMARY KEY
+)
+ON COMMIT DROP;
+INSERT INTO temp_table_commit_drop VALUES (1);
+SELECT * FROM temp_table_commit_drop;
+COMMIT;
+SELECT * FROM temp_table_commit_drop;

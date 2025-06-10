@@ -80,3 +80,85 @@
  underflow | Z         | 16662 |             2
 (50 rows)
 
+INSERT 0 1
+ parc1 | parc2 | parc3 | parc4 | parc5 |  chc1   | parc9 | parc10 
+-------+-------+-------+-------+-------+---------+-------+--------
+     2 | 2_FOO |     7 |   2.2 |       | 2_fooch |   3.3 |      5
+     1 | FOO   |     6 |   1.1 |       | fooch   |   2.2 |      5
+(2 rows)
+
+                                Table "public.par"
+ Column |  Type   | Collation | Nullable |                Default                 
+--------+---------+-----------+----------+----------------------------------------
+ parc1  | integer |           |          | 
+ parc2  | text    |           |          | 'def'::text
+ parc3  | integer |           |          | generated always as (parc1 + 5) stored
+ parc4  | real    |           | not null | 
+ parc5  | text    |           |          | 
+ parc9  | real    |           | not null | 
+ parc10 | integer |           |          | 5
+Number of child tables: 1 (Use \d+ to list them.)
+
+                                Table "public.ch"
+ Column |  Type   | Collation | Nullable |                Default                 
+--------+---------+-----------+----------+----------------------------------------
+ parc1  | integer |           |          | 
+ parc2  | text    |           |          | 'def'::text
+ parc3  | integer |           |          | generated always as (parc1 + 5) stored
+ parc4  | real    |           | not null | 
+ parc5  | text    |           |          | 
+ chc1   | text    |           | not null | 
+ parc9  | real    |           | not null | 
+ parc10 | integer |           |          | 5
+Indexes:
+    "ch_pkey" PRIMARY KEY, lsm (chc1 HASH)
+Inherits: par
+
+ attname | attnum | attislocal 
+---------+--------+------------
+ parc1   |      1 | f
+ parc2   |      2 | f
+ parc3   |      3 | f
+ parc4   |      4 | t
+ parc5   |      5 | t
+ chc1    |      6 | t
+ parc9   |      7 | f
+ parc10  |      8 | f
+(8 rows)
+
+INSERT 0 1
+ parc1 | parc2 | parc3 | chc1 |   chc2   | parc5  | parc6 |    parc7    
+-------+-------+-------+------+----------+--------+-------+-------------
+     3 | 3_FOO |   3.3 |   30 | 3_CH_2   | 3_CH_5 |   3.3 | CH_C7_DEF
+     2 | 2_FOO |   2.2 |   20 | 2_CH_2   | 2_CH_5 |   2.2 | CH_C7_DEF
+     1 | 1_FOO |   1.1 |   10 | CH_1_FOO |        |       | PAR2_C7_DEF
+(3 rows)
+
+                      Table "public.inh2_ch"
+ Column |     Type     | Collation | Nullable |      Default      
+--------+--------------+-----------+----------+-------------------
+ parc1  | integer      |           |          | 
+ parc2  | text         |           |          | 
+ parc3  | real         |           |          | 
+ chc1   | integer      |           | not null | 
+ chc2   | text         |           |          | 
+ parc5  | text         |           |          | 
+ parc6  | numeric(8,1) |           |          | 
+ parc7  | text         |           |          | 'CH_C7_DEF'::text
+Indexes:
+    "inh2_ch_pkey" PRIMARY KEY, lsm (chc1 HASH)
+Inherits: inh2_par1,
+          inh2_par2
+
+ attname | attnum | attislocal 
+---------+--------+------------
+ parc1   |      1 | f
+ parc2   |      2 | f
+ parc3   |      3 | f
+ chc1    |      4 | t
+ chc2    |      5 | t
+ parc5   |      6 | f
+ parc6   |      7 | f
+ parc7   |      8 | f
+(8 rows)
+

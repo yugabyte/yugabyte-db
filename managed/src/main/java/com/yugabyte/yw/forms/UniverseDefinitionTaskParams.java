@@ -973,6 +973,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(value = "YbaApi Internal. Use clockbound as time source")
     private boolean useClockbound = false;
 
+    @Getter
+    @Setter
+    @Nullable
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. OSS universe migration config")
+    private UniverseMigrationConfig migrationConfig;
+
     @Override
     public String toString() {
       StringBuilder sb = new StringBuilder();

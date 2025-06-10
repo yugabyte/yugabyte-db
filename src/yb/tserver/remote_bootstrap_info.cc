@@ -35,7 +35,8 @@ std::string BytesPerSecToHumanReadable(size_t bytes_per_sec) {
 } // namespace
 
 std::string GetRemoteBootstrapProgressMessage(const GetActiveRbsInfoResponsePB_RbsInfo& resp) {
-  auto completion_percent = (resp.sst_bytes_downloaded() * 100) / resp.sst_bytes_to_download();
+  auto completion_percent = resp.sst_bytes_to_download() == 0 ?
+      100 : (resp.sst_bytes_downloaded() * 100) / resp.sst_bytes_to_download();
   std::string rbs_rate = (resp.sst_download_elapsed_sec() == 0) ?
       "N/A" :
       BytesPerSecToHumanReadable(resp.sst_bytes_downloaded() / resp.sst_download_elapsed_sec());

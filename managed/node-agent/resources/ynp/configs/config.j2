@@ -91,6 +91,11 @@ cpu = unlimited
 nproc = 12000
 locks = unlimited
 
+[ConfigureSudoers]
+{% if ynp_config['ynp'].sudoers_commands %}
+sudoers_commands = {{ynp_config['ynp'].sudoers_commands | join(',')}}
+{% endif %}
+
 [BackupUtils]
 
 [ConfigureNodeExporter]

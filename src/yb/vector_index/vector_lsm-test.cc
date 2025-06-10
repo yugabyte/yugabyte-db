@@ -33,6 +33,10 @@
 
 using namespace std::literals;
 
+DECLARE_bool(vector_index_disable_compactions);
+DECLARE_int32(vector_index_files_number_compaction_trigger);
+DECLARE_int32(vector_index_max_size_amplification_percent);
+
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 
@@ -161,6 +165,10 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
       size_t block_size = std::numeric_limits<size_t>::max(),
       size_t min_entry_idx = 0);
 
+  Status InsertRandom(
+      FloatVectorLSM& lsm, size_t dimensions, size_t num_entries,
+      size_t block_size = std::numeric_limits<size_t>::max());
+
   void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions);
 
   void CheckQueryVector(
@@ -211,6 +219,19 @@ FloatVectorLSM::InsertEntries CubeInsertEntries(size_t dimensions) {
   return result;
 }
 
+FloatVectorLSM::InsertEntries RandomEntries(size_t dimensions, size_t num_entries) {
+  static std::uniform_real_distribution<> distribution;
+
+  FloatVectorLSM::InsertEntries result;
+  while (num_entries-- > 0) {
+    result.emplace_back(FloatVectorLSM::InsertEntry {
+      .vector_id = VectorId::GenerateRandom(),
+      .vector = RandomFloatVector(dimensions, distribution),
+    });
+  }
+  return result;
+}
+
 auto GenerateVectorIds(size_t num) {
   std::vector<VectorId> result;
   result.reserve(num);
@@ -235,6 +256,29 @@ Status VectorLSMTest::InsertCube(
       }
       begin += delta;
     }
+    FloatVectorLSM::InsertEntries block_entries(begin, end);
+    TestFrontiers frontiers;
+    frontiers.Smallest().SetVertexId(block_entries.front().vector_id);
+    frontiers.Largest().SetVertexId(block_entries.front().vector_id);
+    for (; begin != end; ++begin) {
+      key_value_storage_.StoreVector(
+          begin->vector_id, begin - inserted_entries_.begin() + 1);
+    }
+    RETURN_NOT_OK(lsm.Insert(block_entries, { .frontiers = &frontiers }));
+    ++num_inserts;
+  }
+  LOG(INFO) << "Inserted " << inserted_entries_.size() << " entries "
+            << "via " << num_inserts << " batches";
+  return Status::OK();
+}
+
+Status VectorLSMTest::InsertRandom(
+    FloatVectorLSM& lsm, size_t dimensions, size_t num_entries, size_t batch_size) {
+  inserted_entries_ = RandomEntries(dimensions, num_entries);
+  size_t num_inserts = 0;
+  for (size_t i = 0; i < inserted_entries_.size(); i += batch_size) {
+    auto begin = inserted_entries_.begin() + i;
+    auto end = inserted_entries_.begin() + std::min(i + batch_size, inserted_entries_.size());
     FloatVectorLSM::InsertEntries block_entries(begin, end);
     TestFrontiers frontiers;
     frontiers.Smallest().SetVertexId(block_entries.front().vector_id);
@@ -338,7 +382,10 @@ Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
   std::erase_if(files, [](const auto& file) {
     return !boost::ends_with(file, ".meta") && !boost::contains(file, "vectorindex");
   });
-  std::sort(files.begin(), files.end());
+  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs){
+    // Refer to VectorLSMMetadataLoad().
+    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
+  });
   return files;
 }
 
@@ -358,7 +405,7 @@ TEST_P(VectorLSMTest, MultipleChunks) {
 
   FloatVectorLSM lsm;
   ASSERT_OK(InitVectorLSM(lsm, kDimensions, kChunkSize));
-  ASSERT_GT(lsm.num_immutable_chunks(), 1);
+  ASSERT_GT(lsm.NumImmutableChunks(), 1);
 
   VerifyVectorLSM(lsm, kDimensions);
 }
@@ -366,6 +413,9 @@ TEST_P(VectorLSMTest, MultipleChunks) {
 TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   constexpr size_t kDimensions = 4;
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+
+  // Turn off background compactions to not interfere with manual compaction.
+  FLAGS_vector_index_disable_compactions = true;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
@@ -381,22 +431,22 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   while (lsm.TEST_HasBackgroundInserts()) {
     SleepFor(MonoDelta::FromSeconds(1));
   }
-  ASSERT_EQ(0, lsm.num_immutable_chunks());
+  ASSERT_EQ(0, lsm.NumImmutableChunks());
 
   ASSERT_OK(lsm.Flush(/* wait = */ true));
-  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
   ASSERT_EQ(1, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
   // Compact single file into a single file.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
-  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
   ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
   // Compact single file into a single file again.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
-  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
   ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
@@ -413,6 +463,9 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
   static_assert(kNumEntries > 2 * kDefaultChunkSize);
 
+  // Turn off background compactions to not interfere with manual compaction.
+  FLAGS_vector_index_disable_compactions = true;
+
   constexpr size_t kBlocksPerChunk = 5;
   constexpr size_t kBlockSize = kDefaultChunkSize / kBlocksPerChunk;
   constexpr size_t kNumInserts = (kNumEntries + kBlockSize - 1) / kBlockSize;
@@ -427,17 +480,17 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   while (lsm.TEST_HasBackgroundInserts()) {
     SleepFor(MonoDelta::FromSeconds(1));
   }
-  ASSERT_EQ(kExpectedNumChunks - 1, lsm.num_immutable_chunks());
+  ASSERT_EQ(kExpectedNumChunks - 1, lsm.NumImmutableChunks());
   VerifyVectorLSM(lsm, kDimensions);
 
   ASSERT_OK(lsm.Flush(/* wait = */ true));
-  ASSERT_EQ(kExpectedNumChunks, lsm.num_immutable_chunks());
+  ASSERT_EQ(kExpectedNumChunks, lsm.NumImmutableChunks());
   ASSERT_EQ(1, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
   // Compact all files into a single file.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
-  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
   ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
@@ -451,7 +504,7 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
 
   // Compact again.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
-  ASSERT_EQ(1, lsm.num_immutable_chunks());
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
   ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
   VerifyVectorLSM(lsm, kDimensions);
 
@@ -464,6 +517,83 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
 }
 
+TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumChunks  = 6;
+  FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
+  FLAGS_vector_index_max_size_amplification_percent  = narrow_cast<int32_t>((kNumChunks - 1) * 100);
+
+  // Make sure background compaction are turned on.
+  FLAGS_vector_index_disable_compactions = false;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+
+  for (size_t n = 0; n < kNumChunks; ++n) {
+    // Check files right before the backgorund compaction would trigger.
+    if (n == kNumChunks - 1) {
+      std::stringstream expected_files;
+      expected_files << "0.meta";
+      for (size_t i = 1; i <= n; ++i) { expected_files << ", vectorindex_" << i; }
+      const auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+      ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
+    }
+
+    ASSERT_OK(InsertRandom(lsm, kDimensions, 10));
+    while (lsm.TEST_HasBackgroundInserts()) {
+      SleepFor(MonoDelta::FromSeconds(1));
+    }
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+  }
+
+  // Wait for all compactions completed.
+  while (lsm.TEST_HasCompactions()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  auto last_chunk_id = kNumChunks + 1;
+  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, Format("[0.meta, vectorindex_$0]", last_chunk_id));
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+
+  // Trigger background compaction on the same size. At this point there's one big chunk which
+  // is approximately equal to the size of six random chunks. So, inserting six more chunks
+  // should trigger next background compaction.
+  FLAGS_vector_index_max_size_amplification_percent = 100;
+  for (size_t n = 0; n < kNumChunks; ++n) {
+    // Check files right before the backgorund compaction would trigger.
+    if (n == kNumChunks - 1) {
+      std::stringstream expected_files;
+      expected_files << "0.meta, " << "vectorindex_" << last_chunk_id;
+      for (size_t i = 1; i <= n; ++i) { expected_files << ", vectorindex_" << last_chunk_id + i; }
+      const auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+      ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
+    }
+
+    ASSERT_OK(InsertRandom(lsm, kDimensions, 10));
+    while (lsm.TEST_HasBackgroundInserts()) {
+      SleepFor(MonoDelta::FromSeconds(1));
+    }
+    ASSERT_OK(lsm.Flush(/* wait = */ true));
+  }
+
+  // Wait for all compactions completed.
+  while (lsm.TEST_HasCompactions()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  last_chunk_id += kNumChunks + 1;
+  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, Format("[0.meta, vectorindex_$0]", last_chunk_id));
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+}
+
 TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
   constexpr size_t kDimensions = 9;
   constexpr size_t kChunkSize  = 2 * kDefaultChunkSize;
@@ -474,7 +604,7 @@ TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
   while (lsm.TEST_HasBackgroundInserts()) {
     SleepFor(MonoDelta::FromSeconds(1));
   }
-  ASSERT_GT(lsm.num_immutable_chunks(), 1);
+  ASSERT_GT(lsm.NumImmutableChunks(), 1);
 
   // Pause Vector LSM compactions.
   const auto merge_timeout = 5s * kTimeMultiplier;

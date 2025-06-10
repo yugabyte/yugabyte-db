@@ -32,6 +32,9 @@
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -106,6 +109,9 @@
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
+#ifndef HAVE_GETRUSAGE
+#include "rusagestub.h"
+#endif
 #include "storage/procarray.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -296,7 +302,7 @@ CheckIsYBSupportedRelationByKind(char relkind)
 		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
 		  relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_PARTITIONED_TABLE ||
 		  relkind == RELKIND_PARTITIONED_INDEX || relkind == RELKIND_FOREIGN_TABLE ||
-		  relkind == RELKIND_MATVIEW))
+		  relkind == RELKIND_MATVIEW || relkind == RELKIND_TOASTVALUE))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("this feature is not supported in Yugabyte")));
@@ -2113,6 +2119,9 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.max_cols_size_to_compare = 10 * 1024
 };
 
+bool yb_speculatively_execute_pl_statements = false;
+bool yb_whitelist_extra_stmts_for_pl_speculative_execution = false;
+
 /*------------------------------------------------------------------------------
  * YB Debug utils.
  *------------------------------------------------------------------------------
@@ -3231,13 +3240,22 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 		case T_CreatedbStmt:
 		case T_DefineStmt:		/* CREATE OPERATOR/AGGREGATE/COLLATION/etc */
 		case T_CommentStmt:		/* COMMENT (create new comment) */
-		case T_RuleStmt:		/* CREATE RULE */
 		case T_YbCreateProfileStmt:
 			/*
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
 			is_version_increment = false;
+			is_breaking_change = false;
+			break;
+
+		case T_RuleStmt:		/* CREATE RULE */
+			/*
+			 * CREATE RULE sets relhasrules to true in the table's pg_class entry.
+			 * We need to increment the catalog version to ensure this change is
+			 * picked up by other backends.
+			 */
+			is_version_increment = true;
 			is_breaking_change = false;
 			break;
 
@@ -3397,6 +3415,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 					break;
 				}
 
+				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+					YBMarkTxnUsesTempRelAndSetTxnId();
+
 				is_version_increment = false;
 				break;
 			}
@@ -3472,16 +3493,21 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 						ListCell   *cell;
 
 						is_version_increment = false;
+						bool marked_temp = false;
 
 						foreach(cell, stmt->objects)
 						{
 							RangeVar   *rel = makeRangeVarFromNameList((List *) lfirst(cell));
 
 							if (!YbIsRangeVarTempRelation(rel))
-							{
 								is_version_increment = true;
-								break;
+							else if (!marked_temp)
+							{
+								marked_temp = true;
+								YBMarkTxnUsesTempRelAndSetTxnId();
 							}
+							if (is_version_increment && marked_temp)
+								break;
 						}
 
 						if (!is_version_increment)
@@ -3591,6 +3617,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
 					break;
 				}
 
@@ -3646,6 +3673,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				is_breaking_change = false;
 				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level);
@@ -3703,7 +3731,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 					 * which generates a PostgreSQL XID. Mark the transaction
 					 * as such, so that it can be handled at commit time.
 					 */
-					YbSetTxnWithPgOps(YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY);
+					YbSetTxnUsesTempRel();
 				}
 				else
 					/*
@@ -7113,10 +7141,13 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 						 bool yb_copy_split_options)
 {
 	bool		isNull;
+	HeapTuple   indexTuple;
 	HeapTuple	tuple;
 	Datum		reloptions = (Datum) 0;
 	Relation	indexedRel;
 	IndexInfo  *indexInfo;
+	oidvector  *indclass = NULL;
+	Datum       indclassDatum;
 
 	tuple = SearchSysCache1(RELOID,
 							ObjectIdGetDatum(RelationGetRelid(indexRel)));
@@ -7133,6 +7164,19 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 	indexInfo = BuildIndexInfo(indexRel);
 
 	YbGetTableProperties(indexRel);
+
+	indexTuple = SearchSysCache1(INDEXRELID,
+								 ObjectIdGetDatum(RelationGetRelid(indexRel)));
+	if (!HeapTupleIsValid(indexTuple))
+		elog(ERROR, "cache lookup failed for index %u",
+			 RelationGetRelid(indexRel));
+
+	indclassDatum = SysCacheGetAttr(INDEXRELID, indexTuple,
+									Anum_pg_index_indclass, &isNull);
+	if (!isNull)
+		indclass = (oidvector *) DatumGetPointer(indclassDatum);
+	ReleaseSysCache(indexTuple);
+
 	YBCCreateIndex(RelationGetRelationName(indexRel),
 				   indexInfo,
 				   RelationGetDescr(indexRel),
@@ -7148,7 +7192,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   indexRel->rd_rel->reltablespace,
 				   newRelfileNodeId,
 				   YbGetRelfileNodeId(indexRel),
-				   NULL /* opclassOids */ );
+				   indclass ? indclass->values : NULL);
 
 	table_close(indexedRel, ShareLock);
 
@@ -7614,4 +7658,27 @@ void
 YbForceSendInvalMessages()
 {
 	ddl_transaction_state.force_send_inval_messages = true;
+}
+
+/*
+ * Scale the ru_maxrss value according to the platform.
+ * On Linux, the maxrss is in kilobytes.
+ * On OSX, the maxrss is in bytes and scale it to kilobytes.
+ * https://www.manpagez.com/man/2/getrusage/osx-10.12.3.php
+ */
+static long
+scale_rss_to_kb(long maxrss)
+{
+#ifdef __APPLE__
+	maxrss = maxrss / 1024;
+#endif
+	return maxrss;
+}
+
+long
+YbGetPeakRssKb()
+{
+	struct rusage r;
+	getrusage(RUSAGE_SELF, &r);
+	return scale_rss_to_kb(r.ru_maxrss);
 }

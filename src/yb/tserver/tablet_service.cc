@@ -295,7 +295,7 @@ constexpr bool kRejectWritesWhenDiskFullDefault = true;
 DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
     "Reject incoming writes to the tablet if we are running out of disk space.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -872,16 +872,8 @@ void TabletServiceAdminImpl::BackfillIndex(
 
       IndexInfoPB idx_info_pb;
       index_info->ToPB(&idx_info_pb);
-      if (!is_pg_table) {
-        all_at_backfill &=
-            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
-      } else {
-        // YSQL tables don't use all the docdb permissions, so use this approximation.
-        // TODO(jason): change this back to being like YCQL once we bring the docdb permission
-        // DO_BACKFILL back (issue #6218).
-        all_at_backfill &=
-            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_WRITE_AND_DELETE;
-      }
+      all_at_backfill &=
+          idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
       all_past_backfill &=
           idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
     } else {
@@ -981,7 +973,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id() << " backfilled indexes "
            << yb::ToString(index_ids) << " and got " << backfill_status
-           << " backfilled until : " << backfilled_until;
+           << " backfilled until : " << b2a_hex(backfilled_until);
 
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
@@ -1113,12 +1105,10 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
       return;
     }
 
-    auto skip_aborting_active_transactions =
-        FLAGS_TEST_enable_object_locking_for_table_locks ||
-        FLAGS_TEST_skip_aborting_active_transactions_during_schema_change;
     // After write operation is paused, active transactions will be aborted for YSQL transactions.
     if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE &&
-        req->should_abort_active_txns() && !skip_aborting_active_transactions) {
+        req->should_abort_active_txns() &&
+        !FLAGS_TEST_skip_aborting_active_transactions_during_schema_change) {
       DCHECK(req->has_transaction_id());
       if (tablet.tablet->transaction_participant() == nullptr) {
         auto status = STATUS(
@@ -2051,7 +2041,9 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       break;
     }
     case FlushTabletsRequestPB::COMPACT: {
-      AdminCompactionOptions options { /* should_wait = */ true };
+      AdminCompactionOptions options(
+          ShouldWait::kTrue,
+          rocksdb::SkipCorruptDataBlocksUnsafe(req->remove_corrupt_data_blocks_unsafe()));
       if (HasVectorIndex(*req)) {
         options.vector_index_ids = std::make_shared<TableIds>(
             req->all_vector_indexes() ? TableIds{} : CopyVectorIndexIds(*req));
@@ -3665,7 +3657,7 @@ void TabletServiceImpl::ClearMetacache(
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+  if (!FLAGS_enable_object_locking_for_table_locks) {
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
@@ -3688,7 +3680,7 @@ void TabletServiceImpl::AcquireObjectLocks(
 void TabletServiceImpl::ReleaseObjectLocks(
     const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+  if (!PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
     SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);

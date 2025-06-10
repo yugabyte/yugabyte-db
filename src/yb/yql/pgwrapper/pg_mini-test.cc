@@ -550,7 +550,17 @@ TEST_F(PgMiniTest, Simple) {
   ASSERT_EQ(value, "hello");
 }
 
-TEST_F(PgMiniTest, Tracing) {
+class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_P(PgMiniTestTracing, Tracing) {
   class TraceLogSink : public google::LogSink {
    public:
     void send(
@@ -561,7 +571,9 @@ TEST_F(PgMiniTest, Tracing) {
       }
     }
 
-    size_t last_logged_bytes() const { return last_logged_bytes_; }
+    size_t get_last_logged_bytes_and_reset() {
+      return last_logged_bytes_.exchange(0);
+    }
 
    private:
     std::atomic<size_t> last_logged_bytes_{0};
@@ -572,9 +584,6 @@ TEST_F(PgMiniTest, Tracing) {
   google::AddLogSink(&trace_log_sink);
   size_t last_logged_trace_size;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
@@ -584,41 +593,82 @@ TEST_F(PgMiniTest, Tracing) {
   LOG(INFO) << "Doing Insert";
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (1, 'hello', 'world')"));
   SleepFor(1s);
-  last_logged_trace_size = trace_log_sink.last_logged_bytes();
+  last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
   LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
   // 2601 is size of the current trace for insert.
   // being a little conservative for changes in ports/ip addr etc.
-  ASSERT_GE(last_logged_trace_size, 2400);
+  EXPECT_GE(last_logged_trace_size, 2400);
   LOG(INFO) << "Done Insert";
 
+  // 1884 is size of the current trace for select.
+  // being a little conservative for changes in ports/ip addr etc.
+  constexpr size_t kSingleSelectTraceSizeBound = 1600;
   LOG(INFO) << "Doing Select";
   auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
   SleepFor(1s);
-  last_logged_trace_size = trace_log_sink.last_logged_bytes();
+  last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
   LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
-  // 1884 is size of the current trace for select.
-  // being a little conservative for changes in ports/ip addr etc.
-  ASSERT_GE(last_logged_trace_size, 1600);
-  ASSERT_EQ(value, "hello");
+  EXPECT_GE(last_logged_trace_size, kSingleSelectTraceSizeBound);
+  // ASSERT_EQ(value, "hello");
   LOG(INFO) << "Done Select";
 
-  LOG(INFO) << "Doing block transaction";
+  LOG(INFO) << "Doing block transaction for inserts";
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
-  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (2, 'good', 'morning')"));
-  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (3, 'good', 'morning')"));
   value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-  ASSERT_OK(conn.Execute("ABORT"));
   SleepFor(1s);
-  last_logged_trace_size = trace_log_sink.last_logged_bytes();
+  last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
+  LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
+  EXPECT_GE(last_logged_trace_size, kSingleSelectTraceSizeBound);
+
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (2, 'good', 'morning')"));
+  EXPECT_EQ(trace_log_sink.get_last_logged_bytes_and_reset(), 0);
+
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (3, 'good', 'morning')"));
+  EXPECT_EQ(trace_log_sink.get_last_logged_bytes_and_reset(), 0);
+
+  value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 2"));
+  EXPECT_EQ(trace_log_sink.get_last_logged_bytes_and_reset(), 0);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+  SleepFor(1s);
+  last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
   LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
   // 5446 is size of the current trace for the transaction block.
   // being a little conservative for changes in ports/ip addr etc.
-  ASSERT_GE(last_logged_trace_size, 5200);
-  LOG(INFO) << "Done block transaction";
+  EXPECT_GE(last_logged_trace_size, 5200);
+  LOG(INFO) << "Done block transaction for inserts";
+
+  LOG(INFO) << "Doing block READ ONLY transaction for selects";
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION READ ONLY"));
+  value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+  SleepFor(1s);
+  last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
+  LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
+  EXPECT_GE(last_logged_trace_size, kSingleSelectTraceSizeBound);
+  value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 2"));
+  SleepFor(1s);
+  last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
+  LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
+  EXPECT_GE(last_logged_trace_size, kSingleSelectTraceSizeBound);
+  value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 3"));
+  SleepFor(1s);
+  last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
+  LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
+  EXPECT_GE(last_logged_trace_size, kSingleSelectTraceSizeBound);
+  ASSERT_OK(conn.Execute("COMMIT"));
+  SleepFor(1s);
+  last_logged_trace_size = trace_log_sink.get_last_logged_bytes_and_reset();
+  LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
+  // 5446 is size of the current trace for the transaction block.
+  // being a little conservative for changes in ports/ip addr etc.
+  EXPECT_EQ(last_logged_trace_size, 0);
+  LOG(INFO) << "Done block READ ONLY transaction for selects";
 
   google::RemoveLogSink(&trace_log_sink);
   ValidateAbortedTxnMetric();
 }
+
+INSTANTIATE_TEST_SUITE_P(PgMiniTestTracing, PgMiniTestTracing, ::testing::Bool());
 
 TEST_F(PgMiniTest, TracingSushant) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;

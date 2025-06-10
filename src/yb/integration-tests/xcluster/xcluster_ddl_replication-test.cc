@@ -23,6 +23,7 @@
 
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
@@ -48,6 +49,7 @@ DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
+DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 
 using namespace std::chrono_literals;
 
@@ -163,7 +165,8 @@ TEST_F(XClusterDDLReplicationTest, ExtensionRoleUpdating) {
   auto& catalog_manager =
       ASSERT_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
   auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
-  const auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name));
+  const auto namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name));
   auto* tserver = producer_cluster_.mini_cluster_->mini_tablet_server(0);
   auto& xcluster_context = tserver->server()->GetXClusterContext();
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -312,7 +315,8 @@ TEST_F(XClusterDDLReplicationTest, BootstrappingEmptyTable) {
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
 
   ASSERT_OK(CheckpointReplicationGroupOnNamespaces({namespace_name}));
-  auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name));
+  auto namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name));
   auto bootstrap_required =
       ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, namespace_id));
   EXPECT_EQ(bootstrap_required, true);
@@ -1378,6 +1382,44 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
 }
 
+TEST_F(XClusterDDLReplicationTest, HandleEarlierApplySafeTime) {
+  // Always set the apply safe time 5000 ms earlier. This is to verify the case where the ddl_queue
+  // gets an apply_safe_time that is greater than some of its commit times.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_producer_modify_sent_apply_safe_time_ms) = -5000;
+
+  const auto kTableName = "initial_table";
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+
+  // Batch some DDLs together.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn.Execute("CREATE TYPE enum1 AS ENUM ('a','b');"));
+  ASSERT_OK(producer_conn.Execute("CREATE TYPE enum2 AS ENUM ('c','d');"));
+  ASSERT_OK(producer_conn.Execute("CREATE TYPE enum3 AS ENUM ('e','f');"));
+  ASSERT_OK(producer_conn.Execute("CREATE TYPE enum4 AS ENUM ('g','h');"));
+  ASSERT_OK(producer_conn.Execute("CREATE TYPE enum5 AS ENUM ('i','j');"));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 (key int primary key)", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+
+  // Run some additional DMLs/DDLs to verify.
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i FROM generate_series(1, 100) as i", kTableName));
+  ASSERT_OK(
+      producer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN a enum1 DEFAULT 'a'", kTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i FROM generate_series(101, 200) as i", kTableName));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto producer_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kTableName))));
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(
+      GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name*/ "", kTableName))));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+}
+
 class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
  public:
   bool SetReplicationDirection(ReplicationDirection direction) override {
@@ -1426,7 +1468,7 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
   num_rows_written += kNumRecordsPerBatch;
   // B should still disallow writes as it is still a target.
   ASSERT_NOK_STR_CONTAINS(
-      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_B_),
+      WriteWorkload(num_rows_written, num_rows_written + 1, cluster_B_, table_name),
       "Data modification is forbidden");
 
   LOG(INFO) << "===== Switchover: set up replication from B to A";
@@ -1437,10 +1479,10 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
   ASSERT_OK(ValidateReplicationRole(*cluster_A_, "target"));
   ASSERT_OK(ValidateReplicationRole(*cluster_B_, "target"));
   ASSERT_NOK_STR_CONTAINS(
-      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_A_),
+      WriteWorkload(num_rows_written, num_rows_written + 1, cluster_A_, table_name),
       "Data modification is forbidden");
   ASSERT_NOK_STR_CONTAINS(
-      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_B_),
+      WriteWorkload(num_rows_written, num_rows_written + 1, cluster_B_, table_name),
       "Data modification is forbidden");
 
   LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
@@ -1467,7 +1509,7 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
       kBackwardsReplicationGroupId);
   // Writes on A should be blocked.
   ASSERT_NOK_STR_CONTAINS(
-      WriteWorkload(table_name, num_rows_written, num_rows_written + 1, cluster_A_),
+      WriteWorkload(num_rows_written, num_rows_written + 1, cluster_A_, table_name),
       "Data modification is forbidden");
 }
 

@@ -45,9 +45,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
               taskParams().getDbs()));
     }
 
-    try (YBClient client =
-        ybService.getClient(
-            sourceUniverse.getMasterAddresses(), sourceUniverse.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
       log.info(
           "Checkpointing databases for XClusterConfig({}): source db ids: {}",
           xClusterConfig.getUuid(),

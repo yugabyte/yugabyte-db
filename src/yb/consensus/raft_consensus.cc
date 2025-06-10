@@ -1625,11 +1625,17 @@ Status RaftConsensus::StartReplicaOperationUnlocked(
   VLOG_WITH_PREFIX(1) << "Starting operation: " << msg->id().ShortDebugString();
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
   ConsensusRound* round_ptr = round.get();
-  RETURN_NOT_OK(state_->context()->StartReplicaOperation(round, propagated_safe_time));
+  RETURN_NOT_OK(state_->context()->StartReplicaOperation(round,
+      /* propagated_safe_time */ HybridTime::kInvalid));
   auto result = state_->AddPendingOperation(round_ptr, OperationMode::kFollower);
   if (!result.ok()) {
     round_ptr->NotifyReplicationFinished(result, OpId::kUnknownTerm, /* applied_op_ids */ nullptr);
+  } else if (propagated_safe_time) {
+    // Set propagated_safe_time after we ensure the op will not be popped from mvcc queue
+    // due to failure
+    state_->context()->SetMvccPropagatedSafeTime(propagated_safe_time);
   }
+
   return result;
 }
 

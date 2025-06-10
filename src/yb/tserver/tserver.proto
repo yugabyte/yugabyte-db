@@ -468,7 +468,6 @@ message ReleaseObjectLockRequestPB {
   // Used for tracking in-progress DDL unlock requests at the master.
   optional uint64 request_id = 8;
   optional AshMetadataPB ash_metadata = 9;
-  optional AppStatusPB abort_status = 10;
 }
 
 message ReleaseObjectLockResponsePB {

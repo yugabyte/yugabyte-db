@@ -177,7 +177,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
             .collect(Collectors.toSet());
     sb.setLength(0);
     // Create the child folders with full permission to allow upload.
-    sb.append("mkdir -m 777 -p ").append(String.join(" ", createDirs));
+    sb.append("umask 022 && mkdir -m 777 -p ").append(String.join(" ", createDirs));
     command = getCommand("/bin/bash", "-c", sb.toString());
     log.info("Creating directories {} for node agent {}", createDirs, nodeAgent.getUuid());
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
@@ -187,12 +187,10 @@ public class InstallNodeAgent extends AbstractTaskBase {
         .filter(f -> !f.getTargetPath().equals(installerFiles.getPackagePath()))
         .forEach(
             f -> {
-              log.info(
-                  "Uploading {} to {} on node agent {}",
-                  f.getSourcePath(),
-                  f.getTargetPath(),
-                  nodeAgent.getUuid());
               String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
+              log.info(
+                  "Uploading {} to {} with perm %s on node agent {}",
+                  f.getSourcePath(), f.getTargetPath(), filePerm, nodeAgent.getUuid());
               nodeUniverseManager.uploadFileToNode(
                   node,
                   universe,

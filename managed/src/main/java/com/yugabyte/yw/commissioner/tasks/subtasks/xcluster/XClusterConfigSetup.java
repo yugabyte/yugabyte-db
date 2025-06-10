@@ -83,10 +83,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
 
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
-    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    try (YBClient client =
-        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
       try {
         CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
             getClusterConfig(client, targetUniverse.getUniverseUUID());

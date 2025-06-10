@@ -282,6 +282,15 @@
           "upgradingTooltip": "Upgrading to v{{version}}"
         }
       },
+      "paUniverseStatus": {
+        "enableTitle": "Enable Perf Advisor",
+        "disableTitle": "Disable Perf Advisor",
+        "enablePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
+        "enablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
+        "disbalePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
+        "disablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
+        "subText": "Are you sure you want to {{action}} Perf Advisor for the universe <strong>{{universeName}}</strong>?"
+      },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
         "toggleLabel": "Enhanced Postgres Compatibility",
@@ -690,10 +699,14 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
+        "perfAdvisorAnomaliesTab": "Anomalies",
+        "perfAdvisorInsightsTab": "Insights",
+        "perfAdvisorQueriesTab": "Queries",
+        "perfAdvisorMetricsTab": "Metrics",
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
-        "registrationSuccess": "Registered to Troubleshooting Platform service successfully",
-        "registrationFailed": "Failed to register to Troubleshooting Platform service",
-        "tpServiceUrlLabel": "Troubleshooting Platform Service URL",
+        "registrationSuccess": "Registered to Perf Advisor service successfully",
+        "registrationFailed": "Failed to register to Perf Advisor service",
+        "tpServiceUrlLabel": "Perf Advisor Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
         "apiTokenLabel": "YBA API Token",
@@ -703,31 +716,28 @@
         "registerButton": "Register",
         "urlPlaceholder": "http(s)://<ip>:<port>",
         "universeDetailsErrorMessage": "Failed to fetch universe details",
-        "tpConfigErrorMessage": "Failed to fetch troubleshooting platform configuration",
-        "configTabTitle": "Configuration",
+        "tpConfigErrorMessage": "Failed to fetch Perf Advisor configuration",
+        "configTabTitle": "Register",
         "universesTabTitle": "Universes",
         "urlRequired": "Platform Url required",
         "apiTokenRequired": "API Token required",
-        "monitorUniverseSuccess": "Successfully started monitoring the universe",
-        "monitorUniverseFailure": "Failed to monitor universe",
-        "startMonitoring": "Start monitoring the universe.",
-        "monitor": "Monitor",
+        "enablePerfAdvisorMsg": "Select <bold> 'More' </bold> from <bold>Actions</bold> dropdown menu on the top right corner of the page to <bold>'Enable Perf Advisor'</bold> for this universe.",
         "editDialog": {
-          "title": "Update Troubleshooting Platform Configuration",
+          "title": "Update Perf Advisor Configuration",
           "updateButton": "Update",
           "forceUpdateCheckBoxLabel": "Force Update",
-          "updateMetadataSuccess": "Successfully updated the Troubleshooting Platform configuration",
-          "updateMetadataFailed": "Failed to update the Troubleshooting Platform configuration",
-          "tooltipMessage": "The current troubleshooting platform service may be consumed by some universes currently, to update its metadata, please select the 'Force Update' checkbox"
+          "updateMetadataSuccess": "Successfully updated the Perf Advisor configuration",
+          "updateMetadataFailed": "Failed to update the Perf Advisor configuration",
+          "tooltipMessage": "The current Perf Advisor service may be consumed by some universes currently, to update its metadata, please select the 'Force Update' checkbox"
         },
         "deleteDialog": {
-          "title": "Unregister Troubleshooting Platform Configuration",
-          "unregistrationSuccess": "Successfully unregistered from the Troubleshooting Platform service",
-          "unregistrationFailed": "Failed to unregister from the Troubleshooting Platform service",
-          "tooltipMessage": "Please unregister existing universes being monitored by the troubleshooting Platform service, if not, you can force unregister by checking the 'Force Unregister' checkbox",
+          "title": "Unregister Perf Advisor Service",
+          "unregistrationSuccess": "Successfully unregistered the universe from the Perf Advisor service",
+          "unregistrationFailed": "Failed to unregister the universe from the Perf Advisor service",
+          "tooltipMessage": "Please unregister existing universes being monitored by the Perf Advisor service, if not, you can force unregister by checking the 'Force Unregister' checkbox",
           "forceUnregisterCheckBoxLabel": "Force Unregister",
           "unregisterButton": "Unregister",
-          "unregisterMessage": "Are you sure you want to unregister the Troubleshooting Platform service with URL: {{url}} ?"
+          "unregisterMessage": "Are you sure you want to unregister the Perf Advisor service with URL: {{url}} ?"
         }
       },
       "performance": {
@@ -2417,8 +2427,8 @@
         "expand": "Expand",
         "viewLess": "Collapse",
         "showLog": "YugaWare Log",
-        "expandAll":"Expand All",
-        "collapseAll":"Collapse All",
+        "expandAll": "Expand All",
+        "collapseAll": "Collapse All",
         "percentComplete": "<b>{{percent}}</b>% Completed"
       },
       "banner": {
@@ -2482,8 +2492,8 @@
         "backupNew": {
           "tabLabel": "New Backup Config"
         },
-        "troubleshoot": {
-          "tabLabel": "Troubleshoot"
+        "perfAdvisor": {
+          "tabLabel": "Perf Advisor"
         }
       },
       "error": {
@@ -3006,8 +3016,8 @@
         "security": "Security",
         "securitySettings": "Security Settings",
         "advanced": "Advanced",
-        "proxySettings": "Proxy Settings",
-        "otherAdvancedSettings": "Other Advanced Settings",
+        "proxySettings": "Proxy Settings (Optional)",
+        "otherAdvancedSettings": "Other Advanced Settings (Optional)",
         "review": "Review",
         "summaryAndCost": "Summary and Cost"
       },

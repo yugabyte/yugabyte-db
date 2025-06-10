@@ -37,8 +37,7 @@ public class SoftwareUpgradeHelper {
   }
 
   public YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState(Universe universe) {
-    try (YBClient client =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
       if (resp.hasError()) {
         log.error("Error while getting YSQL major version catalog upgrade state: ", resp);
@@ -80,16 +79,15 @@ public class SoftwareUpgradeHelper {
   }
 
   public boolean isAllMasterUpgradedToYsqlMajorVersion(Universe universe, String ysqlMajorVersion) {
-    try (YBClient client =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return universe.getMasters().stream()
           .allMatch(
-              master -> {
-                return ybService
-                    .getYsqlMajorVersion(client, master.cloudInfo.private_ip, master.masterRpcPort)
-                    .map(version -> version.equals(ysqlMajorVersion))
-                    .orElse(false);
-              });
+              master ->
+                  ybService
+                      .getYsqlMajorVersion(
+                          client, master.cloudInfo.private_ip, master.masterRpcPort)
+                      .map(version -> version.equals(ysqlMajorVersion))
+                      .orElse(false));
     } catch (Exception e) {
       log.error("Error while getting YSQL major version: ", e);
       return false;
@@ -98,8 +96,7 @@ public class SoftwareUpgradeHelper {
 
   public boolean isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(
       Universe universe, String ysqlMajorVersion) {
-    try (YBClient client =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return universe.getMasters().stream()
           .anyMatch(
               master -> {

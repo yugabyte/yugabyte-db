@@ -48,13 +48,12 @@
 DEFINE_test_flag(bool, assert_olm_empty_locks_map, false,
     "When set, asserts that the local locks map is empty at shutdown. Used in tests "
     "to assert sanity, where tserver doesn't loose YSQL lease and all connections release "
-    "acquired/timedout/errored locks.");
+    "acquired/tryagain/errored locks.");
 
 DEFINE_test_flag(bool, olm_skip_scheduling_waiter_resumption, false,
     "When set, don't signal potential waiters for resumption");
 
-// TODO(bkolagani): Default flag to false once issues with deadlock detection are resolved.
-DEFINE_test_flag(bool, olm_skip_sending_wait_for_probes, true,
+DEFINE_test_flag(bool, olm_skip_sending_wait_for_probes, false,
     "When set, the lock manager doesn't send wait-for probres to the local waiting txn registry, "
     "essentially giving away deadlock detection.");
 
@@ -71,8 +70,8 @@ namespace {
 const Status kShuttingDownError = STATUS(
     ShutdownInProgress, "Object Lock Manager shutting down");
 
-const Status kTimedOut = STATUS(
-    TimedOut, "Failed to acquire object locks within deadline");
+const Status kTryAgain = STATUS(
+    TryAgain, "Failed to acquire object locks within deadline");
 
 const Status kTxnExpired = STATUS(
     Expired, "Transaction expired, all acquired object locks have been released");
@@ -191,6 +190,10 @@ struct WaiterEntry {
     return lock_data.deadline;
   }
 
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(lock_data);
+  }
+
   TrackedTxnLockEntryPtr transaction_entry;
   LockData lock_data;
   size_t resume_it_offset;
@@ -209,7 +212,6 @@ using WaiterEntryPtr = std::shared_ptr<WaiterEntry>;
 
 struct StartUsTag;
 struct DeadlineTag;
-struct OwnerTag;
 using Waiters = boost::multi_index_container<
   WaiterEntryPtr,
   boost::multi_index::indexed_by<
@@ -220,12 +222,6 @@ using Waiters = boost::multi_index_container<
     boost::multi_index::ordered_non_unique<
         boost::multi_index::tag<DeadlineTag>,
         boost::multi_index::const_mem_fun<WaiterEntry, CoarseTimePoint, &WaiterEntry::deadline>
-    >,
-    boost::multi_index::hashed_non_unique<
-        boost::multi_index::tag<OwnerTag>,
-        boost::multi_index::const_mem_fun<
-            WaiterEntry, const TransactionId&, &WaiterEntry::txn_id
-        >
     >
   >
 >;
@@ -270,7 +266,7 @@ class ObjectLockManagerImpl {
 
   void Lock(LockData&& data);
 
-  void Unlock(const ObjectLockOwner& object_lock_owner, Status resume_with_status);
+  void Unlock(const ObjectLockOwner& object_lock_owner);
 
   void Poll() EXCLUDES(global_mutex_);
 
@@ -328,13 +324,6 @@ class ObjectLockManagerImpl {
       TrackedTransactionLockEntry::LockEntryMap& locks_map,
       TrackedTxnLockEntryPtr& txn_entry) REQUIRES(global_mutex_, txn_entry->mutex);
 
-  void SignalTerminateFinishedWaiters(
-      const ObjectLockOwner& object_lock_owner, TrackedTxnLockEntryPtr& txn_entry,
-      Status resume_with_status) REQUIRES(global_mutex_, txn_entry->mutex);
-
-  void DoSignalTerminateFinishedWaiters(
-      ObjectLockedBatchEntry* entry, TransactionId txn_id, Status resume_with_status);
-
   bool UnlockSingleEntry(const LockBatchEntry<ObjectLockManager>& lock_entry);
 
   bool DoUnlockSingleEntry(ObjectLockedBatchEntry& entry, LockState sub);
@@ -347,9 +336,6 @@ class ObjectLockManagerImpl {
   void UnblockPotentialWaiters(ObjectLockedBatchEntry* entry);
 
   void DoSignal(ObjectLockedBatchEntry* entry);
-
-  void DoTerminateFinishedWaiters(
-      ObjectLockedBatchEntry* entry, TransactionId txn_id, Status resume_with_status);
 
   void DoComputeBlockersWithinQueue(
       ObjectLockedBatchEntry* locked_batch_entry, std::optional<ObjectLockPrefix>& key,
@@ -518,7 +504,7 @@ Status ObjectLockManagerImpl::MakePrepareAcquireResult(
     const LockData& data, Status resume_with_status) {
   RETURN_NOT_OK(resume_with_status);
   if (data.deadline < CoarseMonoClock::Now()) {
-    return kTimedOut;
+    return kTryAgain;
   }
   if (shutdown_in_progress_) {
     return kShuttingDownError;
@@ -644,8 +630,7 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
   }
 }
 
-void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner,
-                                   Status resume_with_status) {
+void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner) {
   TRACE("Unlocking all keys for owner $0", AsString(object_lock_owner));
 
   TrackedTxnLockEntryPtr txn_entry;
@@ -672,11 +657,17 @@ void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner,
   std::lock_guard lock(global_mutex_);
   UniqueLock txn_lock(txn_entry->mutex);
   DoUnlock(object_lock_owner, txn_entry->granted_locks, txn_entry);
-  // Terminate any obsolete waiting lock request for this txn/subtxn. This could happen when
-  // 1. txn gets aborted due to a deadlock and the pg backend issues a finish txn request
-  // 2. txn times out due to conflict and pg backend issues a finish txn request before the
-  //    lock manager times out the waiting lock request.
-  SignalTerminateFinishedWaiters(object_lock_owner, txn_entry, resume_with_status);
+  // We let the obsolete waiting lock request for this txn/subtxn, if any, to timeout and be resumed
+  // as part of ObjectLockManagerImpl::Poll. This should be okay since:
+  // 1. Obsolete waiting request could exist when txn times out due to conflict and pg backend
+  //    issues a finish txn request before the lock manager times out the obsolete request. Since
+  //    the obsolete waiting request would anyways be past the deadline, it would be resumed soon.
+  // 2. On abort due to txn deadlock, we anyways don't send an early release all request.
+  //    PgClientSession waits for the previous lock req deadline (FLAGS_refresh_waiter_timeout_ms)
+  //    and then drops the retry since the txn failed.
+  //
+  // If there's any requirement to early terminate obsolete waiters based on txn id, then we should
+  // signal appropriately here.
 }
 
 void ObjectLockManagerImpl::DoUnlock(
@@ -700,73 +691,6 @@ void ObjectLockManagerImpl::DoUnlock(
       existing_states[itr->first] -= itr->second.state;
       DoReleaseTrackedLock(itr->first, itr->second);
     }
-  }
-}
-
-void ObjectLockManagerImpl::SignalTerminateFinishedWaiters(
-    const ObjectLockOwner& object_lock_owner,
-    TrackedTxnLockEntryPtr& txn_entry,
-    Status resume_with_status) {
-  auto& locks_map = txn_entry->waiting_locks;
-  if (object_lock_owner.subtxn_id) {
-    auto subtxn_itr = locks_map.find(object_lock_owner.subtxn_id);
-    if (subtxn_itr == locks_map.end()) {
-      return;
-    }
-    for (auto itr = subtxn_itr->second.begin(); itr != subtxn_itr->second.end(); itr++) {
-      DoSignalTerminateFinishedWaiters(
-          &itr->second.locked_batch_entry, object_lock_owner.txn_id, resume_with_status);
-    }
-    return;
-  }
-  for (auto locks_itr = locks_map.begin(); locks_itr != locks_map.end(); locks_itr++) {
-    for (auto itr = locks_itr->second.begin(); itr != locks_itr->second.end(); itr++) {
-      DoSignalTerminateFinishedWaiters(
-          &itr->second.locked_batch_entry, object_lock_owner.txn_id, resume_with_status);
-    }
-  }
-}
-
-void ObjectLockManagerImpl::DoSignalTerminateFinishedWaiters(
-    ObjectLockedBatchEntry* entry, TransactionId txn_id, Status resume_with_status) {
-  WARN_NOT_OK(
-      thread_pool_token_->SubmitFunc(
-          std::bind(&ObjectLockManagerImpl::DoTerminateFinishedWaiters, this, entry, txn_id,
-          resume_with_status)),
-      "Failure submitting task ObjectLockManagerImpl::DoTerminateFinishedWaiters");
-}
-
-void ObjectLockManagerImpl::DoTerminateFinishedWaiters(
-    ObjectLockedBatchEntry* entry, TransactionId txn_id, Status resume_with_status) {
-  std::vector<WaiterEntryPtr> waiters_failed_to_schedule;
-  {
-    std::lock_guard l(entry->mutex);
-    auto& index = entry->wait_queue.get<OwnerTag>();
-    auto it_range = index.equal_range(txn_id);
-    auto it = it_range.first;
-    auto* messenger = server_.messenger();
-    while (it != it_range.second) {
-      auto waiter_entry = *it;
-      it = index.erase(it);
-      waiter_entry->waiter_registration.reset();
-      entry->waiting_state -= IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
-      VLOG(1) << "Resuming " << AsString(waiter_entry->object_lock_owner());
-      if (PREDICT_TRUE(messenger)) {
-        ScopedOperation resuming_waiter_op(&waiters_amidst_resumption_on_messenger_);
-        messenger->ThreadPool().EnqueueFunctor(
-            [operation = std::move(resuming_waiter_op), entry = std::move(waiter_entry),
-             lock_manager = this, resume_with_status]() {
-          entry->Resume(lock_manager, resume_with_status);
-        });
-      } else {
-        // Don't schedule anything here on thread_pool_token_ as a shutdown could destroy tasks.
-        LOG_WITH_FUNC(WARNING) << "Messenger not available";
-        waiters_failed_to_schedule.push_back(std::move(waiter_entry));
-      }
-    }
-  }
-  for (auto& waiter : waiters_failed_to_schedule) {
-    waiter->Resume(this, resume_with_status);
   }
 }
 
@@ -797,7 +721,7 @@ void ObjectLockManagerImpl::Poll() {
     }
   }
   for (auto& waiter : timed_out_waiters) {
-    waiter->Resume(this, kTimedOut);
+    waiter->Resume(this, kTryAgain);
   }
 }
 
@@ -1151,9 +1075,8 @@ void ObjectLockManager::Lock(LockData&& data) {
   impl_->Lock(std::move(data));
 }
 
-void ObjectLockManager::Unlock(
-    const ObjectLockOwner& object_lock_owner, Status resume_with_status) {
-  impl_->Unlock(object_lock_owner, resume_with_status);
+void ObjectLockManager::Unlock(const ObjectLockOwner& object_lock_owner) {
+  impl_->Unlock(object_lock_owner);
 }
 
 void ObjectLockManager::Poll() {

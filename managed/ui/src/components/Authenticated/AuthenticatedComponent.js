@@ -41,6 +41,7 @@ class AuthenticatedComponent extends Component {
     this.props.fetchRuntimeConfigKeyInfo();
     this.props.fetchUser();
     this.props.fetchAdminNotifications();
+    this.props.fetchPerfAdvisorList();
   }
 
   componentWillUnmount() {

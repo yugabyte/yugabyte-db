@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.services;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
+import com.yugabyte.yw.models.Universe;
 import java.util.Optional;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -35,18 +36,8 @@ public class LocalYBClientService implements YBClientService {
     return null;
   }
 
-  @Override
-  public synchronized void closeClient(YBClient client, String masterHostPorts) {
-    if (client != null) {
-      LOG.debug("Closing client masters={}.", masterHostPorts);
-      try {
-        client.close();
-      } catch (Exception e) {
-        LOG.warn("Closing client with masters={} hit error {}", masterHostPorts, e.getMessage());
-      }
-    } else {
-      LOG.warn("Client for masters {} was null, cannot close", masterHostPorts);
-    }
+  public synchronized YBClient getUniverseClient(Universe universe) {
+    return getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode());
   }
 
   private YBClient getNewClient(String masterHPs, String certFile) {

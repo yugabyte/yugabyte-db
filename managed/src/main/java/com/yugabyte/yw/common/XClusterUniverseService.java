@@ -482,9 +482,7 @@ public class XClusterUniverseService {
 
   public Set<CDCStreamInfo> getAllCDCStreamInfoInUniverse(
       YBClientService ybClientService, Universe universe) {
-    try (YBClient client =
-        ybClientService.getClient(
-            universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       ListCDCStreamsResponse cdcStreamsResponse = client.listCDCStreams(null, null, null);
       if (cdcStreamsResponse.hasError()) {
         throw new RuntimeException(
@@ -595,9 +593,7 @@ public class XClusterUniverseService {
 
   public Map<String, String> getSourceTableIdTargetTableIdMap(
       Universe targetUniverse, String replicationGroupName) {
-    String universeMasterAddresses = targetUniverse.getMasterAddresses();
-    String universeCertificate = targetUniverse.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
       if (clusterConfigResp.hasError()) {
         String errMsg =

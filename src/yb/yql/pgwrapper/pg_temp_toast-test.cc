@@ -28,8 +28,8 @@ namespace yb::pgwrapper {
 // into a YB table from a temporary table, which may contain toasted values.
 
 namespace {
-constexpr size_t kVectorSize = 4096;
-constexpr size_t kLargeTextSize = 8192;
+constexpr size_t kVectorSize = 16000;
+constexpr size_t kLargeTextSize = 8192 * 16;
 constexpr size_t kWordMinSize = 1024;
 constexpr size_t kWordMaxSize = 2048;
 
@@ -109,10 +109,11 @@ class PgToastTempTableTest : public PgMiniTestBase {
  protected:
   // Generates a random string of a given size.
   // The string will be comprised of one or more words separated by spaces.
-  // Each word will be 10-1000 characters long and is comprised of the same
-  // character repeated.
+  // Each word is comprised of mixed characters to ensure that compression alone
+  // will not get the string down to the desired size; Postgres will still need
+  // to do out-of-line storage in addition to compression.
   static std::string GenerateString(unsigned int seed, size_t size) {
-    static const char charset[] = "abcdefghijklmnopqrstuvwxyz";
+    static const char charset[] = "abcdefghijklmnopqrstuvwxyz0123456789";
     static const size_t charset_size = sizeof(charset) - 1;
 
     std::string result;
@@ -123,10 +124,29 @@ class PgToastTempTableTest : public PgMiniTestBase {
 
     while (result.size() < size) {
       size_t word_len = RandomUniformInt<size_t>(kWordMinSize, kWordMaxSize, &rng);
-      char c = charset[RandomUniformInt<size_t>(0, charset_size - 1, &rng)];
-      for (size_t i = 0; i < word_len && result.size() < size; ++i) {
-        result += c;
+
+      // Generate a subword of random letters
+      size_t repeat_count = 4;
+      size_t subword_len = std::max(size_t(1), word_len / repeat_count);
+      std::string subword;
+      for (size_t i = 0; i < subword_len; ++i) {
+        char c = charset[RandomUniformInt<size_t>(0, charset_size - 1, &rng)];
+        subword += c;
       }
+
+      // Repeat the subword to form the word
+      std::string word;
+      while (word.size() < word_len) {
+        for (size_t i = 0; i < subword.size() && word.size() < word_len; ++i) {
+          word += subword[i];
+        }
+      }
+
+      // Add the word to result, ensuring we don't exceed the target size
+      for (size_t i = 0; i < word.size() && result.size() < size; ++i) {
+        result += word[i];
+      }
+
       if (result.size() < size) {
         result += ' ';
       }
@@ -368,11 +388,12 @@ class PgToastTempTableTest : public PgMiniTestBase {
 
   // Erases half of the rows from the given expected rows vector.
   // Used in delete tests.
-  static void EraseHalfRows(std::vector<TestDataRow>& rows) {
-    rows.erase(
+  static void EraseHalfRows(std::vector<TestDataRow>* rows) {
+    rows->erase(
         std::remove_if(
-            rows.begin(), rows.end(), [](const auto& row) { return row.id < (kNumRows * 3) / 2; }),
-        rows.end());
+            rows->begin(), rows->end(),
+            [](const auto& row) { return row.id < (kNumRows * 3) / 2; }),
+        rows->end());
   }
 
   std::optional<PGConn> conn_;
@@ -455,7 +476,7 @@ TEST_F(PgToastTempTableTest, DeleteWhereInTempData) {
   ASSERT_OK(conn_->Execute(query));
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
 
-  EraseHalfRows(expected_table_rows_[kPermanentTableName]);
+  EraseHalfRows(&expected_table_rows_[kPermanentTableName]);
   ASSERT_OK(VerifyData());
 }
 
@@ -470,7 +491,7 @@ TEST_F(PgToastTempTableTest, DeleteWhereDataPoint) {
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
   }
 
-  EraseHalfRows(expected_table_rows_[kPermanentTableName]);
+  EraseHalfRows(&expected_table_rows_[kPermanentTableName]);
   ASSERT_OK(VerifyData());
 }
 
@@ -484,7 +505,7 @@ TEST_F(PgToastTempTableTest, DeleteWhereInTempJson) {
   ASSERT_OK(conn_->Execute(query));
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
 
-  EraseHalfRows(expected_table_rows_[kPermanentTableName]);
+  EraseHalfRows(&expected_table_rows_[kPermanentTableName]);
   ASSERT_OK(VerifyData());
 }
 
@@ -496,7 +517,7 @@ TEST_F(PgToastTempTableTest, DeleteWithCTEFromTempPk) {
       "DELETE FROM $1 WHERE id IN (SELECT id FROM w WHERE id < $2 * 3 / 2)",
       kTempTableName3, kPermanentTableName, kNumRows));
 
-  EraseHalfRows(expected_table_rows_[kPermanentTableName]);
+  EraseHalfRows(&expected_table_rows_[kPermanentTableName]);
   ASSERT_OK(VerifyData());
 }
 
@@ -508,7 +529,7 @@ TEST_F(PgToastTempTableTest, DeleteWithCTEFromTempData) {
       "DELETE FROM $1 WHERE data IN (SELECT data FROM w WHERE id < $2 * 3 / 2)",
       kTempTableName3, kPermanentTableName, kNumRows));
 
-  EraseHalfRows(expected_table_rows_[kPermanentTableName]);
+  EraseHalfRows(&expected_table_rows_[kPermanentTableName]);
   ASSERT_OK(VerifyData());
 }
 
@@ -522,7 +543,7 @@ TEST_F(PgToastTempTableTest, DeleteWithCTEFromTempJson) {
       kTempTableName3, kPermanentTableName, kNumRows, i));
   }
 
-  EraseHalfRows(expected_table_rows_[kPermanentTableName]);
+  EraseHalfRows(&expected_table_rows_[kPermanentTableName]);
   ASSERT_OK(VerifyData());
 }
 
@@ -556,7 +577,16 @@ TEST_F(PgToastTempTableTest, DeleteFromDataPk) {
       "DELETE FROM $1 WHERE data IN (SELECT data FROM $0 WHERE id < $2 * 3 / 2)",
       kTempTableName3, kPermanentTableDataPkName, kNumRows));
 
-  EraseHalfRows(expected_table_rows_[kPermanentTableDataPkName]);
+  EraseHalfRows(&expected_table_rows_[kPermanentTableDataPkName]);
+  ASSERT_OK(VerifyData());
+}
+
+// Check that refreshing a materialized view (permanent table -> temp table -> permanent table)
+// works correctly.
+TEST_F(PgToastTempTableTest, RefreshMaterializedView) {
+  ASSERT_OK(conn_->ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMatViewName));
+
+  expected_table_rows_[kMatViewName] = expected_table_rows_[kPermanentTableName];
   ASSERT_OK(VerifyData());
 }
 

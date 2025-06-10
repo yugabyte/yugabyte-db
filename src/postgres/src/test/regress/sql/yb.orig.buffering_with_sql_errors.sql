@@ -61,6 +61,7 @@
 --
 -- TODO: The constraint_name is not populated for unique constraint violations in stacked
 -- diagnostics. This is being tracked by github issue #13501
+SET yb_speculatively_execute_pl_statements TO true;
 drop function if exists f(text) cascade;
 drop table if exists t cascade;
 create table t(k serial primary key, v varchar(5) not null);
@@ -338,3 +339,191 @@ exception when others then
   raise info 'exception caught';
 end;
 $body$;
+
+--
+-- Test to validate that PL/pgSQL function triggers can be executed without
+-- additional flushes.
+--
+SET yb_explain_hide_non_deterministic_fields TO true;
+
+CREATE TABLE t_test (k INT PRIMARY KEY, v INT);
+CREATE TABLE t_audit (k INT);
+
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+	vtext VARCHAR;
+BEGIN
+	-- Perform a READ that does not require a storage lookup.
+	SELECT current_setting('client_encoding', TRUE) INTO vtext;
+
+	-- Perform a WRITE that also does not require a storage lookup.
+	INSERT INTO t_audit VALUES (NEW.k);
+	RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trigger_bi BEFORE INSERT ON t_test FOR EACH ROW EXECUTE FUNCTION sample_trigger();
+
+BEGIN ISOLATION LEVEL READ COMMITTED;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (11, 11), (12, 12);
+COMMIT;
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (1, 1), (2, 2);
+COMMIT;
+
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (3, 3), (4, 4);
+COMMIT;
+
+DROP TRIGGER trigger_bi ON t_test;
+CREATE TRIGGER trigger_ai AFTER INSERT ON t_test FOR EACH ROW EXECUTE FUNCTION sample_trigger();
+
+BEGIN ISOLATION LEVEL READ COMMITTED;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (13, 13), (14, 14);
+COMMIT;
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (5, 5), (6, 6);
+COMMIT;
+
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (7, 7), (8, 8);
+COMMIT;
+
+SELECT * FROM t_test ORDER BY k;
+
+CREATE TEMP TABLE t_temp (k INT, v INT);
+CREATE TABLE t_other (k INT, v INT);
+TRUNCATE t_test;
+TRUNCATE t_audit;
+
+--
+-- Test to validate flushing logic in PL/pgSQL functions
+--
+
+-- Multiple writes (to the same and different tables) should be batched.
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	INSERT INTO t_audit VALUES (NEW.k);
+	INSERT INTO t_temp VALUES (NEW.k, NEW.v);
+	INSERT INTO t_audit VALUES (NEW.k + 100), (NEW.k + 101);
+	INSERT INTO t_other VALUES (NEW.k, NEW.v);
+	RETURN NEW;
+END; $$;
+
+-- Write to the table once to get any catalog lookups out of the way.
+INSERT INTO t_test VALUES (100, 100);
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (21, 21), (22, 22);
+
+-- SELECTs should not interfere with the buffering logic as long as they do not
+-- require a storage lookup.
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+	vtext VARCHAR;
+	vint INT;
+BEGIN
+	INSERT INTO t_audit VALUES (NEW.k);
+	SELECT current_setting('client_encoding', TRUE) INTO vtext;
+	INSERT INTO t_audit VALUES (NEW.k + 100), (NEW.k + 101);
+	SELECT SUM(k) + SUM(v) FROM t_temp WHERE k > 10 INTO vint;
+	INSERT INTO t_other VALUES (NEW.k, NEW.v);
+	RETURN NEW;
+END; $$;
+
+INSERT INTO t_test VALUES (101, 101);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (23, 23), (24, 24);
+
+-- Conditional statements should automatically trigger a flush irrespective of
+-- the condition.
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	INSERT INTO t_audit VALUES (NEW.k);
+	IF TRUE THEN
+		INSERT INTO t_temp VALUES (NEW.k, NEW.v);
+	ELSE
+		INSERT INTO t_temp VALUES (NEW.k + 100, NEW.v + 100);
+	END IF;
+	INSERT INTO t_other VALUES (NEW.k, NEW.v);
+	RETURN NEW;
+END; $$;
+
+INSERT INTO t_test VALUES (102, 102);
+-- The query below should incur flushes with the following contents:
+-- 1. t_test: (25, 25), (26, 26)
+--    t_audit: (25)
+-- 2. t_temp: (25, 25)
+--    t_other: (25, 25)
+--    t_audit: (26)
+-- 3. t_temp: (26, 26)
+--    t_other: (26, 26)
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (25, 25), (26, 26);
+
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	INSERT INTO t_audit VALUES (NEW.k);
+	FOR i IN 1..2 LOOP
+		INSERT INTO t_temp VALUES (NEW.k, NEW.v);
+	END LOOP;
+	INSERT INTO t_other VALUES (NEW.k, NEW.v);
+	RETURN NEW;
+END; $$;
+
+INSERT INTO t_test VALUES (103, 103);
+-- The query below should incur flushes with the following contents:
+-- 1. t_test: (27, 27), (28, 28)
+--    t_audit: (27)
+-- 2. t_temp: (27, 27)
+--    t_temp: (27, 27)
+--    t_other: (27, 27)
+--    t_audit: (28)
+-- 3. t_temp: (28, 28)
+--    t_temp: (28, 28)
+--    t_other: (28, 28)
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (27, 27), (28, 28);
+
+-- Similarly statements executed in an exception block should also
+-- automatically trigger a flush.
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+	vint INT;
+BEGIN
+	BEGIN
+		INSERT INTO t_audit VALUES (NEW.k);
+		SELECT 1 / 0 INTO vint; -- This will raise an exception.
+	EXCEPTION
+		WHEN division_by_zero THEN
+			INSERT INTO t_audit VALUES (NEW.k + 100);
+			INSERT INTO t_other VALUES (NEW.k, NEW.v);
+			INSERT INTO t_temp VALUES (NEW.k + 100, NEW.v + 100);
+	END;
+	RETURN NEW;
+END; $$;
+
+INSERT INTO t_test VALUES (104, 104);
+-- The query below should incur flushes with the following contents:
+-- 1. t_test: (29, 29), (30, 30)
+-- 2. t_audit: (29)
+-- 3. t_audit: (129)
+--    t_other: (29, 29)
+--    t_temp: (129, 129)
+-- 4. t_audit: (30)
+-- 5. t_audit: (130)
+--    t_other: (30, 30)
+--    t_temp: (130, 130)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (29, 29), (30, 30);
+
+SELECT * FROM t_test ORDER BY k;
+SELECT * FROM t_other ORDER BY k;
+SELECT * FROM t_temp ORDER BY k;
+SELECT * FROM t_audit ORDER BY k;

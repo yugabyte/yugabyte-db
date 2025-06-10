@@ -418,8 +418,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     if (!Util.isYbVersionFormatValid(requiredVersion)) {
       return new HashSet<>();
     }
-    try (YBClient client =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateClientToNode())) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       return nodeDetails.stream()
           .filter(node -> isDBVersionSameOnNode(client, node, serverType, requiredVersion))
           .collect(Collectors.toSet());

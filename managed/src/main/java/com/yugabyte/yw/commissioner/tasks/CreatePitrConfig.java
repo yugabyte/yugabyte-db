@@ -65,9 +65,7 @@ public class CreatePitrConfig extends UniverseTaskBase {
     log.info("Running {}", getName());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String masterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(masterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       // Find the keyspace id of the keyspace name specified in the task params.
       String keyspaceId =
           getKeyspaceNameKeyspaceIdMap(client, taskParams().tableType)

@@ -2000,8 +2000,8 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::AcquireObjectLocksGlobalAsync(
     const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-    CoarseTimePoint deadline) {
-  data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback);
+    CoarseTimePoint deadline, std::function<Status()>&& should_retry) {
+  data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback, std::move(should_retry));
 }
 
 void YBClient::ReleaseObjectLocksGlobalAsync(

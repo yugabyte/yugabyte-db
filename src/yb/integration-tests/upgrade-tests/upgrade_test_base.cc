@@ -293,8 +293,6 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
       opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
-  AddUnDefOkAndSetFlag(opts.extra_master_flags, "enable_ysql_operation_lease", "false");
-  AddUnDefOkAndSetFlag(opts.extra_tserver_flags, "enable_ysql_operation_lease", "false");
 
   ExternalMiniClusterITestBase::SetUpOptions(opts);
 }

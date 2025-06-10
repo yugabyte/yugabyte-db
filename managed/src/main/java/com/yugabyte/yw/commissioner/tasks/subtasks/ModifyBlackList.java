@@ -76,7 +76,6 @@ public class ModifyBlackList extends UniverseTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterHostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
     try {
       log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
       List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
@@ -108,17 +107,16 @@ public class ModifyBlackList extends UniverseTaskBase {
         return;
       }
 
-      client = ybService.getClient(masterHostPorts, certificate);
-      ModifyMasterClusterConfigBlacklist modifyBlackList =
-          new ModifyMasterClusterConfigBlacklist(
-              client, addHosts, removeHosts, taskParams().isLeaderBlacklist);
-      modifyBlackList.doCall();
-      universe.incrementVersion();
+      try (YBClient client = ybService.getUniverseClient(universe)) {
+        ModifyMasterClusterConfigBlacklist modifyBlackList =
+            new ModifyMasterClusterConfigBlacklist(
+                client, addHosts, removeHosts, taskParams().isLeaderBlacklist);
+        modifyBlackList.doCall();
+        universe.incrementVersion();
+      }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, masterHostPorts);
     }
   }
 

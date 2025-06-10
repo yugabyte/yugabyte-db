@@ -45,14 +45,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
 
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    LibPqTestBase::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
-    options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
-  }
-
   Result<int64_t> GetCatalogVersion(PGConn* conn) {
     const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
         "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
@@ -2952,6 +2944,42 @@ TEST_F(PgCatalogVersionTest, CreateFunction) {
   // Connection 2: Call the function again; should now return 'dom'
   result = ASSERT_RESULT(conn2.FetchRow<std::string>("SELECT echo_me('red'::rainbow)"));
   ASSERT_EQ(result, "dom");
+}
+
+// Tests that CREATE RULE increments the catalog version.
+TEST_F(PgCatalogVersionTest, CreateRule) {
+  auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE source_table(id int, name text)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE intermediate_table(id int, name text)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE destination_table(id int, name text)"));
+
+  // First backend: rule that forwards some inserts from source_table -> intermediate_table
+  ASSERT_OK(conn1.Execute(R"(
+      CREATE RULE forward_to_intermediate AS ON INSERT TO source_table
+          WHERE NEW.id >= 20 AND NEW.id < 30 DO
+      INSERT INTO intermediate_table VALUES (NEW.id, NEW.name);
+  )"));
+
+  // Second backend: INSTEAD rule on intermediate_table that forwards to destination_table
+  ASSERT_OK(conn2.Execute(R"(
+      CREATE RULE redirect_to_destination AS ON INSERT TO intermediate_table
+          WHERE NEW.id > 25 DO INSTEAD
+      INSERT INTO destination_table VALUES (NEW.id, NEW.name);
+  )"));
+
+  // Back on backend 1: insert should ultimately land in destination_table, not intermediate_table
+  // Note that conn1 and conn2 are on the same node, so we don't need to wait for the heartbeat
+  // to propagate the new version of the rule.
+  ASSERT_OK(conn1.Execute("INSERT INTO intermediate_table VALUES (32,'custom entry')"));
+
+  auto intermediate_count =
+      ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT count(*) FROM intermediate_table"));
+  auto destination_count =
+      ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT count(*) FROM destination_table"));
+  ASSERT_EQ(intermediate_count, 0);
+  ASSERT_EQ(destination_count, 1);
 }
 
 } // namespace pgwrapper

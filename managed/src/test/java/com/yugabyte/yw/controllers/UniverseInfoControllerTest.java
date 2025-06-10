@@ -125,7 +125,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));

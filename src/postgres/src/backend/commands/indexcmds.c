@@ -1582,11 +1582,12 @@ DefineIndex(Oid relationId,
 	 * partitioned index (because those don't have storage).
 	 *
 	 * YB NOTE:
-	 * We don't create constraints for system relation indexes during YSQL upgrade,
-	 * to simulate initdb behaviour.
+	 * We also create constraints for non-constraint unique system indexes
+	 * during YSQL upgrade, to simulate initdb behaviour.
 	 */
 	flags = constr_flags = 0;
-	if (stmt->isconstraint && !(IsYBRelation(rel) && IsYsqlUpgrade && IsCatalogRelation(rel)))
+	if (stmt->isconstraint || (stmt->unique && IsYBRelation(rel) &&
+							   IsYsqlUpgrade && IsCatalogRelation(rel)))
 		flags |= INDEX_CREATE_ADD_CONSTRAINT;
 	if (skip_build || concurrent || partitioned)
 		flags |= INDEX_CREATE_SKIP_BUILD;

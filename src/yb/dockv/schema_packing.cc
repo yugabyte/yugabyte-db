@@ -430,6 +430,7 @@ ColumnPackingData ColumnPackingData::FromPB(const ColumnPackingPB& pb) {
     .size = pb.size(),
     .nullable = pb.nullable(),
     .data_type = ToLW(pb.data_type()),
+    .missing_value = pb.missing_value(),
   };
 }
 
@@ -440,10 +441,17 @@ void ColumnPackingData::ToPB(ColumnPackingPB* out) const {
   out->set_size(size);
   out->set_nullable(nullable);
   out->set_data_type(yb::ToPB(data_type));
+  *out->mutable_missing_value() = missing_value;
 }
 
 std::string ColumnPackingData::ToString() const {
   return YB_STRUCT_TO_STRING(
+      id, num_varlen_columns_before, offset_after_prev_varlen_column, size, nullable, data_type,
+      missing_value);
+}
+
+bool operator==(const ColumnPackingData& lhs, const ColumnPackingData& rhs) {
+  return YB_STRUCT_EQUALS(
       id, num_varlen_columns_before, offset_after_prev_varlen_column, size, nullable, data_type);
 }
 
@@ -480,6 +488,7 @@ SchemaPacking::SchemaPacking(TableType table_type, const Schema& schema) {
       .size = varlen ? 0 : EncodedColumnSize(column_schema),
       .nullable = column_schema.is_nullable(),
       .data_type = type_info.type,
+      .missing_value = column_schema.missing_value(),
     });
 
     if (varlen) {

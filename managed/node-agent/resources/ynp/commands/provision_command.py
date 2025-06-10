@@ -166,6 +166,10 @@ class ProvisionCommand(Command):
                 print(f"Skipping {key} because {key}.configure_clockbound is "
                       f"{self.config[key].get('configure_clockbound')}")
                 continue
+            if key == 'ConfigureSudoers' and \
+                    not self.config[key].get('sudoers_commands', None):
+                print(f"Skipping {key} because {key}.sudoers_commands is not set")
+                continue
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")

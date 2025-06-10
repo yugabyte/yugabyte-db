@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <ranges>
+
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
@@ -42,6 +44,7 @@
 #include "yb/yql/pggate/pggate_flags.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DEFINE_test_flag(int32, scan_tests_num_rows, 0,
                  "Number of rows to load for various scanning tests, or 0 for default.");
@@ -1944,15 +1947,6 @@ TEST_F(PgSingleTServerTest, BackwardScanOnIndexDescendingColumn) {
   ASSERT_STR_EQ(ToUpperCase(result), "NULL");
 }
 
-class PgSmallRpcWorkersTest : public PgSingleTServerTest {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
-
-    PgSingleTServerTest::SetUp();
-  }
-};
-
 TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 10;
   constexpr int kNumRows = 20;
@@ -1974,13 +1968,29 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
   ASSERT_EQ(result, "1");
 }
 
+class PgSmallRpcWorkersTest : public PgSingleTServerTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
+
+    PgSingleTServerTest::SetUp();
+  }
+};
+
 TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGINT PRIMARY KEY, value BIGINT)"));
+  // The version increment is used to make sure that all the new connections which will be created
+  // simultaneously will load new cache.
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn));
   ThreadHolder threads;
   std::atomic<int> key = 0;
-  for (unsigned int i = 0; i != 64; ++i) {
-    threads.AddThread([this, &stop = threads.stop_flag(), &key] {
+  constexpr auto kConnectionCount = 64;
+  CountDownLatch latch(kConnectionCount);
+  for ([[maybe_unused]] auto _  : std::views::iota(0, kConnectionCount)) {
+    threads.AddThread([this, &stop = threads.stop_flag(), &key, &latch] {
+      latch.CountDown();
+      latch.Wait();
       auto new_conn = ASSERT_RESULT(Connect());
       while (!stop.load()) {
         auto k = ++key;
@@ -1995,13 +2005,13 @@ TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
       }
     });
   }
-  for (unsigned int i = 0; i != 3; ++i) {
-    std::this_thread::sleep_for(1s);
+  latch.Wait();
+  for ([[maybe_unused]] auto _ : std::views::iota(0, 3)) {
     ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 BIGINT"));
     std::this_thread::sleep_for(1s);
     ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
+    std::this_thread::sleep_for(1s);
   }
-  threads.WaitAndStop(1s);
 }
 
 }  // namespace pgwrapper

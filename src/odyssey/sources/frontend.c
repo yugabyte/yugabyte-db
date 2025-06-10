@@ -2136,6 +2136,7 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 
 			assert(server == NULL);
 
+		yb_retry_attach:
 			/*
 			 * YB: Separate the attach and deploy phases around the initialization of the relay to
 			 * allow correct handling of the condition variables used to synchronize code flow around
@@ -2166,6 +2167,24 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 			rc = od_deploy(client, "main");
 			if (rc == -1)
 				status = OD_ESERVER_WRITE;
+
+			/*
+			 * YB: This return condition is only possible for optimized support
+			 * for GUC variables. It occurs due to conflict-related errors when
+			 * dealing with concurrent transactions; odyssey assumes that the
+			 * transaction is rolled back on the server and proceeds with
+			 * operations, where the server process is still in a transaction.
+			 * Close the current server process and retry by attaching to a
+			 * different server whenever this occurs.
+			 */
+			if (rc == -2) {
+				assert(instance->config.yb_optimized_session_parameters);
+				od_error(
+					&instance->logger, "main", client, server,
+					"deploy error: conflict with another transaction");
+				od_router_close(client->global->router, client);
+				goto yb_retry_attach;
+			}
 
 			if (client->deploy_err)
 				status = YB_OD_DEPLOY_ERR;
