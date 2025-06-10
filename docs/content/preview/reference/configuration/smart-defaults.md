@@ -14,13 +14,13 @@ type: docs
 
 To configure a YugabyteDB deployment, you can use smart defaults to manage some performance features and guardrails. These defaults take into account the amount of RAM and cores available to optimize resources available to the cluster.
 
-### Memory division smart defaults
+## Memory division smart defaults
 
 Use the [use_memory_defaults_optimized_for_ysql](../yb-tserver/#use-memory-defaults-optimized-for-ysql) flag to automatically set defaults for how much memory is made available to YugabyteDB processes that run on the nodes of your cluster. These defaults take into account the amount of RAM and cores available, and are optimized for using YSQL.
 
 When the flag is false, the defaults are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-#### Split of memory between processes on nodes
+### Split of memory between processes on nodes
 
 If `use_memory_defaults_optimized_for_ysql` is true, then the [memory division flag](../yb-tserver/#memory-division-flags) defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
 
@@ -37,7 +37,7 @@ To read this table, take your node's available memory in GiB, call it _M_, and f
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
 
-#### Split of memory within processes
+### Split of memory within processes
 
 Some defaults for the split of memory _within_ processes (as opposed to between processes on a node) are also affected by the `--use_memory_defaults_optimized_for_ysql` setting.
 
@@ -50,6 +50,4 @@ The defaults for the [split of memory _within_ a TServer](../yb-tserver/#flags-c
 
 The default value of `--db_block_cache_size_percentage` here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead. (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
 
-Currently, the defaults for the [split of memory _within_ a Master process](../yb-master/#flags-controlling-the-split-of-memory-within-a-master) (as opposed to between processes on a node) do not depend on node size, and are not affected by the `--use_memory_defaults_optimized_for_ysql` setting.
-
-This could change in future releases.
+Currently, the defaults for the [split of memory _within_ a Master process](../yb-master/#flags-controlling-the-split-of-memory-within-a-master) do not depend on node size, and are not affected by the `--use_memory_defaults_optimized_for_ysql` setting. This could change in future releases.
