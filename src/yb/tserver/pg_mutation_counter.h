@@ -21,8 +21,9 @@
 
 #include "yb/gutil/thread_annotations.h"
 
-namespace yb {
-namespace tserver {
+#include "yb/util/shared_lock.h"
+
+namespace yb::tserver {
 
 using TableMutationCounts = std::unordered_map<TableId, std::atomic<uint64_t>>;
 
@@ -30,6 +31,39 @@ class PgMutationCounter {
  public:
   void Increase(const TableId& table_id, uint64_t mutation_count) EXCLUDES(mutex_);
   TableMutationCounts GetAndClear() EXCLUDES(mutex_);
+
+  template <class Batch>
+  void IncreaseBatch(const Batch& batch) EXCLUDES(mutex_) {
+    if (batch.empty()) {
+      return;
+    }
+    auto batch_it = batch.begin();
+    auto batch_end = batch.end();
+    {
+      // The mutex_ is used for only guarding membership changes to the map. A shared lock is needed
+      // when checking for membership and an exclusive lock is needed if updating membership i.e.,
+      // adding/ removing a key from the map.
+      //
+      // Incrementing the counters doesn't need a mutex because we use atomic for the counter.
+      SharedLock shared_lock(mutex_);
+      for (; batch_it != batch_end; ++batch_it) {
+        const auto& [key, value] = *batch_it;
+        auto it = table_mutation_counts_.find(key);
+        if (it == table_mutation_counts_.end()) {
+          break;
+        }
+        it->second += value;
+      }
+    }
+
+    if (batch_it != batch_end) {
+      std::lock_guard lock(mutex_);
+      for (; batch_it != batch_end; ++batch_it) {
+        const auto& [key, value] = *batch_it;
+        table_mutation_counts_[key] += value;
+      }
+    }
+  }
  private:
   std::shared_mutex mutex_;
   // Table id is not stored as oid as that will require conversion in each table of each
@@ -37,5 +71,4 @@ class PgMutationCounter {
   TableMutationCounts table_mutation_counts_ GUARDED_BY(mutex_);
 };
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

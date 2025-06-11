@@ -124,20 +124,25 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
         FLAGS_ysql_cluster_level_mutation_persist_interval_ms + 50 * kTimeMultiplier;
     std::this_thread::sleep_for(wait_for_mutation_reporting_and_persisting_ms * 1ms);
 
-    RETURN_NOT_OK(WaitFor([this, &table_mutations_in_cql_table_before,
+    std::unordered_set<TableId> reached;
+    RETURN_NOT_OK(WaitFor([this, &table_mutations_in_cql_table_before, &reached,
                            &expected_table_mutations]() -> Result<bool> {
       std::unordered_map<TableId, uint64> table_mutations_in_cql_table_after;
       GetTableMutationsFromCQLTable(&table_mutations_in_cql_table_after);
-      LOG(INFO) << "table_mutations_in_cql_table_before: "
-                << yb::ToString(table_mutations_in_cql_table_before)
-                << ", table_mutations_in_cql_table_after: "
-                << yb::ToString(table_mutations_in_cql_table_after);
       for (const auto& [table_id, expected_mutations] : expected_table_mutations) {
-        if (table_mutations_in_cql_table_after[table_id]
-            - table_mutations_in_cql_table_before[table_id] != expected_mutations)
-          return false;
+        if (reached.contains(table_id)) {
+          continue;
+        }
+        auto before = table_mutations_in_cql_table_before[table_id];
+        auto after = table_mutations_in_cql_table_after[table_id];
+        LOG(INFO)
+            << table_id << ") before: " << before << ", after: " << after << ", expected: "
+            << expected_mutations;
+        if (after - before == expected_mutations) {
+          reached.insert(table_id);
+        }
       }
-      return true;
+      return reached.size() == expected_table_mutations.size();
     }, 10s * kTimeMultiplier, "Check mutations count"));
 
     return Status::OK();
@@ -161,6 +166,12 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 
     return Status::OK();
   }
+
+  Result<TableId> GetTableId(const std::string& filter) {
+    auto tables = VERIFY_RESULT(client_->ListTables(/* filter */ filter));
+    SCHECK_EQ(1, tables.size(), IllegalState, "Expected exactly one table");
+    return tables.front().table_id();
+  }
 };
 
 } // namespace
@@ -176,13 +187,8 @@ TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table1_name));
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table2_name));
 
-  auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table1_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table1_id = tables.front().table_id();
-
-  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table2_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table2_id = tables.front().table_id();
+  const auto table1_id = ASSERT_RESULT(GetTableId(table1_name));
+  const auto table2_id = ASSERT_RESULT(GetTableId(table2_name));
 
   // 1. INSERT multiple rows
   ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
@@ -556,17 +562,9 @@ TEST_F(PgAutoAnalyzeTest, CheckIndexMutationsCount) {
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (v1)", index_name, table_name));
   ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX $0 ON $1 (v2)", unique_index_name, table_name));
 
-  auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table_id = tables.front().table_id();
-
-  auto indexes = ASSERT_RESULT(client_->ListTables(/* filter */ index_name));
-  ASSERT_EQ(1, indexes.size());
-  const auto index_id = indexes.front().table_id();
-
-  auto unique_indexes = ASSERT_RESULT(client_->ListTables(/* filter */ unique_index_name));
-  ASSERT_EQ(1, unique_indexes.size());
-  const auto unique_index_id = unique_indexes.front().table_id();
+  const auto table_id = ASSERT_RESULT(GetTableId(table_name));
+  const auto index_id = ASSERT_RESULT(GetTableId(index_name));
+  const auto unique_index_id = ASSERT_RESULT(GetTableId(unique_index_name));
 
   // Perform a sequence of DMLs on the base table.
   ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
@@ -606,13 +604,8 @@ TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount) {
     auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
     ASSERT_OK(conn2.ExecuteFormat(table_creation_stmt, table_name2));
 
-    auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name));
-    ASSERT_EQ(1, tables.size());
-    table_id = tables.front().table_id();
-
-    tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name2));
-    ASSERT_EQ(1, tables.size());
-    table_id2 = tables.front().table_id();
+    table_id = ASSERT_RESULT(GetTableId(table_name));
+    table_id2 = ASSERT_RESULT(GetTableId(table_name2));
 
     ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
         [&conn, table_name, &conn2, table_name2] {
@@ -642,9 +635,37 @@ TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount) {
   }, 120s * kTimeMultiplier, "Check mutations count of deleted tables"));
 }
 
+TEST_F(PgAutoAnalyzeTest, MutationsCleanupWhenNoNameCacheRefresh) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (h1 INT, v1 INT, PRIMARY KEY(h1))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test2 (h1 INT, v1 INT, PRIMARY KEY(h1))"));
+
+  // Drop table to update catalog version which ensures that pg_yb_catalog_version is present in
+  // the name cache of the auto analyze service.
+  // Without this manipulation test passes before the fix because DROP TABLE on table "test" would
+  // update the catalog version which would result in a mutation to pg_yb_catalog_version. This
+  // would cause a name cache refresh on the auto analyze service since this would be the first
+  // mutation to pg_yb_catalog_version.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE test2"));
+
+  auto table_id = ASSERT_RESULT(GetTableId("test"));
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn] {
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO test SELECT s, s FROM generate_series(1,2) s"));
+      },
+      {{table_id, 2}}));
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE test"));
+  ASSERT_OK(WaitFor([this, &table_id]() -> Result<bool> {
+      std::unordered_map<TableId, uint64> table_mutations_in_cql_table;
+      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
+      return !table_mutations_in_cql_table.contains(table_id);
+  }, 120s * kTimeMultiplier, "Check mutations count of deleted table"));
+}
+
 // Test that auto analyze service cleans up deleted tables' mutations count
 // when it confirms a deleted table is deleted either directly or due to a deleted database.
-TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount2) {
+TEST_F(PgAutoAnalyzeTest, DeletedTableFoundDuringAnalyzeCommand) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.1;
 
@@ -661,13 +682,8 @@ TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount2) {
     auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
     ASSERT_OK(conn2.ExecuteFormat(table_creation_stmt, table_name2));
 
-    auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name));
-    ASSERT_EQ(1, tables.size());
-    table_id = tables.front().table_id();
-
-    tables = ASSERT_RESULT(client_->ListTables(/* filter */ table_name2));
-    ASSERT_EQ(1, tables.size());
-    table_id2 = tables.front().table_id();
+    table_id = ASSERT_RESULT(GetTableId(table_name));
+    table_id2 = ASSERT_RESULT(GetTableId(table_name2));
 
     ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
         [&conn, table_name, &conn2, table_name2] {
@@ -686,17 +702,24 @@ TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount2) {
         = 6 * kTimeMultiplier;
     ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
         [&conn, table_name, &conn2, table_name2] {
+          auto start_time = MonoTime::Now();
           ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(3,100) s",
                                        table_name));
           ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 SELECT s, s FROM generate_series(3,50) s",
                                         table_name2));
+          auto passed = MonoTime::Now() - start_time;
+          ASSERT_LE(passed.ToSeconds(), FLAGS_TEST_simulate_analyze_deleted_table_secs);
         },
         {{table_id, 98}, {table_id2, 48}}));
   }
 
+  LOG(INFO) << "Drop table and db";
+
   // Drop tables.
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", db2));
+
+  LOG(INFO) << "Wait no mutations: " << table_id << " and " << table_id2;
 
   // Verify the mutations count of tables is deleted from the service table.
   ASSERT_OK(WaitFor([this, &table_id, &table_id2]() -> Result<bool> {
@@ -704,7 +727,9 @@ TEST_F(PgAutoAnalyzeTest, DeletedTableMutationsCount2) {
       GetTableMutationsFromCQLTable(&table_mutations_in_cql_table);
       return !table_mutations_in_cql_table.contains(table_id)
              && !table_mutations_in_cql_table.contains(table_id2);
-  }, 120s * kTimeMultiplier, "Check mutaitons count of deleted tables"));
+  }, 120s * kTimeMultiplier, "Check mutations count of deleted tables"));
+
+  LOG(INFO) << "Test done";
 }
 
 // Test the scenario where the auto analyze service splits four tables into
@@ -731,21 +756,10 @@ TEST_F(PgAutoAnalyzeTest, AnalyzeTablesInBatches) {
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, schema_name, table3_name));
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, schema_name, table4_name));
 
-  auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table1_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table1_id = tables.front().table_id();
-
-  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table2_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table2_id = tables.front().table_id();
-
-  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table3_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table3_id = tables.front().table_id();
-
-  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table4_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table4_id = tables.front().table_id();
+  const auto table1_id = ASSERT_RESULT(GetTableId(table1_name));
+  const auto table2_id = ASSERT_RESULT(GetTableId(table2_name));
+  const auto table3_id = ASSERT_RESULT(GetTableId(table3_name));
+  const auto table4_id = ASSERT_RESULT(GetTableId(table4_name));
 
   StringWaiterLogSink log_waiter1(
       Format("run ANALYZE statement for tables in batch: ANALYZE \"$0\".\"$1\", \"$2\".\"$3\"",
@@ -801,17 +815,9 @@ TEST_F(PgAutoAnalyzeTest, FallBackToAnalyzeEachTableSeparately) {
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table2_name));
   ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table3_name));
 
-  auto tables = ASSERT_RESULT(client_->ListTables(/* filter */ table1_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table1_id = tables.front().table_id();
-
-  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table2_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table2_id = tables.front().table_id();
-
-  tables = ASSERT_RESULT(client_->ListTables(/* filter */ table3_name));
-  ASSERT_EQ(1, tables.size());
-  const auto table3_id = tables.front().table_id();
+  const auto table1_id = ASSERT_RESULT(GetTableId(table1_name));
+  const auto table2_id = ASSERT_RESULT(GetTableId(table2_name));
+  const auto table3_id = ASSERT_RESULT(GetTableId(table3_name));
 
   // Populate the table_tuple_count_ cache in auto analyze service.
   ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
