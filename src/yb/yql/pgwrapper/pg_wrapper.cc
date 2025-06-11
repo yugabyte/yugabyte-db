@@ -986,8 +986,12 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
 
   Status initdb_status = initdb_subprocess.Run();
   if (!initdb_status.ok()) {
-    LOG(ERROR) << "Initdb failed. Initdb log file path: "
-               << boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", getenv("TEST_TMPDIR"));
+    auto log_path = initdb_log_path;
+    auto tmpdir_var = getenv("TEST_TMPDIR");
+    if (tmpdir_var != nullptr) {
+      log_path = boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", tmpdir_var);
+    }
+    LOG(ERROR) << "Initdb failed. Initdb log file path: " << log_path;
     return initdb_status;
   }
 
