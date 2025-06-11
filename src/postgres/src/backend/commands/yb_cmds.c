@@ -1339,6 +1339,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			case AT_AddConstraintRecurse:
 			case AT_DropConstraintRecurse:
 			case AT_ValidateConstraintRecurse:
+			case AT_DropExpression:
 				break;
 			default:
 				/*
@@ -1539,6 +1540,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 		case AT_SetTableSpace:
 		case AT_ValidateConstraint:
 		case AT_ValidateConstraintRecurse:
+		case AT_DropExpression:
 			{
 				Assert(cmd->subtype != AT_DropConstraint);
 				if (cmd->subtype == AT_AlterColumnType)
