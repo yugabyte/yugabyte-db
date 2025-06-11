@@ -647,4 +647,22 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
   ASSERT_GE(bgworker_query_id_cnt, 1);
 }
 
+TEST_F(PgAshSingleNode, TestFinishTransactionRPCs) {
+  constexpr auto kTableName = "test_table";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+
+  for (int i = 0; i < 1000; ++i) {
+    ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kTableName, i));
+    ASSERT_OK(conn_->CommitTransaction());
+  }
+
+  const auto finish_txn_cnt = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format("SELECT COUNT(*) FROM yb_active_session_history "
+          "WHERE wait_event = 'WaitingOnTServer' AND wait_event_aux = 'FinishTransaction' "
+          "AND query_id = 5")));
+  ASSERT_EQ(finish_txn_cnt, 0);
+}
+
 }  // namespace yb::pgwrapper
