@@ -209,7 +209,7 @@ Because xCluster does not replicate sequence data, you need to manually adjust t
 
 For example, if you have a SERIAL column in a table and the highest value in that column after failover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
 
-Use the [nextval](https://www.postgresql.org/docs/current/functions-sequence.html) function to set the sequence next values appropriately.
+Use the [nextval](../../../../api/ysql/exprs/func_nextval/) function to set the sequence next values appropriately.
 
 ### Switch applications to B
 
@@ -223,7 +223,7 @@ If the former Primary universe (A) doesn't come back and you end up creating a n
 
 If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the databases on A need to be dropped and recreated from a backup of B (Bootstrap). Before dropping the databases on A, you can analyze them to determine the exact data that was lost by the failover.
 
-Once you are ready to drop the databases on A, follow the steps:
+When you are ready to drop the databases on A, proceed to the next steps.
 
 ### Disable PITR
 
@@ -333,10 +333,11 @@ Outbound xCluster Replication group rg1 deleted successfully
 </div>
 
 ### Drop the database(s)
+
 Drop the database(s) on A.
 
 ### Perform setup from B to A
-Set up xCluster Replication from the Primary to Standby universe (B to A) by following the steps in [Set up transactional xCluster](../async-transactional-setup-automatic/).
 
+Set up xCluster Replication from the Primary to Standby universe (B to A) by following the steps in [Set up transactional xCluster](../async-transactional-setup-automatic/).
 
 If your eventual desired configuration is for A to be the Primary universe and B the Standby, follow the steps for [Planned switchover](../async-transactional-switchover/).

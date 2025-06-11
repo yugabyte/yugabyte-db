@@ -10,7 +10,7 @@ block_indexing = true
     <a href="#yugabyted-remove-db" class="nav-link active" id="yugabyted-remove-db-tab" data-bs-toggle="tab"
       role="tab" aria-controls="yugabyted-remove-db" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
-      Yugabyted
+      yugabyted
     </a>
   </li>
   <li>
@@ -33,6 +33,7 @@ To remove a database from a replication group, use the following command:
     --replication_id <replication_id> \
     --target_address <ip_of_any_target_cluster_node>
 ```
+
   </div>
 
   <div id="local-remove-db" class="tab-pane fade " role="tabpanel" aria-labelledby="local-remove-db-tab">

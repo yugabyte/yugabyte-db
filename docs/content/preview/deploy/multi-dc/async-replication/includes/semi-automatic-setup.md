@@ -18,7 +18,7 @@ DDLs must be paused on the Primary universe during the entire set up process. {{
     <a href="#yugabyted-setup" class="nav-link active" id="yugabyted-setup-tab" data-bs-toggle="tab"
       role="tab" aria-controls="yugabyted-setup" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
-      Yugabyted
+      yugabyted
     </a>
   </li>
   <li>

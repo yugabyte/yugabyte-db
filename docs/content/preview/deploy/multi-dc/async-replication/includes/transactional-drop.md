@@ -10,7 +10,7 @@ block_indexing = true
     <a href="#yugabyted-drop" class="nav-link active" id="yugabyted-drop-tab" data-bs-toggle="tab"
       role="tab" aria-controls="yugabyted-drop" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
-      Yugabyted
+      yugabyted
     </a>
   </li>
   <li>

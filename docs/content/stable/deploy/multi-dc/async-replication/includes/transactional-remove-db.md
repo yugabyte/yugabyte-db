@@ -33,6 +33,7 @@ To remove a database from a replication group, use the following command:
     --replication_id <replication_id> \
     --target_address <ip_of_any_target_cluster_node>
 ```
+
   </div>
 
   <div id="local-remove-db" class="tab-pane fade " role="tabpanel" aria-labelledby="local-remove-db-tab">
