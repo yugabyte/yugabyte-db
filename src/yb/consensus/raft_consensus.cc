@@ -855,8 +855,6 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
 
   std::string new_leader_uuid;
   // If a new leader is nominated, find it among peers to send RunLeaderElection request.
-  // See https://ramcloud.stanford.edu/~ongaro/thesis.pdf, section 3.10 for this mechanism
-  // to transfer the leadership.
   const bool forced = (req->has_force_step_down() && req->force_step_down());
   if (req->has_new_leader_uuid()) {
     new_leader_uuid = req->new_leader_uuid();
@@ -873,14 +871,17 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
   bool graceful_stepdown = false;
   if (new_leader_uuid.empty() && !FLAGS_stepdown_disable_graceful_transition &&
       !(req->has_disable_graceful_transition() && req->disable_graceful_transition())) {
-    new_leader_uuid = queue_->GetUpToDatePeer();
-    LOG_WITH_PREFIX(INFO) << "Selected up to date candidate protege leader [" << new_leader_uuid
-                          << "]";
+    new_leader_uuid = queue_->FindBestNewLeader();
+    if (!new_leader_uuid.empty()) {
+      LOG_WITH_PREFIX(INFO) << "Selected up to date candidate protege leader [" << new_leader_uuid
+                            << "]";
+    }
     graceful_stepdown = true;
   }
 
-  const auto& local_peer_uuid = state_->GetPeerUuid();
+  // If the new leader recently lost an election, we should not transfer the leadership to it.
   if (!new_leader_uuid.empty()) {
+    const auto& local_peer_uuid = state_->GetPeerUuid();
     const auto leadership_transfer_description =
         Format("tablet $0 from $1 to $2", tablet_id, local_peer_uuid, new_leader_uuid);
     if (!forced && new_leader_uuid == protege_leader_uuid_ && election_lost_by_protege_at_) {
@@ -914,6 +915,12 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     }
   }
 
+  // If possible, gracefully transfer leadership to the new leader by stopping writes, waiting for
+  // it to catch up, stepping down, and asking the new leader to start an election.
+  // If the new leader is already caught up, we skip the wait and immediately step down and have the
+  // new leader start an election.
+  // See Diego Ongaro's PhD thesis (https://web.stanford.edu/~ouster/cgi-bin/papers/OngaroPhD.pdf),
+  // section 3.10 for this mechanism to transfer the leadership.
   if (!new_leader_uuid.empty()) {
     const auto* peer = FindPeer(state_->GetActiveConfigUnlocked(), new_leader_uuid);
     if (peer && peer->member_type() == PeerMemberType::VOTER) {
