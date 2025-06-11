@@ -39,7 +39,7 @@ ALLOWED_LTO_TYPES = ['thin', 'full']
 
 # Linux distribution with the oldest glibc available to us. Third-party archives built on this
 # OS can be used on newer Linux distributions, unless we need ASAN/TSAN.
-PREFERRED_OS_TYPE = 'amzn2'
+PREFERRED_OS_TYPE = 'almalinux8'
 
 
 def get_arch_regex(index: int) -> str:
