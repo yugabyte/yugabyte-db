@@ -85,6 +85,18 @@ Don't include the `dbname` parameter in the connection string; the default `yuga
 
 This mode requires direct connectivity to the source database from the client machine where voyager is installed. You initiate the assessment by executing the `assess-migration` command of `yb-voyager`. This command facilitates a live analysis by interacting directly with the source database, to gather metadata required for assessment. A sample command is as follows:
 
+ <br/>{{< tabpane text=true >}}
+
+  {{% tab header="Config file" lang="config" %}}
+
+```sh
+yb-voyager assess-migration --config-file <path-to-config-file>
+```
+
+ {{% /tab %}}
+
+ {{% tab header="CLI" lang="cli" %}}
+
 ```sh
 yb-voyager assess-migration --source-db-type postgresql \
     --source-db-host hostname --source-db-user ybvoyager \
@@ -92,6 +104,9 @@ yb-voyager assess-migration --source-db-type postgresql \
     --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
 ```
 
+ {{% /tab %}}
+
+  {{< /tabpane >}}
     {{% /tab %}}
 
     {{% tab header="Without source database connectivity" %}}
@@ -110,10 +125,26 @@ You can perform the following steps with these scripts:
 
 1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
 
-    ```sh
+      <br/>{{< tabpane text=true >}}
+
+    {{% tab header="Config file" lang="config" %}}
+
+```sh
+    yb-voyager assess-migration --config-file <path-to-config-file>
+```
+
+{{% /tab %}}
+
+{{% tab header="CLI" lang="cli" %}}
+
+```sh
     yb-voyager assess-migration --source-db-type postgresql \
         --assessment-metadata-dir /path/to/assessment_metadata_dir --export-dir /path/to/export/dir
-    ```
+```
+
+{{% /tab %}}
+
+{{< /tabpane >}}
 
     {{% /tab %}}
 

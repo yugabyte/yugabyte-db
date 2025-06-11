@@ -725,7 +725,7 @@ For Oracle, `source-db-schema` (CLI) or `db-schema` (configuration file) can tak
 Run the command as follows:
 
 {{< tabpane text=true >}}
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager export schema --config-file <path-to-config-file>
@@ -765,7 +765,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 Add output format argument to the config file:
 
@@ -825,7 +825,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager import schema --config-file <path-to-config-file>
@@ -861,7 +861,7 @@ To add the constraints back, you run the `finalize-schema-post-data-import` comm
 
 {{< /note >}}
 
-yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `ignore-exist` argument (configuration file), or using the `--ignore-exist` flag (CLI).
+yb-voyager applies the DDL SQL files located in the `schema` sub-directory of the [export directory](#create-an-export-directory) to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `ignore-exist` argument (configuration file), or using the `--ignore-exist` flag (CLI).
 
 ### Export data from source
 
@@ -871,7 +871,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager export data from source --config-file <path-to-config-file>
@@ -940,7 +940,7 @@ To get a consolidated report of the overall progress of data migration concernin
 Run the command as follows:
 
 {{< tabpane text=true >}}
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager get data-migration-report --config-file <path-to-config-file>
@@ -968,7 +968,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager import data to target --config-file <path-to-config-file>
@@ -1035,7 +1035,7 @@ If the `yb-voyager import data to target` command terminates before completing t
 When migrating from Oracle source, when the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the `csv-reader-max-buffer-size-bytes` parameter in the `import-data-to-target` (configuration file) or export the environment variable `CSV_READER_MAX_BUFFER_SIZE_BYTES` with the value.
 
 {{< tabpane text=true >}}
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```yaml
 import-data-to-target:
@@ -1058,7 +1058,7 @@ To get a consolidated report of the overall progress of data migration concernin
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager get data-migration-report --config-file <path-to-config-file>
@@ -1089,7 +1089,7 @@ As the migration continuously exports changes on the source database to the `EXP
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager archive changes --config-file <path-to-config-file>
@@ -1127,7 +1127,7 @@ Perform the following steps as part of the cutover process:
 
     <br/>{{< tabpane text=true >}}
 
-{{% tab header="Config File" lang="config" %}}
+{{% tab header="Config file" lang="config" %}}
 
 Add the following to your configuration file:
 
@@ -1182,7 +1182,7 @@ The `export data from target` command may result in duplicated events if you res
 
     <br/>{{< tabpane text=true >}}
 
-{{% tab header="Config File" lang="config" %}}
+{{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager cutover status --config-file <path-to-config-file>
@@ -1207,7 +1207,7 @@ yb-voyager cutover status --export-dir <EXPORT_DIR>
 
     <br/>{{< tabpane text=true >}}
 
-{{% tab header="Config File" lang="config" %}}
+{{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager finalize-schema-post-data-import --config-file <path-to-config-file>
@@ -1345,7 +1345,7 @@ Perform the following steps as part of the cutover process:
 
     <br/>{{< tabpane text=true >}}
 
-{{% tab header="Config File" lang="config" %}}
+{{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager initiate cutover to source --config-file <path-to-config-file>
@@ -1374,7 +1374,7 @@ yb-voyager initiate cutover to source --export-dir <EXPORT_DIR>
 
     <br/>{{< tabpane text=true >}}
 
-{{% tab header="Config File" lang="config" %}}
+{{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager cutover status --config-file <path-to-config-file>
@@ -1467,7 +1467,7 @@ The `yb-voyager end migration` command performs the cleanup, and backs up the sc
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 Specify the following parameters in the `end-migration` section of the configuration file:
 

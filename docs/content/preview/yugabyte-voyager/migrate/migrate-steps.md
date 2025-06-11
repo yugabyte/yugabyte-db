@@ -225,7 +225,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager export schema --config-file <path-to-config-file>
@@ -266,7 +266,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager analyze-schema --config-file <path-to-config-file>
@@ -315,7 +315,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager import schema --config-file <path-to-config-file>
@@ -351,7 +351,7 @@ Voyager will add these constraints back during [Finalize schema post data import
 
 {{< /note >}}
 
-yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If `yb-voyager` terminates before it imports the entire schema, you can rerun it by adding the `ignore-exist` argument (configuration file), or using the `--ignore-exist` flag (CLI).
+yb-voyager applies the DDL SQL files located in the `schema` sub-directory of the [export directory](#create-an-export-directory) to the target YugabyteDB database. If `yb-voyager` terminates before it imports the entire schema, you can rerun it by adding the `ignore-exist` argument (configuration file), or using the `--ignore-exist` flag (CLI).
 
 ### Export data
 
@@ -361,7 +361,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager export data --config-file <path-to-config-file>
@@ -421,7 +421,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager export data status --config-file <path-to-config-file>
@@ -463,7 +463,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager import data --config-file <path-to-config-file>
@@ -527,7 +527,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager import data status --config-file <path-to-config-file>
@@ -556,7 +556,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 ```sh
 yb-voyager finalize-schema-post-data-import --config-file <path-to-config-file>
@@ -614,7 +614,7 @@ Run the command as follows:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Config File" lang="config" %}}
+  {{% tab header="Config file" lang="config" %}}
 
 Specify the following parameters in the `end-migration` section of the configuration file:
 
