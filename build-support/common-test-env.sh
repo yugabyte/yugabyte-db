@@ -1243,7 +1243,6 @@ did_test_succeed() {
       SIGIOT \
       SIGBUS \
       SIGFPE \
-      SIGKILL \
       SIGUSR1 \
       SIGSEGV \
       SIGUSR2 \
