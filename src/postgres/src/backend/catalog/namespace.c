@@ -4313,7 +4313,7 @@ RemoveTempRelations(Oid tempNamespaceId)
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
-			YBSetDdlState(YB_DDL_MODE_SILENT_ALTERING);
+			YBAddDdlTxnState(YB_DDL_MODE_SILENT_ALTERING);
 		else
 			YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
 		YBCDdlEnableForceCatalogModification();
