@@ -10,7 +10,7 @@ block_indexing = true
     <a href="#yugabyted-remove-db" class="nav-link active" id="yugabyted-remove-db-tab" data-bs-toggle="tab"
       role="tab" aria-controls="yugabyted-remove-db" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
-      Yugabyted
+      yugabyted
     </a>
   </li>
   <li>

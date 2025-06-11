@@ -12,7 +12,7 @@ The database should have at least one table in order to be added to replication.
     <a href="#yugabyted-add-db" class="nav-link active" id="yugabyted-add-db-tab" data-bs-toggle="tab"
       role="tab" aria-controls="yugabyted-add-db" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
-      Yugabyted
+      yugabyted
     </a>
   </li>
   <li>
