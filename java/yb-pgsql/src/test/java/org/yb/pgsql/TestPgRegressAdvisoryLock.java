@@ -32,4 +32,12 @@ public class TestPgRegressAdvisoryLock extends BasePgRegressTestPorted {
   public void testPgRegressAdvisoryLock() throws Exception {
     runPgRegressTest("yb_pg_advisory_lock_schedule");
   }
+
+  @Test
+  public void testIsolation() throws Exception {
+    runPgRegressTest(
+        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
+        "yb_pg_isolation_advisory_lock_schedule",
+        0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
+  }
 }
