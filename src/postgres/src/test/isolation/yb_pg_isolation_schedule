@@ -53,3 +53,4 @@ test: yb.orig.serializable_conflict_with_index_only_scan
 test: yb.orig.query_layer_retries_multi_stmt_query
 test: yb.orig.advisory_locks
 test: yb.orig.only-abort-sub-txn
+test: yb.orig.drop-expression-partitioned-table
