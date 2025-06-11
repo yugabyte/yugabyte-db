@@ -55,7 +55,7 @@ service_files = "yb-tserver.service, yb-master.service, clock-sync.sh.j2, yb-bin
 [ConfigureOs]
 message = "Configure limits and sysctl parameters"
 fd_limit = 1048576
-nproc_limit = 12000
+nproc_limit = 64000
 vm_swappiness = 0
 kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%%p_%%t_%%E
 vm_max_map_count = 262144
