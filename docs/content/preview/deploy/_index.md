@@ -35,7 +35,7 @@ type: indexpage
 
   {{<index/item
     title="On-premises"
-    body="Deploy YugabyteDB manually in a private data center using basic administration commands."
+    body="Deploy YugabyteDB in a private data center."
     href="manual-deployment/"
     icon="fa-thin fa-helmet-safety">}}
 

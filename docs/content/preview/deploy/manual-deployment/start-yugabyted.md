@@ -11,6 +11,8 @@ menu:
 type: docs
 ---
 
+This section describes how to deploy YugabyteDB in a single region or data center in a multi-zone/multi-rack configuration.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../start-yugabyted/" class="nav-link active">
@@ -26,15 +28,35 @@ type: docs
   </li>
 </ul>
 
-This section describes how to deploy YugabyteDB a single region or data center in a multi-zone/multi-rack configuration using the [yugabyted](../../../reference/configuration/yugabyted/) configuration utility.
+Use the [yugabyted](../../../reference/configuration/yugabyted/) configuration utility to deploy and manage clusters.
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home bin directory.
+
+## Flags to consider
+
+Depending on your specific deployment, you need to consider the following additional flags.
+
+### YCQL only deployment
+
+If you are only using the YCQL API, you must turn off [YSQL memory optimization](../../reference/configuration/yb-tserver/#memory-division-flags) by adding the following to `--tserver_flags`:
+
+```sh
+--tserver_flags "use_memory_defaults_optimized_for_ysql=false"
+```
+
+### Use YSQL Connection Manager
+
+If you want to use the YSQL Connection Manager for connection pooling, add the following to `--tserver_flags`:
+
+```sh
+--tserver_flags "enable_ysql_conn_mgr=true"
+```
+
+## Deploy a multi-zone cluster
 
 Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.
 
 For instructions on running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to [Multi-DC deployments](../../../deploy/multi-dc/).
-
-### Deploy a multi-zone cluster
 
 To create a secure multi-zone cluster:
 
@@ -42,11 +64,14 @@ To create a secure multi-zone cluster:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    Add flags to `--tserver_flags` as required.
+
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<IP_of_VM_1> \
         --backup-daemon=true \
         --cloud_location=aws.us-east-1.us-east-1a \
-        --fault_tolerance=zone
+        --fault_tolerance=zone \
+        --tserver_flags="enable_ysql_conn_mgr=true"
     ```
 
 1. Create certificates for the second and third virtual machine (VM) for SSL and TLS connection, as follows:
@@ -65,12 +90,15 @@ To create a secure multi-zone cluster:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    Add flags to `--tserver_flags` as required.
+
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<IP_of_VM_2> \
         --join=<ip-address-first-yugabyted-node> \
         --backup-daemon=true \
         --cloud_location=aws.us-east-1.us-east-1b \
-        --fault_tolerance=zone
+        --fault_tolerance=zone \
+        --tserver_flags="enable_ysql_conn_mgr=true"
     ```
 
     ```sh
@@ -78,7 +106,8 @@ To create a secure multi-zone cluster:
         --join=<ip-address-first-yugabyted-node> \
         --backup-daemon=true \
         --cloud_location=aws.us-east-1.us-east-1c \
-        --fault_tolerance=zone
+        --fault_tolerance=zone \
+        --tserver_flags="enable_ysql_conn_mgr=true"
     ```
 
 For more information on the yugabyted start command, refer to [start](../../../reference/configuration/yugabyted/#start).

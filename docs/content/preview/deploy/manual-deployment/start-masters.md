@@ -13,6 +13,8 @@ menu:
 type: docs
 ---
 
+This section describes how to deploy YugabyteDB in a single region or data center in a multi-zone/multi-rack configuration.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../start-yugabyted/" class="nav-link">
@@ -28,9 +30,7 @@ type: docs
   </li>
 </ul>
 
-This section covers manual deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.
-
-For instructions on running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to [Multi-DC deployments](../../../deploy/multi-dc/).
+You can use the yb-tserver and yb-master binaries to manually start and configure the servers. For simplified deployment and management, use the [yugabyted](../../../reference/configuration/yugabyted/) configuration utility.
 
 ## Example scenario
 
@@ -39,6 +39,10 @@ For instructions on running a single cluster across multiple data centers or 2 c
   - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
   - Cloud will be `aws`, region will be `us-west`, and the three AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that one replica for each tablet (aka shard) gets placed in any one node for each AZ.
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
+
+Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.
+
+For instructions on running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to [Multi-DC deployments](../../../deploy/multi-dc/).
 
 ## YB-Master servers
 
