@@ -38,7 +38,7 @@ Depending on your specific deployment, you need to consider the following additi
 
 ### YCQL only deployment
 
-If you are only using the YCQL API, you must turn off [YSQL memory optimization](../../reference/configuration/yb-tserver/#memory-division-flags) by adding the following to `--tserver_flags`:
+If you are only using the YCQL API, you must turn off [YSQL memory optimization](../../../reference/configuration/yb-tserver/#memory-division-flags) by adding the following to `--tserver_flags`:
 
 ```sh
 --tserver_flags "use_memory_defaults_optimized_for_ysql=false"
@@ -46,7 +46,7 @@ If you are only using the YCQL API, you must turn off [YSQL memory optimization]
 
 ### Use YSQL Connection Manager
 
-If you want to use the YSQL Connection Manager for connection pooling, add the following to `--tserver_flags`:
+If you want to use [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/) for connection pooling, add the following to `--tserver_flags`:
 
 ```sh
 --tserver_flags "enable_ysql_conn_mgr=true"
