@@ -88,7 +88,9 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   } = useQuery(['subTasks', currentTask.id!], () => getSubTaskDetails(currentTask.id!), {
     select: (data) => data.data,
     enabled: !!currentTask,
-    refetchInterval: isTaskRunning(currentTask) ? 8000 : false,
+    refetchInterval: (data) => {
+      return values(data?.[currentTask.targetUUID]).some((task) => isTaskRunning(task)) ? 8000 : false;
+    }
   });
 
   useEffect(() => {
