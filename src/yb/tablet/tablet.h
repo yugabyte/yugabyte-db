@@ -527,6 +527,7 @@ class Tablet : public AbstractTablet,
   const scoped_refptr<MetricEntity>& GetTableMetricsEntity() const {
     return table_metrics_entity_;
   }
+
   const scoped_refptr<MetricEntity>& GetTabletMetricsEntity() const {
     return tablet_metrics_entity_;
   }

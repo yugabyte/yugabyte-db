@@ -76,6 +76,7 @@ struct VectorLSMOptions {
   PriorityThreadPool* compaction_thread_pool;
   FrontiersFactory frontiers_factory;
   MergeFilterFactory vector_merge_filter_factory;
+  std::string file_extension;
 };
 
 template<IndexableVectorType VectorType,
@@ -171,7 +172,8 @@ class VectorLSM {
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
 
-  Result<VectorLSMFileMetaDataPtr> SaveIndexToFile(VectorIndex& index, uint64_t serial_no);
+  Result<std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>> SaveIndexToFile(
+      VectorIndex& index, uint64_t serial_no);
 
   // The argument `chunk` must be the very first chunk from `updates_queue_`.
   Status UpdateManifest(WritableFile* manifest_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);

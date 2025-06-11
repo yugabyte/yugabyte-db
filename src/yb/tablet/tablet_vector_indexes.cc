@@ -110,6 +110,17 @@ class IndexedTableReader {
 // A way to block backfilling vector index after the first vector index chunk is flushed.
 bool TEST_block_after_backfilling_first_vector_index_chunks = false;
 
+TabletVectorIndexes::TabletVectorIndexes(
+    Tablet* tablet,
+    const VectorIndexThreadPoolProvider& thread_pool_provider,
+    const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
+    const hnsw::BlockCachePtr& block_cache)
+    : TabletComponent(tablet),
+      thread_pool_provider_(thread_pool_provider),
+      priority_thread_pool_provider_(priority_thread_pool_provider),
+      block_cache_(block_cache) {
+}
+
 Status TabletVectorIndexes::Open() NO_THREAD_SAFETY_ANALYSIS {
   std::unique_lock lock(vector_indexes_mutex_, std::defer_lock);
   auto tables = metadata().GetAllColocatedTableInfos();
@@ -163,7 +174,7 @@ Status TabletVectorIndexes::DoCreateIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().rocksdb_dir(), vector_index_thread_pool_provider,
       indexed_table->doc_read_context->table_key_prefix(), index_table.hybrid_time,
-      *index_table.index_info, doc_db()));
+      *index_table.index_info, doc_db(), block_cache_));
   if (!bootstrap) {
     auto read_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
     if (read_op.ok()) {

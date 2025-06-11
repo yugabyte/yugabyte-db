@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/vector_index/hnswlib_wrapper.h"
+#include "yb/ann_methods/hnswlib_wrapper.h"
 
 #include <memory>
 #include <utility>
@@ -44,9 +44,19 @@
 #include "yb/vector_index/index_wrapper_base.h"
 #include "yb/vector_index/vector_index_if.h"
 
-namespace yb::vector_index {
+namespace yb::ann_methods {
 
 using hnswlib::Stats;
+using vector_index::CoordinateTypeTraits;
+using vector_index::DistanceKind;
+using vector_index::HNSWOptions;
+using vector_index::IndexWrapperBase;
+using vector_index::IndexableVectorType;
+using vector_index::SearchOptions;
+using vector_index::ValidDistanceResultType;
+using vector_index::VectorId;
+using vector_index::VectorIndexIfPtr;
+using vector_index::VectorWithDistance;
 
 namespace {
 
@@ -91,7 +101,7 @@ class HnswlibIndex :
         /* ef_construction= */ options_.ef_construction,
         /* random_seed= */ 100,              // Default value from hnswalg.h
         /* allow_replace_deleted= */ false,  // Default value from hnswalg.h
-        /* ef= */ options_.ef);
+        /* ef= */ 128);
     return Status::OK();
   }
 
@@ -113,14 +123,14 @@ class HnswlibIndex :
     return options_.dimensions;
   }
 
-  Status DoSaveToFile(const std::string& path) {
+  Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(const std::string& path) {
     try {
       hnsw_->saveIndex(path);
     } catch (std::exception& e) {
       return STATUS_FORMAT(
           IOError, "Failed to save Hnswlib index to file $0: $1", path, e.what());
     }
-    return Status::OK();
+    return nullptr;
   }
 
   Status DoLoadFromFile(const std::string& path, size_t) {
@@ -196,7 +206,7 @@ class HnswlibIndex :
     output << "    Totals: " << StatsToStringHelper(total_stats) << std::endl;
 
     return output.str();
-}
+  }
 
  private:
   Status CreateSpaceImpl() {
@@ -262,11 +272,11 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorIndexIfPtr<Vector, DistanceResult> HnswlibIndexFactory<Vector, DistanceResult>::Create(
-    const HNSWOptions& options) {
+    vector_index::FactoryMode mode, const HNSWOptions& options) {
   return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(options);
 }
 
 template class HnswlibIndexFactory<FloatVector, float>;
 template class HnswlibIndexFactory<UInt8Vector, int32_t>;
 
-}  // namespace yb::vector_index
+}  // namespace yb::ann_methods

@@ -13,21 +13,20 @@
 
 #pragma once
 
-#include <memory>
-
-#include "yb/util/result.h"
+#include "yb/hnsw/types.h"
 
 #include "yb/vector_index/hnsw_options.h"
-#include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
-#include "yb/vector_index/vector_index_wrapper_util.h"
 
-namespace yb::vector_index {
+namespace yb::ann_methods {
 
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibIndexFactory {
- public:
-  static VectorIndexIfPtr<Vector, DistanceResult> Create(const HNSWOptions& options);
-};
+template <class Vector, class DistanceResult>
+vector_index::VectorIndexIfPtr<Vector, DistanceResult> CreateYbHnsw(
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options);
 
-}  // namespace yb::vector_index
+template <class Vector, class DistanceResult>
+Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
+    const hnsw::UsearchIndexDense& index, const std::string& path,
+    const hnsw::BlockCachePtr& block_cache);
+
+} // namespace yb::ann_methods

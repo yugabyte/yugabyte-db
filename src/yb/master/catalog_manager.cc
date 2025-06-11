@@ -585,6 +585,9 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
+DEFINE_RUNTIME_bool(vector_index_use_yb_hnsw, false,
+    "Whether to use YbHnsw for stored vector index");
+
 DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
     "If -1, the number of tablets will follow the value provided in the CreateTable request.");
@@ -4083,8 +4086,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Assign column-ids that have just been computed and assigned to "index_info".
     if (is_vector_index) {
-      index_info.mutable_vector_idx_options()->set_id(
-          AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
+      auto& vector_index_options = *index_info.mutable_vector_idx_options();
+      vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
+      if (FLAGS_vector_index_use_yb_hnsw) {
+        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW);
+      }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";

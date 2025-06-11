@@ -11,9 +11,12 @@
 // under the License.
 //
 
-#include "yb/docdb/docdb_test_base.h"
-
 #include <google/protobuf/any.pb.h>
+
+#include "yb/ann_methods/ann_methods.h"
+#include "yb/ann_methods/hnswlib_wrapper.h"
+#include "yb/ann_methods/usearch_wrapper.h"
+#include "yb/ann_methods/vector_lsm-test.pb.h"
 
 #include "yb/rocksdb/metadata.h"
 
@@ -21,18 +24,16 @@
 
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
 
-#include "yb/vector_index/ann_methods.h"
-#include "yb/vector_index/hnswlib_wrapper.h"
-#include "yb/vector_index/usearch_wrapper.h"
 #include "yb/vector_index/vector_lsm.h"
-#include "yb/vector_index/vector_lsm-test.pb.h"
 #include "yb/vector_index/vectorann_util.h"
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(vector_index_disable_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
 DECLARE_int32(vector_index_max_size_amplification_percent);
@@ -44,15 +45,24 @@ namespace yb::vector_index {
 
 extern MonoDelta TEST_sleep_on_merged_chunk_populated;
 
-using FloatVectorLSM = VectorLSM<std::vector<float>, float>;
-using TestUsearchIndexFactory = MakeVectorIndexFactory<UsearchIndexFactory, FloatVectorLSM>;
-using TestHnswlibIndexFactory = MakeVectorIndexFactory<HnswlibIndexFactory, FloatVectorLSM>;
+}
+
+namespace yb::ann_methods {
+
+using vector_index::VectorId;
+
+using FloatVectorLSM = vector_index::VectorLSM<std::vector<float>, float>;
+
+using TestUsearchIndexFactory = vector_index::MakeVectorIndexFactory<
+    SimplifiedUsearchIndexFactory, FloatVectorLSM>;
+using TestHnswlibIndexFactory = vector_index::MakeVectorIndexFactory<
+    HnswlibIndexFactory, FloatVectorLSM>;
 
 class SimpleVectorLSMKeyValueStorage {
  public:
   SimpleVectorLSMKeyValueStorage() = default;
 
-  void StoreVector(const vector_index::VectorId& vector_id, size_t index) {
+  void StoreVector(const VectorId& vector_id, size_t index) {
     storage_.emplace(vector_id, index);
   }
 
@@ -77,7 +87,7 @@ class TestFrontier : public rocksdb::UserFrontier {
   }
 
   void ToPB(google::protobuf::Any* any) const override {
-    VectorLSMTestFrontierPB pb;
+    vector_index::VectorLSMTestFrontierPB pb;
     pb.set_vertex_id(vertex_id_.data(), vertex_id_.size());
     any->PackFrom(pb);
   }
@@ -116,12 +126,12 @@ class TestFrontier : public rocksdb::UserFrontier {
   }
 
   Status FromPB(const google::protobuf::Any& any) override {
-    VectorLSMTestFrontierPB pb;
+    vector_index::VectorLSMTestFrontierPB pb;
     if (!any.UnpackTo(&pb)) {
       return STATUS_FORMAT(Corruption, "Unpack test frontier failed");
     }
 
-    vertex_id_ = VERIFY_RESULT(FullyDecodeVectorId(pb.vertex_id()));
+    vertex_id_ = VERIFY_RESULT(vector_index::FullyDecodeVectorId(pb.vertex_id()));
     return Status::OK();
   }
 
@@ -154,6 +164,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
           .max_workers = 10,
         }),
         priority_thread_pool_(/* max_running_tasks = */ 2) {
+    FLAGS_TEST_usearch_exact = true;
   }
 
   Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
@@ -172,8 +183,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   void VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions);
 
   void CheckQueryVector(
-      FloatVectorLSM& lsm, size_t dimensions, const FloatVectorLSM::Vector& query_vector,
-      size_t max_num_results);
+      FloatVectorLSM& lsm, const FloatVectorLSM::Vector& query_vector, size_t max_num_results);
 
   Result<std::vector<std::string>> GetFiles(FloatVectorLSM& lsm);
 
@@ -302,14 +312,15 @@ Status VectorLSMTest::OpenVectorLSM(
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&test_dir));
   test_dir = JoinPathSegments(test_dir, "vector_lsm_test_" + Uuid::Generate().ToString());
 
+  auto factory = GetVectorIndexFactory(GetParam());
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
     .storage_dir = JoinPathSegments(test_dir, "vector_lsm"),
-    .vector_index_factory = [factory = GetVectorIndexFactory(GetParam()), dimensions]() {
-      HNSWOptions hnsw_options = {
+    .vector_index_factory = [factory, dimensions](vector_index::FactoryMode mode) {
+      vector_index::HNSWOptions hnsw_options = {
         .dimensions = dimensions,
       };
-      return factory(hnsw_options);
+      return factory(mode, hnsw_options);
     },
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
@@ -317,13 +328,14 @@ Status VectorLSMTest::OpenVectorLSM(
     .compaction_thread_pool = &priority_thread_pool_,
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
     .vector_merge_filter_factory = [] {
-      struct DummyFilter : public VectorLSMMergeFilter {
+      struct DummyFilter : public vector_index::VectorLSMMergeFilter {
         rocksdb::FilterDecision Filter(VectorId vector_id) override {
           return rocksdb::FilterDecision::kKeep;
         }
       };
       return std::make_unique<DummyFilter>();
     },
+    .file_extension = "",
   };
   return lsm.Open(std::move(options));
 }
@@ -335,13 +347,12 @@ Status VectorLSMTest::InitVectorLSM(
 }
 
 void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
-  CheckQueryVector(lsm, dimensions, FloatVectorLSM::Vector(dimensions, 0.f), dimensions + 1);
-  CheckQueryVector(lsm, dimensions, FloatVectorLSM::Vector(dimensions, 1.f), dimensions + 1);
+  CheckQueryVector(lsm, FloatVectorLSM::Vector(dimensions, 0.f), dimensions + 1);
+  CheckQueryVector(lsm, FloatVectorLSM::Vector(dimensions, 1.f), dimensions + 1);
 }
 
 void VectorLSMTest::CheckQueryVector(
-    FloatVectorLSM& lsm, size_t dimensions, const FloatVectorLSM::Vector& query_vector,
-    size_t max_num_results) {
+    FloatVectorLSM& lsm, const FloatVectorLSM::Vector& query_vector, size_t max_num_results) {
   bool stop = false;
 
   FloatVectorLSM::SearchResults expected_results;
@@ -359,7 +370,7 @@ void VectorLSMTest::CheckQueryVector(
   while (!stop) {
     stop = !lsm.TEST_HasBackgroundInserts();
 
-    SearchOptions options = {
+    vector_index::SearchOptions options = {
       .max_num_results = max_num_results,
       .ef = 0,
     };
@@ -608,7 +619,7 @@ TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
 
   // Pause Vector LSM compactions.
   const auto merge_timeout = 5s * kTimeMultiplier;
-  ANNOTATE_UNPROTECTED_WRITE(TEST_sleep_on_merged_chunk_populated) = merge_timeout;
+  ANNOTATE_UNPROTECTED_WRITE(vector_index::TEST_sleep_on_merged_chunk_populated) = merge_timeout;
 
   // Spawn a separate thread and start shutting down
   ThreadHolder threads;
@@ -674,7 +685,7 @@ TEST_P(VectorLSMTest, NotSavedChunk) {
 TEST_F(VectorLSMTest, MergeChunkResults) {
   const auto kIds = GenerateVectorIds(7);
 
-  using ChunkResults = std::vector<VectorWithDistance<float>>;
+  using ChunkResults = std::vector<vector_index::VectorWithDistance<float>>;
   ChunkResults a_src = {{kIds[4], 1}, {kIds[2], 3}, {kIds[0], 5}, {kIds[5], 7}};
   ChunkResults b_src = {{kIds[1], 2}, {kIds[2], 3}, {kIds[3], 4}, {kIds[6], 7}, {kIds[5], 7}};
   for (size_t i = 1; i != a_src.size() + b_src.size(); ++i) {
@@ -698,4 +709,4 @@ std::string ANNMethodKindToString(
 INSTANTIATE_TEST_SUITE_P(
     , VectorLSMTest, ::testing::ValuesIn(kANNMethodKindArray), ANNMethodKindToString);
 
-}  // namespace yb::vector_index
+}  // namespace yb::ann_methods

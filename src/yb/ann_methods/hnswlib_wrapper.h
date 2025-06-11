@@ -13,24 +13,23 @@
 
 #pragma once
 
-#include <cstddef>
 #include <memory>
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
 
-#include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_options.h"
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
 
-namespace yb::vector_index {
+namespace yb::ann_methods {
 
-template <class Vector, class DistanceResult>
-class UsearchIndexFactory {
+template<vector_index::IndexableVectorType Vector,
+         vector_index::ValidDistanceResultType DistanceResult>
+class HnswlibIndexFactory {
  public:
-  static VectorIndexIfPtr<Vector, DistanceResult> Create(const HNSWOptions& options);
+  static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
+      vector_index::FactoryMode mode, const vector_index::HNSWOptions& options);
 };
 
-}  // namespace yb::vector_index
+}  // namespace yb::ann_methods

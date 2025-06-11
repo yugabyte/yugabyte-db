@@ -11,15 +11,16 @@
 // under the License.
 //
 
-#include "yb/vector_index/usearch_wrapper.h"
+#include "yb/ann_methods/usearch_wrapper.h"
 
 #include <memory>
 #include <semaphore>
 
-#include <boost/preprocessor/seq/for_each.hpp>
+#include "yb/ann_methods/yb_hnsw_wrapper.h"
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/shared_lock.h"
 
@@ -28,6 +29,9 @@
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vectorann_util.h"
+
+DEFINE_test_flag(bool, usearch_exact, false,
+    "Use exact search in usearch wrapper to guarantee deterministic results.");
 
 namespace unum::usearch {
 
@@ -41,7 +45,7 @@ bool operator==(const yb::vector_index::VectorId& lhs,
 
 } // namespace unum::usearch
 
-namespace yb::vector_index {
+namespace yb::ann_methods {
 
 using unum::usearch::byte_t;
 using unum::usearch::index_dense_config_t;
@@ -51,37 +55,19 @@ using unum::usearch::metric_punned_t;
 using unum::usearch::output_file_t;
 using unum::usearch::scalar_kind_t;
 
+using vector_index::HNSWOptions;
+using vector_index::DistanceKind;
+using vector_index::CoordinateKind;
+using vector_index::IndexableVectorType;
+using vector_index::VectorId;
+using vector_index::ValidDistanceResultType;
+
 index_dense_config_t CreateIndexDenseConfig(const HNSWOptions& options) {
   index_dense_config_t config;
   config.connectivity = options.num_neighbors_per_vertex;
   config.connectivity_base = options.num_neighbors_per_vertex_base;
   config.expansion_add = options.ef_construction;
-  config.expansion_search = options.ef;
   return config;
-}
-
-metric_kind_t MetricKindFromDistanceType(DistanceKind distance_kind) {
-  switch (distance_kind) {
-    case DistanceKind::kL2Squared:
-      return metric_kind_t::l2sq_k;
-    case DistanceKind::kInnerProduct:
-      return metric_kind_t::ip_k;
-    case DistanceKind::kCosine:
-      return metric_kind_t::cos_k;
-  }
-  FATAL_INVALID_ENUM_VALUE(DistanceKind, distance_kind);
-}
-
-scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
-  switch (coordinate_kind) {
-#define YB_COORDINATE_KIND_TO_USEARCH_CASE(r, data, coordinate_info_tuple) \
-    case CoordinateKind::YB_COORDINATE_ENUM_ELEMENT_NAME(coordinate_info_tuple): \
-      return scalar_kind_t::BOOST_PP_CAT( \
-          YB_EXTRACT_COORDINATE_TYPE_SHORT_NAME(coordinate_info_tuple), _k);
-    BOOST_PP_SEQ_FOR_EACH(YB_COORDINATE_KIND_TO_USEARCH_CASE, _, YB_COORDINATE_TYPE_INFO)
-#undef YB_COORDINATE_KIND_TO_USEARCH_CASE
-  }
-  FATAL_INVALID_ENUM_VALUE(CoordinateKind, coordinate_kind);
 }
 
 namespace {
@@ -123,19 +109,19 @@ class UsearchVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class UsearchIndex :
-    public IndexWrapperBase<UsearchIndex<Vector, DistanceResult>, Vector, DistanceResult> {
+    public vector_index::IndexWrapperBase<
+        UsearchIndex<Vector, DistanceResult>, Vector, DistanceResult> {
  public:
   using IndexImpl = index_dense_gt<VectorId>;
 
-  explicit UsearchIndex(const HNSWOptions& options)
-      : dimensions_(options.dimensions),
+  UsearchIndex(
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend)
+      : block_cache_(block_cache),
+        dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
-        metric_(dimensions_,
-                MetricKindFromDistanceType(distance_kind_),
-                ConvertCoordinateKind(CoordinateTypeTraits<typename Vector::value_type>::kKind)),
-        index_(IndexImpl::make(
-            metric_,
-            CreateIndexDenseConfig(options))) {
+        metric_(options.CreateMetric<Vector>()),
+        backend_(backend),
+        index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))) {
     CHECK_GT(dimensions_, 0);
   }
 
@@ -182,9 +168,14 @@ class UsearchIndex :
     return dimensions_;
   }
 
-  Status DoSaveToFile(const std::string& path) {
+  Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(
+      const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
-    VLOG_WITH_FUNC(2) << path << ", size: " << index_.size();
+    VLOG_WITH_FUNC(2)
+        << path << ", size: " << index_.size() << ", backend: " << HnswBackend_Name(backend_);
+    if (backend_ == HnswBackend::YB_HNSW) {
+      return ImportYbHnsw<Vector, DistanceResult>(index_, path, block_cache_);
+    }
     try {
       if (!index_.save(output_file_t(path.c_str()))) {
         return STATUS_FORMAT(IOError, "Failed to save index to file: $0", path);
@@ -192,18 +183,22 @@ class UsearchIndex :
     } catch(std::exception& exc) {
       return STATUS_FORMAT(IOError, "Failed to save index to file $0: $1", path, exc.what());
     }
-    return Status::OK();
+    return nullptr;
   }
 
   Status DoLoadFromFile(const std::string& path, size_t max_concurrent_reads) {
-    auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
-    if (result) {
-      search_semaphore_.emplace(max_concurrent_reads);
-      index_ = std::move(result.index);
-      VLOG_WITH_FUNC(2) << path << ": " << index_.size();
-      return Status::OK();
+    try {
+      auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
+      if (result) {
+        search_semaphore_.emplace(max_concurrent_reads);
+        index_ = std::move(result.index);
+        VLOG_WITH_FUNC(2) << path << ": " << index_.size();
+        return Status::OK();
+      }
+      return STATUS_FORMAT(IOError, "Failed to load index from file: $0", path);
+    } catch (std::runtime_error& exc) {
+      return STATUS_FORMAT(IOError, "Failed to load index from file $0: $1", path, exc.what());
     }
-    return STATUS_FORMAT(IOError, "Failed to load index from file: $0", path);
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
@@ -211,19 +206,23 @@ class UsearchIndex :
         pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
   }
 
-  Result<std::vector<VectorWithDistance<DistanceResult>>> DoSearch(
-      const Vector& query_vector, const SearchOptions& options) const {
+  Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
+      const Vector& query_vector, const vector_index::SearchOptions& options) const {
+    std::vector<vector_index::VectorWithDistance<DistanceResult>> result_vec;
+    if (index_.size() == 0) {
+      return result_vec;
+    }
     SemaphoreLock lock(*search_semaphore_);
     auto usearch_results = index_.filtered_search_with_ef(
-        query_vector.data(), options.max_num_results, options.filter, options.ef);
+        query_vector.data(), options.max_num_results, options.filter, options.ef,
+        IndexImpl::any_thread(), FLAGS_TEST_usearch_exact);
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());
-    std::vector<VectorWithDistance<DistanceResult>> result_vec;
     result_vec.reserve(usearch_results.size());
     for (size_t i = 0; i < usearch_results.size(); ++i) {
       auto match = usearch_results[i];
-      result_vec.push_back(VectorWithDistance<DistanceResult>(match.member.key, match.distance));
+      result_vec.emplace_back(match.member.key, match.distance);
     }
     return result_vec;
   }
@@ -275,21 +274,29 @@ class UsearchIndex :
   }
 
  private:
+  const hnsw::BlockCachePtr block_cache_;
   size_t dimensions_;
   DistanceKind distance_kind_;
   metric_punned_t metric_;
+  HnswBackend backend_;
   IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
 };
 
 }  // namespace
 
-template <class Vector, class DistanceResult>
-VectorIndexIfPtr<Vector, DistanceResult> UsearchIndexFactory<Vector, DistanceResult>::Create(
-    const HNSWOptions& options) {
-  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(options);
+template <vector_index::IndexableVectorType Vector,
+          vector_index::ValidDistanceResultType DistanceResult>
+vector_index::VectorIndexIfPtr<Vector, DistanceResult>
+    UsearchIndexFactory<Vector, DistanceResult>::Create(
+    vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
+    const HNSWOptions& options, HnswBackend backend) {
+  if (backend == HnswBackend::YB_HNSW && mode == vector_index::FactoryMode::kLoad) {
+    return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
+  }
+  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(block_cache, options, backend);
 }
 
 template class UsearchIndexFactory<FloatVector, float>;
 
-}  // namespace yb::vector_index
+}  // namespace yb::ann_methods

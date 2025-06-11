@@ -13,16 +13,17 @@
 
 #pragma once
 
+#include "yb/ann_methods/hnswlib_wrapper.h"
+#include "yb/ann_methods/usearch_wrapper.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
 
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/hnsw_options.h"
-#include "yb/vector_index/hnswlib_wrapper.h"
-#include "yb/vector_index/usearch_wrapper.h"
 #include "yb/vector_index/vector_index_if.h"
 
-namespace yb::vector_index {
+namespace yb::ann_methods {
 
 YB_DEFINE_ENUM(
     ANNMethodKind,
@@ -38,14 +39,16 @@ struct ANNMethodTraits {
 
 template<>
 struct ANNMethodTraits<ANNMethodKind::kUsearch> {
-  template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-  using FactoryType = UsearchIndexFactory<Vector, DistanceResult>;
+  template<vector_index::IndexableVectorType Vector,
+           vector_index::ValidDistanceResultType DistanceResult>
+  using FactoryType = SimplifiedUsearchIndexFactory<Vector, DistanceResult>;
 };
 
 template<>
 struct ANNMethodTraits<ANNMethodKind::kHnswlib> {
-  template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+  template<vector_index::IndexableVectorType Vector,
+           vector_index::ValidDistanceResultType DistanceResult>
   using FactoryType = HnswlibIndexFactory<Vector, DistanceResult>;
 };
 
-}  // namespace yb::vector_index
+}  // namespace yb::ann_methods

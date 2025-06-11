@@ -18,6 +18,8 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/hnsw/hnsw_fwd.h"
+
 #include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -108,6 +110,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
-    const DocDB& doc_db);
+    const DocDB& doc_db,
+    const hnsw::BlockCachePtr& block_cache);
 
 }  // namespace yb::docdb

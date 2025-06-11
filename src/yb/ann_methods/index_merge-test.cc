@@ -13,17 +13,26 @@
 
 #include <thread>
 
+#include "yb/ann_methods/hnswlib_wrapper.h"
+#include "yb/ann_methods/usearch_wrapper.h"
+
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
-#include "yb/vector_index/hnswlib_wrapper.h"
-#include "yb/vector_index/usearch_wrapper.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vectorann_util.h"
 
-namespace yb::vector_index {
+namespace yb::ann_methods {
 
 namespace {
+
+using vector_index::DistanceKind;
+using vector_index::FactoryMode;
+using vector_index::HNSWOptions;
+using vector_index::VectorId;
+using vector_index::VectorIndexFactory;
+using vector_index::VectorIndexIfPtr;
+using vector_index::VectorIndexReaderIf;
 
 template <class Container, class... Containers>
 void MergeValuesImpl(std::set<typename std::decay_t<Container>::value_type>& out,
@@ -54,7 +63,7 @@ class IndexMergeTest : public YBTest {
 
   IndexData CreateAndFillIndex(
       VectorIndexFactory<FloatVector, float> index_factory, size_t first_id, size_t num_entries) {
-    auto index = index_factory();
+    auto index = index_factory(vector_index::FactoryMode::kCreate);
     CHECK_OK(index->Reserve(num_entries, 1, 1));
 
     std::vector<VectorId> ids;
@@ -108,7 +117,7 @@ class IndexMergeTest : public YBTest {
 
   void TestMergeWithEmptyIndex(VectorIndexFactory<FloatVector, float> index_factory) {
     // Create an empty index with the same options.
-    VectorIndexIfPtr<FloatVector, float> empty_index = index_factory();
+    VectorIndexIfPtr<FloatVector, float> empty_index = index_factory(FactoryMode::kCreate);
     CHECK_OK(empty_index->Reserve(10, 0, 0));
 
     // Generate indexes for the input set.
@@ -141,11 +150,12 @@ class IndexMergeTest : public YBTest {
           .ef_construction = 20,
           .distance_kind = DistanceKind::kL2Squared};
 
-    hnswlib_index_factory_ = [hnsw_options]() -> VectorIndexIfPtr<FloatVector, float> {
-      return HnswlibIndexFactory<FloatVector, float>::Create(hnsw_options);
+    hnswlib_index_factory_ = [hnsw_options](FactoryMode) -> VectorIndexIfPtr<FloatVector, float> {
+      return HnswlibIndexFactory<FloatVector, float>::Create(FactoryMode::kCreate, hnsw_options);
     };
-    usearch_index_factory_ = [hnsw_options]() ->  VectorIndexIfPtr<FloatVector, float> {
-      return UsearchIndexFactory<FloatVector, float>::Create(hnsw_options);
+    usearch_index_factory_ = [hnsw_options](FactoryMode) -> VectorIndexIfPtr<FloatVector, float> {
+      return SimplifiedUsearchIndexFactory<FloatVector, float>::Create(
+          FactoryMode::kCreate, hnsw_options);
     };
   }
 
@@ -180,4 +190,4 @@ TEST_F(IndexMergeTest, TestGetVectorUsearchIndex) {
   TestGetVector(usearch_index_factory_);
 }
 
-}  // namespace yb::vector_index
+}  // namespace yb::ann_methods

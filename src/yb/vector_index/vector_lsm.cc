@@ -101,8 +101,16 @@ YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
 // is stopped.
 constexpr size_t kRunningMark = 1e18;
 
-std::string GetChunkPath(const std::string& storage_dir, uint64_t chunk_serial_no) {
-  return JoinPathSegments(storage_dir, Format("vectorindex_$0", chunk_serial_no));
+std::string GetChunkPath(
+    const std::string& storage_dir, const std::string& extension, uint64_t chunk_serial_no) {
+  return JoinPathSegments(storage_dir, Format("vectorindex_$0$1", chunk_serial_no, extension));
+}
+
+template<IndexableVectorType Vector,
+         ValidDistanceResultType DistanceResult>
+std::string GetChunkPath(
+    const VectorLSMOptions<Vector, DistanceResult>& options, uint64_t chunk_serial_no) {
+  return GetChunkPath(options.storage_dir, options.file_extension, chunk_serial_no);
 }
 
 size_t MaxConcurrentReads() {
@@ -401,7 +409,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
-  // Chunk's assosiated file metadata. Can be null.
+  // Chunk's associated file metadata. Can be null.
   VectorLSMFileMetaDataPtr file;
 
   // In memory order for chunk. All chunks in immutable chunks are ordered using it.
@@ -411,7 +419,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
   ImmutableChunkState state = ImmutableChunkState::kInMemory;
 
-  const VectorIndexPtr index;
+  VectorIndexPtr index;
 
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
   const rocksdb::UserFrontiersPtr user_frontiers;
@@ -908,7 +916,7 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
     VectorLSMFileMetaDataPtr file;
     VectorIndexPtr index;
     if (chunk_pb->serial_no()) {
-      index = options_.vector_index_factory();
+      index = options_.vector_index_factory(FactoryMode::kLoad);
 
       const auto file_size = VERIFY_RESULT(GetChunkFileSize(chunk_pb->serial_no()));
       file = CreateVectorLSMFileMetaData(*index, chunk_pb->serial_no(), file_size);
@@ -925,21 +933,30 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
     last_serial_no_ = std::max<uint64_t>(last_serial_no_, chunk_pb->serial_no());
   }
 
-  CountDownLatch latch(immutable_chunks_.size());
+  std::vector<std::promise<Status>> promises(immutable_chunks_.size());
   for (size_t i = 0; i != immutable_chunks_.size(); ++i) {
     auto& chunk = immutable_chunks_[i];
     if (!chunk->file) {
-      latch.CountDown();
+      promises[i].set_value(Status::OK());
       continue;
     }
-    options_.insert_thread_pool->EnqueueFunctor([this, &latch, &chunk] {
-      CheckFailure(chunk->index->LoadFromFile(
-          GetChunkPath(options_.storage_dir, chunk->file->serial_no()),
-          MaxConcurrentReads()));
-      latch.CountDown();
+    options_.insert_thread_pool->EnqueueFunctor([this, &promise = promises[i], &chunk] {
+      auto status = chunk->index->LoadFromFile(
+          GetChunkPath(options_, chunk->file->serial_no()),
+          MaxConcurrentReads());
+      if (!status.ok()) {
+        status = status.CloneAndPrepend(Format("Failed to load $0", chunk->file->serial_no()));
+        LOG_WITH_PREFIX(INFO) << status;
+      }
+      promise.set_value(status);
     });
   }
-  latch.Wait();
+  for (auto& promise : promises) {
+    auto status = promise.get_future().get();
+    if (!status.ok() && failed_status_.ok()) {
+      failed_status_ = status;
+    }
+  }
 
   std::sort(
       immutable_chunks_.begin(), immutable_chunks_.end(), [](const auto& lhs, const auto& rhs) {
@@ -982,8 +999,8 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
     if (chunk->file) {
       const auto serial_no = chunk->file->serial_no();
       RETURN_NOT_OK(env_->LinkFile(
-          GetChunkPath(options_.storage_dir, serial_no),
-          GetChunkPath(out, serial_no)));
+          GetChunkPath(options_, serial_no),
+          GetChunkPath(out, options_.file_extension, serial_no)));
     }
     chunk->AddToUpdate(update);
   }
@@ -1167,7 +1184,8 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   auto start_chunks_search = MonoTime::NowIf(dump_stats);
   for (const auto& index : indexes) {
     auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Chunk results: " << AsString(chunk_results);
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Chunk " << index->IndexStatsStr() << " results: " << AsString(chunk_results);
     sum_num_found_entries += chunk_results.size();
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
@@ -1295,44 +1313,51 @@ Result<WritableFile*> VectorLSM<Vector, DistanceResult>::RollManifest() {
 
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Result<VectorLSMFileMetaDataPtr> VectorLSM<Vector, DistanceResult>::SaveIndexToFile(
-    VectorIndex& index, uint64_t serial_no) {
+auto VectorLSM<Vector, DistanceResult>::SaveIndexToFile(VectorIndex& index, uint64_t serial_no) ->
+    Result<std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>> {
   VLOG_WITH_PREFIX(1) << Format(
       "Saving vector index on disk, serial_no: $0, num entries: $1",
       serial_no, index.Size());
 
-  const auto file_path = GetChunkPath(options_.storage_dir, serial_no);
-  RETURN_NOT_OK(index.SaveToFile(file_path));
+  const auto file_path = GetChunkPath(options_, serial_no);
+  auto new_index = VERIFY_RESULT(index.SaveToFile(file_path));
+  auto& actual_index = new_index ? *new_index : index;
 
   const auto file_size = VERIFY_RESULT(env_->GetFileSize(file_path));
   LOG_WITH_PREFIX(INFO) << Format(
       "Saved vector index on disk, serial_no: $0, num entries: $1, file size: $2",
-      serial_no, index.Size(), file_size);
+      serial_no, actual_index.Size(), file_size);
 
-  return CreateVectorLSMFileMetaData(index, serial_no, file_size);
+  return std::make_pair(CreateVectorLSMFileMetaData(actual_index, serial_no, file_size), new_index);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& chunk) {
   VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(*chunk);
 
+  VectorIndexPtr new_index;
   if (chunk->index) {
     LOG_IF(DFATAL, chunk->file.get())
         << "Chunk is already saved to "
-        << GetChunkPath(options_.storage_dir, chunk->file->serial_no());
+        << GetChunkPath(options_, chunk->file->serial_no());
 
     const auto serial_no = NextSerialNo();
     if (serial_no == 1 && FLAGS_TEST_vector_index_delay_saving_first_chunk_ms != 0) {
       std::this_thread::sleep_for(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms * 1ms);
     }
 
-    chunk->file = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
+    std::tie(chunk->file, new_index) = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
   }
 
   WritableFile* manifest_file = nullptr;
   ImmutableChunkPtr writing_chunk;
   {
     std::lock_guard lock(mutex_);
+    if (new_index) {
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "Update index: " << AsString(*chunk) << " => " << AsString(new_index->IndexStatsStr());
+      chunk->index = new_index;
+    }
     chunk->state = ImmutableChunkState::kOnDisk;
     if (stopping_ && FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) {
       return TEST_SkipManifestUpdateDuringShutdown();
@@ -1462,7 +1487,7 @@ Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_vectors) {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<uint64_t> VectorLSM<Vector, DistanceResult>::GetChunkFileSize(uint64_t serial_no) const {
-  return env_->GetFileSize(GetChunkPath(options_.storage_dir, serial_no));
+  return env_->GetFileSize(GetChunkPath(options_, serial_no));
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1471,7 +1496,7 @@ VectorLSM<Vector, DistanceResult>::CreateVectorIndex(size_t min_vectors) const {
   auto capacity = std::max(min_vectors, options_.vectors_per_chunk);
   VLOG_WITH_PREFIX_AND_FUNC(1) << "requested capacity: " << capacity;
 
-  auto index = options_.vector_index_factory();
+  auto index = options_.vector_index_factory(FactoryMode::kCreate);
   RETURN_NOT_OK(index->Reserve(
       capacity, options_.insert_thread_pool->options().max_workers, MaxConcurrentReads()));
 
@@ -1616,7 +1641,7 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
       }
     }
     if (!index) {
-      index = options_.vector_index_factory();
+      index = options_.vector_index_factory(FactoryMode::kCreate);
     }
   }
   return index->Distance(lhs, rhs);
@@ -1719,7 +1744,7 @@ void VectorLSM<Vector, DistanceResult>::DeleteFile(const VectorLSMFileMetaData& 
   // Sanity check, only obsolete files can be deleted.
   DCHECK(file.IsObsolete());
 
-  auto path = GetChunkPath(options_.storage_dir, file.serial_no());
+  auto path = GetChunkPath(options_, file.serial_no());
   if (!env_->FileExists(path)) {
     LOG_WITH_PREFIX(WARNING) << "File does not exist " << path;
     return;
@@ -1943,7 +1968,12 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
     LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: " << merged_index->Size() << "]";
 
     // Save new index to disk.
-    merged_index_file = VERIFY_RESULT(SaveIndexToFile(*merged_index, NextSerialNo()));
+    VectorIndexPtr new_index;
+    std::tie(merged_index_file, new_index) = VERIFY_RESULT(SaveIndexToFile(
+        *merged_index, NextSerialNo()));
+    if (new_index) {
+      merged_index = new_index;
+    }
     LOG_WITH_PREFIX(INFO)
         << "Compaction done, new chunk " << merged_index_file->ToString() << " saved to disk";
   }
