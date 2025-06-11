@@ -19,25 +19,24 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
-
 func CreateBackupScript(outputPath string, dataDir string, excludePrometheus bool,
 	excludeReleases bool, restart bool, disableVersion bool, verbose bool, plat Platform) {
 
-		if err := CreateBackupScriptHelper(outputPath, dataDir, plat.backupScript(), plat.YsqlDump,
-			plat.PgBin + "/pg_dump", excludePrometheus, excludeReleases, restart, disableVersion, verbose,
-			true); err != nil {
-				log.Fatal(err.Error())
-			}
+	if err := CreateBackupScriptHelper(outputPath, dataDir, plat.backupScript(), plat.YsqlDump,
+		plat.PgBin+"/pg_dump", excludePrometheus, excludeReleases, restart, disableVersion, verbose,
+		true); err != nil {
+		log.Fatal(err.Error())
+	}
 }
 
 // CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
 func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump string,
 	excludePrometheus, excludeReleases, restart, disableVersion, verbose, usePromProtocol bool) error {
 
-
 	err := os.Chmod(script, 0777)
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Error(fmt.Sprintf("failed to give create backup script executable permissions: %s", err.Error()))
+		return err
 	} else {
 		log.Debug("Create Backup Script has now been given executable permissions.")
 	}
@@ -52,7 +51,7 @@ func CreateBackupScriptHelper(outputPath, dataDir, script, ysqldump, pgdump stri
 			args = append(args, "--prometheus_protocol", "https")
 		}
 		if viper.GetBool("prometheus.enableAuth") {
-			envVars = map[string]string {
+			envVars = map[string]string{
 				"PROMETHEUS_USERNAME": viper.GetString("prometheus.authUsername"),
 				"PROMETHEUS_PASSWORD": viper.GetString("prometheus.authPassword"),
 			}
@@ -124,9 +123,12 @@ func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbos
 func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	verbose bool, plat Platform, migration bool, useSystemPostgres bool, disableVersion bool) {
 
-	RestoreBackupScriptHelper(inputPath, destination, skipRestart, verbose, migration,
+	err := RestoreBackupScriptHelper(inputPath, destination, skipRestart, verbose, migration,
 		useSystemPostgres, disableVersion, plat.backupScript(), plat.DataDir, plat.YsqlBin,
-		plat.PgBin + "/pg_restore")
+		plat.PgBin+"/pg_restore")
+	if err != nil {
+		log.Fatal("Restore script failed.")
+	}
 
 	if err := plat.SetDataDirPerms(); err != nil {
 		log.Warn(fmt.Sprintf("Could not set %s permissions.", plat.DataDir))
@@ -149,11 +151,12 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 // TODO: Version check is still disabled because of issues finding the path across all installs.
 func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart bool,
 	verbose bool, migration bool, useSystemPostgres bool, disableVersion bool,
-	script, dataDir, ysqlBin, pgRestore string) {
+	script, dataDir, ysqlBin, pgRestore string) error {
 	userName := viper.GetString("service_username")
 	err := os.Chmod(script, 0777)
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Error(fmt.Sprintf("failed to give restore backup script executable permissions: %s", err.Error()))
+		return err
 	} else {
 		log.Debug("Restore Backup Script has now been given executable permissions.")
 	}
@@ -212,7 +215,7 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 	}
 	envVars := map[string]string{}
 	if viper.GetBool("prometheus.enableAuth") {
-		envVars = map[string]string {
+		envVars = map[string]string{
 			"PROMETHEUS_USERNAME": viper.GetString("prometheus.authUsername"),
 			"PROMETHEUS_PASSWORD": viper.GetString("prometheus.authPassword"),
 		}
@@ -220,15 +223,18 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
 	if out := shell.RunWithEnvVars(script, envVars, args...); !out.SucceededOrLog() {
-		log.Fatal("Restore script failed. May need to restart services.")
+		log.Error(fmt.Sprintf("Restore script failed. May need to restart services: %s", out.Error.Error()))
+		return out.Error
 	}
 	if common.HasSudoAccess() {
 		log.Debug("ensuring ownership of restored directories")
 		user := viper.GetString("service_username")
 		if err := common.Chown(dataDir, user, user, true); err != nil {
-			log.Fatal("failed to change ownership of " + dataDir + "to user/group " + user)
+			log.Error(fmt.Sprintf("failed to change ownership of %s to user/group %s: %s", dataDir, user, err.Error()))
+			return err
 		}
 	}
+	return nil
 }
 
 func addPostgresArgs(args []string) []string {
@@ -301,7 +307,7 @@ func createBackupCmd() *cobra.Command {
 			outputPath := args[0]
 			if plat, ok := services["yb-platform"].(Platform); ok {
 				CreateBackupScript(outputPath, dataDir, excludePrometheus, excludeReleases, restart,
-													 disableVersion, verbose, plat)
+					disableVersion, verbose, plat)
 			} else {
 				log.Fatal("Could not cast service to Platform struct.")
 			}
@@ -315,8 +321,8 @@ func createBackupCmd() *cobra.Command {
 	createBackup.Flags().BoolVar(&excludeReleases, "exclude_releases", false,
 		"exclude YBDB releases from backup (default: false)")
 	createBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
-		"[WARNING: DEPRECATED] Flag is ignored and default behavior is to not restart. Pass in" +
-		" --restart to allow.")
+		"[WARNING: DEPRECATED] Flag is ignored and default behavior is to not restart. Pass in"+
+			" --restart to allow.")
 	createBackup.Flags().BoolVar(&restart, "restart", false,
 		"restart YBA and prometheus during backup creation (default: false)")
 	createBackup.Flags().BoolVar(&disableVersion, "disable_version_check", false,

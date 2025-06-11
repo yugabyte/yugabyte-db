@@ -43,7 +43,7 @@ func MkdirAll(path string, perm os.FileMode) error {
 
 func mkdirAllHelper(path string, children []string, perm os.FileMode) error {
 	log.Debug("Creating directory " + path)
-	if (path == "/") {
+	if path == "/" {
 		return fmt.Errorf("Can not create root directory.")
 	}
 	err := os.Mkdir(path, os.ModePerm)
