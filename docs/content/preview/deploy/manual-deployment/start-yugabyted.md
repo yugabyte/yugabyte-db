@@ -32,9 +32,9 @@ Use the [yugabyted](../../../reference/configuration/yugabyted/) configuration u
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home bin directory.
 
-## Flags to consider
+## Optional settings
 
-Depending on your specific deployment, you need to consider the following additional flags.
+Depending on your specific deployment, consider setting the following additional flags.
 
 ### YCQL only deployment
 
@@ -44,7 +44,7 @@ If you are only using the YCQL API, you must turn off [YSQL memory optimization]
 --tserver_flags "use_memory_defaults_optimized_for_ysql=false"
 ```
 
-### Use YSQL Connection Manager
+### YSQL Connection Manager
 
 If you want to use [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/) for connection pooling, add the following to `--tserver_flags`:
 
