@@ -101,6 +101,8 @@ typedef struct YbAshNestedQueryIdStack
 static YbAsh *yb_ash = NULL;
 static YbAshNestedQueryIdStack query_id_stack;
 static int	nested_level = 0;
+static bool pop_query_id_before_push = false;
+static uint64 query_id_to_be_popped_before_push = 0;
 
 static void YbAshInstallHooks(void);
 static int	yb_ash_cb_max_entries(void);
@@ -189,6 +191,8 @@ YbAshInit(void)
 		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
 		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
 	query_id_stack.num_query_ids_not_pushed = 0;
+
+	EnableQueryId();
 }
 
 void
@@ -260,6 +264,10 @@ YbAshNestedQueryIdStackPop(uint64 query_id)
 		--query_id_stack.num_query_ids_not_pushed;
 		return 0;
 	}
+
+	if (pop_query_id_before_push && query_id == query_id_to_be_popped_before_push)
+		Assert(query_id_stack.top_index > 0 &&
+			   query_id_stack.query_ids[query_id_stack.top_index] == query_id);
 
 	/*
 	 * When an extra ExecutorEnd is called during PortalCleanup,
@@ -484,11 +492,27 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	PG_END_TRY();
 }
 
+static uint64
+GetDefaultQueryId()
+{
+	YbcAshConstQueryIdType type =
+		IsBackgroundWorker ? QUERY_ID_TYPE_BACKGROUND_WORKER
+						   : QUERY_ID_TYPE_DEFAULT;
+
+	return YBCGetConstQueryId(type);
+}
+
 static void
 YbAshSetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
+		if (pop_query_id_before_push)
+		{
+			YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+			pop_query_id_before_push = false;
+			query_id_to_be_popped_before_push = 0;
+		}
 		if (YbAshNestedQueryIdStackPush(query_id))
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
@@ -507,9 +531,18 @@ YbAshResetQueryId(uint64 query_id)
 
 		if (prev_query_id != 0)
 		{
-			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-			MyProc->yb_ash_metadata.query_id = prev_query_id;
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			if (prev_query_id == GetDefaultQueryId())
+			{
+				query_id_to_be_popped_before_push = query_id;
+				pop_query_id_before_push = true;
+				YbAshNestedQueryIdStackPush(query_id);
+			}
+			else
+			{
+				LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+				MyProc->yb_ash_metadata.query_id = prev_query_id;
+				LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			}
 		}
 	}
 }
@@ -536,6 +569,20 @@ YbAshUnsetMetadata(void)
 	 * returns an error. Reset the stack here. We can remove this if we
 	 * make query_id atomic
 	 */
+	if (pop_query_id_before_push)
+	{
+		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+		pop_query_id_before_push = false;
+		query_id_to_be_popped_before_push = 0;
+
+		if (prev_query_id != 0)
+		{
+			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+			MyProc->yb_ash_metadata.query_id = prev_query_id;
+			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+		}
+	}
+
 	query_id_stack.top_index = 0;
 	query_id_stack.num_query_ids_not_pushed = 0;
 
