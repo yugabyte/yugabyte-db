@@ -307,7 +307,7 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
         }
       });
 
-      RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations, target_safe_ht));
+      RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations, new_safe_time));
       RETURN_NOT_OK(ProcessDDLQuery(query_info));
 
       VLOG_WITH_PREFIX(2) << "ExecuteCommittedDDLs: Successfully processed entry "
@@ -416,9 +416,7 @@ Status XClusterDDLQueueHandler::ProcessNewRelations(
       const auto colocation_id = HAS_MEMBER_OF_TYPE(rel, kDDLJsonColocationId, IsUint)
                                      ? rel[kDDLJsonColocationId].GetUint()
                                      : kColocationIdNotSet;
-      const auto& backfill_time_opt = (is_index && colocation_id != kColocationIdNotSet)
-                                          ? target_safe_ht
-                                          : HybridTime::kInvalid;
+      const auto& backfill_time_opt = is_index ? target_safe_ht : HybridTime::kInvalid;
 
       RETURN_NOT_OK(xcluster_context_.SetSourceTableInfoMappingForCreateTable(
           {namespace_name_, schema, rel_name}, PgObjectId(source_db_oid, relfile_oid),
