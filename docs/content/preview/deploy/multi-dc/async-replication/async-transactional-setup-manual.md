@@ -27,13 +27,13 @@ type: docs
   </li>
   <li >
     <a href="../async-transactional-setup-manual/" class="nav-link active">
-      Manual
+      Fully Manual
     </a>
   </li>
 </ul>
 
 {{< warning title="Warning" >}}
-Manual mode xCluster replication is not recommended due to the operational complexity involved.
+Fully Manual xCluster replication is deprecated and not recommended due to the operational complexity involved.
 {{< /warning >}}
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).

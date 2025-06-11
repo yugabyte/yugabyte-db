@@ -5,9 +5,9 @@ linkTitle: Setup
 description: Setting up transactional (active-active single-master) replication between two YB universes
 headContent: Set up transactional xCluster replication
 aliases:
-  - /preview/deploy/multi-dc/async-replication/async-transactional-setup-dblevel/
+  - /stable/deploy/multi-dc/async-replication/async-transactional-setup-dblevel/
 menu:
-  preview:
+  stable:
     parent: async-replication-transactional
     identifier: async-transactional-setup-2-semi-automatic
     weight: 10
@@ -17,11 +17,6 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../async-transactional-setup-automatic/" class="nav-link">
-      Automatic
-    </a>
-  </li>
   <li >
     <a href="../async-transactional-setup-semi-automatic/" class="nav-link active">
       Semi-Automatic
