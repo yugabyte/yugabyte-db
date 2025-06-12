@@ -41,7 +41,7 @@ menu:
 
   {{<index/item
     title="Configuration file"
-    body="Use a YAML-based configuration file to simplify and standardize migrations with YugabyteDB Voyager."
+    body="Use a YAML-based configuration file to simplify and standardize migrations."
     href="configuration-file/"
     icon="/images/section_icons/manage/export_import.png">}}
 
