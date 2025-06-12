@@ -148,7 +148,6 @@ func main() {
     defer c.Cleanup()
 
     // Middleware
-    e.Use(middleware.CORS())
     e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
         LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
             log.Errorf("[PANIC RECOVER] %v %s\n", err, stack)
