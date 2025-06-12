@@ -471,7 +471,8 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		{promPkg, prom.PromDir, "console_libraries"},
 	}
 	for _, link := range links {
-		if err := common.CreateSymlink(link.pkgDir, link.linkDir, link.binary); err != nil {
+		if err := common.Symlink(fmt.Sprintf("%s/%s", link.pkgDir, link.binary),
+														 fmt.Sprintf("%s/%s", link.linkDir, link.binary)); err != nil {
 			log.Error("failed to create symlink for " + link.binary + ": " + err.Error())
 			return err
 		}
@@ -490,8 +491,8 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 func (prom Prometheus) createDataSymlinks() error {
 	if common.HasSudoAccess() {
 		// for root the log file is in /var/log in case of SELinux
-		if err := common.CreateSymlink(prom.LogDir,
-			filepath.Join(common.GetBaseInstall(), "data/logs"), "prometheus.log"); err != nil {
+		if err := common.Symlink(fmt.Sprintf("%s/prometheus.log", prom.LogDir),
+			fmt.Sprintf("%s/prometheus.log", filepath.Join(common.GetBaseInstall(), "data/logs"))); err != nil {
 			return err
 		}
 	}
