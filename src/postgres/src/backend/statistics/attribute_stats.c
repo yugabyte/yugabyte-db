@@ -812,7 +812,7 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
-			YBSetDdlState(YB_DDL_MODE_BREAKING_CHANGE);
+			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
 		else
 			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
 	}
@@ -858,7 +858,7 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
-			YBSetDdlState(YB_DDL_MODE_BREAKING_CHANGE);
+			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
 		else
 			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
 	}

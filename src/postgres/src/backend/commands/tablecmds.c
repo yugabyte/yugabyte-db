@@ -20112,11 +20112,17 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		table_close(rel, NoLock);
 		tab->rel = NULL;
 
-		/* Make updated catalog entry visible */
-		PopActiveSnapshot();
-		CommitTransactionCommand();
+		/* commit the transaction and start new txn with the same ddl state. */
+		if (IsYugaByteEnabled())
+			YbCommitTransactionCommandIntermediate();
+		else
+		{
+			/* Make updated catalog entry visible */
+			PopActiveSnapshot();
+			CommitTransactionCommand();
 
-		StartTransactionCommand();
+			StartTransactionCommand();
+		}
 
 		/*
 		 * Now wait.  This ensures that all queries that were planned

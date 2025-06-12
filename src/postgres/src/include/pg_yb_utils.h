@@ -819,9 +819,12 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
-extern int YBGetDdlNestingLevel();
-extern NodeTag YBGetDdlOriginalNodeTag();
+extern int	YBGetDdlNestingLevel();
+extern NodeTag YBGetCurrentStmtDdlNodeTag();
+extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern void YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
+											  CommandTag commandTag);
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 extern bool YbTrackPgTxnInvalMessagesForAnalyze();
@@ -865,7 +868,7 @@ typedef enum YbDdlMode
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
-extern void YBSetDdlState(YbDdlMode mode);
+extern void YBAddDdlTxnState(YbDdlMode mode);
 extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
@@ -874,6 +877,7 @@ typedef struct YbDdlModeOptional
 	YbDdlMode	value;
 } YbDdlModeOptional;
 
+extern YbDdlMode YBGetCurrentDdlMode();
 extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
 									  ProcessUtilityContext context);
 void		YBAddModificationAspects(YbDdlMode mode);
