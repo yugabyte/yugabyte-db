@@ -1481,9 +1481,9 @@ To override this flag on a per-scrape basis, you can adjust the URL parameter `m
 
 Default: `UINT32_MAX`
 
-## Catalog flags
+## Catalog cache flags
 
-Catalog flags are {{<tags/feature/ea>}}.
+Catalog cache flags are {{<tags/feature/ea>}}. ([This guide](../../develop/best-practices-develop/ysql-catalog-cache-tuning-guide/)) provides more context on these flags.
 
 ##### ysql_catalog_preload_additional_table_list
 

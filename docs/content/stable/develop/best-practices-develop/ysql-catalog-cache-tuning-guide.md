@@ -1,9 +1,9 @@
 ---
-title: Customizing the preloading of YSQL catalog cache
-headerTitle: Customizing the preloading of YSQL catalog cache
+title: Customizing the preloading of YSQL catalog caches
+headerTitle: Customizing the preloading of YSQL catalog caches
 linkTitle: YSQL catalog cache tuning guide
-description: Tips and tricks to build YSQL applications
-headcontent: Tips and tricks for administering YSQL databases
+description: Trading off memory vs performance in YSQL catalog caches
+headcontent: Trading off memory vs performance in YSQL catalog caches
 menu:
   stable:
     identifier: ysql-catalog-cache-tuning-guide
@@ -101,8 +101,6 @@ To confirm that catalog cache misses are a cause, use these techniques
 From the [Catalog Cache Misses](https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/anywhere-metrics/#ysql-ops-and-latency:~:text=on%20other%20metrics.-,Catalog%20Cache%20Misses,-During%20YSQL%20query) metrics dashboard, identify the Postgres catalog table names that are causing the highest misses. You can do this manually or by using the “Outlier Tables” view on the dashboard. Once the top N catalog tables are identified, add them one by one to the gflag until the first conn latency is acceptable to the gflag `--ysql_catalog_preload_additional_table_list`. It might be sufficient to just set `--ysql_catalog_preload_additional_tables=true` [as appropriate](?tab=t.0#heading=h.jz1393338ujp). 
 
 If there are still a significant number of misses to these tables after preloading them, [manually collect logs](#manually-collecting-logs-for-catalog-reads) and share them to Yugabyte Support.
-
-## Appendix
 
 ## Manually collecting logs for catalog reads {#manually-collecting-logs-for-catalog-reads}
 
