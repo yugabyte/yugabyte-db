@@ -4229,7 +4229,7 @@ explain (analyze, dist, costs off, timing off, summary off)
    Index Cond: (i < 5)
    Rows Removed by Index Recheck: 996
    Heap Fetches: 0
-   Storage Index Read Requests: 6
+   Storage Index Read Requests: 2
    Storage Index Rows Scanned: 1003
 (6 rows)
 

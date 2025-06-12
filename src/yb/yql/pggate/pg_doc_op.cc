@@ -596,13 +596,8 @@ bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {
     // Executed in parallel on PgClient
     return false;
   }
-  if (req.is_aggregate()) {
-    return true;
-  }
-  if (!req.has_is_forward_scan() && !req.where_clauses().empty()) {
-    return true;
-  }
-  return false;
+  // At this time ordered scan requires tablet scan order, so they have to be done sequentially
+  return !req.has_is_forward_scan();
 }
 
 Result<bool> PgDocReadOp::DoCreateRequests() {
