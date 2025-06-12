@@ -135,7 +135,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 
 		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
 			IsYugaByteEnabled())
-			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
+			YbSetTxnUsesTempRel();
 
 		relid = RelationGetRelid(rel);
 
@@ -169,7 +169,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		foreach(cur, attnums)
 		{
 			int			attno = lfirst_int(cur) -
-			YBGetFirstLowInvalidAttributeNumber(rel);
+				YBGetFirstLowInvalidAttributeNumber(rel);
 
 			if (is_from)
 				rte->insertedCols = bms_add_member(rte->insertedCols, attno);

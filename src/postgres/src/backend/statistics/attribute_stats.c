@@ -29,7 +29,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-#include "utils/typcache.h"	/* YB: needed for compilation */
+#include "utils/typcache.h"		/* YB: needed for compilation */
 
 #define DEFAULT_NULL_FRAC      Float4GetDatum(0.0)
 #define DEFAULT_AVG_WIDTH      Int32GetDatum(0) /* unknown */
@@ -807,8 +807,9 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 {
 	HeapTuple	newtup;
 
-	bool yb_use_regular_txn_block =
+	bool		yb_use_regular_txn_block =
 		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
+
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
@@ -853,8 +854,9 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 							 Int16GetDatum(attnum),
 							 BoolGetDatum(stainherit));
 
-	bool yb_use_regular_txn_block =
+	bool		yb_use_regular_txn_block =
 		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
+
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)

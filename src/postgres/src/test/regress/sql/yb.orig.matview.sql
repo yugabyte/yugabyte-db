@@ -347,3 +347,10 @@ ROLLBACK TO sp1;
 EXECUTE temp_stmt;
 COMMIT;
 SELECT COUNT(*) FROM t_temp;
+
+-- Concurrent refresh on an empty matview
+CREATE TABLE base_empty (t int);
+CREATE MATERIALIZED VIEW mv_empty AS SELECT * FROM base_empty;
+CREATE UNIQUE INDEX ON mv_empty(t);
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_empty;
+SELECT * FROM mv_empty;

@@ -39,7 +39,7 @@ Result<int> ProcessWrapper::Wait() {
   return retcode;
 }
 
-void ProcessWrapper::Kill() { Kill(SIGQUIT); }
+void ProcessWrapper::Kill() { Kill(SIGINT); }
 
 void ProcessWrapper::Kill(int signal) {
   if (proc_) {

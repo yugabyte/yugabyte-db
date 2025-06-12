@@ -92,7 +92,8 @@ public class CommonUtils {
           "HC_VAULT_TOKEN",
           "VAULTTOKEN",
           "SAS_TOKEN",
-          "REFRESH_TOKEN");
+          "REFRESH_TOKEN",
+          "PASSWORD");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
       Arrays.asList(

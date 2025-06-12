@@ -68,12 +68,12 @@ extern int64 GetInt64FromVariable(const char *var, const char *var_name);
  * This is used in INIT_MEM_CONTEXT_AND_SPI_CONNECT to allow the extension to
  * update its objects.
  */
-extern Oid XClusterExtensionOwner(void);
+extern Oid	XClusterExtensionOwner(void);
 
-extern Oid SPI_GetOid(HeapTuple spi_tuple, int column_id);
+extern Oid	SPI_GetOid(HeapTuple spi_tuple, int column_id);
 
 /* Returns InvalidOid (0) if value doesn't exist/is null. */
-extern Oid SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id);
+extern Oid	SPI_GetOidIfExists(HeapTuple spi_tuple, int column_id);
 
 extern char *SPI_GetText(HeapTuple spi_tuple, int column_id);
 
@@ -87,8 +87,8 @@ extern char *SPI_TextArrayGetElement(HeapTuple spi_tuple, int column_id,
 /* If true, any object in this schema is a temporary object. */
 extern bool IsTempSchema(const char *schema_name);
 
-/* Returns the relation's colocation id or 0 if not colocated. */
-extern Oid GetColocationIdFromRelation(Relation *rel);
+/* Returns the relation's colocation id or InvalidOid (0) if not colocated. */
+extern Oid	GetColocationIdFromRelation(Relation *rel, bool is_table_rewrite);
 
 extern char *get_typname(Oid pg_type_oid);
 

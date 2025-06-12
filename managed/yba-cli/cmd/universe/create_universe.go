@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -57,6 +58,34 @@ var createUniverseCmd = &cobra.Command{
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to create\n", formatter.RedColor))
 		}
+
+		providerCode := v1.GetString("provider-code")
+		if len(strings.TrimSpace(providerCode)) == 0 {
+			cmd.Help()
+			logrus.Fatalln(
+				formatter.Colorize(
+					"No provider code found to create universe\n",
+					formatter.RedColor,
+				),
+			)
+		}
+
+		if strings.EqualFold(providerCode, util.GCPProviderType) ||
+			strings.EqualFold(providerCode, util.K8sProviderType) {
+
+			specialCharsRegex := regexp.MustCompile(`^[a-z0-9-]*$`)
+
+			if !specialCharsRegex.MatchString(universeName) {
+				cmd.Help()
+				logrus.Fatalln(
+					formatter.Colorize(
+						"Name can only contain lowercase letters, numbers and hyphens in GCP or Kubernetes universes\n",
+						formatter.RedColor,
+					),
+				)
+			}
+		}
+
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 		if enableVolumeEncryption {
 			kmsConfigName := v1.GetString("kms-config")

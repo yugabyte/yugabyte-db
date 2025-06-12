@@ -713,9 +713,11 @@ Result<HybridTime> TabletPeer::ReportReadRestart() {
 }
 
 void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
+  ScopedOperation preparing_token(&preparing_operations_counter_);
   auto status = CheckRunning();
 
   if (status.ok()) {
+    operation->set_preparing_token(std::move(preparing_token));
     auto driver = NewLeaderOperationDriver(&operation, term);
     if (driver.ok()) {
       (**driver).ExecuteAsync();
@@ -1489,6 +1491,10 @@ void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
   }
   (**driver).SetPropagatedSafeTime(ht, tablet_->mvcc_manager());
   (**driver).ExecuteAsync();
+}
+
+void TabletPeer::SetMvccPropagatedSafeTime(HybridTime ht) {
+  tablet_->mvcc_manager()->SetPropagatedSafeTimeOnFollower(ht);
 }
 
 bool TabletPeer::ShouldApplyWrite() {

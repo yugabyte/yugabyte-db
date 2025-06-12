@@ -34,6 +34,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/range.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -73,6 +74,9 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
   void TestSstDump(bool specify_metadata, std::string* output);
   void TestAppliedSchemaVersion(bool colocated);
   void TestDropColocatedTable(bool use_transaction);
+  void TestCompactionWithConcurrentAggregate(
+      PGConn& conn, const std::string& pre_compaction_query, const std::string& aggregate_query,
+      int64_t expected_aggregate_result);
 
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
@@ -1107,6 +1111,69 @@ TEST_P(PgPackedRowTest, DropColocatedTable) {
 
 TEST_P(PgPackedRowTest, DropColocatedTableWithTxn) {
   TestDropColocatedTable(true);
+}
+
+void PgPackedRowTest::TestCompactionWithConcurrentAggregate(
+    PGConn& conn, const std::string& pre_compaction_query, const std::string& aggregate_query,
+      int64_t expected_aggregate_result) {
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto key = ASSERT_RESULT(conn.FetchRow<int>("SELECT key FROM test"));
+  ASSERT_EQ(key, 1);
+
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->LoadDependency({
+    SyncPoint::Dependency {
+      .predecessor = "CompactionDone",
+      .successor = "Tablet::DoHandlePgsqlReadRequest::Aggregate"
+    },
+  });
+
+  SyncPoint::GetInstance()->EnableProcessing();
+#endif
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this, &conn2, &pre_compaction_query] {
+    ASSERT_OK(conn2.Execute(pre_compaction_query));
+    auto status = cluster_->CompactTablets();
+    DEBUG_ONLY_TEST_SYNC_POINT("CompactionDone");
+    ASSERT_OK(status);
+  });
+  auto value = ASSERT_RESULT(conn.FetchRow<int64_t>(aggregate_query));
+  ASSERT_EQ(value, expected_aggregate_result);
+}
+
+TEST_P(PgPackedRowTest, SchemaChangeAfterReadStart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+
+  TestCompactionWithConcurrentAggregate(
+      conn,
+      "ALTER TABLE test ADD COLUMN value2 INT",
+      "SELECT COUNT(*) FROM test WHERE value = 1",
+      1);
+}
+
+TEST_P(PgPackedRowTest, DropColumnAfterReadStart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN value2 INT DEFAULT 42"));
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto key = ASSERT_RESULT(conn.FetchRow<int>("SELECT key FROM test"));
+  ASSERT_EQ(key, 1);
+
+  TestCompactionWithConcurrentAggregate(
+      conn,
+      "ALTER TABLE test DROP COLUMN value2",
+      "SELECT SUM(value2) FROM test WHERE value = 1",
+      42);
 }
 
 INSTANTIATE_TEST_SUITE_P(

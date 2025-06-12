@@ -1,0 +1,2 @@
+# src/test/regress/yb_pg_lock_schedule
+test: yb.port.lock

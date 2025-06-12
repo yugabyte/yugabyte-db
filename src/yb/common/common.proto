@@ -214,7 +214,7 @@ message SchemaPB {
   optional TablePropertiesPB table_properties = 2;
   optional ColocatedTableIdentifierPB colocated_table_id = 3;
   // Added in 2.13, any upgraded cluster may not have this value so use it appropriately.
-  optional string DEPRICATED_pgschema_name = 4; // GHI: #12770 (DEPRECATE_EOL 2.27)
+  optional string DEPRECATED_pgschema_name = 4; // GHI: #12770 (DEPRECATE_EOL 2.27)
 }
 
 // This message contains the metadata of a secondary index of a table.

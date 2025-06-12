@@ -59,9 +59,7 @@ public class DeleteTablesFromUniverse extends AbstractTaskBase {
     }
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String universeMasterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       keyspaceTablesMap.forEach(
           (keyspace, tableNames) ->
               tableNames.forEach(

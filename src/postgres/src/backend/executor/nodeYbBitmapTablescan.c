@@ -313,23 +313,23 @@ YbGetBitmapScanMightRecheck(PlanState *ps)
 	switch (nodeTag(ps))
 	{
 		case T_BitmapOrState:
-		{
-			BitmapOrState *bos = castNode(BitmapOrState, ps);
+			{
+				BitmapOrState *bos = castNode(BitmapOrState, ps);
 
-			for (int i = 0; i < bos->nplans; i++)
-				if (YbGetBitmapScanMightRecheck(bos->bitmapplans[i]))
-					return true;
-			return false;
-		}
+				for (int i = 0; i < bos->nplans; i++)
+					if (YbGetBitmapScanMightRecheck(bos->bitmapplans[i]))
+						return true;
+				return false;
+			}
 		case T_BitmapAndState:
-		{
-			BitmapAndState *bas = castNode(BitmapAndState, ps);
+			{
+				BitmapAndState *bas = castNode(BitmapAndState, ps);
 
-			for (int i = 0; i < bas->nplans; i++)
-				if (!YbGetBitmapScanMightRecheck(bas->bitmapplans[i]))
-					return false;
-			return true;
-		}
+				for (int i = 0; i < bas->nplans; i++)
+					if (!YbGetBitmapScanMightRecheck(bas->bitmapplans[i]))
+						return false;
+				return true;
+			}
 		case T_YbBitmapIndexScanState:
 			return castNode(YbBitmapIndexScanState, ps)->biss_might_recheck;
 		default:

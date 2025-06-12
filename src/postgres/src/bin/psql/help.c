@@ -712,7 +712,7 @@ helpSQL(const char *topic, unsigned short int pager)
 					/* # of newlines in format must match constant above! */
 					fprintf(output, _("Command:     %s\n"
 									  "Description: %s\n"
-#ifdef YB_DISABLED	/* Exclude links to postgres documentation */
+#ifdef YB_DISABLED				/* Exclude links to postgres documentation */
 									  "Syntax:\n%s\n\n"
 									  "URL: %s\n\n"),
 #else

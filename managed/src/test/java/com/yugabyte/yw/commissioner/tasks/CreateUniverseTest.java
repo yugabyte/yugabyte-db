@@ -17,6 +17,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
@@ -39,6 +40,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
@@ -74,6 +76,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForMasterLeader,
           TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
+          TaskType.WaitForServerReady,
           TaskType.WaitForServer, // wait for postgres
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
@@ -97,6 +100,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForMasterLeader,
           TaskType.AnsibleConfigureServers,
           TaskType.UpdatePlacementInfo,
+          TaskType.WaitForServerReady,
           TaskType.WaitForServer, // wait for postgres
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
@@ -138,6 +142,10 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
+      IsServerReadyResponse mockServerReadyResponse = mock(IsServerReadyResponse.class);
+      when(mockServerReadyResponse.getNumNotRunningTablets()).thenReturn(0);
+      when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockServerReadyResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
     } catch (Exception e) {
@@ -145,6 +153,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     }
     mockWaits(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     doAnswer(
             inv -> {

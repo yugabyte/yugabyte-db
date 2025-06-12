@@ -208,6 +208,8 @@
 | "Turn off batch nest loop for running slow sql queries" | "yb.query_stats.slow_queries.set_enable_nestloop_off" | "UNIVERSE" | "This config turns off and on batch nestloop during running the join statement for slow queries. If true, it will be turned off and we expect better performance." | "Boolean" |
 | "Excluded Queries" | "yb.query_stats.excluded_queries" | "UNIVERSE" | "List of queries to exclude from slow queries." | "String List" |
 | "Query character limit" | "yb.query_stats.slow_queries.query_length" | "UNIVERSE" | "Query character limit in slow queries." | "Integer" |
+| "Slow queries retention period" | "yb.query_stats.slow_queries.retention_period_days" | "UNIVERSE" | "Data retention period (in days) if slow query aggregation is enabled." | "Integer" |
+| "Disable Slow queries aggregation" | "yb.query_stats.slow_queries.disable_aggregation" | "UNIVERSE" | "If enabled, slow queries data will be stored for universe, once per hour." | "Boolean" |
 | "Ansible Strategy" | "yb.ansible.strategy" | "UNIVERSE" | "strategy can be linear, mitogen_linear or debug" | "String" |
 | "Ansible Connection Timeout Duration" | "yb.ansible.conn_timeout_secs" | "UNIVERSE" | "This is the default timeout for connection plugins to use." | "Integer" |
 | "Ansible Verbosity Level" | "yb.ansible.verbosity" | "UNIVERSE" | "verbosity of ansible logs, 0 to 4 (more verbose)" | "Integer" |

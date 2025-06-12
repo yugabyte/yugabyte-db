@@ -385,8 +385,8 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       : catalog_manager_(catalog_manager) {}
 
   Status Visit(
-      const std::string& replication_group_id_str, const SysUniverseReplicationEntryPB& metadata)
-      REQUIRES(catalog_manager_->mutex_) {
+      const std::string& replication_group_id_str,
+      const SysUniverseReplicationEntryPB& metadata) override REQUIRES(catalog_manager_->mutex_) {
     const xcluster::ReplicationGroupId replication_group_id(replication_group_id_str);
     DCHECK(!ContainsKey(
         catalog_manager_->universe_replication_map_,
@@ -467,7 +467,8 @@ class UniverseReplicationBootstrapLoader
 
   Status Visit(
       const std::string& replication_group_id_str,
-      const SysUniverseReplicationBootstrapEntryPB& metadata) REQUIRES(catalog_manager_->mutex_) {
+      const SysUniverseReplicationBootstrapEntryPB& metadata) override
+      REQUIRES(catalog_manager_->mutex_) {
     const xcluster::ReplicationGroupId replication_group_id(replication_group_id_str);
     DCHECK(!ContainsKey(
         catalog_manager_->universe_replication_bootstrap_map_,
@@ -722,7 +723,7 @@ Status CatalogManager::BackfillMetadataForXRepl(
       // is not present without backfilling it to master's disk or tservers.
       // Skip this check for colocated parent tables as they do not have pgschema names.
       if (!IsColocationParentTableId(table_id) &&
-          (backfill_required || table_lock->schema().depricated_pgschema_name().empty())) {
+          (backfill_required || table_lock->schema().deprecated_pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
         string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table_id, table_lock.data()));
         VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;

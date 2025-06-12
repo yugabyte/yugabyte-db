@@ -17,7 +17,7 @@
 #ifndef MEMUTILS_H
 #define MEMUTILS_H
 
-#include "c.h"	/* YB include */
+#include "c.h"					/* YB include */
 
 #include "nodes/memnodes.h"
 

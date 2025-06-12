@@ -1785,7 +1785,7 @@ ExecGrant_Attribute(InternalGrant *istmt, Oid relOid, const char *relname,
 	 * original column acl value is null, we cannot skip catalog update.
 	 */
 	Acl		   *yb_copy_of_old_acl =
-	(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 	/*
 	 * Generate new ACL.
@@ -2082,7 +2082,7 @@ ExecGrant_Relation(InternalGrant *istmt)
 			 * update.
 			 */
 			Acl		   *yb_copy_of_old_acl =
-			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+				(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 			/*
 			 * Generate new ACL.
@@ -2291,7 +2291,7 @@ ExecGrant_Database(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2431,7 +2431,7 @@ ExecGrant_Fdw(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2574,7 +2574,7 @@ ExecGrant_ForeignServer(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2715,7 +2715,7 @@ ExecGrant_Function(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -2863,7 +2863,7 @@ ExecGrant_Language(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3018,7 +3018,7 @@ ExecGrant_Largeobject(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3160,7 +3160,7 @@ ExecGrant_Namespace(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3306,7 +3306,7 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3444,7 +3444,7 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.
@@ -3595,7 +3595,7 @@ ExecGrant_Type(InternalGrant *istmt)
 		 * original column acl value is null, we cannot skip catalog update.
 		 */
 		Acl		   *yb_copy_of_old_acl =
-		(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
+			(IsYugaByteEnabled() && !isNull) ? aclcopy(old_acl) : NULL;
 
 		/*
 		 * Generate new ACL.

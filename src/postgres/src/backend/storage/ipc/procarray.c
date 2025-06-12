@@ -269,7 +269,7 @@ typedef enum KAXCompressReason
 	KAX_PRUNE,					/* we just pruned old entries */
 	KAX_TRANSACTION_END,		/* we just committed/removed some XIDs */
 	KAX_STARTUP_PROCESS_IDLE	/* startup process is about to sleep */
-}			KAXCompressReason;
+} KAXCompressReason;
 
 
 static ProcArrayStruct *procArray;
@@ -701,7 +701,7 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		 */
 		Assert(TransactionIdIsValid(proc->xid));
 
-		if (!YbGetPgOpsInCurrentTxn())
+		if (!YbCurrentTxnUsesTempRel())
 			return;
 		/*
 		 * If we can immediately acquire ProcArrayLock, we clear our own XID

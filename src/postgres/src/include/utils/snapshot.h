@@ -127,7 +127,7 @@ typedef struct SnapshotData *Snapshot;
 
 typedef struct YbOptionalReadPointHandle
 {
-	bool has_value;
+	bool		has_value;
 	YbcReadPointHandle value;
 } YbOptionalReadPointHandle;
 

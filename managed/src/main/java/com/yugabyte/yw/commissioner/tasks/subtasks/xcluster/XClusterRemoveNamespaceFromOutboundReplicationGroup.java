@@ -64,9 +64,7 @@ public class XClusterRemoveNamespaceFromOutboundReplicationGroup extends XCluste
               taskParams().getDbToRemove()));
     }
 
-    try (YBClient client =
-        ybService.getClient(
-            sourceUniverse.getMasterAddresses(), sourceUniverse.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
       log.info(
           "Removing database from XClusterConfig({}): source db id: {}",
           xClusterConfig.getUuid(),

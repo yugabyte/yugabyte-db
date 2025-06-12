@@ -178,7 +178,7 @@ class GraphPanelHeader extends Component {
             filterType.type === currentQuery.filterType &&
             filterType.value === currentQuery.filterValue
         );
-        filterParams.filterLabel = currentFilterItem.label;
+        filterParams.filterLabel = currentFilterItem?.label;
         filterParams.endMoment = moment();
         filterParams.startMoment = moment().subtract(
           currentFilterItem.value,

@@ -42,10 +42,12 @@ import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
+import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
+import com.yugabyte.yw.nodeagent.SetupCGroupInput;
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -153,22 +155,22 @@ public class NodeAgentRpcPayload {
         architecture);
   }
 
-  private InstallSoftwareInput.Builder fillYbReleaseMetadata(
+  private DownloadSoftwareInput.Builder fillYbReleaseMetadata(
       Universe universe,
       Provider provider,
       NodeDetails node,
       String ybSoftwareVersion,
       Region region,
       Architecture arch,
-      InstallSoftwareInput.Builder installSoftwareInputBuilder,
+      DownloadSoftwareInput.Builder downloadSoftwareInputBuilder,
       NodeAgent nodeAgent,
       String customTmpDirectory) {
     Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(provider);
     ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
     String ybServerPackage = getYbPackage(release, arch, region);
-    installSoftwareInputBuilder.setYbPackage(ybServerPackage);
+    downloadSoftwareInputBuilder.setYbPackage(ybServerPackage);
     if (release.isS3Download(ybServerPackage)) {
-      installSoftwareInputBuilder.setS3RemoteDownload(true);
+      downloadSoftwareInputBuilder.setS3RemoteDownload(true);
       String accessKey = envConfig.get("AWS_ACCESS_KEY_ID");
       if (StringUtils.isEmpty(accessKey)) {
         // TODO: This will be removed once iTest moves to new release API.
@@ -178,7 +180,7 @@ public class NodeAgentRpcPayload {
         accessKey = System.getenv("AWS_ACCESS_KEY_ID");
       }
       if (StringUtils.isNotBlank(accessKey)) {
-        installSoftwareInputBuilder.setAwsAccessKey(accessKey);
+        downloadSoftwareInputBuilder.setAwsAccessKey(accessKey);
       }
       String secretKey = envConfig.get("AWS_SECRET_ACCESS_KEY");
       if (StringUtils.isEmpty(secretKey)) {
@@ -188,10 +190,10 @@ public class NodeAgentRpcPayload {
         secretKey = System.getenv("AWS_SECRET_ACCESS_KEY");
       }
       if (StringUtils.isNotBlank(secretKey)) {
-        installSoftwareInputBuilder.setAwsSecretKey(secretKey);
+        downloadSoftwareInputBuilder.setAwsSecretKey(secretKey);
       }
     } else if (release.isGcsDownload(ybServerPackage)) {
-      installSoftwareInputBuilder.setGcsRemoteDownload(true);
+      downloadSoftwareInputBuilder.setGcsRemoteDownload(true);
       // Upload the Credential json to the remote host.
       nodeAgentClient.uploadFile(
           nodeAgent,
@@ -204,16 +206,17 @@ public class NodeAgentRpcPayload {
           DEFAULT_CONFIGURE_USER,
           0,
           null);
-      installSoftwareInputBuilder.setGcsCredentialsJson(
+      downloadSoftwareInputBuilder.setGcsCredentialsJson(
           customTmpDirectory
               + "/"
               + Paths.get(envConfig.get(GCPCloudImpl.GCE_PROJECT_PROPERTY))
                   .getFileName()
                   .toString());
     } else if (release.isHttpDownload(ybServerPackage)) {
-      installSoftwareInputBuilder.setHttpRemoteDownload(true);
+      downloadSoftwareInputBuilder.setHttpRemoteDownload(true);
       if (StringUtils.isNotBlank(release.getHttpChecksum())) {
-        installSoftwareInputBuilder.setHttpPackageChecksum(release.getHttpChecksum().toLowerCase());
+        downloadSoftwareInputBuilder.setHttpPackageChecksum(
+            release.getHttpChecksum().toLowerCase());
       }
     } else if (release.hasLocalRelease()) {
       // Upload the release to the node.
@@ -224,19 +227,11 @@ public class NodeAgentRpcPayload {
           DEFAULT_CONFIGURE_USER,
           0,
           null);
-      installSoftwareInputBuilder.setYbPackage(
+      downloadSoftwareInputBuilder.setYbPackage(
           customTmpDirectory + "/" + Paths.get(ybServerPackage).getFileName().toString());
     }
-    if (!node.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
-      // For RR we don't setup master
-      installSoftwareInputBuilder.addSymLinkFolders("tserver");
-    } else {
-      installSoftwareInputBuilder.addSymLinkFolders("tserver");
-      installSoftwareInputBuilder.addSymLinkFolders("master");
-    }
-    installSoftwareInputBuilder.setRemoteTmp(customTmpDirectory);
-    installSoftwareInputBuilder.setYbHomeDir(provider.getYbHome());
-    return installSoftwareInputBuilder;
+    downloadSoftwareInputBuilder.setRemoteTmp(customTmpDirectory);
+    return downloadSoftwareInputBuilder;
   }
 
   public InstallSoftwareInput setupInstallSoftwareBits(
@@ -251,7 +246,36 @@ public class NodeAgentRpcPayload {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
-    installSoftwareInputBuilder =
+    ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    String ybServerPackage =
+        getYbPackage(release, universe.getUniverseDetails().arch, taskParams.getRegion());
+    installSoftwareInputBuilder.setYbPackage(ybServerPackage);
+    if (!nodeDetails.isInPlacement(universe.getUniverseDetails().getPrimaryCluster().uuid)) {
+      // For RR we don't setup master
+      installSoftwareInputBuilder.addSymLinkFolders("tserver");
+    } else {
+      installSoftwareInputBuilder.addSymLinkFolders("tserver");
+      installSoftwareInputBuilder.addSymLinkFolders("master");
+    }
+    installSoftwareInputBuilder.setRemoteTmp(customTmpDirectory);
+    installSoftwareInputBuilder.setYbHomeDir(provider.getYbHome());
+
+    return installSoftwareInputBuilder.build();
+  }
+
+  public DownloadSoftwareInput setupDownloadSoftwareBits(
+      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+    DownloadSoftwareInput.Builder downloadSoftwareInputBuilder = DownloadSoftwareInput.newBuilder();
+    String ybSoftwareVersion = "";
+    if (taskParams instanceof AnsibleConfigureServers.Params) {
+      AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
+      ybSoftwareVersion = params.ybSoftwareVersion;
+    }
+    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    downloadSoftwareInputBuilder =
         fillYbReleaseMetadata(
             universe,
             provider,
@@ -259,11 +283,11 @@ public class NodeAgentRpcPayload {
             ybSoftwareVersion,
             taskParams.getRegion(),
             universe.getUniverseDetails().arch,
-            installSoftwareInputBuilder,
+            downloadSoftwareInputBuilder,
             nodeAgent,
             customTmpDirectory);
 
-    return installSoftwareInputBuilder.build();
+    return downloadSoftwareInputBuilder.build();
   }
 
   public InstallYbcInput setupInstallYbcSoftwareBits(
@@ -531,5 +555,20 @@ public class NodeAgentRpcPayload {
     ServerGFlagsInput input = builder.putAllGflags(gflags).build();
     log.debug("Setting gflags using node agent: {}", input.getGflagsMap());
     nodeAgentClient.runServerGFlags(nodeAgent, input, DEFAULT_CONFIGURE_USER);
+  }
+
+  public SetupCGroupInput setupSetupCGroupBits(
+      Universe universe, NodeDetails nodeDetails, NodeTaskParams taskParams, NodeAgent nodeAgent) {
+    SetupCGroupInput.Builder setupSetupCGroupBuilder = SetupCGroupInput.newBuilder();
+    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+
+    setupSetupCGroupBuilder.setYbHomeDir(provider.getYbHome());
+    if (taskParams instanceof AnsibleConfigureServers.Params) {
+      AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
+      setupSetupCGroupBuilder.setPgMaxMemMb(params.cgroupSize);
+    }
+
+    return setupSetupCGroupBuilder.build();
   }
 }

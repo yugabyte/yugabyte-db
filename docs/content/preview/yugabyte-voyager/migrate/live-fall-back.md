@@ -583,7 +583,7 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 ## Prepare the target database
 
-Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
+Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) when using the [YugabyteDB gRPC Connector](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
@@ -628,11 +628,13 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-- For YugabyteDB Aeon, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+- For YugabyteDB Aeon, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role and grant replication role using the following command:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
      GRANT yb_superuser TO ybvoyager;
+     SELECT enable_replication_role('ybvoyager');
+     GRANT CREATE on DATABASE <target_database_name> to ybvoyager;
      ```
 
 If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
@@ -917,8 +919,13 @@ Perform the following steps as part of the cutover process:
 
     ```sh
     # Replace the argument values with those applicable for your migration.
-    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fall-back true
+    yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> \
+      --prepare-for-fall-back true \
+      --use-yb-grpc-connector true
+
     ```
+
+    If the target database is on [YugabyteDB Aeon](/preview/yugabyte-cloud), use `--use-yb-grpc-connector false` to allow the workflow to use the [YugabyteDB connector](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/).
 
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for details about the arguments.
 
@@ -954,7 +961,7 @@ The `export data from target` command may result in duplicated events if you res
        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-       
+
     ```
 
     {{< note title ="Note" >}}
@@ -1186,7 +1193,8 @@ DROP USER ybvoyager;
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
 
-- Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
-- [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is partially supported for export or streaming events from YugabyteDB during `export data from target`. Basic SSL and server authentication via root certificate is supported. Client authentication is not supported.
+- For [YugabyteDB gRPC Connector](../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
+- For YugabyteDB gRPC Connector, [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is partially supported for export or streaming events from YugabyteDB during `export data from target`. Basic SSL and server authentication via root certificate is supported. Client authentication is not supported.
+- Currently, the [YugabyteDB Connector](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) has a known limitation. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
 - In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
 - [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

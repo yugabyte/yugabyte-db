@@ -15,7 +15,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
@@ -87,6 +89,7 @@ public class YsqlQueryExecutor {
       "DROP ROLE IF EXISTS pg_execute_server_program, pg_read_server_files, "
           + "pg_write_server_files; ";
 
+  @Inject RuntimeConfGetter confGetter;
   RuntimeConfigFactory runtimeConfigFactory;
   NodeUniverseManager nodeUniverseManager;
   GFlagsValidation gFlagsValidation;
@@ -285,6 +288,48 @@ public class YsqlQueryExecutor {
     } catch (Exception e) {
       LOG.error(e.getMessage(), e);
       response.put("error", "Failed to parse response: " + e.getMessage());
+    }
+    return response;
+  }
+
+  public JsonNode executeQueryBatchInNodeShell(
+      Universe universe, String dbName, List<String> queries, NodeDetails node) {
+    var intent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return executeQueryBatchInNodeShell(
+        universe,
+        dbName,
+        queries,
+        node,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
+        intent.isYSQLAuthEnabled(),
+        intent.enableConnectionPooling);
+  }
+
+  public JsonNode executeQueryBatchInNodeShell(
+      Universe universe,
+      String dbName,
+      List<String> queries,
+      NodeDetails node,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
+
+    ObjectNode response = newObject();
+    response.put("type", "ysql");
+    for (var query : queries) {
+      String queryType = getQueryType(query);
+      query = queryType.equals("SELECT") ? wrapJsonAgg(query) : query;
+    }
+    ShellResponse shellResponse = new ShellResponse();
+    try {
+      shellResponse =
+          nodeUniverseManager
+              .runYsqlBatchCommands(
+                  node, universe, dbName, queries, timeoutSec, authEnabled, cpEnabled)
+              .processErrors("YSQL query batch execution error");
+      response.put("result", shellResponse.message);
+    } catch (RuntimeException e) {
+      response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
     }
     return response;
   }

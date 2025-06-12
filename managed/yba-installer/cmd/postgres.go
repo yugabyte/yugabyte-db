@@ -232,8 +232,12 @@ func (pg Postgres) Status() (common.Status, error) {
 	status.ServiceFileLoc = pg.SystemdFileLocation
 
 	// Get the service status
-	props := systemd.Show(filepath.Base(pg.SystemdFileLocation), "LoadState", "SubState",
+	props, err := systemd.Show(filepath.Base(pg.SystemdFileLocation), "LoadState", "SubState",
 		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if err != nil {
+		log.Error("Failed to get postgres status: " + err.Error())
+		return status, err
+	}
 	if props["LoadState"] == "not-found" {
 		status.Status = common.StatusNotInstalled
 	} else if props["SubState"] == "running" {
@@ -253,7 +257,7 @@ func (pg Postgres) Status() (common.Status, error) {
 func (pg Postgres) Uninstall(removeData bool) error {
 	log.Info("Uninstalling postgres")
 	if err := pg.Stop(); err != nil {
-		return err
+		log.Warn("Got error when stopping postgres, continuing with uninstall: " + err.Error())
 	}
 
 	if removeData {

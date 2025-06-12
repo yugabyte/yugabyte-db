@@ -18,15 +18,14 @@
 #include "yb/util/atomic.h"
 #include "yb/util/flags/auto_flags.h"
 
-DEFINE_RUNTIME_AUTO_bool(enable_ysql_operation_lease, kLocalPersisted, false, true,
-                         "Enables the ysql client operation lease. The client operation lease must "
-                         "be held by a tserver to host pg sessions. It is refreshed by the master "
-                         "leader.");
+DEFINE_RUNTIME_bool(enable_ysql_operation_lease, true, "Enables the ysql client operation lease. "
+                    "The client operation lease must " "be held by a tserver to host pg sessions. "
+                    "It is refreshed by the master leader.");
 
 namespace yb {
 
 bool IsYsqlLeaseEnabled() {
-  return GetAtomicFlag(&FLAGS_TEST_enable_object_locking_for_table_locks) ||
+  return GetAtomicFlag(&FLAGS_enable_object_locking_for_table_locks) ||
          GetAtomicFlag(&FLAGS_enable_ysql_operation_lease);
 }
 

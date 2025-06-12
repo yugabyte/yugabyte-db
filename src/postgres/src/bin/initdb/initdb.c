@@ -3097,15 +3097,7 @@ initialize_data_directory(void)
 
 	setup_auth(cmdfd);
 
-	/*
-	 * YB_TODO: The primary/unique key exist in YB without executing
-	 * system_constraints_file. This is due to YB specific customizations in
-	 * yb_genbki.pl. Now that vanilla PG also creates PK indexes on catalog
-	 * tables, should we drop these customization from yb_genbki.pl and use
-	 * system_constraints_file instead?
-	 */
-	if (!IsYugaByteGlobalClusterInitdb() && !IsYugaByteLocalNodeInitdb())
-		setup_run_file(cmdfd, system_constraints_file);
+	setup_run_file(cmdfd, system_constraints_file);
 
 	setup_run_file(cmdfd, system_functions_file);
 
@@ -3390,6 +3382,7 @@ main(int argc, char *argv[])
 	if (yb_log_file_path && yb_log_file_path[0] != '\0')
 	{
 		const char *yb_log_option = psprintf("-r %s", yb_log_file_path);
+
 		extra_options = psprintf("%s %s", extra_options, yb_log_option);
 	}
 

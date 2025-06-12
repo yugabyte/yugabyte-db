@@ -33,11 +33,12 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/operation_counter.h"
-#include "yb/docdb/doc_read_context.h"
 
 namespace yb::docdb {
 
 class ScanChoices;
+
+YB_STRONGLY_TYPED_BOOL(AddTablePrefixToKey);
 
 // Base class for a SQL-mapped-to-document-DB iterator.
 class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
@@ -72,7 +73,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   // Init scan iterator.
   void InitForTableType(
-      TableType table_type, Slice sub_doc_key = Slice(), SkipSeek skip_seek = SkipSeek::kFalse);
+      TableType table_type, Slice sub_doc_key = Slice(), SkipSeek skip_seek = SkipSeek::kFalse,
+      AddTablePrefixToKey add_table_prefix_to_key = AddTablePrefixToKey::kFalse);
   // Init QL read scan.
   Status Init(
       const qlexpr::YQLScanSpec& spec,

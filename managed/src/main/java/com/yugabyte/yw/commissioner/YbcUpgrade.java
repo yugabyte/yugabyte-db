@@ -282,7 +282,9 @@ public class YbcUpgrade {
         && (!universe.getUniverseDetails().updateInProgress
             || SAFE_TO_UPGRADE_YBC_TASKS.contains(universe.getUniverseDetails().updatingTask))
         && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)
-        && !failedYBCUpgradeUniverseSet.contains(universe.getUniverseUUID());
+        && !failedYBCUpgradeUniverseSet.contains(universe.getUniverseUUID())
+        && universe.getUniverseDetails().clusters.stream()
+            .anyMatch(c -> c.userIntent != null && c.userIntent.getMigrationConfig() == null);
   }
 
   public boolean canUpgradeYBCOnK8s(Universe universe, String ybcVersion) {

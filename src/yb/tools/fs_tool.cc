@@ -272,6 +272,7 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
       .metric_registry = nullptr,
       .log_anchor_registry = reg.get(),
       .tablet_options = tablet_options,
+      .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = std::string(),
       .transaction_participant_context = nullptr,
       .local_tablet_filter = client::LocalTabletFilter(),

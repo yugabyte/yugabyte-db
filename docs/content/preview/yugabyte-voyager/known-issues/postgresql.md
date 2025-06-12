@@ -1546,13 +1546,13 @@ CREATE INDEX idx_orders_created ON orders(created_at DESC);
 
 Note that if the table is colocated, this hotspot concern can safely be ignored, as all the data resides on a single tablet, and the distribution is no longer relevant.
 
-**Workaround**: To address this issue and improve query performance, application-level sharding is recommended. This approach involves adding an additional column to the table and creating a multi-column index including both the new column and the timestamp/date column. The additional column distributes data using a hash-based strategy, effectively spreading the load across multiple nodes.
+**Workaround**:
 
-Implementing this solution requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, the new sharding column should be included in the query filters to benefit from distributed execution.
+To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. The new sharding key will be a modulo of the hash of the timestamp column value, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
+
+To fully implement this solution also requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, include the new sharding key values in the query filters to benefit from distributed execution.
 
 Ensure that the index on the column is configured to be range-sharded.
-
-References: [How to Avoid Hotspots on Range-based Indexes in Distributed Databases](https://www.yugabyte.com/blog/distributed-databases-hotspots-range-based-indexes/), [[YFTT] Avoiding Hot-Spots on Timestamp Based Index](https://www.youtube.com/watch?v=tiYZn0U1wzY)
 
 **Example**
 
@@ -1564,27 +1564,28 @@ CREATE TABLE orders (
     ...
     created_at timestamp
 );
-
 CREATE INDEX idx_orders_created ON orders(created_at DESC);
+```
 
+And a related read query might look like the following:
+
+```sql
 SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
 ```
 
-Suggested change to the schema is to add the column `shard_id` with a default value as an integer between 0 and the number of shards required for the use case. In addition, you add this column to the index columns with hash sharding. In this way the data is distributed by `shard_id` and ordered based on `created_at`.
+Suggested change to the schema is to add the sharding key as the modulo of the hash of the timestamp column value, which gives a key in a range (for example, 0-15). This can change depending on the use case. This key will be used to distribute the data among various tablets and hence help in distributing the data evenly.
 
-This also requires modifying the range queries to include the `shard_id` in the filter to help the optimizer. In this example, you specify the shard IDs in the IN clause.
+In addition, modify range queries to include the modulo of the hash of timestamp column value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
 
 ```sql
 CREATE TABLE orders (
     order_id int PRIMARY,
-    ...,
-    shard_id int DEFAULT (floor(random() * 100)::int % 16),
+    ...
     created_at timestamp
 );
+CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) HASH, created_at DESC);
 
-CREATE INDEX idx_orders_created ON orders(shard_id HASH, created_at DESC);
-
-SELECT * FROM orders WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
+SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- fetch orders for the previous month
 ```
 
 ---
@@ -1614,4 +1615,188 @@ Suggested change to the schema is to remove this redundant index `idx_orders_ord
 
 ```sql
 CREATE INDEX idx_orders_order_id on orders(order_id);
+```
+
+---
+
+### Index on low-cardinality column
+
+**Description**:
+
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+
+Design the index to evenly distribute data across all nodes and optimize performance based on query patterns. Avoid using low-cardinality columns, such as boolean values, ENUMs, or days of the week, as sharding keys, as they result in data being distributed across only a few tablets.
+
+#### Single column index
+
+Using a single-column index on a low-cardinality column leads to uneven data distribution, regardless of the sharding strategy.
+
+**Workaround**:
+
+It is recommended to drop the index if it is not required.
+
+If the index is used in queries, combine it with a high-cardinality column to create either a multi-column index with the sharding key on the high-cardinality column or a multi-column range-sharding index. This ensures better data distribution across all nodes.
+
+#### Multi-column index
+
+In a multi-column index with a low cardinality column as the sharding key, the data will be unevenly distributed.
+
+**Workaround**:
+
+Make the index range-sharded to distribute data based on the combined values of all columns, or reorder the index columns to place the high-cardinality column first. This enables sharding on the high-cardinality column and ensures even distribution across all nodes.
+
+**Example**:
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TYPE order_statuses AS ENUM ('CONFIRMED', 'SHIPPED', 'OUT FOR DELIVERY', 'DELIVERED', 'CANCELLED');
+
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...,
+    status order_statuses
+);
+
+CREATE INDEX idx_order_status on orders (status); --single column index on column having only 5 values 
+
+CREATE INDEX idx_order_status_order_id on orders (status, order_id); --multi column index on first column with only 5 values 
+```
+
+Since the number of distinct values of the column `status` is 5, there will be a maximum of 5 tablets created, limiting the scalability.
+
+Suggested change to both types of indexes is one of the following.
+
+Make it a multi-column range-index:
+
+```sql
+ --These indexes will distribute the data on the combine value of both and as order_id is high cardinality column, it will make sure that data is distributed evenly
+
+CREATE INDEX idx_order_status on orders(status ASC, order_id); --adding order_id and making it a range-sharded index explictly
+
+CREATE INDEX idx_order_status_order_id on orders (status ASC, order_id); --making it a range-sharded index explictly 
+```
+
+
+Make it multi-column with a sharding key on a high-cardinality column:
+
+```sql
+--these indexes will distribute the data on order_id first and then each shard is clustered on status  
+
+CREATE INDEX idx_orders_status on orders(order_id, status); --making it multi column by adding order_id as first column 
+
+CREATE INDEX idx_order_status_order_id on orders (order_id, status); --reordering the columns to place the order_id first and then keeping status.
+```
+
+---
+
+### Index on column with a high percentage of NULL values
+
+**Description**:
+
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+
+Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
+
+If an index is created on a column with a high percentage of NULL values, all NULL entries will be stored in a single tablet. This concentration can create a hotspot, leading to performance degradation.
+
+**Workaround**: If the NULL values are not being queried, it is recommended to create a Partial index by filtering the NULL values and  optimizing it for the other data.
+
+If NULL values are being queried and the index is a single-column index, it is recommended to add another column and make it a multi-column range-sharded index to distribute the NULL values evenly across various nodes. If the index is multi-column, it is recommended to make it a range-sharded index.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE users (
+    user_id int PRIMARY,
+    first_name text,
+    middle_name text,
+    ...
+);
+
+CREATE INDEX idx_users_middle_name on users (middle_name); -- this index is on middle name which is having 50% NULL values
+
+CREATE INDEX idx_users_middle_name_user_id on users (middle_name, user_id); -- this index is having first column as middle name which is having 50% NULL values
+```
+
+As these indexes have a sharding key on the `middle_name` column, where half of the values as NULL, half of the data resides on a single tablet and becomes a hotspot.
+
+Suggested change to the schema is one of the following.
+
+Partial indexing by removing the NULL values:
+
+```sql
+CREATE INDEX idx_users_middle_name on users (middle_name) where middle_name <> NULL; --filtering the NULL values so those will not be indexed
+
+CREATE INDEX idx_users_middle_name_user_id on users (middle_name, user_id) where middle_name <> NULL;  --filtering the NULL values so those will not be indexed
+```
+
+
+Making it a range-sharded index explicitly so that NULLs are evenly distributed across all nodes by using another column:
+
+```sql
+CREATE INDEX idx_users_middle_name on users (middle_name ASC, user_id); --adding user_id 
+
+CREATE INDEX idx_users_middle_name_user_id on users (middle_name ASC, user_id);
+
+```
+
+---
+
+### Index on column with high percentage of a particular value
+
+**Description**:
+
+In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index): sharding, clustering, and covering. (For more details, refer to [Secondary indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/).) The default sharding strategy is HASH unless [Enhanced PostgreSQL Compatibility mode](../../../develop/postgresql-compatibility/) is enabled, in which case, RANGE is the default sharding strategy.
+
+Design the index to evenly distribute data across all nodes and optimize performance based on query patterns.
+
+If the index is designed for a column with a high percentage of a particular value in the data, all the data for that value will reside on a single tablet, which will become a hotspot, causing performance degradation.
+
+**Workaround**: If the frequently occurring value is not being queried, it is recommended that a Partial index be created by filtering this value, optimizing it for other data.
+
+If the value is being queried and the index is a single-column index, it is recommended to add another column and make it a multi-column range-sharded index to distribute the value evenly across various nodes. If the index is multi-column, it is recommended to make it a range-sharded index.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE user_activity (
+    user_id int PRIMARY,
+    event_type text, --type of the activity 'login', 'logout', 'profile_update
+, 'email_verification', so on.. various events 
+    event_timestamp timestampz,
+    ...
+);
+
+CREATE INDEX idx_user_activity_event_type on user_activity (event_type); --this index is on the event_type which is having 80% data with 'login' type 
+
+CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type, user_id); --this index is on the event_type which is having 80% data with 'login' type 
+
+```
+
+As these indexes have a sharding key on the `event_type` column, where the value ‘login’ is 80% of the data, 80% of the data resides on a single tablet, which becomes a hotspot.
+
+Suggested change to the schema is one of the following.
+
+Partial indexing by removing the ‘login’ value from the index to optimize it for other values.
+
+```sql
+CREATE INDEX idx_user_activity_event_type on user_activity (event_type) where event_type <> 'login' ; --filtering the 'login' values so those will not be indexed
+
+CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type, user_id) where event_type <> 'login' ;  --filtering the 'login' values so those will not be indexed
+```
+
+OR
+
+Explicitly making it a range-sharded index so that the empty string value is evenly distributed across all nodes by adding another column.
+
+```sql
+CREATE INDEX idx_user_activity_event_type on user_activity (event_type ASC, user_id); --adding column user_id
+
+CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type ASC, user_id)
+
 ```

@@ -74,6 +74,14 @@ class TransactionCoordinatorContext;
 class TransactionParticipantContext;
 struct TabletOptions;
 
+struct RbsProgressInfo {
+  TabletServerId source_ts_uuid;
+  int64_t sst_bytes_to_download;
+  int64_t sst_bytes_downloaded;
+  int64_t sst_start_time_micros;
+  int64_t sst_end_time_micros;
+};
+
 // A listener for logging the tablet related statuses as well as
 // piping it into the web UI.
 class TabletStatusListener {
@@ -103,12 +111,21 @@ class TabletStatusListener {
     return status_prefix_ + last_status_;
   }
 
+  std::optional<RbsProgressInfo> GetRbsProgressInfo();
+  void SetInitialRbsProgressInfo(
+      const TabletServerId& source_ts_uuid, int64_t sst_bytes_to_download,
+      int64_t start_time_micros);
+  void IncrementSstDownloadProgress(int64_t bytes_downloaded);
+  void SetSstDownloadDone();
+  void ClearRbsProgressInfo();
+
  private:
   mutable std::shared_timed_mutex lock_;
 
   RaftGroupMetadataPtr meta_;
-  std::string last_status_;
-  std::string status_prefix_;
+  std::string last_status_ GUARDED_BY(lock_);
+  std::string status_prefix_ GUARDED_BY(lock_);
+  std::optional<RbsProgressInfo> rbs_progress_info_ GUARDED_BY(lock_) = std::nullopt;
 
   DISALLOW_COPY_AND_ASSIGN(TabletStatusListener);
 };

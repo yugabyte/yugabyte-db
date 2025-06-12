@@ -260,6 +260,10 @@ message FlushTabletsRequestPB {
 
   // Whether to rollover log before LOG_GC.
   optional bool rollover = 9;
+
+  // UNSAFE: For compaction only: remove corrupt data blocks during in tablet if found. This will
+  // result in data loss. Use with extra care only when/while no other options are available.
+  optional bool remove_corrupt_data_blocks_unsafe = 10;
 }
 
 message FlushTabletsResponsePB {
@@ -383,6 +387,21 @@ message GetPgSocketDirResponsePB {
   optional HostPortPB pg_socket_dir = 2;
 }
 
+message GetActiveRbsInfoRequestPB {}
+
+message GetActiveRbsInfoResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  message RbsInfo {
+    optional string tablet_id = 1;
+    optional string source_ts_uuid = 2;
+    optional int64 sst_bytes_to_download = 3;
+    optional int64 sst_bytes_downloaded = 4;
+    optional int64 sst_download_elapsed_sec = 5;
+  }
+  repeated RbsInfo rbs_infos = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -438,6 +457,7 @@ service TabletServerAdminService {
   // For test purposes: returns TryAgain error until specified number of calls is done.
   rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);
 
-  rpc GetPgSocketDir(GetPgSocketDirRequestPB)
-      returns (GetPgSocketDirResponsePB);
+  rpc GetPgSocketDir(GetPgSocketDirRequestPB) returns (GetPgSocketDirResponsePB);
+
+  rpc GetActiveRbsInfo(GetActiveRbsInfoRequestPB) returns (GetActiveRbsInfoResponsePB);
 }

@@ -1,0 +1,6 @@
+comment = 'strings:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/strings'
+relocatable = false
+superuser = false
+schema = strings

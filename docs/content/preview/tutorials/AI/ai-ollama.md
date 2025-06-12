@@ -1,14 +1,14 @@
 ---
 title: How to Develop AI Apps Locally with Ollama and YugabyteDB
-headerTitle: Build applications with locally-hosted embedding models using Ollama and YugabyteDB
-linkTitle: Ollama
+headerTitle: Similarity search using Ollama
+linkTitle: Similarity search - Ollama
 description: Learn to build LLM applications using Ollama.
 image: /images/tutorials/ai/icons/ollama-icon.svg
 headcontent: Use YugabyteDB as the database backend for LLM applications
 menu:
   preview_tutorials:
     identifier: tutorials-ai-ollama
-    parent: tutorials-ai
+    parent: tutorials-ai-vector
     weight: 60
 type: docs
 ---

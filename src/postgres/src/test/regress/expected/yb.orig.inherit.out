@@ -1,0 +1,75 @@
+-- Test non-inheritable primary key constraints
+-- primary key on inh parent does not recurse
+CREATE TABLE parent(id int PRIMARY KEY, c1 int);
+CREATE TABLE child (c2 int) INHERITS (parent);
+-- unique constraint on inh parent does not recurse
+ALTER TABLE parent ADD CONSTRAINT parent_uniq_c1 UNIQUE(c1);
+\d+ parent
+                                  Table "public.parent"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id     | integer |           | not null |         | plain   |              | 
+ c1     | integer |           |          |         | plain   |              | 
+Indexes:
+    "parent_pkey" PRIMARY KEY, lsm (id HASH)
+    "parent_uniq_c1" UNIQUE CONSTRAINT, lsm (c1 HASH)
+Child tables: child
+
+\d+ child
+                                   Table "public.child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id     | integer |           | not null |         | plain   |              | 
+ c1     | integer |           |          |         | plain   |              | 
+ c2     | integer |           |          |         | plain   |              | 
+Inherits: parent
+
+ALTER TABLE parent DROP CONSTRAINT parent_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d+ parent
+                                  Table "public.parent"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id     | integer |           | not null |         | plain   |              | 
+ c1     | integer |           |          |         | plain   |              | 
+Indexes:
+    "parent_uniq_c1" UNIQUE CONSTRAINT, lsm (c1 HASH)
+Child tables: child
+
+\d+ child
+                                   Table "public.child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id     | integer |           | not null |         | plain   |              | 
+ c1     | integer |           |          |         | plain   |              | 
+ c2     | integer |           |          |         | plain   |              | 
+Inherits: parent
+
+ALTER TABLE parent DROP CONSTRAINT parent_uniq_c1;
+\d+ parent
+                                  Table "public.parent"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id     | integer |           | not null |         | plain   |              | 
+ c1     | integer |           |          |         | plain   |              | 
+Child tables: child
+
+\d+ child
+                                   Table "public.child"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ id     | integer |           | not null |         | plain   |              | 
+ c1     | integer |           |          |         | plain   |              | 
+ c2     | integer |           |          |         | plain   |              | 
+Inherits: parent
+
+-- Test combining alter table cmds with inherit #27263
+ALTER TABLE child NO INHERIT parent, ADD COLUMN c3 int;
+SELECT * FROM child;
+ id | c1 | c2 | c3 
+----+----+----+----
+(0 rows)
+
+DROP TABLE parent, child;

@@ -1,0 +1,8 @@
+# This checks only presence for now.
+if [ -f "$sudoers_file" ]; then
+    add_result "Configure sudoers" "PASS" "Sudoers file $sudoers_file exits"
+    echo "Sudoers configured"
+else
+    add_result "Configure sudoers" "FAIL" "Sudoers file $sudoers_file is not present"
+    echo "Error: Configure sudoers failed"
+fi

@@ -60,7 +60,7 @@ DEFINE_RUNTIME_string(ysql_major_upgrade_user, "yugabyte_upgrade",
     "This user should have superuser privileges and the password must be placed in the `.pgpass` "
     "file on all yb-master nodes.");
 
-DEFINE_RUNTIME_bool(ysql_upgrade_import_stats, false,
+DEFINE_RUNTIME_bool(ysql_upgrade_import_stats, true,
     "Import relation and attribute stats as part of the YSQL Major upgrade");
 
 DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
@@ -448,7 +448,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
 
   pgwrapper::PgSupervisor pg_supervisor(pg_conf, &master_);
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
-  RETURN_NOT_OK(pg_supervisor.StartAndMaybePause());
+  RETURN_NOT_OK(pg_supervisor.Start());
 
   PgWrapper::PgUpgradeParams pg_upgrade_params;
   pg_upgrade_params.ysql_user_name = "yugabyte";

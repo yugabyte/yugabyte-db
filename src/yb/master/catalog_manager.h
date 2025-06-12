@@ -741,6 +741,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
                                     GetFullUniverseKeyRegistryResponsePB* resp);
 
+  Status GetObjectLockStatus(
+      const GetObjectLockStatusRequestPB* req, GetObjectLockStatusResponsePB* resp);
+
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
@@ -2596,7 +2599,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const NamespaceMap& namespace_map, const UDTypeMap& type_map,
       const ExternalTableSnapshotDataMap& tables_data, const LeaderEpoch& epoch);
 
-  Status RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp);
+  Status RepackSnapshotsForBackup(
+      ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables);
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(

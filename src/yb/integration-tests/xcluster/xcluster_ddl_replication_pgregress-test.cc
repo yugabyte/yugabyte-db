@@ -24,7 +24,6 @@
 
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_int32(ysql_num_tablets);
-DECLARE_bool(ysql_enable_inheritance);
 
 using namespace std::chrono_literals;
 
@@ -43,7 +42,6 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     XClusterDDLReplicationTestBase::SetUp();
     // Reduce number of tablets to speed up tests.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_tablets) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_inheritance) = true;
     // Disable verbose logging to speed up tests.
     google::SetVLOGLevel("xcluster*", 0);
     google::SetVLOGLevel("add_table*", 0);
@@ -360,6 +358,10 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTemp) {
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropSequence) {
   ASSERT_OK(TestPgRegress("create_sequence.sql", "drop_sequence.sql"));
+}
+
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressNonconcurrentBackfills) {
+  ASSERT_OK(TestPgRegress("nonconcurrent_backfills1.sql", "nonconcurrent_backfills2.sql"));
 }
 
 }  // namespace yb

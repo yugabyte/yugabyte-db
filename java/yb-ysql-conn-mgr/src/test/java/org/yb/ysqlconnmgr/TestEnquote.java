@@ -59,6 +59,13 @@ public class TestEnquote extends BaseYsqlConnMgr {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
+    // Wanted to test the deploy phase quries runs without throwing an error.
+    Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
+      {
+        put("ysql_conn_mgr_optimized_session_parameters", "false");
+      }
+    };
+    builder.addCommonTServerFlags(additionalTserverFlags);
   }
 
   private static String getGUCValue (Statement stmt, String guc) {
@@ -146,6 +153,70 @@ public class TestEnquote extends BaseYsqlConnMgr {
                         guc_var, actualString, expectedString),
                         actualString.equals(expectedString.replaceAll("\\\\", "")));
       }
+
+      // Test whitespaces
+
+      statement.execute(String.format("SELECT pg_catalog.set_config('%s', '', false);", guc_var));
+      // Connection manager will execute set guc_var to ''; in deploy phase
+      // responsible for change in value on doing show.
+      expectedString = "\"\"";
+      for (int i = 0; i < 3; i++) {
+        actualString = getGUCValue(statement, guc_var);
+        if (default_value.equals("")) {
+          // If default is empty string then it won't become part of deploy phase query.
+          // So, it's original value will be returned and not affected by SET stmts executed
+          // by conn mgr
+          assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, default_value),
+                        actualString.equals(default_value));
+        }
+        else {
+          assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString));
+        }
+      }
+
+      statement.execute(String.format
+        ("SELECT pg_catalog.set_config('%s', '       ', false);", guc_var));
+      // Connection manager will execute set guc_var to ''; in deploy phase
+      // responsible for change in value on doing show.
+      expectedString = "\"\"";
+      for (int i = 0; i < 3; i++) {
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString));
+      }
+
+      statement.execute(String.format("SET %s TO '' ", guc_var));
+      expectedString = "\"\"";
+      for (int i = 0; i < 3; i++) {
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString));
+      }
+
+      statement.execute(String.format("SET %s TO '  ' ", guc_var));
+      expectedString = "\"  \"";
+      for (int i = 0; i < 3; i++) {
+        actualString = getGUCValue(statement, guc_var);
+        assertTrue(
+          String.format("Got a mismatch in the value of %s guc variable. " +
+                        "actual: %s, expected: %s",
+                        guc_var, actualString, expectedString),
+                        actualString.equals(expectedString));
+      }
+
 
     }
     catch (Exception e) {

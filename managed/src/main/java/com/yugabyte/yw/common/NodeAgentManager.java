@@ -488,12 +488,12 @@ public class NodeAgentManager {
     builder.createDir(targetCertDirPath);
     Path caCertPath = certDirPath.resolve(NodeAgent.SERVER_CERT_NAME);
     Path targetCaCertPath = targetCertDirPath.resolve("node_agent.crt");
-    builder.copyFileInfo(new CopyFileInfo(caCertPath, targetCaCertPath));
+    builder.copyFileInfo(new CopyFileInfo(caCertPath, targetCaCertPath, "644"));
 
     // Key file to be copied.
     Path keyPath = certDirPath.resolve(NodeAgent.SERVER_KEY_NAME);
     Path targetKeyPath = targetCertDirPath.resolve("node_agent.key");
-    builder.copyFileInfo(new CopyFileInfo(keyPath, targetKeyPath));
+    builder.copyFileInfo(new CopyFileInfo(keyPath, targetKeyPath, "644"));
     return builder.build();
   }
 

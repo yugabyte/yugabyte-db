@@ -47,6 +47,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -70,6 +71,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
@@ -148,7 +150,7 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 METRIC_DEFINE_event_stats(
     server, pg_client_exchange_response_size, "The size of PgClient exchange response in bytes",
@@ -217,9 +219,10 @@ class LockablePgClientSession {
   }
 
   Status StartExchange(const std::string& instance_id, ThreadPool& thread_pool) {
-    auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
+    shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
+        instance_id, id(), Create::kTrue));
     exchange_runnable_ = std::make_shared<SharedExchangeRunnable>(
-        std::move(exchange), [this](size_t size) {
+        shared_mem_manager_.exchange(), shared_mem_manager_.session_id(), [this](size_t size) {
       Touch();
       std::unique_lock lock(mutex_);
       session_.ProcessSharedRequest(size, &exchange_runnable_->exchange());
@@ -280,6 +283,7 @@ class LockablePgClientSession {
 
   std::mutex mutex_;
   PgClientSession session_;
+  PgSessionSharedMemoryManager shared_mem_manager_;
   std::shared_ptr<SharedExchangeRunnable> exchange_runnable_;
   const CoarseDuration lifetime_;
   std::atomic<CoarseTimePoint> expiration_;
@@ -573,7 +577,8 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     ScheduleCheckObjectIdAllocators();
     ScheduleCheckYsqlLeaseWithNoLease();
     if (FLAGS_pg_client_use_shared_memory) {
-      WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
+      WARN_NOT_OK(PgSessionSharedMemoryManager::Cleanup(instance_id_),
+                  "Cleanup shared memory failed");
     }
     shared_mem_pool_.Start(messenger->scheduler());
   }
@@ -1044,9 +1049,13 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
       // only one transaction id in PgGetLockStatusRequestPB for now.
       // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
       // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
+      //
+      // TODO: Support specific transaction id filtering for getting object lock status
+      // https://github.com/yugabyte/yugabyte-db/issues/27331
       lock_status_req.add_transaction_ids(req.transaction_id());
       return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
+    RETURN_NOT_OK(GetObjectLockStatus(remote_tservers, resp));
     const auto& min_txn_age_ms = req.min_txn_age_ms();
     const auto& max_num_txns = req.max_num_txns();
     RSTATUS_DCHECK(max_num_txns > 0, InvalidArgument,
@@ -1195,6 +1204,157 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     for (auto i = 0 ; i < src->node_locks_size() ; i++) {
       dest->add_node_locks()->Swap(src->mutable_node_locks(i));
     }
+    return Status::OK();
+  }
+
+  // Get object lock status from all tablet servers and the master.
+  //
+  // The function first collects object lock status from all tablet servers.
+  // Then, to accurately determine the state of global locks (those that span across
+  // the master and all tablet servers), it collects lock status from the master.
+  // A global lock is considered GRANTED only if all participants(the master and
+  // every tablet server) report it as GRANTED. If any participant reports it as WAITING,
+  // or if any participant is missing, the global lock is treated as WAITING.
+  Status GetObjectLockStatus(
+      const std::vector<RemoteTabletServerPtr>& remote_tservers,
+      PgGetLockStatusResponsePB* resp) {
+    if (!FLAGS_enable_object_locking_for_table_locks) {
+      return Status::OK();
+    }
+
+    using LockInfoWithCounter = std::pair<ObjectLockInfoPB, size_t>;
+    std::unordered_map<ObjectLockContext, LockInfoWithCounter> object_lock_info_map;
+
+    // Collect object lock infos from all tservers.
+    GetObjectLockStatusRequestPB req;
+    std::vector<std::future<Status>> status_futures;
+    status_futures.reserve(remote_tservers.size());
+    std::vector<std::shared_ptr<GetObjectLockStatusResponsePB>> node_responses;
+    node_responses.reserve(remote_tservers.size());
+    for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+      auto proxy = remote_tserver->proxy();
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<GetObjectLockStatusResponsePB>();
+      node_responses.push_back(node_resp);
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      proxy->GetObjectLockStatusAsync(
+          req, node_resp.get(), controller.get(), [controller, status_promise] {
+            status_promise->set_value(controller->status());
+          });
+    }
+
+    // Collect global object lock infos from master.
+    // There may be some global locks , waiting on the master, are not yet be visible to TServers.
+    // Also ensures accurate wait_start timestamps, since master observes the earliest wait times.
+    auto master_proxy = std::make_shared<master::MasterDdlProxy>(
+        &client().proxy_cache(), client().GetMasterLeaderAddress());
+    master::GetObjectLockStatusRequestPB master_req;
+    master::GetObjectLockStatusResponsePB master_resp;
+    auto master_controller = std::make_shared<rpc::RpcController>();
+    auto master_promise = std::make_shared<std::promise<Status>>();
+    master_proxy->GetObjectLockStatusAsync(
+        master_req, &master_resp, master_controller.get(),
+        [master_controller, master_promise] {
+          master_promise->set_value(master_controller->status());
+        });
+
+    // Process responses from tservers
+    for (size_t i = 0; i < status_futures.size(); i++) {
+      auto& node_resp = node_responses[i];
+      auto s = status_futures[i].get();
+      if (!s.ok()) {
+        return s;
+      }
+      if (node_resp->has_error()) {
+        *resp->mutable_status() = node_resp->error().status();
+        return Status::OK();
+      }
+      VLOG(4) << "Processing GetObjectLockStatusResponsePB from tserver: "
+              << node_resp->ShortDebugString();
+      for (int j = 0; j < node_resp->object_lock_infos_size(); j++) {
+        auto* lock_infos = node_resp->mutable_object_lock_infos(j);
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
+        auto [it, inserted] = object_lock_info_map.try_emplace(
+          ObjectLockContext{
+            txn_id,
+            lock_infos->subtransaction_id(),
+            lock_infos->database_oid(),
+            lock_infos->relation_oid(),
+            lock_infos->object_oid(),
+            lock_infos->object_sub_oid(),
+            lock_infos->mode()
+          },
+          LockInfoWithCounter{ObjectLockInfoPB(), 1});
+        auto& existing_lock_info = it->second.first;
+        if (inserted) {
+          // First time seeing this lock
+          existing_lock_info.Swap(lock_infos);
+          continue;
+        }
+        // We've seen this lock before, increment counter
+        it->second.second++;
+        // If existing lock is GRANTED but current one is WAITING, replace with WAITING
+        // (A globally acquired lock is only truly granted if all servers grant it)
+        if (existing_lock_info.lock_state() == ObjectLockState::GRANTED &&
+            lock_infos->lock_state() == ObjectLockState::WAITING) {
+          VLOG(4) << "Replacing GRANTED lock with WAITING lock for txn_id: " << txn_id
+                  << ", subtxn_id: " << lock_infos->subtransaction_id()
+                  << ", object_oid: " << lock_infos->object_oid()
+                  << ", database_oid: " << lock_infos->database_oid()
+                  << ", lock_type: " << TableLockType_Name(lock_infos->mode());
+          existing_lock_info.Swap(lock_infos);
+        }
+      }
+    }
+
+    // Process responses from master
+    // A global lock is treated GRANTED only if it's granted on the master AND all tablet servers.
+    auto s = master_promise->get_future().get();
+    if (!s.ok()) {
+      return s;
+    }
+    if (master_resp.has_error()) {
+      *resp->mutable_status() = master_resp.error().status();
+      return Status::OK();
+    }
+    VLOG(4) << "Processing GetObjectLockStatusResponsePB from master: "
+            << master_resp.ShortDebugString();
+    for (int i = 0; i < master_resp.object_lock_infos_size(); i++) {
+      auto* lock_infos = master_resp.mutable_object_lock_infos(i);
+      auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
+      auto [it, inserted] = object_lock_info_map.try_emplace(
+        ObjectLockContext{
+          txn_id,
+          lock_infos->subtransaction_id(),
+          lock_infos->database_oid(),
+          lock_infos->relation_oid(),
+          lock_infos->object_oid(),
+          lock_infos->object_sub_oid(),
+          lock_infos->mode()
+        },
+        LockInfoWithCounter{ObjectLockInfoPB(), 1});
+      auto& existing_lock_info = it->second.first;
+      auto tserver_count = it->second.second;
+      if (!inserted && tserver_count == remote_tservers.size() &&
+          existing_lock_info.lock_state() == ObjectLockState::GRANTED) {
+        continue;
+      }
+      // If the lock was not reported by all tablet servers as GRANTED, treat the
+      // global lock as WAITING.
+      // Note: The wait_start timestamp will be from the master(first lock acquisition)
+      lock_infos->set_lock_state(ObjectLockState::WAITING);
+      existing_lock_info.Swap(lock_infos);
+    }
+
+    // Populate the response with consolidated lock info.
+    for (auto& [_, object_lock_info] : object_lock_info_map) {
+      resp->add_object_lock_infos()->Swap(&object_lock_info.first);
+    }
+
+    VLOG(4) << "Added " << resp->object_lock_infos_size() << " object locks to response";
+
     return Status::OK();
   }
 

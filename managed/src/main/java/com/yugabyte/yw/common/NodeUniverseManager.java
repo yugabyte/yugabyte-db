@@ -511,6 +511,18 @@ public class NodeUniverseManager extends DevopsBase {
       return localNodeUniverseManager.runYsqlCommand(
           node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled);
     }
+    return runYsqlBatchCommands(
+        node, universe, dbName, List.of(ysqlCommand), timeoutSec, authEnabled, cpEnabled);
+  }
+
+  public ShellResponse runYsqlBatchCommands(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      List<String> ysqlCommands,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean cpEnabled) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
@@ -541,15 +553,17 @@ public class NodeUniverseManager extends DevopsBase {
       bashCommand.add("-d");
       bashCommand.add(dbName);
     }
-    bashCommand.add("-c");
-    // Escaping double quotes and $ at first.
-    String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
-    escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
-    // Escaping single quotes after for non k8s deployments.
-    if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
-      escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+    for (var ysqlCommand : ysqlCommands) {
+      bashCommand.add("-c");
+      // Escaping double quotes and $ at first.
+      String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+      escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
+      // Escaping single quotes after for non k8s deployments.
+      if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
+        escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+      }
+      bashCommand.add("\"" + escapedYsqlCommand + "\"");
     }
-    bashCommand.add("\"" + escapedYsqlCommand + "\"");
     String bashCommandStr = String.join(" ", bashCommand);
     command.add(bashCommandStr);
     Map<String, String> valsToRedact = new HashMap<>();

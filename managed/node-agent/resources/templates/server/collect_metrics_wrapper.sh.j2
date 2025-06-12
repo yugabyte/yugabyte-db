@@ -11,7 +11,7 @@
 set -euo pipefail
 
 collect_metrics_script=({{ yb_home_dir }}/bin/collect_metrics.sh)
-filename=({{ yb_metrics_dir }}/node_metrics.prom)
+filename=({{ yb_home_dir }}/metrics/node_metrics.prom)
 
 USER=${USER:-$(whoami)}
 if [[ "$(id -u)" != "0" && "$USER" != "yugabyte" ]]; then

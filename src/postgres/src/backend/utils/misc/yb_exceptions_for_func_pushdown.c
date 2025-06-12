@@ -166,7 +166,7 @@ const uint32 yb_funcs_safe_for_mixed_mode_pushdown[] = {
 	F_CHAR_TEXT,
 	F_TEXT_CHAR,
 	F_TEXT_BPCHAR,
-	F_BPCHAR_BPCHAR_INT4_BOOL, /* adjust char() to typmod length */
+	F_BPCHAR_BPCHAR_INT4_BOOL,	/* adjust char() to typmod length */
 
 	COMPARISON_OPS(BPCHAR),
 

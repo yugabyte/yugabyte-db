@@ -85,7 +85,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     YBClient mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
@@ -136,6 +136,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,
+          TaskType.MarkUniverseForHealthScriptReUpload,
           TaskType.DeleteClusterFromUniverse,
           TaskType.UpdatePlacementInfo,
           TaskType.SwamperTargetsFileUpdate,

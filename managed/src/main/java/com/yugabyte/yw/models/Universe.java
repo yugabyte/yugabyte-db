@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
@@ -1123,15 +1124,12 @@ public class Universe extends Model {
    */
   @JsonIgnore
   private HostAndPort getMasterLeaderInternal() {
-    final String masterAddresses = getMasterAddresses();
-    final String cert = getCertificateNodetoNode();
     final YBClientService ybService =
         StaticInjectorHolder.injector().instanceOf(YBClientService.class);
-    final YBClient client = ybService.getClient(masterAddresses, cert);
-    try {
+    try (YBClient client = ybService.getUniverseClient(this)) {
       return client.getLeaderMasterHostAndPort();
-    } finally {
-      ybService.closeClient(client, masterAddresses);
+    } catch (Exception e) {
+      throw Throwables.propagate(e);
     }
   }
 

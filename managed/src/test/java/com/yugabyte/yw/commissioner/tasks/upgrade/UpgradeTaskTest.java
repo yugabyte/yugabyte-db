@@ -210,6 +210,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     // Setup mocks
     mockClient = mock(YBClient.class);
     try {
+      when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
       when(mockClient.waitForMaster(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);

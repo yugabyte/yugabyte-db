@@ -296,31 +296,6 @@ DefineTSParser(List *names, List *parameters)
 	return address;
 }
 
-#ifdef YB_TODO
-/*
- * Guts of TS parser deletion.
- */
-void
-RemoveTSParserById(Oid prsId)
-{
-	Relation	relation;
-	HeapTuple	tup;
-
-	relation = table_open(TSParserRelationId, RowExclusiveLock);
-
-	tup = SearchSysCache1(TSPARSEROID, ObjectIdGetDatum(prsId));
-
-	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "cache lookup failed for text search parser %u", prsId);
-
-	CatalogTupleDelete(relation, tup);
-
-	ReleaseSysCache(tup);
-
-	table_close(relation, RowExclusiveLock);
-}
-#endif
-
 /* ---------------------- TS Dictionary commands -----------------------*/
 
 /*

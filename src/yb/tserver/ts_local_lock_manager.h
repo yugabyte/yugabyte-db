@@ -36,6 +36,30 @@ namespace tserver {
 
 YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
 
+struct ObjectLockContext {
+  ObjectLockContext(
+      TransactionId txn_id, SubTransactionId subtxn_id, uint64_t database_oid,
+      uint64_t relation_oid, uint64_t object_oid, uint64_t object_sub_oid,
+      TableLockType lock_type)
+      : txn_id(txn_id), subtxn_id(subtxn_id), database_oid(database_oid),
+        relation_oid(relation_oid), object_oid(object_oid), object_sub_oid(object_sub_oid),
+        lock_type(lock_type) {}
+
+  YB_STRUCT_DEFINE_HASH(
+      ObjectLockContext, txn_id, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid,
+      lock_type);
+
+  auto operator<=>(const ObjectLockContext&) const = default;
+
+  TransactionId txn_id;
+  SubTransactionId subtxn_id;
+  uint64_t database_oid;
+  uint64_t relation_oid;
+  uint64_t object_oid;
+  uint64_t object_sub_oid;
+  TableLockType lock_type;
+};
+
 // LockManager for acquiring table/object locks of type TableLockType on a given object id.
 // TSLocalLockManager uses LockManagerImpl<ObjectLockPrefix> to acheive the locking/unlocking
 // behavior, yet the scope of the object lock is not just limited to the scope of the lock rpc
@@ -70,17 +94,7 @@ class TSLocalLockManager {
   // conflicting lock types on a key given that there aren't other txns with active conflciting
   // locks on the key.
   //
-  // Continuous influx of readers can starve writers. For instance, if there are multiple txns
-  // requesting ACCESS_SHARE on a key, a writer requesting ACCESS_EXCLUSIVE may face starvation.
-  // Since we intend to use this for table locks, DDLs may face starvation if there is influx of
-  // conflicting DMLs.
-  // TODO: DDLs don't face starvation in PG. Address the above starvation problem.
-  //
   // TODO: Augment the 'pg_locks' path to show the acquired/waiting object/table level locks.
-  Status AcquireObjectLocks(
-      const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-      WaitForBootstrap wait = WaitForBootstrap::kTrue);
-
   void AcquireObjectLocksAsync(
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       StdStatusCallback&& callback, WaitForBootstrap wait = WaitForBootstrap::kTrue);
@@ -104,6 +118,9 @@ class TSLocalLockManager {
   bool IsBootstrapped() const;
 
   server::ClockPtr clock() const;
+
+  void PopulateObjectLocks(
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const;
 
   size_t TEST_GrantedLocksSize() const;
   size_t TEST_WaitingLocksSize() const;

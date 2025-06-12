@@ -96,7 +96,6 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DECLARE_uint32(TEST_clone_pg_schema_delay_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
-DECLARE_int32(TEST_clone_pg_schema_inject_latency_ms);
 DECLARE_bool(TEST_fail_clone_pg_schema);
 DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
@@ -925,10 +924,10 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithA
   ASSERT_EQ(rows[0], kRow);
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlDbTiemout)) {
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlDbTimeout)) {
   // Inject an artificial delay that would make CREATE DATABASE timeout in case clone is using
   // a timeout other than ysql_clone_pg_schema_rpc_timeout_ms.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_inject_latency_ms) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) =
       FLAGS_yb_client_admin_operation_timeout_sec * 1000;
   auto status = source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);

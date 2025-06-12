@@ -65,7 +65,8 @@ Status AddDirToSnapshotFiles(
 } // namespace
 
 RemoteBootstrapSnapshotsComponent::RemoteBootstrapSnapshotsComponent(
-    RemoteBootstrapFileDownloader* downloader, tablet::RaftGroupReplicaSuperBlockPB* new_superblock)
+    RemoteBootstrapFileDownloader* downloader,
+    tablet::RaftGroupReplicaSuperBlockPB* new_superblock)
     : downloader_(*downloader), new_superblock_(*new_superblock) {}
 
 Status RemoteBootstrapSnapshotsComponent::CreateDirectories(

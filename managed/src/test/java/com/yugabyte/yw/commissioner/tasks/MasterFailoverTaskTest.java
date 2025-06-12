@@ -130,6 +130,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
       when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     } catch (Exception e) {
       fail();
     }

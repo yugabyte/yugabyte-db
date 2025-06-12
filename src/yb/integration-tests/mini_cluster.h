@@ -421,10 +421,12 @@ Status WaitForLeaderOfSingleTablet(
     const std::string& description);
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline);
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready = RequireLeaderIsReady::kFalse);
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout);
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout,
+    RequireLeaderIsReady require_leader_is_ready = RequireLeaderIsReady::kFalse);
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout);
 
@@ -477,6 +479,18 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 // Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
+
+Status InvokeSplitTabletRpc(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const master::TableInfoPtr& table, const master::TabletInfoPtr& tablet,
+    MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
 
 Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseTimePoint deadline);
 

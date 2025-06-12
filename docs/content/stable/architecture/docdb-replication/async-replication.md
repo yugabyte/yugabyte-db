@@ -289,8 +289,8 @@ Improper use can compromise replication consistency and lead to data divergence.
   {{< /warning >}}
 
 - YCQL is not yet supported.
-- Schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-dblevel/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/) for more information.
-- All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-dblevel/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/).
+- Schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/) for more information.
+- All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/).
 - When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Consider setting up these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
 ### Kubernetes

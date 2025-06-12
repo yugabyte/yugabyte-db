@@ -3721,7 +3721,7 @@ estimate_num_groups(PlannerInfo *root, List *groupExprs, double input_rows,
 
 double
 yb_estimate_num_groups(PlannerInfo *root, List *groupExprs, double input_rows,
-					List **pgset, EstimationInfo *estinfo)
+					   List **pgset, EstimationInfo *estinfo)
 {
 	List	   *varinfos = NIL;
 	double		srf_multiplier = 1.0;

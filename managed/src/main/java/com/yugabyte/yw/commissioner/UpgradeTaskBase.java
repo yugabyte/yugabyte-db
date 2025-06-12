@@ -1271,5 +1271,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
+    UUID rootCAUUID;
   }
 }

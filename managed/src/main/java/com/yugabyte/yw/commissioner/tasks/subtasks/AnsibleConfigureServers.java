@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeAgent;
@@ -193,11 +194,35 @@ public class AnsibleConfigureServers extends NodeTaskBase {
           nodeAgentRpcPayload.setUpConfigureServerBits(
               universe, nodeDetails, taskParams(), optional.get()),
           DEFAULT_CONFIGURE_USER);
-      nodeAgentClient.runInstallSoftware(
-          optional.get(),
-          nodeAgentRpcPayload.setupInstallSoftwareBits(
-              universe, nodeDetails, taskParams(), optional.get()),
-          DEFAULT_CONFIGURE_USER);
+      String taskSubType = taskParams().getProperty("taskSubType");
+      if (taskParams().type == UpgradeTaskType.Software) {
+        if (taskSubType == null) {
+          throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
+        } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Download.toString())) {
+          nodeAgentClient.runDownloadSoftware(
+              optional.get(),
+              nodeAgentRpcPayload.setupDownloadSoftwareBits(
+                  universe, nodeDetails, taskParams(), optional.get()),
+              DEFAULT_CONFIGURE_USER);
+        } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
+          nodeAgentClient.runInstallSoftware(
+              optional.get(),
+              nodeAgentRpcPayload.setupInstallSoftwareBits(
+                  universe, nodeDetails, taskParams(), optional.get()),
+              DEFAULT_CONFIGURE_USER);
+        }
+      } else {
+        nodeAgentClient.runDownloadSoftware(
+            optional.get(),
+            nodeAgentRpcPayload.setupDownloadSoftwareBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            DEFAULT_CONFIGURE_USER);
+        nodeAgentClient.runInstallSoftware(
+            optional.get(),
+            nodeAgentRpcPayload.setupInstallSoftwareBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            DEFAULT_CONFIGURE_USER);
+      }
 
       if (taskParams().isEnableYbc()) {
         log.info("Installing YBC using node agent {}", optional.get());
@@ -219,6 +244,13 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                   universe, nodeDetails, taskParams(), optional.get()),
               DEFAULT_CONFIGURE_USER);
         }
+      }
+      if (taskParams().cgroupSize > 0) {
+        nodeAgentClient.runSetupCGroupInput(
+            optional.get(),
+            nodeAgentRpcPayload.setupSetupCGroupBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            DEFAULT_CONFIGURE_USER);
       }
     }
 

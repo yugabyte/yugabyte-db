@@ -1148,6 +1148,40 @@ total_rpcs_per_sec:
     xaxis:
       type: "date"
 
+total_ysql_ycql_ops_per_sec:
+  metric: "rpc_irate_rps"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "ysql_export|cql_export"
+    server_type: "yb_ysqlserver|yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Total Ops / Sec (YSQL + YCQL)"
+    xaxis:
+      type: "date"
+
+total_ysql_ycql_ops_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export|cql_export"
+    server_type: "yb_ysqlserver|yb_cqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Average Latency (YSQL + YCQL)"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+
 tserver_rpcs_per_sec_per_node:
   metric: "rpc_irate_rps"
   function: "avg_over_time|avg"
@@ -1201,22 +1235,42 @@ tserver_change_config:
     xaxis:
       type: "date"
 
-tserver_remote_bootstraps:
-  metric: "rpc_latency_count"
-  function: "sum"
+tserver_remote_bootstrap_bandwidth:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  operator: "/ (1024 * 1024)"
+  group_by: "saved_name"
   filters:
     export_type: "tserver_export"
-    server_type: "yb_consensus"
-    service_type: "ConsensusService"
-    service_method: "StartRemoteBootstrap"
+    saved_name: "proxy_response_bytes_yb_tserver_RemoteBootstrapService_FetchData|service_response_bytes_yb_tserver_RemoteBootstrapService_FetchData"
   panel_group: "Tablet Server"
   layout:
-    title: "Remote Bootstraps"
+    title: "Remote Bootstrap Bytes Transferred"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB/s"
+      alias:
+        "proxy_response_bytes_yb_tserver_RemoteBootstrapService_FetchData":  "RBS bytes received"
+        "service_response_bytes_yb_tserver_RemoteBootstrapService_FetchData":  "RBS bytes sent"
+
+tserver_remote_bootstraps:
+  metric: ""
+  function: "sum"
+  group_by: "saved_name"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "num_remote_bootstrap_sessions_serving_data|num_tablet_peers_undergoing_rbs"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Remote Bootstrap Sessions"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        rpc_latency_count: "Remote Bootstraps"
+        "num_remote_bootstrap_sessions_serving_data":  "RBS server sessions"
+        "num_tablet_peers_undergoing_rbs":  "RBS client sessions"
 
 tserver_consensus_rpcs_latency:
   metric: "rpc_latency.avg"
@@ -2816,7 +2870,7 @@ master_load_balancer_stats:
   panel_group: "Master"
   group_by: "saved_name"
   layout:
-    title: "Master load balancer statistics"
+    title: "Cluster load balancer statistics"
     xaxis:
       type: "date"
     yaxis:

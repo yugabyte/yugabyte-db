@@ -227,7 +227,7 @@ static Oid
 ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
 {
 	return attnum > 0 ? TupleDescAttr(bind_desc, attnum - 1)->atttypid :
-						SystemAttributeDefinition(attnum)->atttypid;
+		SystemAttributeDefinition(attnum)->atttypid;
 }
 
 /*
@@ -337,9 +337,9 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 	bool		is_null[n_attnum_values];
 
 	Oid			tupType =
-	HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
+		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
 	Oid			tupTypmod =
-	HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
+		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
 	YbcPgTypeAttrs type_attrs = {tupTypmod};
 
 	/* Form the lhs tuple. */
@@ -741,8 +741,8 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 					ybcUpdateFKCache(ybScan, INDEXTUPLE_YBCTID(tuple));
 				}
 				if (syscols.ybuniqueidxkeysuffix != NULL)
-						tuple->t_ybuniqueidxkeysuffix =
-							PointerGetDatum(syscols.ybuniqueidxkeysuffix);
+					tuple->t_ybuniqueidxkeysuffix =
+						PointerGetDatum(syscols.ybuniqueidxkeysuffix);
 			}
 			break;
 		}
@@ -784,31 +784,34 @@ YbIsScanningEmbeddedIdx(Relation table, Relation index)
 	yb_table_properties_table = YbGetTableProperties(table);
 
 	/*
-	 * - All system tables and indexes are specially colocated to the sys
-	 *   catalog tablet.
-	 * - Some indexes may use copartitioning, which shards the table and index
-	 *   together.
+	 * There are a few cases where embedding happens.
+	 * 1. System table: all system tables and indexes are specially colocated
+	 *    to the sys catalog tablet.
+	 * 2. Copartitioning: some indexes may use copartitioning, which shards the
+	 *    table and index together.
 	 */
 	is_embedded = (IsSystemRelation(table) ||
-				   yb_table_properties_table->is_colocated ||
 				   (index && index->rd_indam->yb_amiscopartitioned));
 
 	/*
-	 * - If ysql_enable_colocated_tables_with_tablespaces, check that the table
-	 *   and index are in the same colocation tablet using tablegroup_oid.
-	 *   - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
-	 *     should not be a pass condition.
-	 * - Else, simply check for colocation of the table because the index
-	 *   should follow the table.
-	 *   - TODO(#25940): index being NULL or pk index should not be a pass
-	 *     condition.
-	 * - TODO(#25940): the gflag could be turned on/off in the lifetime of
-	 *   a cluster, so it shouldn't even be involved in this logic.  Everything
-	 *   should be validated, likely using the tablegroup_oid check, assuming
-	 *   that holds even when indexes are created when the flag is false.
+	 * 3. Colocation: the table and index may be colocated to the same tablet:
+	 *    - If ysql_enable_colocated_tables_with_tablespaces, check that the
+	 *      table and index are in the same colocation tablet using
+	 *      tablegroup_oid.
+	 *      - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
+	 *        should not be a pass condition.
+	 *    - Else, simply check for colocation of the table because the index
+	 *      should follow the table.
+	 *      - TODO(#25940): index being NULL or pk index should not be a pass
+	 *        condition.
+	 *    - TODO(#25940): the gflag could be turned on/off in the lifetime of
+	 *      a cluster, so it shouldn't even be involved in this logic.
+	 *      Everything should be validated, likely using the tablegroup_oid
+	 *      check, assuming that holds even when indexes are created when the
+	 *      flag is false.
 	 */
 	if (*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces)
-		is_embedded &= (yb_table_properties_table->is_colocated &&
+		is_embedded |= (yb_table_properties_table->is_colocated &&
 						((index && index->rd_index->indisprimary) ||
 						 (index &&
 						  (YbGetTableProperties(index)->tablegroup_oid ==
@@ -1239,7 +1242,8 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	/*
 	 * Find the scan keys that are the primary key.
 	 */
-	bool sk_cols_has_ybctid = false;
+	bool		sk_cols_has_ybctid = false;
+
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
@@ -2895,8 +2899,9 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 				}
 				else if (IsA(tle->expr, Var))
 				{
-					Var *var = castNode(Var, tle->expr);
-					int attno = var->varattno;
+					Var		   *var = castNode(Var, tle->expr);
+					int			attno = var->varattno;
+
 					/*
 					 * Change column reference in an aggregate to attribute
 					 * number. Given limited number of cases we support, we
@@ -2908,11 +2913,13 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 					 */
 					if (outer_plan)
 					{
-						List *tlist = outer_plan->plan.targetlist;
+						List	   *tlist = outer_plan->plan.targetlist;
+
 						Assert(var->varno == OUTER_VAR);
 						Assert(attno > 0);
 						Assert(attno <= list_length(tlist));
 						TargetEntry *scan_tle = list_nth_node(TargetEntry, tlist, attno - 1);
+
 						Assert(IsA(scan_tle->expr, Var));
 						attno = castNode(Var, scan_tle->expr)->varattno;
 					}

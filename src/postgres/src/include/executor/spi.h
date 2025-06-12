@@ -52,6 +52,7 @@ typedef struct SPIExecuteOptions
 	uint64		tcount;
 	DestReceiver *dest;
 	ResourceOwner owner;
+	bool		yb_reuse_existing_snapshot_in_read_committed;
 } SPIExecuteOptions;
 
 /* Optional arguments for SPI_cursor_parse_open */

@@ -20,6 +20,7 @@ namespace yb {
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 
 YB_STRONGLY_TYPED_BOOL(ExpectNoRecords);
+YB_STRONGLY_TYPED_BOOL(CheckColumnCounts);
 
 YB_DEFINE_ENUM(ReplicationDirection, (AToB)(BToA))
 
@@ -72,7 +73,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   static std::string GetCompleteTableName(const client::YBTableName& table);
 
   Result<NamespaceId> GetNamespaceId(YBClient* client);
-  Result<NamespaceId> GetNamespaceId(YBClient* client, const NamespaceName& ns_name);
   Result<std::string> GetUniverseId(Cluster* cluster);
   Result<master::SysClusterConfigEntryPB> GetClusterConfig(Cluster& cluster);
 
@@ -115,9 +115,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Status DropYsqlTable(Cluster& cluster, const client::YBTable& table);
 
-  static Status WriteWorkload(
-      const client::YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster);
-
   static Result<pgwrapper::PGResultPtr> ScanToStrings(
       const client::YBTableName& table_name, Cluster* cluster);
 
@@ -138,10 +135,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status VerifyWrittenRecords(
       const client::YBTableName& producer_table_name,
       const client::YBTableName& consumer_table_name,
-      ExpectNoRecords expect_no_records = ExpectNoRecords::kFalse);
+      ExpectNoRecords expect_no_records = ExpectNoRecords::kFalse,
+      CheckColumnCounts check_col_counts = CheckColumnCounts::kTrue);
 
   Status VerifyWrittenRecords(
-      ExpectNoRecords expect_no_records);
+      ExpectNoRecords expect_no_records,
+      CheckColumnCounts check_col_counts = CheckColumnCounts::kTrue);
 
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
@@ -149,13 +148,17 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   void BumpUpSchemaVersionsWithAlters(const std::vector<std::shared_ptr<client::YBTable>>& tables);
 
+  // If use_transaction is not set, the workload will be written in a transaction if more than 1 row
+  // is specified.
   Status InsertRowsInProducer(
       uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
-      bool use_transaction = false);
+      std::optional<bool> use_transaction = std::nullopt);
 
+  // If use_transaction is not set, the workload will be written in a transaction if more than 1 row
+  // is specified.
   Status DeleteRowsInProducer(
       uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
-      bool use_transaction = false);
+      std::optional<bool> use_transaction = std::nullopt);
 
   Status InsertGenerateSeriesOnProducer(
       uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {});
@@ -164,9 +167,11 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
       bool commit_transaction = true);
 
+  // If use_transaction is not set, the workload will be written in a transaction if more than 1 row
+  // is specified.
   Status WriteWorkload(
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
-      bool delete_op = false, bool use_transaction = false);
+      bool delete_op = false, std::optional<bool> use_transaction = std::nullopt);
 
   virtual Status CheckpointReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
@@ -185,11 +190,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
       std::vector<NamespaceName> namespace_names = {});
 
-  // A empty list for namespace_names (the default) means just the namespace namespace_name.
-  Status WaitForCreateReplicationToFinish(
-      const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names = {},
-      xcluster::ReplicationGroupId replication_group_id = kReplicationGroupId);
-
   Status DeleteOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
 
@@ -197,6 +197,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status VerifyDDLExtensionTablesDeletion(const NamespaceName& db_name, bool only_source = false);
 
   Status EnablePITROnClusters();
+  Status PerformPITROnConsumerCluster(HybridTime time);
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);

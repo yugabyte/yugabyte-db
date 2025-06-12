@@ -45,6 +45,41 @@ pg_partman/test/.*\.sql)$ ]]; then
 "${1##*/} has unexpected extension:1:$(head -1 "$1")"
 fi
 
+# Check that the test exists in a schedule.  pg_partman uses pg_prove instead
+# of pg_regress schedules, so exempt it.
+if [[ "$1" != src/postgres/third-party-extensions/pg_partman/* ]]; then
+  schedules_dir=${1%/*}
+  while [[ "$schedules_dir" == */* ]] &&
+        [ -z "$(find "$schedules_dir" -name '*schedule')" ]; do
+    schedules_dir=${schedules_dir%/*}
+  done
+  if [[ "$schedules_dir" != */* ]]; then
+    echo "Failed to find schedule for $1" >&2
+    exit 1
+  fi
+  found=false
+  test_name=${1##*/}
+  test_name=${test_name/_[0-9].out/.out}
+  test_name=${test_name%.*}
+  # TODO(jason): ysql_dump and backup_restore tests currently share the main
+  # regress dir.  They should be placed in a separate dedicated directory
+  # unaffiliated with the main regress dir.  For now, ignore these tests for
+  # this lint rule.
+  if [[ "$test_name" != yb.orig.ysql_dump* &&
+        "$test_name" != yb.orig.backup_restore* ]]; then
+    while read -r filepath; do
+      if grep -qxF "test: $test_name" "$filepath"; then
+        found=true
+        break
+      fi
+    done < <(find "$schedules_dir" -name '*schedule')
+    if ! "$found"; then
+      echo 'error:dangling_regress_test:'\
+    "$test_name not found in a schedule:1:$(head -1 "$1")"
+    fi
+  fi
+fi
+
 if [[ "$1" =~ /yb.port.[^/]+$ ]]; then
   # Remove "yb.port." prefix.
   pg_orig_test=${1/yb.port./}

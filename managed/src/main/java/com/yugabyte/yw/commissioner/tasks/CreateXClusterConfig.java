@@ -96,9 +96,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     Duration xclusterWaitTimeout =
         confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
 
-    try (YBClient client =
-        ybService.getClient(
-            sourceUniverse.getMasterAddresses(), sourceUniverse.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
       List<String> lastErrors = new ArrayList<>();
       boolean result =
           doWithConstTimeout(

@@ -331,6 +331,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.HasVectorId(vector_id);
   }
 
+  Result<size_t> TotalEntries() const override {
+    return lsm_.TotalEntries();
+  }
+
  private:
   std::string DirName() const {
     return kVectorIndexDirPrefix + index_id_;

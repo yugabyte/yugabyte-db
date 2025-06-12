@@ -5587,17 +5587,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeginCommitRecordValidationWi
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, insert_count);
 
-  int expected_begin_records = 2;
-  int expected_commit_records = 2;
+  int expected_begin_records = 1;
+  int expected_commit_records = 1;
   int actual_begin_records = 0;
   int actual_commit_records = 0;
   std::vector<std::string> excepted_table_list{"test1", "test2"};
   for (uint32_t i = 0; i < record_size; ++i) {
     const auto record = change_resp.cdc_sdk_proto_records(i);
     LOG(INFO) << "Record found: " << record.ShortDebugString();
-    if (std::find(
+    if (record.row_message().op() != RowMessage::BEGIN &&
+        record.row_message().op() != RowMessage::COMMIT &&
+        std::find(
             excepted_table_list.begin(), excepted_table_list.end(), record.row_message().table()) ==
-        excepted_table_list.end()) {
+            excepted_table_list.end()) {
       LOG(INFO) << "Tablename got in the record is wrong: " << record.row_message().table();
       FAIL();
     }
@@ -6817,8 +6819,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   int expected_key2 = 0;
   int ddl_count = 0;
   std::unordered_set<string> ddl_tables;
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const auto record = change_resp.records[i];
+  for (const auto& record : change_resp.records) {
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -6863,8 +6864,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocationWithRepeatedRequest
   expected_key1 = 30;
   expected_key2 = 30;
   ddl_count = 0;
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const auto record = change_resp.records[i];
+  for (const auto& record : change_resp.records) {
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -12035,6 +12035,41 @@ TEST_F(CDCSDKYsqlTest, TestEqualityOfTxnalRecordsWithColocatedTableHavingIndex) 
 
   ASSERT_EQ(begin_count, commit_count);
   ASSERT_EQ(commit_count, 1);
+}
+
+TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(3 /* rf */, 1 /* num_masters*/));
+
+  // Create 2 tables.
+  std::string table_suffix[2] = {"_1", "_2"};
+  auto table_1 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[0]));
+  auto table_2 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[1]));
+
+  // Create a replication slot and an Xcluster stream.
+  const auto slot_name = "test_slot";
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(slot_name));
+  ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table_1.table_id()));
+
+  // Verify that replica identity map contains two entries for two tables.
+  std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
+  ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
+  ASSERT_EQ(replica_identities.size(), 2);
+
+  // Drop the table under xcluster replication.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName + table_suffix[0]));
+
+  // Sleep for 5 seconds for master bg task to do its work.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // The replica identity map should contain both the entries. This is because, xcluster will retain
+  // the dropped table by marking it as HIDDEN.
+  replica_identities.clear();
+  ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
+  ASSERT_EQ(replica_identities.size(), 2);
 }
 
 }  // namespace cdc

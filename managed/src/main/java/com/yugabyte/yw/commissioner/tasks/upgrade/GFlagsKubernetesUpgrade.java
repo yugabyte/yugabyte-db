@@ -129,7 +129,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   stableYbcVersion);
               break;
             case NON_ROLLING_UPGRADE:
-              createNonRollingGflagUpgradeTask(
+              createNonRollingUpgradeTask(
                   getUniverse(),
                   userIntent.ybSoftwareVersion,
                   updateMaster,

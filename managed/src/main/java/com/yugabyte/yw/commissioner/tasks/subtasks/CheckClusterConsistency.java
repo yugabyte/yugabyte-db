@@ -59,9 +59,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
       log.debug("Skipping check cluster consistency");
       return;
     }
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
+    log.info("Running {} on masterAddress = {}.", getName(), universe.getMasterAddresses());
     Set<String> errors;
     boolean cloudEnabled =
         confGetter.getConfForScope(
@@ -77,7 +75,7 @@ public class CheckClusterConsistency extends ServerSubTaskBase {
             + " this check (not recommended), briefly disable the runtime config "
             + UniverseConfKeys.verifyClusterStateBeforeTask.getKey()
             + ".";
-    try (YBClient ybClient = ybService.getClient(masterAddresses, certificate)) {
+    try (YBClient ybClient = ybService.getUniverseClient(universe)) {
       errors = doCheckServers(ybClient, universe, cloudEnabled);
     } catch (Exception e) {
       throw new RuntimeException(

@@ -474,9 +474,8 @@ Status PgAlterTable::SetReplicaIdentity(const char identity_type) {
   return Status::OK();
 }
 
-Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
+Status PgAlterTable::RenameTable(const char *newname) {
   auto& rename = *req_.mutable_rename_table();
-  rename.set_database_name(db_name);
   rename.set_table_name(newname);
   return Status::OK();
 }

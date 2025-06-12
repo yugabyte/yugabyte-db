@@ -283,28 +283,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     manager_->rpcs().Abort(handles.begin(), handles.end());
     LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
-    const auto threshold = GetAtomicFlag(&FLAGS_txn_slow_op_threshold_ms);
-    const auto print_trace_every_n = GetAtomicFlag(&FLAGS_txn_print_trace_every_n);
-    const auto now = manager_->clock()->Now().GetPhysicalValueMicros();
-    // start_ is not set if Init is not called - this happens for transactions that get
-    // aborted without doing anything, so we set time_spent to 0 for these transactions.
-    auto start = start_.load(std::memory_order_relaxed);
-    const auto time_spent = (start == 0 ? 0 : now - start) * 1us;
-    if ((trace_ && trace_->must_print())
-           || (threshold > 0 && ToMilliseconds(time_spent) > threshold)
-           || (FLAGS_txn_print_trace_on_error && !status_.ok())) {
-      LOG(INFO) << ToString() << " took " << MonoDelta(time_spent).ToPrettyString()
-                << ". Trace: " << (trace_ ? "" : "Not collected");
-      if (trace_)
-        trace_->DumpToLogInfo(true);
-    } else if (trace_) {
-      bool was_printed = false;
-      YB_LOG_IF_EVERY_N(INFO, print_trace_every_n > 0, print_trace_every_n)
-          << ToString() << " took " << MonoDelta(time_spent).ToPrettyString() << ". Trace: \n"
-          << Trace::SetTrue(&was_printed);
-      if (was_printed)
-        trace_->DumpToLogInfo(true);
+    auto start_us = start_.load(std::memory_order_relaxed);
+    const auto now_us = manager_->clock()->Now().GetPhysicalValueMicros();
+    auto time_spent_ms = (start_us == 0 ? 0 : now_us - start_us) / 1000;
+    bool must_log_trace = (FLAGS_txn_print_trace_on_error && !status_.ok()) ||
+                          (static_cast<int32>(time_spent_ms) > FLAGS_txn_slow_op_threshold_ms);
+    if (must_log_trace) {
+      LOG(INFO) << "Transaction " << ToString() << " took " << time_spent_ms
+                << "ms to complete, status: " << status_;
     }
+    Trace::DumpTraceIfNecessary(trace_.get(), FLAGS_txn_print_trace_every_n, must_log_trace);
   }
 
   void SetPriority(uint64_t priority) {
@@ -788,7 +776,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
     {
       std::lock_guard lock(mutex_);
-      RETURN_NOT_OK(status_);
+      if (!status_.ok()) {
+        return status_;
+      }
       if (!ready_) {
         return STATUS_FORMAT(IllegalState, "Transaction not ready");
       }

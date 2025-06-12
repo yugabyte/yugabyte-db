@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+The following section describes how to use YugabyteDB Anywhere to manage nodes in running universes.
+
+For information on how to respond to DB Node Restart, DB Instance Down, and DB Instance Restart alerts, refer to [Handle node alerts](../../troubleshoot/node-alerts/).
+
 ## Replace a live or unreachable node
 
 To replace a live node for extended maintenance or replace an unhealthy node, do the following:
@@ -96,9 +100,9 @@ You can restart the node's processes by navigating to **Universes**, selecting y
 
 ## Remove node
 
-To perform the remove action on the **yb-15-aws-ys-n6** node, click its corresponding **Actions > Remove Node**. This changes the value in the **Status** column from **Unreachable** to **Removed** and prevents access to data from this node.
+To perform the remove action on a node, click its corresponding **Actions > Remove Node**.
 
-There are no values in the **Master** and **TServer** columns for the **yb-15-aws-ys-n6** node. Leader elections also occur for tablets for which this node was the leader tablet server.
+This changes the value in the **Status** column from **Unreachable** to **Removed** and prevents access to data from this node. In addition, there are no values in the **Master** and **TServer** columns for the node. Leader elections also occur for tablets for which this node was the leader tablet server.
 
 The action to remove a node is available from the following internal states of the node:
 
@@ -159,7 +163,7 @@ If a master process is down for more than its [WAL log retention period](../../.
 
 ## Release node instance
 
-To release the IP address associated with the **yb-15-aws-ys-n6** node, click its corresponding **Actions > Release Instance**. This changes the value in the **Status** column from **Removed** to **Decommissioned**.
+To release the IP address associated with a removed node, click its corresponding **Actions > Release Instance**. This changes the value in the **Status** column from **Removed** to **Decommissioned**.
 
 The **Release Instance** action releases the node instances in a cloud or frees up on-premise nodes.
 

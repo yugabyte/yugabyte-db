@@ -1715,14 +1715,14 @@ DROP TRIGGER trig_row_after_delete ON rem1;
 
 CREATE TABLE a (aa TEXT);
 CREATE TABLE loct (aa TEXT, bb TEXT);
-/* YB note: ERROR:  INHERITS not supported yet, reenable when fixed, see issue #5956
+/* YB note: Fix INHERITS + FDW issues #27291
 ALTER TABLE a SET (autovacuum_enabled = 'false');
 ALTER TABLE loct SET (autovacuum_enabled = 'false');
 */ -- YB
 CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
   SERVER loopback OPTIONS (table_name 'loct');
 
-/* YB note: ERROR:  INHERITS not supported yet, reenable when fixed, see issue #5956
+/* YB note: Fix INHERITS + FDW issues #27291
 INSERT INTO a(aa) VALUES('aaa');
 INSERT INTO a(aa) VALUES('aaaa');
 INSERT INTO a(aa) VALUES('aaaaa');

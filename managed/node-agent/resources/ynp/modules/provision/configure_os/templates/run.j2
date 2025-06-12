@@ -17,9 +17,8 @@ if test ! -f /etc/security/limits.d/20-nproc.conf; then
 else
   echo "File /etc/security/limits.d/20-nproc.conf already exists."
 fi
-
-sed -i 's/*          soft    nproc     4096/*          soft    nproc     \
-{{ nproc_limit }}/' /etc/security/limits.d/20-nproc.conf
+# Replace with the desired nproc limit regardless of the current value.
+sed -i 's/\(*[[:space:]]*soft[[:space:]]*nproc[[:space:]]*\)[0-9]\+/\1{{ nproc_limit }}/' /etc/security/limits.d/20-nproc.conf
 
 
 # Determine the PLATFORM_ID
@@ -95,6 +94,7 @@ EOF
 
   # Create core dump kernel pattern
   CORE_SCRIPT="$bin_path/compress_core.sh"
+  chmod +x $CORE_SCRIPT
   CORE_DIR="{{ yb_home_dir }}/cores"
   CORE_PATTERN="|$CORE_SCRIPT $CORE_DIR/core_yb.%t.%e.%p"
 

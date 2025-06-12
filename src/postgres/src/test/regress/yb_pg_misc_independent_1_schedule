@@ -13,5 +13,4 @@ test: yb.port.drop_if_exists
 test: yb.port.case
 test: yb.port.namespace
 test: security_label
-test: yb.port.lock
 test: yb.port.drop_operator

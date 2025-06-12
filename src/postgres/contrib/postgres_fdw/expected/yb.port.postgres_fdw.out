@@ -7726,17 +7726,13 @@ ERROR:  trigger "trig_row_after_delete" for table "rem1" does not exist
 -- ===================================================================
 CREATE TABLE a (aa TEXT);
 CREATE TABLE loct (aa TEXT, bb TEXT);
-/* YB note: ERROR:  INHERITS not supported yet, reenable when fixed, see issue #5956
+/* YB note: Fix INHERITS + FDW issues #27291
 ALTER TABLE a SET (autovacuum_enabled = 'false');
 ALTER TABLE loct SET (autovacuum_enabled = 'false');
 */ -- YB
 CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
   SERVER loopback OPTIONS (table_name 'loct');
-ERROR:  INHERITS not supported yet
-LINE 5: CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
-                                         ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
-/* YB note: ERROR:  INHERITS not supported yet, reenable when fixed, see issue #5956
+/* YB note: Fix INHERITS + FDW issues #27291
 INSERT INTO a(aa) VALUES('aaa');
 INSERT INTO a(aa) VALUES('aaaa');
 INSERT INTO a(aa) VALUES('aaaaa');
@@ -7774,6 +7770,7 @@ SELECT tableoid::regclass, * FROM b;
 SELECT tableoid::regclass, * FROM ONLY a;
 */ -- YB
 DROP TABLE a CASCADE;
+NOTICE:  drop cascades to foreign table b
 DROP TABLE loct;
 -- Check SELECT FOR UPDATE/SHARE with an inherited source table
 /* YB note: See above

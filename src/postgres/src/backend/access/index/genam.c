@@ -413,7 +413,12 @@ systable_beginscan(Relation heapRelation,
 	SysScanDesc sysscan;
 	Relation	irel;
 
-	if (IsYugaByteEnabled())
+	/*
+	 * PG sometimes calls systable_beginscan on non-YB tables.
+	 * e.g. toast_delete_datum, which uses systable_beginscan
+	 * on TOAST tables, which can be temporary (and thus non-YB).
+	 */
+	if (IsYBRelation(heapRelation))
 		return ybc_systable_beginscan(heapRelation,
 									  indexId,
 									  indexOK,
@@ -430,6 +435,7 @@ systable_beginscan(Relation heapRelation,
 
 	sysscan = (SysScanDesc) palloc(sizeof(SysScanDescData));
 
+	sysscan->ybscan = NULL;
 	sysscan->heap_rel = heapRelation;
 	sysscan->irel = irel;
 	sysscan->slot = table_slot_create(heapRelation, NULL);

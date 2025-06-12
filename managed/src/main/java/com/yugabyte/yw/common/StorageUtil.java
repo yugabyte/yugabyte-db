@@ -26,6 +26,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
 
 public interface StorageUtil {
@@ -283,11 +284,13 @@ public interface StorageUtil {
     return Collections.emptyList();
   }
 
-  public default String extractReleaseVersion(String key, String backupDir) {
+  public default String extractReleaseVersion(String key, String backupDir, String cloudPath) {
     String regex =
         String.format(
-            ".*%s/%s/((\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)(-.+)?|(\\w+)))?)/.*\\.tar\\.gz",
-            backupDir, YBDB_RELEASES);
+            ".*%s%s/%s/((\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)(-.+)?|(\\w+)))?)/.*\\.tar\\.gz",
+            StringUtils.isBlank(cloudPath) ? "" : stripSlash(cloudPath) + "/",
+            backupDir,
+            YBDB_RELEASES);
     Pattern pattern = Pattern.compile(regex);
     Matcher matcher = pattern.matcher(key);
     if (matcher.matches()) {

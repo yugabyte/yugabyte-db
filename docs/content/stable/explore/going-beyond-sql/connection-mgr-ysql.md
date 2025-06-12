@@ -46,9 +46,13 @@ YSQL Connection Manager has the following key features:
 
 ## Start YSQL Connection Manager
 
+Currently, YSQL Connection Manager is supported in YugabyteDB and YugabyteDB Anywhere.
+
+### YugabyteDB
+
 To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
-For example, to create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
+For example, to create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following command:
 
 ```sh
 ./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true" --ui false
@@ -73,14 +77,20 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 
 ### YugabyteDB Anywhere
 
-{{<tags/feature/ea idea="1368">}}You can use built-in connection pooling with universes deployed using YugabyteDB Anywhere:
+{{<tags/feature/ea idea="1368">}}While in Early Access, YSQL Connection Manager is not available in YugabyteDB Anywhere by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key yb.universe.allow_connection_pooling) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
+To enable built-in connection pooling for universes deployed using YugabyteDB Anywhere:
 
 - Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
 - Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
 
-When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
+Note that when managing universes using YugabyteDB Anywhere, do not set connection pooling flags, `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, and `pgsql_proxy_bind_address`.
 
-While in Early Access, the feature is not available in YugabyteDB Anywhere by default. To make connection pooling available, set the **Allow users to enable or disable connection pooling** Global Runtime Configuration option (config key yb.universe.allow_connection_pooling) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+#### Connect
+
+To connect to the YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/) command with the [`-h <IP>`](../../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
+
+Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
 
 ## Configuration
 
@@ -147,3 +157,5 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - YSQL Connection Manager does not yet support IPv6 connections. [#24765](https://github.com/yugabyte/yugabyte-db/issues/24765)
 - Currently, [auth-method](https://docs.yugabyte.com/preview/secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. [#20658](https://github.com/yugabyte/yugabyte-db/issues/20658)
 - Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate logical connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact the YSQL Connection Manager Development team before setting `ysql_conn_mgr_use_auth_backend` to false. [#25313](https://github.com/yugabyte/yugabyte-db/issues/25313)
+- Salted Challenge Response Authentication Mechanism ([SCRAM](https://docs.yugabyte.com/preview/secure/authentication/password-authentication/#scram-sha-256)) is not supported with YSQL Connection Manager. [#25870](https://github.com/yugabyte/yugabyte-db/issues/25870)
+- Unix socket connections to YSQL Connection Manager are not supported. [#20048](https://github.com/yugabyte/yugabyte-db/issues/20048)

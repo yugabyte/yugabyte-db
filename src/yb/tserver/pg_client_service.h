@@ -97,7 +97,6 @@ class TserverXClusterContextIf;
     (CronGetLastMinute) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
-    (AcquireObjectLock) \
     (ExportTxnSnapshot) \
     (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
@@ -110,6 +109,7 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (AcquireObjectLock) \
     (OpenTable) \
     (GetTableKeyRanges) \
     /**/

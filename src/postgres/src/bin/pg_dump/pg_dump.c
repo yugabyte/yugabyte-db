@@ -70,7 +70,7 @@
 /* YB includes */
 #include "catalog/pg_index.h"	/* TODO: is needed? */
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include <float.h>          /* for DBL_DIG */
+#include <float.h>				/* for DBL_DIG */
 #include <inttypes.h>
 
 typedef struct
@@ -159,17 +159,22 @@ static int	nseclabels = 0;
 static bool IsYugabyteEnabled = true;
 bool		g_verbose;			/* User wants verbose narration of our
 								 * activities. */
+
 /* YB: Cache whether the dumped database is a colocated database. */
 static bool is_colocated_database = false;
+
 /* YB: Cache whether the dumped database is a legacy colocated database. */
 static bool is_legacy_colocated_database = false;
+
 /* Support for YB-only table pg_yb_tablegroup. */
 static bool pg_yb_tablegroup_exists = false;
+
 /*
  * YB: Array of pointers to extensions having configuration tables.
  * Used to update pg_extension catalog tables.
  */
 static ExtensionInfo **yb_dumpable_extensions_with_config_relations = NULL;
+
 /*
  * YB: Number of extensions in array:
  * yb_dumpable_extensions_with_config_relations.
@@ -485,8 +490,6 @@ main(int argc, char **argv)
 		{"rows-per-insert", required_argument, NULL, 10},
 		{"include-foreign-data", required_argument, NULL, 11},
 
-		/* YB: has short option letter */
-		{"masters", required_argument, NULL, 'm'},
 		/* YB: does not have short option letter */
 		{"no-serializable-deferrable", no_argument, &no_serializable_deferrable, 1},
 		{"no-tablegroups", no_argument, &dopt.no_tablegroups, 1},
@@ -526,7 +529,7 @@ main(int argc, char **argv)
 
 	InitDumpOptions(&dopt);
 
-	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:m:n:N:Op:RsS:t:T:U:vwWxXZ:",
+	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:n:N:Op:RsS:t:T:U:vwWxXZ:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -581,10 +584,6 @@ main(int argc, char **argv)
 									  PG_MAX_JOBS,
 									  &numWorkers))
 					exit_nicely(1);
-				break;
-
-			case 'm':			/* DEPRECATED and NOT USED: YB master hosts */
-				dopt.master_hosts = pg_strdup(optarg);
 				break;
 
 			case 'n':			/* include schema(s) */
@@ -922,12 +921,6 @@ main(int argc, char **argv)
 	/* YB */
 	if (dopt.cparams.pghost == NULL || dopt.cparams.pghost[0] == '\0')
 		dopt.cparams.pghost = DefaultHost;
-
-	/*
-	 * DEPRECATED: Custom YB-Master host/port to use.
-	 */
-	if (dopt.master_hosts)
-		pg_log_info("WARNING: ignoring the deprecated argument --masters (-m)");
 
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
@@ -1290,8 +1283,6 @@ help(const char *progname)
 	printf(_("  -w, --no-password        never prompt for password\n"));
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(_("  --role=ROLENAME          do SET ROLE before dump\n"));
-	printf(_("  -m, --masters=HOST:PORT  DEPRECATED and NOT USED\n"
-			 "                           comma-separated list of YB-Master hosts and ports\n"));
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
@@ -1413,7 +1404,7 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	 */
 	set_restrict_relation_kind(AH, "view, foreign-table");
 
-	if (dopt->include_yb_metadata)
+	if (dopt->include_yb_metadata || (IsYugabyteEnabled && dopt->binary_upgrade))
 	{
 		ExecuteSqlStatement(AH, "SET yb_format_funcs_include_yb_metadata = true");
 	}
@@ -7423,7 +7414,7 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 	appendPQExpBuffer(query,
 					  "SELECT t.tableoid, t.oid, i.indrelid, "
 					  "t.relname AS indexname, "
-						 "t.relpages, t.reltuples, t.relallvisible, "
+					  "t.relpages, t.reltuples, t.relallvisible, "
 					  "pg_catalog.pg_get_indexdef(i.indexrelid) AS indexdef, "
 					  "i.indkey, i.indisclustered, "
 					  "c.contype, c.conname, "
@@ -7431,11 +7422,11 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 					  "c.tableoid AS contableoid, "
 					  "c.oid AS conoid, "
 					  "pg_catalog.pg_get_constraintdef(c.oid, false) AS condef, "
-						 "CASE WHEN i.indexprs IS NOT NULL THEN "
-						 "(SELECT pg_catalog.array_agg(attname ORDER BY attnum)"
-						 "  FROM pg_catalog.pg_attribute "
-						 "  WHERE attrelid = i.indexrelid) "
-						 "ELSE NULL END AS indattnames, "
+					  "CASE WHEN i.indexprs IS NOT NULL THEN "
+					  "(SELECT pg_catalog.array_agg(attname ORDER BY attnum)"
+					  "  FROM pg_catalog.pg_attribute "
+					  "  WHERE attrelid = i.indexrelid) "
+					  "ELSE NULL END AS indattnames, "
 					  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) AS tablespace, "
 					  "t.reloptions AS indreloptions, ");
 
@@ -9391,6 +9382,10 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
  *
  * This function exists because there are scattered nonobvious places that
  * must be kept in sync with this decision.
+ *
+ * YB :  follow the same process for backup dumps of inheritance child table columns
+ * except for dropped columns, which we ignore because docdb snapshot import can
+ * tolerate dropped column differences.
  */
 bool
 shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
@@ -9399,7 +9394,9 @@ shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
 		return true;
 	if (tbinfo->attisdropped[colno])
 		return false;
-	return (tbinfo->attislocal[colno] || tbinfo->ispartition);
+	return tbinfo->attislocal[colno] ||
+		tbinfo->ispartition ||
+		(tbinfo->numParents > 0 && dopt->include_yb_metadata);
 }
 
 
@@ -9712,9 +9709,6 @@ getForeignDataWrappers(Archive *fout, int *numForeignDataWrappers)
 
 	query = createPQExpBuffer();
 
-	/*
-	 * YB_TODO(neil) Must reintro to pg_dump dopt->include_yb_metadata
-	 */
 	appendPQExpBuffer(query, "SELECT tableoid, oid, fdwname, "
 					  "fdwowner, "
 					  "fdwhandler::pg_catalog.regproc, "
@@ -9806,9 +9800,6 @@ getForeignServers(Archive *fout, int *numForeignServers)
 
 	query = createPQExpBuffer();
 
-	/*
-	 * YB_TODO(neil) Must reintro to pg_dump dopt->include_yb_metadata
-	 */
 	appendPQExpBuffer(query, "SELECT tableoid, oid, srvname, "
 					  "srvowner, "
 					  "srvfdw, srvtype, srvversion, srvacl, "
@@ -9901,9 +9892,6 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 
 	query = createPQExpBuffer();
 
-	/*
-	 * YB_TODO(neil) Must reintro to pg_dump dopt->include_yb_metadata
-	 */
 	/*
 	 * Global entries (with defaclnamespace=0) replace the hard-wired default
 	 * ACL for their object type.  We should dump them as deltas from the
@@ -10459,7 +10447,10 @@ dumpRelationStats_dumper(Archive *fout, const void *userArg, const TocEntry *te)
 							 "s.most_common_elems, s.most_common_elem_freqs, "
 							 "s.elem_count_histogram, ");
 
-		/* YB: Range columns are available in YB v2024.2 (pg v11) in the yb_int_pg_stats_v11 view. */
+		/*
+		 * YB: Range columns are available in YB v2024.2 (pg v11) in the
+		 * yb_int_pg_stats_v11 view.
+		 */
 		if (fout->remoteVersion >= 170000 ||
 			(IsYugabyteEnabled && fout->remoteVersion >= 110000))
 			appendPQExpBufferStr(query,
@@ -10487,13 +10478,16 @@ dumpRelationStats_dumper(Archive *fout, const void *userArg, const TocEntry *te)
 		 */
 		if (fout->remoteVersion >= 90400)
 		{
-			/* YB: Range columns are available in YB version 11 in the yb_int_pg_stats_v11 view. */
+			/*
+			 * YB: Range columns are available in YB version 11 in the
+			 * yb_int_pg_stats_v11 view.
+			 */
 			if (IsYugabyteEnabled && fout->remoteVersion < 150000)
 				appendPQExpBufferStr(query,
-					"FROM pg_catalog.yb_int_pg_stats_v11 s ");
+									 "FROM pg_catalog.yb_int_pg_stats_v11 s ");
 			else
 				appendPQExpBufferStr(query,
-				"FROM pg_catalog.pg_stats s ");
+									 "FROM pg_catalog.pg_stats s ");
 
 			appendPQExpBufferStr(query,
 								 "JOIN unnest($1, $2) WITH ORDINALITY AS u (schemaname, tablename, ord) "
@@ -10528,7 +10522,20 @@ dumpRelationStats_dumper(Archive *fout, const void *userArg, const TocEntry *te)
 	appendStringLiteralAH(out, rsinfo->dobj.name, fout);
 	appendPQExpBufferStr(out, ",\n");
 	appendPQExpBuffer(out, "\t'relpages', '%d'::integer,\n", rsinfo->relpages);
-	appendPQExpBuffer(out, "\t'reltuples', '%s'::real,\n", rsinfo->reltuples);
+
+	/*
+	 * Before v14, a reltuples value of 0 was ambiguous: it could either mean
+	 * the relation is empty, or it could mean that it hadn't yet been
+	 * vacuumed or analyzed.  (Newer versions use -1 for the latter case.)
+	 * This ambiguity allegedly can cause the planner to choose inefficient
+	 * plans after restoring to v18 or newer.  To deal with this, let's just
+	 * set reltuples to -1 in that case.
+	 */
+	if (fout->remoteVersion < 140000 && strcmp("0", rsinfo->reltuples) == 0)
+		appendPQExpBufferStr(out, "\t'reltuples', '-1'::real,\n");
+	else
+		appendPQExpBuffer(out, "\t'reltuples', '%s'::real,\n", rsinfo->reltuples);
+
 	appendPQExpBuffer(out, "\t'relallvisible', '%d'::integer\n);\n",
 					  rsinfo->relallvisible);
 
@@ -16120,7 +16127,7 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 	if (tbinfo->dobj.dump & DUMP_COMPONENT_ACL)
 	{
 		const char *objtype =
-		(tbinfo->relkind == RELKIND_SEQUENCE) ? "SEQUENCE" : "TABLE";
+			(tbinfo->relkind == RELKIND_SEQUENCE) ? "SEQUENCE" : "TABLE";
 
 		tableAclDumpId =
 			dumpACL(fout, tbinfo->dobj.dumpId, InvalidDumpId,
@@ -16141,9 +16148,6 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 		PGresult   *res;
 		int			i;
 
-		/*
-		 * YB_TODO(neil) Must reintro to pg_dump dopt->include_yb_metadata
-		 */
 		if (!fout->is_prepared[PREPQUERY_GETCOLUMNACLS])
 		{
 			/* Set up query for column ACLs */
@@ -16664,10 +16668,14 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					 * Not Null constraint --- suppress if inherited, except
 					 * if partition, or in binary-upgrade case where that
 					 * won't work.
+					 * YB: For backups, follow binary-upgrade mode
+					 * for inherited child tables to preserve col order.
 					 */
 					print_notnull = (tbinfo->notnull[j] &&
 									 (!tbinfo->inhNotNull[j] ||
-									  tbinfo->ispartition || dopt->binary_upgrade));
+									  tbinfo->ispartition ||
+									  dopt->binary_upgrade ||
+									  dopt->include_yb_metadata));
 
 					/*
 					 * Skip column if fully defined by reloftype, except in
@@ -16844,9 +16852,11 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			/*
 			 * Emit the INHERITS clause (not for partitions), except in
 			 * binary-upgrade mode.
+			 * YB: For backups, follow binary-upgrade mode
+			 * in inherited child tables to preserve col order.
 			 */
 			if (numParents > 0 && !tbinfo->ispartition &&
-				!dopt->binary_upgrade)
+				!dopt->binary_upgrade && !dopt->include_yb_metadata)
 			{
 				appendPQExpBufferStr(q, "\nINHERITS (");
 				for (k = 0; k < numParents; k++)
@@ -16983,8 +16993,12 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		 * and matviews, even though they have storage, because we don't
 		 * support altering or dropping columns in them, nor can they be part
 		 * of inheritance trees.
+		 *
+		 * YB: For backups, follow the same process as binary-upgrade
+		 * specifically for inherited child tables
+		 * in order to preserve column order, except for dropped columns.
 		 */
-		if (dopt->binary_upgrade &&
+		if ((dopt->binary_upgrade || dopt->include_yb_metadata) &&
 			(tbinfo->relkind == RELKIND_RELATION ||
 			 tbinfo->relkind == RELKIND_FOREIGN_TABLE ||
 			 tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
@@ -16993,29 +17007,36 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			{
 				if (tbinfo->attisdropped[j])
 				{
-					appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
-					appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
-									  "SET attlen = %d, "
-									  "attalign = '%c', attbyval = false\n"
-									  "WHERE attname = ",
-									  tbinfo->attlen[j],
-									  tbinfo->attalign[j]);
-					appendStringLiteralAH(q, tbinfo->attnames[j], fout);
-					appendPQExpBufferStr(q, "\n  AND attrelid = ");
-					appendStringLiteralAH(q, qualrelname, fout);
-					appendPQExpBufferStr(q, "::pg_catalog.regclass;\n");
+					/*
+					 * For YB backups, we don't need to recreate dropped cols because
+					 * docdb snapshot import can handle such gaps in the col order.
+					 */
+					if (!dopt->include_yb_metadata)
+					{
+						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
+						appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
+										"SET attlen = %d, "
+										"attalign = '%c', attbyval = false\n"
+										"WHERE attname = ",
+										tbinfo->attlen[j],
+										tbinfo->attalign[j]);
+						appendStringLiteralAH(q, tbinfo->attnames[j], fout);
+						appendPQExpBufferStr(q, "\n  AND attrelid = ");
+						appendStringLiteralAH(q, qualrelname, fout);
+						appendPQExpBufferStr(q, "::pg_catalog.regclass;\n");
 
-					if (tbinfo->relkind == RELKIND_RELATION ||
-						tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
-						appendPQExpBuffer(q, "ALTER TABLE ONLY %s ",
-										  qualrelname);
-					else
-						appendPQExpBuffer(q, "ALTER FOREIGN TABLE ONLY %s ",
-										  qualrelname);
-					appendPQExpBuffer(q, "DROP COLUMN %s;\n",
+						if (tbinfo->relkind == RELKIND_RELATION ||
+							tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
+							appendPQExpBuffer(q, "ALTER TABLE ONLY %s ",
+											qualrelname);
+						else
+							appendPQExpBuffer(q, "ALTER FOREIGN TABLE ONLY %s ",
+											qualrelname);
+						appendPQExpBuffer(q, "DROP COLUMN %s;\n",
 									  fmtId(tbinfo->attnames[j]));
+					}
 				}
-				else if (!tbinfo->attislocal[j])
+				else if (!tbinfo->attislocal[j] && (IsYugabyteEnabled && !tbinfo->ispartition))
 				{
 					appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate inherited column.\n");
 					appendPQExpBufferStr(q, "UPDATE pg_catalog.pg_attribute\n"
@@ -17068,7 +17089,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				}
 			}
 
-			if (OidIsValid(tbinfo->reloftype))
+			if (OidIsValid(tbinfo->reloftype) && !dopt->include_yb_metadata)
 			{
 				appendPQExpBufferStr(q, "\n-- For binary upgrade, set up typed tables this way.\n");
 				appendPQExpBuffer(q, "ALTER TABLE ONLY %s OF %s;\n",
@@ -17894,7 +17915,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 
 		if (dump_index_for_constraint)
 		{
-			if (dopt->include_yb_metadata)
+			if (dopt->include_yb_metadata || (IsYugabyteEnabled && dopt->binary_upgrade))
 			{
 				/*
 				 * In 'include_yb_metadata' mode all Indexes already have NONCONCURRENTLY flag.
@@ -19156,7 +19177,7 @@ processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 				TableInfo  *configtbl;
 				Oid			configtbloid = atooid(extconfigarray[j]);
 				bool		dumpobj =
-				curext->dobj.dump & DUMP_COMPONENT_DEFINITION;
+					curext->dobj.dump & DUMP_COMPONENT_DEFINITION;
 
 				configtbl = findTableByOid(configtbloid);
 				if (configtbl == NULL)

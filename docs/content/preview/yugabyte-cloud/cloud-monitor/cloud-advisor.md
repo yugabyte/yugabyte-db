@@ -1,7 +1,7 @@
 ---
-title: YugabyteDB Aeon Performance Advisor
-headerTitle: Performance Advisor
-linkTitle: Performance Advisor
+title: YugabyteDB Aeon Insights
+headerTitle: Insights
+linkTitle: Insights
 description: Scan your cluster to discover performance optimizations.
 headcontent: Scan your cluster to discover performance optimizations
 menu:
@@ -12,35 +12,37 @@ menu:
 type: docs
 ---
 
-Use Performance Advisor to scan your cluster for potential optimizations.
+Use Insights to scan your cluster for potential optimizations.
 
 {{< youtube id="8df1leHBLIQ" title="Optimize YugabyteDB Aeon clusters with Performance Monitor" >}}
 
-For meaningful results, run your workload for at least an hour before running the advisor.
+To gather insights, click the cluster **Perf Advisor** tab, choose **Insights**, and click **Scan**.
 
-To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
+For meaningful results, run your workload for at least an hour before running the scan.
 
-![Performance Advisor](/images/yb-cloud/managed-monitor-advisor.png)
+To monitor clusters in real time, use the performance metrics on the cluster [Overview and Perf Advisor](../overview/) tabs.
+
+![Insights](/images/yb-cloud/managed-monitor-advisor.png)
 
 ## Recommendations
 
-Performance Advisor provides recommendations for a number of issues.
+Insights provides recommendations for a number of issues.
 
 ### Index suggestions
 
-Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/15/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
+Insights suggests dropping unused indexes to improve write performance and increase storage space. Insights uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/15/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
 
 Indexes take up storage space on the same disk volume as the main table. They also increase the size of backups and can add to backup and restore time.
 
 Indexes can slow down some operations. For example:
 
-- When doing an `INSERT` or `DELETE` on a table, indexes need to be updated to remain consistent with the data in the main table. An index can also prevent a basic insert or delete operation from being executed as a single row transaction.
+- When doing an INSERT or DELETE on a table, indexes need to be updated to remain consistent with the data in the main table. An index can also prevent a basic insert or delete operation from being executed as a single row transaction.
 
-- When doing an `UPDATE` on a table, if the modified column is part of the index, then the index must be updated as well.
+- When doing an UPDATE on a table, if the modified column is part of the index, then the index must be updated as well.
 
 **Fix the problem**
 
-Connect to the database and use `DROP INDEX` to delete the unused indexes.
+Connect to the database and use DROP INDEX to delete the unused indexes.
 
 ### Schema suggestions
 

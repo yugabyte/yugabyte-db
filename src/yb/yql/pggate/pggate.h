@@ -334,8 +334,7 @@ class PgApiImpl {
 
   Status AlterTableSetReplicaIdentity(PgStatement *handle, const char identity_type);
 
-  Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
-                               const char *newname);
+  Status AlterTableRenameTable(PgStatement *handle, const char *newname);
 
   Status AlterTableIncrementSchemaVersion(PgStatement *handle);
 

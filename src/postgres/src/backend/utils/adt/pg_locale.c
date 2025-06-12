@@ -1362,7 +1362,7 @@ lc_collate_is_c(Oid collation)
 	 */
 	if (collation == DEFAULT_COLLATION_OID)
 	{
-		static int	result = -1;
+		static YB_THREAD_LOCAL int result = -1;
 		char	   *localeptr;
 
 		if (default_locale.provider == COLLPROVIDER_ICU)
@@ -1415,7 +1415,7 @@ lc_ctype_is_c(Oid collation)
 	 */
 	if (collation == DEFAULT_COLLATION_OID)
 	{
-		static int	result = -1;
+		static YB_THREAD_LOCAL int result = -1;
 		char	   *localeptr;
 
 		if (default_locale.provider == COLLPROVIDER_ICU)
@@ -1800,7 +1800,11 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 	}
 
 	if (yb_test_collation)
-		/* Make unit test output stable across different OS types and versions. */
+
+		/*
+		 * Make unit test output stable across different OS types and
+		 * versions.
+		 */
 		return collversion ? "yb-test-2.28" : NULL;
 	return collversion;
 }

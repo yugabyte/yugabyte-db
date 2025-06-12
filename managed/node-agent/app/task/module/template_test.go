@@ -30,3 +30,18 @@ func TestServerTemplate(t *testing.T) {
 	}
 	t.Logf("Output: %s", output)
 }
+
+func TestCleanCoresTemplate(t *testing.T) {
+	values := map[string]any{}
+	projectDir := os.Getenv("PROJECT_DIR")
+	templatePath := filepath.Join(projectDir, "resources/templates/server/clean_cores.sh.j2")
+	output, err := ResolveTemplate(
+		context.TODO(),
+		values,
+		templatePath,
+	)
+	if err != nil {
+		t.Fatalf("Failed to copy file: %v", err)
+	}
+	t.Logf("Output: %s", output)
+}

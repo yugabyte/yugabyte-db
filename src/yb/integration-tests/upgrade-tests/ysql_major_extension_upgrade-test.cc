@@ -302,6 +302,12 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PgHintPlan) {
       "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)"
       " VALUES ('EXPLAIN SELECT a FROM t_hint3', '', 'IndexOnlyScan(t_hint3 t_hint3_a_idx)');"));
     ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11, 3));
+
+    // Check that the hint cache invalidation trigger exists.
+    auto result = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+        "SELECT COUNT(*) FROM pg_trigger "
+        "WHERE tgname = 'yb_invalidate_hint_plan_cache'"));
+    ASSERT_EQ(result, 1);
   }
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
   {
