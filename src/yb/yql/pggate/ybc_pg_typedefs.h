@@ -424,9 +424,10 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
+  const bool*     ysql_enable_neghit_full_inheritscache;
   const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
-  const bool*     ysql_enable_inheritance;
-  const bool*     TEST_enable_object_locking_for_table_locks;
+  const bool*     enable_object_locking_for_table_locks;
+  const uint32_t* ysql_max_invalidation_message_queue_size;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -904,21 +905,6 @@ typedef struct {
   const char* tgt_owner;
 } YbcCloneInfo;
 
-// A thread-safe way to cache compiled regexes.
-typedef struct {
-  int num;
-  void* array;
-} YbcPgThreadLocalRegexpCache;
-
-typedef void (*YbcPgThreadLocalRegexpCacheCleanup)(YbcPgThreadLocalRegexpCache*);
-
-// A thread-safe way to control the behavior of regex matching.
-typedef struct {
-  int pg_regex_strategy; // PG_Locale_Strategy
-  void* pg_regex_locale; // struct pg_locale_t
-  YbcPgOid pg_regex_collation;
-} YbcPgThreadLocalRegexpMetadata;
-
 typedef struct {
   void *slot;
 } YbcPgInsertOnConflictKeyInfo;
@@ -954,7 +940,9 @@ typedef struct {
 
 typedef struct {
   uint32_t db_oid;
+  uint32_t relation_oid;
   uint32_t object_oid;
+  uint32_t object_sub_oid;
 } YbcObjectLockId;
 
 typedef enum {

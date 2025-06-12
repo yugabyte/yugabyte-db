@@ -101,7 +101,10 @@ public class CustomerTask extends Model {
     NodeAgent(false),
 
     @EnumValue("Platform")
-    Yba(false);
+    Yba(false),
+
+    @EnumValue("User")
+    User(false);
 
     private final boolean universeTarget;
 
@@ -402,7 +405,16 @@ public class CustomerTask extends Model {
     CloneNamespace,
 
     @EnumValue("UpdateOOMServiceState")
-    UpdateOOMServiceState;
+    UpdateOOMServiceState,
+
+    @EnumValue("SendUserNotification")
+    SendUserNotification,
+
+    @EnumValue("ImportUniverse")
+    ImportUniverse,
+
+    @EnumValue("MigrateUniverse")
+    MigrateUniverse;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -589,6 +601,12 @@ public class CustomerTask extends Model {
           return completed ? "Cloned Namespace" : "Cloning Namespace";
         case UpdateOOMServiceState:
           return completed ? "Updated OOM service state" : "Updating OOM service state";
+        case SendUserNotification:
+          return completed ? "Sent user notification" : "Sending user notification";
+        case ImportUniverse:
+          return completed ? "Imported universe" : "Importing universe";
+        case MigrateUniverse:
+          return completed ? "Migrated universe" : "Migrating universe";
         default:
           return null;
       }

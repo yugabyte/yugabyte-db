@@ -2044,8 +2044,8 @@ postgresGetForeignModifyBatchSize(ResultRelInfo *resultRelInfo)
 {
 	int			batch_size;
 	PgFdwModifyState *fmstate = resultRelInfo->ri_FdwState ?
-	(PgFdwModifyState *) resultRelInfo->ri_FdwState :
-	NULL;
+		(PgFdwModifyState *) resultRelInfo->ri_FdwState :
+		NULL;
 
 	/* should be called only once */
 	Assert(resultRelInfo->ri_BatchSize == 0);
@@ -7669,7 +7669,7 @@ yb_server_type_to_string(YbPgFdwServerType server_type)
 			elog(ERROR, "Unsupported server type: %d", server_type);
 	}
 
-	return NULL;	/* keep compiler happy */
+	return NULL;				/* keep compiler happy */
 }
 
 static YbPgFdwServerType

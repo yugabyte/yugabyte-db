@@ -1916,8 +1916,8 @@ GetSerializableTransactionSnapshotInt(Snapshot snapshot,
 		/*
 		 * If we didn't find any possibly unsafe conflicts because every
 		 * uncommitted writable transaction turned out to be doomed, then we
-		 * can "opt out" immediately.  See comments above the earlier check for
-		 * PredXact->WritableSxactCount == 0.
+		 * can "opt out" immediately.  See comments above the earlier check
+		 * for PredXact->WritableSxactCount == 0.
 		 */
 		if (SHMQueueEmpty(&sxact->possibleUnsafeConflicts))
 		{
@@ -3727,8 +3727,8 @@ ReleasePredicateLocks(bool isCommit, bool isReadOnlySafe)
 	 * xmin and purge any transactions which finished before this transaction
 	 * was launched.
 	 *
-	 * For parallel queries in read-only transactions, it might run twice.
-	 * We only release the reference on the first call.
+	 * For parallel queries in read-only transactions, it might run twice. We
+	 * only release the reference on the first call.
 	 */
 	needToClear = false;
 	if ((partiallyReleasing ||

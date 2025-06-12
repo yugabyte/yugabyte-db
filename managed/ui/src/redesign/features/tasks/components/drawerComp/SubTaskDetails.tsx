@@ -9,17 +9,17 @@
 
 import { FC, useEffect } from 'react';
 import clsx from 'clsx';
-import { usePrevious, useToggle } from 'react-use';
+import { useMap, useMount, usePrevious, useToggle } from 'react-use';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { groupBy, keys, startCase, values } from 'lodash';
-import { Collapse, Typography, makeStyles } from '@material-ui/core';
+import { keys, sortBy, startCase, values } from 'lodash';
+import { Collapse, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { YBButton } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { getFailedTaskDetails, getSubTaskDetails } from './api';
 import { SubTaskInfo, Task, TaskStates } from '../../dtos';
 import { TaskDrawerCompProps } from './dtos';
-import { isTaskFailed } from '../../TaskUtils';
+import { isTaskFailed, isTaskRunning } from '../../TaskUtils';
 import LinkIcon from '../../../../assets/link.svg';
 
 const useStyles = makeStyles((theme) => ({
@@ -64,6 +64,8 @@ const useStyles = makeStyles((theme) => ({
 export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
   const classes = useStyles();
   const [expandDetails, toggleExpandDetails] = useToggle(false);
+  const [expandedSubTasks, { setAll, set, get }] = useMap();
+
   const failedTask = isTaskFailed(currentTask);
   const currentTaskPrevState = usePrevious(currentTask);
   const { t } = useTranslation('translation', {
@@ -85,7 +87,10 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     refetch: refetchSubTasks
   } = useQuery(['subTasks', currentTask.id!], () => getSubTaskDetails(currentTask.id!), {
     select: (data) => data.data,
-    enabled: !!currentTask
+    enabled: !!currentTask,
+    refetchInterval: (data) => {
+      return values(data?.[currentTask.targetUUID]).some((task) => isTaskRunning(task)) ? 8000 : false;
+    }
   });
 
   useEffect(() => {
@@ -99,23 +104,39 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
 
   if (!currentTask) return null;
 
-  // we have duplicate subtasks in the response, so we are filtering out the latest subtask (by last updated time)
-  const uniqueTasks: Record<string, SubTaskInfo> = {};
+  const subTasksList: Array<{
+    key: string;
+    subTasks: SubTaskInfo[];
+  }> = [];
 
-  detailedTaskInfo?.[currentTask.targetUUID]?.[0].subtaskInfos.forEach((task: SubTaskInfo) => {
-    const key = task.subTaskGroupType + task.taskType;
-    if (!uniqueTasks[key]) {
-      uniqueTasks[key] = task;
-    } else {
-      const taskToCompare = uniqueTasks[key];
-      if (taskToCompare.updateTime < task.updateTime) {
-        uniqueTasks[key] = task;
-      }
+  // sort the tasks by position
+  // if two consecutive tasks have the same subtask group type, group them together
+  const sortedSubTasks = sortBy(
+    values(detailedTaskInfo?.[currentTask.targetUUID]?.[0].subtaskInfos),
+    'position'
+  );
+  let subTasksListIndex = 0;
+  let sortedSubTaskIndex = 0;
+  // loop through the sorted subtasks
+  while (sortedSubTaskIndex < sortedSubTasks.length) {
+    const subTask = sortedSubTasks[sortedSubTaskIndex];
+    const subTaskGroup = subTask.subTaskGroupType;
+
+    // if the subtask group type is different from the previous one, create a new group
+    if (subTasksList[subTasksListIndex - 1]?.key !== subTaskGroup) {
+      subTasksList.push({
+        key: subTaskGroup,
+        subTasks: []
+      });
+      subTasksListIndex++;
     }
-  });
+    // if the subtask group type is the same as the previous one, push the subtask to the previous group
+    if (subTasksList[subTasksListIndex - 1].key === subTaskGroup) {
+      subTasksList[subTasksListIndex - 1].subTasks.push(subTask);
+    }
 
-  //group them by Task Group Type
-  const subTasksList = groupBy(values(uniqueTasks), 'subTaskGroupType');
+    sortedSubTaskIndex++;
+  }
 
   const getFailedTaskData = () => {
     if (isLoading) return <YBLoadingCircleIcon />;
@@ -164,14 +185,36 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
       {isSubTaskLoading ? (
         <YBLoadingCircleIcon />
       ) : (
-        keys(subTasksList).map((key, index) => (
-          <SubTaskCard
-            key={index}
-            index={index + 1}
-            category={key}
-            subTasks={subTasksList[key] as any}
-          />
-        ))
+        <>
+          {subTasksList.length > 0 && (
+            <div
+              className={classes.showLog}
+              onClick={() => {
+                const allExpanded = keys(expandedSubTasks).every((key) => expandedSubTasks[key]);
+                setAll(keys(expandedSubTasks).map(() => !allExpanded));
+              }}
+              data-testid="expand-all-subtasks"
+            >
+              {t(
+                keys(expandedSubTasks).every((k) => expandedSubTasks[k])
+                  ? 'collapseAll'
+                  : 'expandAll'
+              )}
+            </div>
+          )}
+          {subTasksList.map((subTask, index) => (
+            <SubTaskCard
+              key={index}
+              index={index}
+              category={subTask.key}
+              subTasks={subTask.subTasks}
+              expanded={get(index) ?? false}
+              toggleExpanded={(index) => {
+                set(index, get(index) === undefined ? false : !get(index));
+              }}
+            />
+          ))}
+        </>
       )}
     </div>
   );
@@ -181,6 +224,8 @@ export type SubTaskCardProps = {
   subTasks: SubTaskInfo[];
   index: number;
   category: string;
+  expanded: boolean;
+  toggleExpanded: (index: number) => void;
 };
 
 const subTaskCardStyles = makeStyles((theme) => ({
@@ -273,15 +318,22 @@ const subTaskCardStyles = makeStyles((theme) => ({
     background: theme.palette.error[100],
     padding: '8px 10px',
     wordBreak: 'break-word'
+  },
+  timeElapsed: {
+    marginLeft: 'auto',
   }
 }));
 
-export const SubTaskCard: FC<SubTaskCardProps> = ({ subTasks, index, category }) => {
+export const SubTaskCard: FC<SubTaskCardProps> = ({
+  subTasks,
+  index,
+  category,
+  expanded,
+  toggleExpanded
+}) => {
   const classes = subTaskCardStyles();
-
-  const [showDetails, toggleDetails] = useToggle(false);
-  const { t } = useTranslation('translation', {
-    keyPrefix: 'taskDetails.progress'
+  useMount(() => {
+    toggleExpanded(index);
   });
 
   const getTaskIcon = (state: Task['status'], position?: number) => {
@@ -315,34 +367,49 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({ subTasks, index, category })
     categoryTaskStatus = TaskStates.SUCCESS;
   }
 
+  const getNodeNames = (subTask: SubTaskInfo) => {
+    if (subTask.taskParams?.nodeDetailsSet) {
+      return <>{subTask.taskParams.nodeDetailsSet.map(node => <div>{`(${node.nodeName})`}</div>)}</>;
+    }
+    if (subTask.taskParams?.nodeName) {
+      return ` (${subTask.taskParams.nodeName})`;
+    }
+    return '';
+  };
+
+
   return (
     <div className={classes.card} key={index}>
-      <div className={classes.header} onClick={() => toggleDetails(!showDetails)}>
+      <div className={classes.header} onClick={() => toggleExpanded(index)}>
         <i
           className={clsx(
             'fa fa-caret-right',
-            showDetails ? classes.rowExpanded : classes.rowCollapsed,
+            expanded ? classes.rowExpanded : classes.rowCollapsed,
             classes.caret
           )}
         />
         <div className={clsx(classes.indexCircle, categoryTaskStatus)}>
-          {getTaskIcon(categoryTaskStatus, index)}
+          {getTaskIcon(categoryTaskStatus, index + 1)}
         </div>
         <Typography variant="body2">{startCase(category)}</Typography>
       </div>
-      <Collapse in={showDetails}>
+      <Collapse in={expanded}>
         <div className={classes.subTaskPanel}>
-          {subTasks.map((subTask, index) => (
-            <div className={clsx(classes.content, subTask.taskState)} key={index}>
+          {subTasks.map((subTask, index) => {
+            return <div className={clsx(classes.content, subTask.taskState)} key={index}>
               <div className={clsx(classes.indexCircle, subTask.taskState)}>
                 {getTaskIcon(subTask.taskState, index + 1)}
               </div>
-              <Typography variant="body2">{startCase(subTask.taskType)}</Typography>
-              {subTask.details?.error?.message && (
-                <div className={classes.errMsg}>{subTask.details?.error?.message}</div>
+              <Tooltip title={getNodeNames(subTask)} placement="top" arrow>
+                <Typography variant="body2">
+                  {startCase(subTask.taskType)}
+                </Typography>
+              </Tooltip>
+              {subTask.details?.error?.originMessage && (
+                <div className={classes.errMsg}>{subTask.details?.error?.originMessage}</div>
               )}
-            </div>
-          ))}
+            </div>;
+          })}
         </div>
       </Collapse>
     </div>

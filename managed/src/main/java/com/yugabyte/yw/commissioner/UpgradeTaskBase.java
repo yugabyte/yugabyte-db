@@ -239,6 +239,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   // State set on node while it is being upgraded
   public abstract NodeState getNodeState();
 
+  protected NodeState getNodeState(Set<ServerType> processTypes) {
+    return getNodeState();
+  }
+
   public void runUpgrade(Runnable upgradeLambda) {
     runUpgrade(upgradeLambda, null /* Txn callback */);
   }
@@ -582,7 +586,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
     Universe universe = getUniverse();
 
-    NodeState nodeState = getNodeState();
     if (hasTServer) {
       if (!isBlacklistLeaders()) {
         // Need load balancer on to perform leader blacklist.
@@ -596,25 +599,29 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
     }
-    // For inactive role (updating master links for tserver-only nodes)
-    // we can process all the nodes concurrently.
-    RollMaxBatchSize rollMaxBatchSize =
-        activeRole
-            ? getCurrentRollBatchSize(universe)
-            : RollMaxBatchSize.of(Integer.MAX_VALUE, Integer.MAX_VALUE);
 
-    List<List<NodeDetails>> split =
-        splitNodes(getUniverse(), nodes, processTypesFunction, rollMaxBatchSize);
+    List<List<NodeDetails>> split;
+    if (activeRole) {
+      RollMaxBatchSize rollMaxBatchSize = getCurrentRollBatchSize(universe);
+      split = splitNodes(getUniverse(), nodes, processTypesFunction, rollMaxBatchSize);
+    } else {
+      // For inactive role (updating master links for tserver-only nodes)
+      // we can process all the nodes concurrently.
+      split = Collections.singletonList(new ArrayList<>(nodes));
+    }
 
     for (List<NodeDetails> nodeList : split) {
       // Nodes are grouped by the same set of server types, so it doesn't matter which node to take.
       Set<ServerType> processTypes = processTypesFunction.apply(nodeList.get(0));
 
+      NodeState nodeState = getNodeState(processTypes);
+
       if (nodeList.size() > 1) {
         log.debug("Stopping {} nodes simultaneously, processes {}", nodeList.size(), processTypes);
       }
-      createSetNodeStateTasks(nodeList, nodeState).setSubTaskGroupType(subGroupType);
-
+      if (activeRole) {
+        createSetNodeStateTasks(nodeList, nodeState).setSubTaskGroupType(subGroupType);
+      }
       UUID primaryId = universe.getUniverseDetails().getPrimaryCluster().uuid;
       boolean hasPrimaryNodes = false;
       for (NodeDetails node : nodeList) {
@@ -709,12 +716,14 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
       // Run post node upgrade hooks
       createHookTriggerTasks(nodeList, false, true);
-      createSetNodeStateTasks(nodeList, NodeState.Live).setSubTaskGroupType(subGroupType);
-      for (NodeDetails node : nodeList) {
-        createSleepAfterStartupTask(
-            taskParams().getUniverseUUID(),
-            processTypes,
-            SetNodeState.getStartKey(node.getNodeName(), nodeState));
+      if (activeRole) {
+        createSetNodeStateTasks(nodeList, NodeState.Live).setSubTaskGroupType(subGroupType);
+        for (NodeDetails node : nodeList) {
+          createSleepAfterStartupTask(
+              taskParams().getUniverseUUID(),
+              processTypes,
+              SetNodeState.getStartKey(node.getNodeName(), nodeState));
+        }
       }
       if (context.postAction != null) {
         nodeList.forEach(context.postAction);
@@ -1262,5 +1271,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
+    UUID rootCAUUID;
   }
 }

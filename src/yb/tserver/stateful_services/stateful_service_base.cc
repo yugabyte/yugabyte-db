@@ -324,7 +324,7 @@ void StatefulServiceBase::StartPeriodicTaskIfNeeded() {
         std::bind(&StatefulServiceBase::ProcessTaskPeriodically, this));
     if (!s.ok()) {
       task_enqueued_ = false;
-      LOG(ERROR) << "Failed to schedule " << ServiceName() << " periodic task :" << s;
+      LOG(WARNING) << "Failed to schedule " << ServiceName() << " periodic task :" << s;
     }
   }
 

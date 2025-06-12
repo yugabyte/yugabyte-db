@@ -829,7 +829,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     const auto msg = Format(
         "Received a leader stepdown operation for wrong tablet id: $0, must be: $1",
         tablet_id, this->tablet_id());
-    LOG_WITH_PREFIX(ERROR) << msg;
+    LOG_WITH_PREFIX(DFATAL) << msg;
     StatusToPB(STATUS(IllegalState, msg), resp->mutable_error()->mutable_status());
     return Status::OK();
   }
@@ -1625,11 +1625,17 @@ Status RaftConsensus::StartReplicaOperationUnlocked(
   VLOG_WITH_PREFIX(1) << "Starting operation: " << msg->id().ShortDebugString();
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
   ConsensusRound* round_ptr = round.get();
-  RETURN_NOT_OK(state_->context()->StartReplicaOperation(round, propagated_safe_time));
+  RETURN_NOT_OK(state_->context()->StartReplicaOperation(round,
+      /* propagated_safe_time */ HybridTime::kInvalid));
   auto result = state_->AddPendingOperation(round_ptr, OperationMode::kFollower);
   if (!result.ok()) {
     round_ptr->NotifyReplicationFinished(result, OpId::kUnknownTerm, /* applied_op_ids */ nullptr);
+  } else if (propagated_safe_time) {
+    // Set propagated_safe_time after we ensure the op will not be popped from mvcc queue
+    // due to failure
+    state_->context()->SetMvccPropagatedSafeTime(propagated_safe_time);
   }
+
   return result;
 }
 
@@ -2935,7 +2941,7 @@ PeerRole RaftConsensus::GetActiveRole() const {
   return state_->GetActiveRoleUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLatestOpIdFromLog() {
+OpId RaftConsensus::GetLatestOpIdFromLog() {
   return log_->GetLatestEntryOpId();
 }
 
@@ -3531,22 +3537,22 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
   }
 }
 
-yb::OpId RaftConsensus::GetLastReceivedOpId() {
+OpId RaftConsensus::GetLastReceivedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastReceivedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLastCommittedOpId() {
+OpId RaftConsensus::GetLastCommittedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetCommittedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetLastAppliedOpId() {
+OpId RaftConsensus::GetLastAppliedOpId() {
   auto lock = state_->LockForRead();
   return state_->GetLastAppliedOpIdUnlocked();
 }
 
-yb::OpId RaftConsensus::GetAllAppliedOpId() {
+OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
 }
 
@@ -3571,7 +3577,7 @@ void RaftConsensus::NonTrackedRoundReplicationFinished(ConsensusRound* round,
   OperationType op_type = round->replicate_msg()->op_type();
   string op_str = Format("$0 [$1]", OperationType_Name(op_type), round->id());
   if (!IsConsensusOnlyOperation(op_type)) {
-    LOG_WITH_PREFIX(ERROR) << "Unexpected op type: " << op_str;
+    LOG_WITH_PREFIX(DFATAL) << "Unexpected op type: " << op_str;
     return;
   }
   if (!status.ok()) {

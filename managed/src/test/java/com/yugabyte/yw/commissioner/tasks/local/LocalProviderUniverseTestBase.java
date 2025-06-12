@@ -252,7 +252,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     subDir = DATE_FORMAT.format(new Date());
   }
 
-  @Rule public Timeout globalTimeout = Timeout.seconds(900);
+  @Rule public Timeout globalTimeout = Timeout.seconds(1200);
 
   private static void setUpBaseDir() {
     if (System.getenv(BASE_DIR_ENV_KEY) != null) {

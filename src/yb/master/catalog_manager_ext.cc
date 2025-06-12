@@ -159,7 +159,7 @@ DEFINE_RUNTIME_bool(
     "safety button in case restore using relfilenode fails.");
 
 DEFINE_RUNTIME_AUTO_bool(
-    enable_export_snapshot_using_relfilenode, kLocalVolatile, false, true,
+    enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
 namespace yb {
 
@@ -194,8 +194,8 @@ struct TableWithTabletsEntries {
     table_entry.AppendToString(&output);
     *table_backup_entry->mutable_entry() =
         ToSysRowEntry(table_id, SysRowEntryType::TABLE, std::move(output));
-    if (!table_entry.schema().depricated_pgschema_name().empty()) {
-      table_backup_entry->set_pg_schema_name(table_entry.schema().depricated_pgschema_name());
+    if (!table_entry.schema().deprecated_pgschema_name().empty()) {
+      table_backup_entry->set_pg_schema_name(table_entry.schema().deprecated_pgschema_name());
     }
     for (const auto& tablet_entry : tablets_entries) {
       std::string output;
@@ -448,20 +448,24 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
   }
   RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshots(
       txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
+  bool include_ddl_in_progress_tables =
+      req->has_include_ddl_in_progress_tables() ? req->include_ddl_in_progress_tables() : false;
   if (req->prepare_for_backup()) {
-    RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
+    RETURN_NOT_OK(RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables));
   }
 
   return Status::OK();
 }
 
-Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
+Status CatalogManager::RepackSnapshotsForBackup(
+    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
 
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode)
+    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode) &&
+                                  include_ddl_in_progress_tables
                               ? kUseRelfilenodeFormatVersion
                               : kUseBackupRowEntryFormatVersion;
     snapshot.set_format_version(format_version);
@@ -495,7 +499,7 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
         TRACE("Locking table");
         auto l = table_info->LockForRead();
-        if (l->has_ysql_ddl_txn_verifier_state()) {
+        if (!include_ddl_in_progress_tables && l->has_ysql_ddl_txn_verifier_state()) {
           return STATUS_FORMAT(IllegalState, "Table $0 is undergoing DDL verification, retry later",
                                table_info->id());
         }
@@ -2168,7 +2172,6 @@ Status CatalogManager::ImportTableEntry(
         column.set_id(column_ids[col_idx++]);
       }
 
-      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2179,6 +2182,8 @@ Status CatalogManager::ImportTableEntry(
     // Set missing values for tables that were created with a default value. ysql_dump will not
     // properly set that value because it is only set on ADD COLUMN, and it creates the column
     // directly in CREATE TABLE.
+    // Also set the next_column_id at target restore side to be equal to next_column_id from backup
+    // side.
     {
       auto l = table->LockForWrite();
       for (auto i = 0; i < l.mutable_data()->pb.schema().columns_size(); ++i) {
@@ -2187,6 +2192,9 @@ Status CatalogManager::ImportTableEntry(
         if (column.has_missing_value() && !persisted_column.has_missing_value()) {
           *persisted_column.mutable_missing_value() = column.missing_value();
         }
+      }
+      if (l.data().pb.next_column_id() < meta.next_column_id()) {
+        l.mutable_data()->pb.set_next_column_id(meta.next_column_id());
       }
       if (l.is_dirty()) {
         RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2202,7 +2210,6 @@ Status CatalogManager::ImportTableEntry(
       auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
       table_props->set_partitioning_version(schema.table_properties().partitioning_version());
 
-      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2684,12 +2691,16 @@ Status CatalogManager::RestoreSysCatalogCommon(
   RETURN_NOT_OK(state->Process());
 
   // Restore the pg_catalog tables.
+  // Since lifetime of tablet_peer and doc_read_context matches in this case. We could
+  // use tablet peer reference counter for doc read context.
+  auto doc_read_context = rpc::SharedField(
+      tablet_peer(), &this->doc_read_context());
   if (FLAGS_enable_ysql && state->IsYsqlRestoration()) {
     // Restore sequences_data table.
     RETURN_NOT_OK(state->PatchSequencesDataObjects());
 
     RETURN_NOT_OK(state->ProcessPgCatalogRestores(
-        doc_db, tablet->doc_db(), write_batch, doc_read_context(), schema_packing_provider,
+        doc_db, tablet->doc_db(), write_batch, doc_read_context, schema_packing_provider,
         tablet->metadata()));
   }
 
@@ -2698,7 +2709,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
 
   // Restore the other tables.
   RETURN_NOT_OK(state->PrepareWriteBatch(
-      schema(), schema_packing_provider, write_batch, master_->clock()->Now()));
+      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces

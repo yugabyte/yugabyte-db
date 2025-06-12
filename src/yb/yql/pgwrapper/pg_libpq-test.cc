@@ -57,6 +57,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
 #include "yb/util/cast.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/os-util.h"
@@ -164,6 +165,8 @@ class PgLibPqTest : public LibPqTestBase {
   Status TestDuplicateCreateTableRequest(PGConn conn);
 
   void TestSecondaryIndexInsertSelect();
+
+  Status TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces);
 
   void KillPostmasterProcessOnTservers();
 
@@ -945,6 +948,107 @@ class PgLibPqWithSharedMemTest : public PgLibPqTest {
 
 TEST_F_EX(PgLibPqTest, SecondaryIndexInsertSelectWithSharedMem, PgLibPqWithSharedMemTest) {
   TestSecondaryIndexInsertSelect();
+}
+
+Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces) {
+  auto conn = VERIFY_RESULT(Connect());
+  constexpr auto kPgCatalogOid = 11;
+
+  // Secondary index scan on system table.
+  auto query = Format(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM pg_class WHERE relname = 'pg_class' AND relnamespace = $0",
+      kPgCatalogOid);
+  // First run is to warm up the cache.
+  RETURN_NOT_OK(conn.FetchRow<std::string>(query));
+  // Second run is the real test.
+  auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  rapidjson::Document explain_json;
+  explain_json.Parse(explain_str.c_str());
+  auto scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Catalog Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of catalog read requests");
+
+  // Secondary index scan on copartitioned table.
+  RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE vector_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 2 TABLETS"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE INDEX ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO vector_test VALUES (1, '[1, 2, 3]')"));
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
+      " SELECT * FROM vector_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT 1"));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Limit",
+            IllegalState,
+            "Unexpected scan type");
+  scan_type = std::string(explain_json[0]["Plan"]["Plans"][0]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index.
+  RETURN_NOT_OK(conn.Execute("CREATE DATABASE colodb WITH colocation = true"));
+  conn = VERIFY_RESULT(ConnectToDB("colodb"));
+  RETURN_NOT_OK(conn.Execute(
+      "CREATE TABLE colo_test (id int PRIMARY KEY, value TEXT)"));
+  RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO colo_test VALUES (1, 'hi')"));
+  query = "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM colo_test WHERE value = 'hi'";
+  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+  explain_json.Parse(explain_str.c_str());
+  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  SCHECK_EQ(scan_type, "Index Scan",
+            IllegalState,
+            "Unexpected scan type");
+  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+            IllegalState,
+            "Unexpected number of storage read requests");
+
+  // Secondary index scan on colocated table and index on different tablespaces.
+  if (is_colocated_with_tablespaces) {
+    RETURN_NOT_OK(conn.Execute("DROP INDEX colo_test_value_idx"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLESPACE spc LOCATION '/dne'"));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value) TABLESPACE spc"));
+    explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
+    explain_json.Parse(explain_str.c_str());
+    scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+    SCHECK_EQ(scan_type, "Index Scan",
+              IllegalState,
+              "Unexpected scan type");
+    SCHECK_GT(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+              IllegalState,
+              "Unexpected number of storage read requests");
+  }
+
+  return Status::OK();
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    options->extra_master_flags.push_back(flag);
+    options->extra_tserver_flags.push_back(flag);
+  }
+};
+
+TEST_F_EX(PgLibPqTest,
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
+          PgLibPqColocatedTablesWithTablespacesTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
 void AssertRows(PGConn *conn, int expected_num_rows) {
@@ -4236,32 +4340,58 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
+
+  void TestInheritsNegCache(bool minimal_preload) {
+    google::SetVLOGLevel("libpq_utils", 1);
+    auto conn = ASSERT_RESULT(Connect());
+
+    // Prepare schema
+    ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
+      "PARTITION BY RANGE(r);"
+      "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
+      "CREATE UNIQUE INDEX ON foo (v1, r);"
+      "INSERT INTO foo VALUES (1,1,1,1);"));
+
+    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+    // Run the query on a fresh conn
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto str = conn2.FetchAllAsString(
+        "EXPLAIN (ANALYZE, DIST) INSERT INTO foo VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
+        "v2=foo.v2+1");
+    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+    int32_t updated_v2 = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+        "SELECT v2 FROM foo WHERE h=1 AND r=1"));
+    ASSERT_EQ(2, updated_v2);
+
+    // Given we are preloaded, we should not have any cache misses (incl neg misses)
+    // for the query above which should cause lookups for ancestors of a table in pg_inherits
+    if (!minimal_preload)
+      ASSERT_EQ(end_value.value, start_value.value);
+    else
+      ASSERT_GT(end_value.value, start_value.value);
+  }
 };
 
+class PgLibPqPgInheritsNegCacheMinimalPreloadTest : public PgLibPqPgInheritsNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_minimal_catalog_caches_preload=true");
+    PgLibPqPgInheritsNegCacheTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+
 TEST_F_EX(PgLibPqTest, PgInheritsNegCacheTest, PgLibPqPgInheritsNegCacheTest) {
-  auto conn = ASSERT_RESULT(Connect());
+  TestInheritsNegCache(false /*minimal preload*/);
+}
 
-  // Prepare schema
-  ASSERT_OK(conn.Execute(
-    "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
-    "PARTITION BY RANGE(r);"
-    "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
-    "CREATE UNIQUE INDEX ON foo (v1, r);"
-    "INSERT INTO FOO VALUES (1,1,1,1);"));
-
-  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
-
-  // Run the query on a fresh conn
-  auto conn2 = ASSERT_RESULT(Connect());
-  auto str = conn2.FetchAllAsString(
-      "EXPLAIN (ANALYZE, DIST) INSERT INTO FOO VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
-      "v2=foo.v2+1");
-
-  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
-
-  // Given we are preloaded, we should not have any cache misses (incl neg misses)
-  // for the query above which should cause lookups for ancestors of a table in pg_inherits
-  ASSERT_EQ(end_value.value, start_value.value);
+TEST_F_EX(PgLibPqTest, PgInheritsNegCacheMinPreloadTest,
+            PgLibPqPgInheritsNegCacheMinimalPreloadTest) {
+  TestInheritsNegCache(true /*minimal preload*/);
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {

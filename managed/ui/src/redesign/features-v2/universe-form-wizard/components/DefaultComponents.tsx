@@ -1,4 +1,4 @@
-import { styled, Typography } from "@material-ui/core";
+import { styled, Typography, Link } from '@material-ui/core';
 
 export const StyledPanel = styled('div')(({ theme }) => ({
   padding: '0',
@@ -21,4 +21,14 @@ export const StyledContent = styled('div')(({ theme }) => ({
   display: 'flex',
   gap: theme.spacing(4),
   flexDirection: 'column'
+}));
+
+export const StyledLink = styled(Link)(({ theme }) => ({
+  color: '#4E5F6D',
+  fontSize: 11.5,
+  fontWeight: 400,
+  lineHeight: '18px',
+  textDecoration: 'underline',
+  textDecorationStyle: 'solid',
+  textUnderlinePosition: 'from-font'
 }));

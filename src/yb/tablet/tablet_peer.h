@@ -240,6 +240,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // UpdateReplica -> EnqueuePreparesUnlocked on Raft heartbeats.
   void SetPropagatedSafeTime(HybridTime ht) override;
 
+  void SetMvccPropagatedSafeTime(HybridTime ht) override;
+
   // Returns false if it is preferable to don't apply write operation.
   bool ShouldApplyWrite() override;
 
@@ -393,7 +395,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<OperationDriverPtr> NewReplicaOperationDriver(std::unique_ptr<Operation>* operation);
 
   // Tells the tablet's log to garbage collect.
-  Status RunLogGC();
+  Status RunLogGC(bool rollover = false);
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().

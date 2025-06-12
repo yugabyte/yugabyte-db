@@ -95,7 +95,7 @@ Status PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
   for (PTDmlWriteProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {
       // This shouldn't happen because AppendList ignores null nodes.
-      LOG(ERROR) << "Invalid null property";
+      LOG(DFATAL) << "Invalid null property";
       continue;
     }
     switch(tnode->property_type()) {

@@ -78,7 +78,7 @@ public class CheckClusterConsistencyTest extends FakeDBApplication {
     RunnableTask mockRunnable = mock(RunnableTask.class);
 
     // yb client service returns ybclient
-    when(mockYbClientService.getClient(any(), any())).thenReturn(mockYbClient);
+    when(mockYbClientService.getUniverseClient(any())).thenReturn(mockYbClient);
 
     // getLeaderMasterHostAndPort only validates that there is a master leader.
     when(mockYbClient.getLeaderMasterHostAndPort())

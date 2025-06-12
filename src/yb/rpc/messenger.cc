@@ -604,8 +604,8 @@ Messenger::~Messenger() {
   VLOG(1) << "Messenger destructor for " << this << " called at:\n" << GetStackTrace();
 #ifndef NDEBUG
   if (!closing_) {
-    LOG(ERROR) << "Messenger created here:\n" << creation_stack_trace_.Symbolize()
-               << "Messenger destructor for " << this << " called at:\n" << GetStackTrace();
+    LOG(DFATAL) << "Messenger created here:\n" << creation_stack_trace_.Symbolize()
+                << "Messenger destructor for " << this << " called at:\n" << GetStackTrace();
   }
 #endif
   CHECK(closing_) << "Should have already shut down";

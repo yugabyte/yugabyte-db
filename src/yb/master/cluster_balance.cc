@@ -1320,19 +1320,25 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
     for (auto right = last_pos; right >= 0; --right) {
       const TabletServerId& high_load_uuid = sorted_leader_load[right];
       auto high_leader_blacklisted =
-          (global_state_->leader_blacklisted_servers_.find(high_load_uuid) !=
-              global_state_->leader_blacklisted_servers_.end());
-      ssize_t load_variance =
-          state_->GetLeaderLoad(high_load_uuid) - state_->GetLeaderLoad(low_load_uuid);
+          global_state_->leader_blacklisted_servers_.contains(high_load_uuid);
+      ssize_t high_load = state_->GetLeaderLoad(high_load_uuid);
+      ssize_t low_load = state_->GetLeaderLoad(low_load_uuid);
+      ssize_t load_variance = high_load - low_load;
 
       bool is_global_balancing_move = false;
 
       // Check for state change or end conditions.
-      if (high_leader_blacklisted && state_->GetLeaderLoad(high_load_uuid) == 0) {
+      if (high_leader_blacklisted && high_load == 0) {
         continue;  // No leaders to move from this blacklisted TS.
       }
-      if (left == right || (load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */ &&
-                            !high_leader_blacklisted)) {
+      std::string reason;
+      if (load_variance >= state_->options_->kMinLoadVarianceToBalance /* 2 */) {
+        reason = Format("Source tserver has more leaders for this table than destination ($0 > $1)",
+                        high_load, low_load);
+      } else if (high_leader_blacklisted) {
+        reason = Format("Leader is on leader blacklisted tserver", high_load_uuid);
+      }
+      if (left == right || reason.empty()) {
         // Global leader balancing only if per table variance is > 0.
         if (load_variance == 0 && right == last_pos) {
           // We can return as we don't have any other moves to make.
@@ -1341,8 +1347,9 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
         // Check if we can benefit from global leader balancing.
         // If we have > 0 load_variance and there are no per table moves left.
         if (load_variance > 0 && CanBalanceGlobalLoad()) {
-          int global_load_variance = state_->global_state_->GetGlobalLeaderLoad(high_load_uuid) -
-                                        state_->global_state_->GetGlobalLeaderLoad(low_load_uuid);
+          auto global_high_load = state_->global_state_->GetGlobalLeaderLoad(high_load_uuid);
+          auto global_low_load = state_->global_state_->GetGlobalLeaderLoad(low_load_uuid);
+          int global_load_variance = global_high_load - global_low_load;
           // Already globally balanced. Since we are sorted by (leaders, global leader load), we can
           // break here as there are no other leaders for us to move to this left tserver.
           // However, as opposed to global load balancing, we cannot return early here, and instead
@@ -1353,6 +1360,8 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
           if (global_load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */) {
             break;
           }
+          reason = Format("Source tserver has more global leaders than destination ($0 > $1)",
+                          global_high_load, global_low_load);
           VLOG(3) << "This is a global leader balancing pass";
           is_global_balancing_move = true;
         } else {
@@ -1363,18 +1372,21 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
       // Find the leaders on the higher loaded TS that have running peers on the lower loaded TS.
       // If there are, we have a candidate we want, so fill in the output params and return.
       const std::set<TabletId>& leaders = state_->per_ts_meta_[high_load_uuid].leaders;
-      for (const auto& tablet : GetLeadersOnTSToMove(global_state_->drive_aware_,
-                                                     leaders,
-                                                     state_->per_ts_meta_[low_load_uuid])) {
-        struct LeaderMoveDetails move_details;
-        move_details.tablet_id = tablet.first;
-        move_details.to_ts_path = tablet.second;
-        move_details.from_ts = high_load_uuid;
-        move_details.to_ts = low_load_uuid;
-        VLOG(3) << "For leader load balancing found tablet " << tablet.first << " to move from "
+      for (const auto& [tablet_id, path] : GetLeadersOnTSToMove(
+               global_state_->drive_aware_, leaders, state_->per_ts_meta_[low_load_uuid])) {
+
+        auto move_details = LeaderMoveDetails {
+          .tablet_id = tablet_id,
+          .from_ts = high_load_uuid,
+          .to_ts = low_load_uuid,
+          .to_ts_path = path,
+          .reason = std::move(reason),
+        };
+
+        VLOG(3) << "For leader load balancing found tablet " << tablet_id << " to move from "
                 << move_details.from_ts << " to " << move_details.to_ts;
         const auto& per_tablet_meta = state_->per_tablet_meta_;
-        const auto tablet_meta_iter = per_tablet_meta.find(tablet.first);
+        const auto tablet_meta_iter = per_tablet_meta.find(tablet_id);
         if (PREDICT_TRUE(tablet_meta_iter != per_tablet_meta.end())) {
           const auto& tablet_meta = tablet_meta_iter->second;
           const auto& stepdown_failures = tablet_meta.leader_stepdown_failures;
@@ -1382,7 +1394,7 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
           if (stepdown_failure_iter != stepdown_failures.end()) {
             const auto time_since_failure = current_time - stepdown_failure_iter->second;
             if (time_since_failure.ToMilliseconds() < FLAGS_min_leader_stepdown_retry_interval_ms) {
-              LOG(INFO) << "Cannot move tablet " << tablet.first << " leader from TS "
+              LOG(INFO) << "Cannot move tablet " << tablet_id << " leader from TS "
                         << move_details.from_ts << " to TS " << move_details.to_ts << " yet: "
                         << "previous attempt with the same intended leader failed only "
                         << ToString(time_since_failure)
@@ -1396,16 +1408,6 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
                        << move_details.tablet_id;
         }
 
-        // Leader movement solely due to leader blacklist.
-        if (load_variance < state_->options_->kMinLoadVarianceToBalance /* 2 */ &&
-            high_leader_blacklisted) {
-          move_details.reason = Format("Leader is on leader blacklisted tserver", high_load_uuid);
-        } else {
-          move_details.reason =
-              Format("Source tserver has more leaders for this table than destination "
-                  "($0 > $1)", state_->GetLeaderLoad(high_load_uuid),
-                  state_->GetLeaderLoad(low_load_uuid));
-        }
         if (!is_global_balancing_move) {
           can_perform_global_operations_ = false;
         }
@@ -1853,8 +1855,8 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
     }
   }
   // Should never get here.
-  LOG(ERROR) << "Could not find read only cluster with placement uuid: "
-             << state_->options_->placement_uuid;
+  LOG(DFATAL) << "Could not find read only cluster with placement uuid: "
+              << state_->options_->placement_uuid;
   return replication_info.read_replicas(0);
 }
 

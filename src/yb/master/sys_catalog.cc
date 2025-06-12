@@ -173,8 +173,9 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics)
     : doc_read_context_(std::make_unique<docdb::DocReadContext>(
-          kLogPrefix, TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, BuildTableSchema(),
-          kSysCatalogSchemaVersion)),
+          kLogPrefix, TableType::YQL_TABLE_TYPE,
+          docdb::Index::kFalse, std::make_shared<dockv::SchemaPackingRegistry>(kLogPrefix),
+          BuildTableSchema(), kSysCatalogSchemaVersion)),
       metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master) {}
@@ -607,6 +608,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .metric_registry = metric_registry_,
       .log_anchor_registry = tablet_peer()->log_anchor_registry(),
       .tablet_options = tablet_options,
+      .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = " P " + tablet_peer()->permanent_uuid(),
       .transaction_participant_context = tablet_peer().get(),
       .local_tablet_filter = client::LocalTabletFilter(),
@@ -745,8 +747,8 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
                    << "complete. Continuing to wait.";
       time = CoarseMonoClock::now();
       if (time >= deadline) {
-        LOG(ERROR) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
-                   << "Returning a timeout from SyncWrite.";
+        LOG(WARNING) << "Already waited for a total of " << ::yb::ToString(waited_so_far) << ". "
+                     << "Returning a timeout from SyncWrite.";
         return STATUS_FORMAT(TimedOut, "SyncWrite timed out after $0", waited_so_far);
       }
     }

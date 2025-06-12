@@ -262,7 +262,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           PodUpgradeParams.builder()
               .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
               .build(),
-          null /* ysqlMajorVersionUpgradeState */);
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */);
     }
     if (upgradeTservers) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -287,7 +288,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
               .rollMaxBatchSize(getCurrentRollBatchSize(universe, taskParams().rollMaxBatchSize))
               .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
               .build(),
-          null /* ysqlMajorVersionUpgradeState */);
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */);
 
       if (enableYbc) {
         if (isReadOnlyCluster) {

@@ -536,12 +536,13 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 
 		if (IsYugaByteEnabled() && yb_enable_planner_trace && parent_rel->ybRoot != NULL)
 		{
-			char msgBuf[30];
+			char		msgBuf[30];
+
 			sprintf(msgBuf, "(UID %u) ", ybGetNextUid(parent_rel->ybRoot->glob));
 
 			ereport(DEBUG1,
-				(errmsg("\n%s add_path NODE %u add_path NODE %u\n", msgBuf, old_path->ybUniqueId,
-									new_path->ybUniqueId)));
+					(errmsg("\n%s add_path NODE %u add_path NODE %u\n", msgBuf, old_path->ybUniqueId,
+							new_path->ybUniqueId)));
 			ybTracePath(parent_rel->ybRoot, old_path, "old path");
 			ybTracePath(parent_rel->ybRoot, new_path, "new path");
 		}
@@ -554,10 +555,12 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 
 		if (IsYugaByteEnabled() && yb_enable_planner_trace && parent_rel->ybRoot != NULL)
 		{
-			char msgBuf[30];
+			char		msgBuf[30];
+
 			sprintf(msgBuf, "(UID %u) ", ybGetNextUid(parent_rel->ybRoot->glob));
 
-			char *cmpValue;
+			char	   *cmpValue;
+
 			switch (costcmp)
 			{
 				case COSTS_EQUAL:
@@ -578,7 +581,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 					break;
 			}
 
-			ereport(DEBUG1,(errmsg("\n%s compare_path_costs_fuzzily : %s\n", msgBuf, cmpValue)));
+			ereport(DEBUG1, (errmsg("\n%s compare_path_costs_fuzzily : %s\n", msgBuf, cmpValue)));
 		}
 
 		/*
@@ -819,7 +822,8 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		}
 		else
 		{
-			bool ybNewPathCostsMore = false;
+			bool		ybNewPathCostsMore = false;
+
 			if (!(new_path->ybHasHintedUid) && old_path->ybHasHintedUid)
 			{
 				ybNewPathCostsMore = true;
@@ -1023,12 +1027,13 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 
 		if (IsYugaByteEnabled() && yb_enable_planner_trace && parent_rel->ybRoot != NULL)
 		{
-			char msgBuf[30];
+			char		msgBuf[30];
+
 			sprintf(msgBuf, "(UID %u) ", ybGetNextUid(parent_rel->ybRoot->glob));
 
 			ereport(DEBUG1,
-				(errmsg("\n%s add_partial_path NODE %u add_partial_path NODE %u\n", msgBuf, old_path->ybUniqueId,
-									new_path->ybUniqueId)));
+					(errmsg("\n%s add_partial_path NODE %u add_partial_path NODE %u\n", msgBuf, old_path->ybUniqueId,
+							new_path->ybUniqueId)));
 			ybTracePath(parent_rel->ybRoot, old_path, "old path");
 			ybTracePath(parent_rel->ybRoot, new_path, "new path");
 		}
@@ -2933,11 +2938,13 @@ create_nestloop_path(PlannerInfo *root,
 	if (yb_enable_planner_trace)
 	{
 		StringInfoData buf;
+
 		initStringInfo(&buf);
-		char msgBuf[30];
+		char		msgBuf[30];
+
 		sprintf(msgBuf, "(UID %u)", ybGetNextUid(root->glob));
 		appendStringInfo(&buf, "%s %s", msgBuf, "create_nestloop_path");
-		ereport(DEBUG1,(errmsg("\n%s", buf.data)));
+		ereport(DEBUG1, (errmsg("\n%s", buf.data)));
 		ybTracePath(root, outer_path, "outer path");
 		ybTracePath(root, inner_path, "inner path");
 		pfree(buf.data);
@@ -3009,7 +3016,7 @@ create_nestloop_path(PlannerInfo *root,
 
 		pathnode->jpath.path.ybIsHinted
 			= ybFindHintedJoin(root, outer_path->parent->relids, inner_path->parent->relids,
-					false /* do not swap */ );
+							   false /* do not swap */ );
 
 		if (pathnode->jpath.path.ybIsHinted)
 		{
@@ -3036,6 +3043,7 @@ create_nestloop_path(PlannerInfo *root,
 	if (yb_enable_planner_trace)
 	{
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "allocated join path %u", pathnode->jpath.path.ybUniqueId);
 		ybTracePath(root, (Path *) pathnode, "allocated join path");
@@ -3088,11 +3096,13 @@ create_mergejoin_path(PlannerInfo *root,
 		if (yb_enable_planner_trace)
 		{
 			StringInfoData buf;
+
 			initStringInfo(&buf);
-			char msgBuf[30];
+			char		msgBuf[30];
+
 			sprintf(msgBuf, "(UID %u)", ybGetNextUid(root->glob));
 			appendStringInfo(&buf, "%s %s", msgBuf, "create_mergejoin_path");
-			ereport(DEBUG1,(errmsg("\n%s", buf.data)));
+			ereport(DEBUG1, (errmsg("\n%s", buf.data)));
 			ybTracePath(root, outer_path, "outer path");
 			ybTracePath(root, inner_path, "inner path");
 			pfree(buf.data);
@@ -3102,7 +3112,7 @@ create_mergejoin_path(PlannerInfo *root,
 
 		pathnode->jpath.path.ybIsHinted
 			= ybFindHintedJoin(root, outer_path->parent->relids, inner_path->parent->relids,
-					false /* do not swap */ );
+							   false /* do not swap */ );
 
 		if (pathnode->jpath.path.ybIsHinted)
 		{
@@ -3151,6 +3161,7 @@ create_mergejoin_path(PlannerInfo *root,
 	if (yb_enable_planner_trace)
 	{
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "allocated join path %u", pathnode->jpath.path.ybUniqueId);
 		ybTracePath(root, (Path *) pathnode, "allocated join path");
@@ -3198,11 +3209,13 @@ create_hashjoin_path(PlannerInfo *root,
 		if (yb_enable_planner_trace)
 		{
 			StringInfoData buf;
+
 			initStringInfo(&buf);
-			char msgBuf[30];
+			char		msgBuf[30];
+
 			sprintf(msgBuf, "(UID %u)", ybGetNextUid(root->glob));
 			appendStringInfo(&buf, "%s %s", msgBuf, "create_hashjoin_path");
-			ereport(DEBUG1,(errmsg("\n%s", buf.data)));
+			ereport(DEBUG1, (errmsg("\n%s", buf.data)));
 			ybTracePath(root, outer_path, "outer path");
 			ybTracePath(root, inner_path, "inner path");
 			pfree(buf.data);
@@ -3269,6 +3282,7 @@ create_hashjoin_path(PlannerInfo *root,
 	if (yb_enable_planner_trace)
 	{
 		StringInfoData buf;
+
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "allocated join path %u", pathnode->jpath.path.ybUniqueId);
 		ybTracePath(root, (Path *) pathnode, "allocated join path");

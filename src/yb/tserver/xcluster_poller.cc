@@ -141,12 +141,13 @@ XClusterPoller::~XClusterPoller() {
   DCHECK(shutdown_);
 }
 
-void XClusterPoller::Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter) {
+void XClusterPoller::Init(
+    bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, bool is_ddl_queue_client) {
   ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
 
   output_client_ = CreateXClusterOutputClient(
       this, consumer_tablet_info_, producer_tablet_info_, local_client_, thread_pool_, rpcs_,
-      use_local_tserver, is_automatic_mode_, rate_limiter);
+      use_local_tserver, is_automatic_mode_, is_ddl_queue_client, rate_limiter);
 }
 
 void XClusterPoller::InitDDLQueuePoller(
@@ -154,11 +155,12 @@ void XClusterPoller::InitDDLQueuePoller(
     const NamespaceId& source_namespace_id, TserverXClusterContextIf& xcluster_context,
     ConnectToPostgresFunc connect_to_pg_func) {
   DCHECK_EQ(is_automatic_mode_, true);
-  Init(use_local_tserver, rate_limiter);
+  Init(use_local_tserver, rate_limiter, /*is_ddl_queue_client=*/true);
 
   ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
       &local_client_, namespace_name, source_namespace_id, consumer_namespace_id_, LogPrefix(),
-      xcluster_context, std::move(connect_to_pg_func));
+      xcluster_context, std::move(connect_to_pg_func),
+      std::bind(&XClusterPoller::UpdateSafeTime, this, _1));
 }
 
 void XClusterPoller::StartShutdown() {
@@ -252,19 +254,18 @@ HybridTime XClusterPoller::GetSafeTime() const {
   return safe_time;
 }
 
-void XClusterPoller::UpdateSafeTime(int64 new_time) {
-  HybridTime new_hybrid_time(new_time);
-  if (new_hybrid_time.is_special()) {
-    LOG_WITH_PREFIX(WARNING) << "Received invalid xCluster safe time: " << new_hybrid_time;
+void XClusterPoller::UpdateSafeTime(HybridTime new_time) {
+  if (new_time.is_special()) {
+    LOG_WITH_PREFIX(WARNING) << "Received invalid xCluster safe time: " << new_time;
     return;
   }
 
   auto existing = producer_safe_time_.load();
   for (;;) {
-    if (!existing.is_special() && existing > new_hybrid_time) {
+    if (!existing.is_special() && existing > new_time) {
       break;
     }
-    if (producer_safe_time_.compare_exchange_strong(existing, new_hybrid_time)) {
+    if (producer_safe_time_.compare_exchange_strong(existing, new_time)) {
       break;
     }
   }
@@ -297,6 +298,23 @@ void XClusterPoller::SchedulePoll() {
 }
 
 void XClusterPoller::DoPoll() {
+  if (ddl_queue_handler_) {
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
+    if (op_id_.index() == 0 && op_id_.term() == 0) {
+      // This a new ddl_queue poller, so need to first process anything currently in the DDL queue.
+      // This is needed to ensure that we don't miss any DDLs that were already in the queue when
+      // the last poller was stopped.
+      // Perform this before pausing as well, this will ensure that we have a valid safe time.
+      auto ddl_queue_status = ddl_queue_handler_->ProcessPendingBatchIfExists();
+      if (!ddl_queue_status.ok()) {
+        LOG_WITH_PREFIX(WARNING) << "Failed to process existing DDL queue: "
+                                 << ddl_queue_status.ToString();
+        return SchedulePoll();
+      }
+      // We can only send a new GetChanges request once we finish processing this batch.
+    }
+  }
+
   if (is_paused_) {
     const auto safe_time = GetSafeTime();
     if (!safe_time.is_special()) {
@@ -534,16 +552,16 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
 
   if (ddl_queue_handler_) {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
-    auto s = ddl_queue_handler_->ProcessDDLQueueTable(response);
+    auto s = ddl_queue_handler_->ProcessGetChangesResponse(response);
     if (!s.ok()) {
       if (s.IsTryAgain()) {
         // The handler will return try again when waiting for safe time to catch up, so can log
         // these errors less frequently.
         YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 300)
-            << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+            << "ExecuteCommittedDDLs Error: " << s << " " << THROTTLE_MSG;
       } else {
         YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
-            << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+            << "ExecuteCommittedDDLs Error: " << s << " " << THROTTLE_MSG;
       }
       StoreNOKReplicationError();
       if (FLAGS_enable_xcluster_stat_collection) {
@@ -589,7 +607,7 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
 
     if (response.get_changes_response->has_safe_hybrid_time()) {
       // Once all changes have been successfully applied we can update the safe time.
-      UpdateSafeTime(response.get_changes_response->safe_hybrid_time());
+      UpdateSafeTime(HybridTime(response.get_changes_response->safe_hybrid_time()));
     }
   }
 
@@ -650,7 +668,7 @@ bool XClusterPoller::IsStuck() const {
 
   const auto lag = MonoTime::Now() - last_task_schedule_time_;
   if (lag > 1s * GetAtomicFlag(&FLAGS_xcluster_poller_task_delay_considered_stuck_secs)) {
-    LOG_WITH_PREFIX(ERROR) << "XCluster Poller has not executed any tasks for " << lag.ToString();
+    LOG_WITH_PREFIX(DFATAL) << "XCluster Poller has not executed any tasks for " << lag.ToString();
     return true;
   }
   return false;

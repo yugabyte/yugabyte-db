@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -53,10 +54,7 @@ public class MasterLeaderStepdown extends UniverseTaskBase {
     // Get the master addresses.
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(hostPorts, certificate);
-    try {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       String masterLeaderUUID = client.getLeaderMasterUUID();
       boolean result =
           doWithConstTimeout(
@@ -81,8 +79,8 @@ public class MasterLeaderStepdown extends UniverseTaskBase {
       if (!result) {
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to do leader stepdown");
       }
-    } finally {
-      ybService.closeClient(client, hostPorts);
+    } catch (Exception e) {
+      Throwables.propagate(e);
     }
   }
 }

@@ -80,11 +80,13 @@ Result<LockBatchEntry<ObjectLockManager>> FormSharedLock(
 }
 
 Status AddObjectsToLock(
-    LockBatchEntries<ObjectLockManager>& lock_batch, uint64_t database_oid, uint64_t object_oid,
-    TableLockType lock_type) {
-  for (const auto& [lock_key, intent_types] : GetEntriesForLockType(lock_type)) {
+    LockBatchEntries<ObjectLockManager>& lock_batch, auto lock_oid) {
+  for (const auto& [lock_key, intent_types] : GetEntriesForLockType(lock_oid.lock_type())) {
     lock_batch.push_back(VERIFY_RESULT(FormSharedLock(
-        ObjectLockPrefix(database_oid, object_oid, lock_key), intent_types)));
+        ObjectLockPrefix(
+            lock_oid.database_oid(), lock_oid.relation_oid(), lock_oid.object_oid(),
+            lock_oid.object_sub_oid(), lock_key),
+        intent_types)));
   }
   return Status::OK();
 }
@@ -208,10 +210,9 @@ Result<DetermineKeysToLockResult<ObjectLockManager>> DetermineObjectsToLock(
     const google::protobuf::RepeatedPtrField<ObjectLockPB>& objects_to_lock) {
   DetermineKeysToLockResult<ObjectLockManager> result;
   for (const auto& object_lock : objects_to_lock) {
-    SCHECK(object_lock.has_object_oid(), IllegalState, "ObjectLockPB has empty object oid");
     SCHECK(object_lock.has_database_oid(), IllegalState, "ObjectLockPB has empty database oid");
-    RETURN_NOT_OK(AddObjectsToLock(result.lock_batch, object_lock.database_oid(),
-                                   object_lock.object_oid(), object_lock.lock_type()));
+    SCHECK(object_lock.has_relation_oid(), IllegalState, "ObjectLockPB has empty relation oid");
+    RETURN_NOT_OK(AddObjectsToLock(result.lock_batch, object_lock));
   }
   FilterKeysToLock<ObjectLockManager>(&result.lock_batch);
   return result;

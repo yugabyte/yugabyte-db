@@ -182,7 +182,11 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.yb_table_oid = yb_record->table_oid;
 
 	change->data.tp.clear_toast_afterwards = true;
-	/* YB does not support on-disk TOASTing, so toast_insert will always be false. */
+
+	/*
+	 * YB does not support on-disk TOASTing, so toast_insert will always be
+	 * false.
+	 */
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 }
@@ -352,7 +356,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	change->data.tp.clear_toast_afterwards = true;
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
-							 ctx->reader->ReadRecPtr, change, false  /* toast_insert */ );
+							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 
 	RelationClose(relation);
 }
@@ -393,7 +397,7 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	change->data.tp.clear_toast_afterwards = true;
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
-							 ctx->reader->ReadRecPtr, change, false  /* toast_insert */ );
+							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 }
 
 /*

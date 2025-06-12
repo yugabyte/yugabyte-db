@@ -95,6 +95,49 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
+  public void generateOtelColConfigYsqlPlusLoki() {
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(new UUID(0, 0));
+    telemetryProvider.setCustomerUUID(customer.getUuid());
+    telemetryProvider.setName("Loki");
+    telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
+    LokiConfig config = new LokiConfig();
+    config.setType(ProviderType.LOKI);
+    config.setEndpoint("http://loki:3100");
+    config.setAuthType(LokiConfig.LokiAuthType.NoAuth);
+    telemetryProvider.setConfig(config);
+    mockTelemetryProviderService.save(telemetryProvider);
+
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
+    ysqlAuditConfig.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysqlAuditConfig);
+    UniverseLogsExporterConfig logsExporterConfig = new UniverseLogsExporterConfig();
+    logsExporterConfig.setExporterUuid(telemetryProvider.getUuid());
+    logsExporterConfig.setAdditionalTags(ImmutableMap.of("additionalTag", "otherValue"));
+    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(logsExporterConfig));
+    try {
+      File file = new File(OTEL_COL_TMP_PATH + "config.yml");
+      file.createNewFile();
+      generator.generateConfigFile(
+          nodeTaskParams,
+          provider,
+          null,
+          auditLogConfig,
+          "%t | %u%d : ",
+          file.toPath(),
+          NodeManager.getOtelColMetricsPort(nodeTaskParams));
+
+      String result = FileUtils.readFileToString(file, Charset.defaultCharset());
+
+      String expected = TestUtils.readResource("audit/loki_config.yml");
+      assertThat(result, equalTo(expected));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Test
   public void generateOtelColConfigYsqlPlusDatadog() {
     TelemetryProvider telemetryProvider = new TelemetryProvider();
     telemetryProvider.setUuid(new UUID(0, 0));

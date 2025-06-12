@@ -163,13 +163,27 @@ DEFINE_RUNTIME_PREVIEW_bool(
     "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
     "and SET TRANSACTION SNAPSHOT");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
+    "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
+    " right away without incurring a master lookup");
+
+DEFINE_RUNTIME_PG_FLAG(
+    bool, yb_force_early_ddl_serialization, true,
+    "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
+    "DDLs might face a conflict error on the catalog version increment at the end after doing all "
+    "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
+    "the start of DDLs, causing conflict errors to occur before useful work is done. This flag is "
+    "only applicable without object locking. If object locking is enabled, it ensures that "
+    "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
+    "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
+
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
-DECLARE_bool(ysql_enable_inheritance);
 
 DECLARE_bool(use_fast_backward_scan);
+DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -504,7 +518,7 @@ static Result<std::string> GetYbLsnTypeString(
     case tserver::PGReplicationSlotLsnType::ReplicationSlotLsnTypePg_HYBRID_TIME:
       return YBC_LSN_TYPE_HYBRID_TIME;
     default:
-      LOG(ERROR) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
+      LOG(DFATAL) << "Received unexpected LSN type " << yb_lsn_type << " for stream " << stream_id;
       return STATUS_FORMAT(
           InternalError, "Received unexpected LSN type $0 for stream $1", yb_lsn_type, stream_id);
   }
@@ -1173,9 +1187,8 @@ YbcStatus YBCPgAlterTableSetReplicaIdentity(YbcPgStatement handle, const char id
   return ToYBCStatus(pgapi->AlterTableSetReplicaIdentity(handle, identity_type));
 }
 
-YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *db_name,
-                                     const char *newname) {
-  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
+YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *newname) {
+  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, newname));
 }
 
 YbcStatus YBCPgAlterTableIncrementSchemaVersion(YbcPgStatement handle) {
@@ -2268,12 +2281,14 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
+      .ysql_enable_neghit_full_inheritscache =
+        &FLAGS_ysql_enable_neghit_full_inheritscache,
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
-      .ysql_enable_inheritance =
-          &FLAGS_ysql_enable_inheritance,
-      .TEST_enable_object_locking_for_table_locks =
-          &FLAGS_TEST_enable_object_locking_for_table_locks
+      .enable_object_locking_for_table_locks =
+          &FLAGS_enable_object_locking_for_table_locks,
+      .ysql_max_invalidation_message_queue_size =
+          &FLAGS_ysql_max_invalidation_message_queue_size
   };
   // clang-format on
   return &accessor;
@@ -2382,19 +2397,6 @@ int YBCPgGetThreadLocalYbExpressionVersion() {
 
 void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
   PgSetThreadLocalYbExpressionVersion(yb_expr_version);
-}
-
-YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
-  return PgGetThreadLocalRegexpCache();
-}
-
-YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
-    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup) {
-  return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
-}
-
-YbcPgThreadLocalRegexpMetadata* YBCPgGetThreadLocalRegexpMetadata() {
-  return PgGetThreadLocalRegexpMetadata();
 }
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {
@@ -2690,7 +2692,7 @@ void YBCStoreTServerAshSamples(
   acquire_cb_lock_fn(true /* exclusive */);
   if (!result.ok()) {
     // We don't return error status to avoid a restart loop of the ASH collector
-    LOG(ERROR) << result.status();
+    LOG(WARNING) << result.status();
   } else {
     AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
     AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);

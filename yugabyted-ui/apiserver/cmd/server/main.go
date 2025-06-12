@@ -295,6 +295,13 @@ func main() {
 
     //Get the lag safe time metrics.
     e.GET("/api/xcluster_safe_time_metrics", c.GetXClusterSafeTime)
+
+    // GetCreatedOn - Get cluster creation date from config file
+    e.GET("/api/created_on", c.GetCreatedOn)
+
+    // Forward callhome request
+    e.POST("/api/callhome", c.PostCallhome)
+
     render_htmls := templates.NewTemplate()
 
     // Code for rendering UI Without embedding the files

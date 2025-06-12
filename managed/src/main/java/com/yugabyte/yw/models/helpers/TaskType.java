@@ -655,9 +655,29 @@ public enum TaskType {
       CustomerTask.TaskType.CloneNamespace,
       CustomerTask.TargetType.Universe),
 
+  TlsToggleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.upgrade.TlsToggleKubernetes.class,
+      CustomerTask.TaskType.TlsToggle,
+      CustomerTask.TargetType.Universe),
+
   UpdateOOMServiceState(
       UpdateOOMServiceState.class,
       CustomerTask.TaskType.UpdateOOMServiceState,
+      CustomerTask.TargetType.Universe),
+
+  SendUserNotification(
+      com.yugabyte.yw.commissioner.tasks.SendUserNotification.class,
+      CustomerTask.TaskType.SendUserNotification,
+      CustomerTask.TargetType.User),
+
+  ImportUniverse(
+      com.yugabyte.yw.commissioner.tasks.ImportUniverse.class,
+      CustomerTask.TaskType.ImportUniverse,
+      CustomerTask.TargetType.Universe),
+
+  MigrateUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.MigrateUniverse.class,
+      CustomerTask.TaskType.MigrateUniverse,
       CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */
@@ -1178,7 +1198,9 @@ public enum TaskType {
   ConfigureOOMServiceOnNode(
       com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode.class),
 
-  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class);
+  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class),
+
+  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class);
 
   private final Class<? extends ITask> taskClass;
 

@@ -274,7 +274,7 @@ Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   for (PTTableProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {
       // This shouldn't happen because AppendList ignores null nodes.
-      LOG(ERROR) << "Invalid null property";
+      LOG(DFATAL) << "Invalid null property";
       continue;
       }
     switch(tnode->property_type()) {
@@ -382,7 +382,7 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
     case KVProperty::kCompaction: FALLTHROUGH_INTENDED;
     case KVProperty::kCompression: FALLTHROUGH_INTENDED;
     case KVProperty::kTransactions:
-      LOG(ERROR) << "Not primitive table property " << table_property_name;
+      LOG(DFATAL) << "Not primitive table property " << table_property_name;
       break;
     case KVProperty::kNumTablets:
       int64_t val;

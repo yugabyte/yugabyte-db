@@ -29,7 +29,7 @@ func NewInstallSoftwareHandler(
 	return &InstallSoftwareHandler{
 		param:    param,
 		username: username,
-		logOut:   util.NewBuffer(MaxBufferCapacity),
+		logOut:   util.NewBuffer(module.MaxBufferCapacity),
 	}
 }
 
@@ -43,23 +43,6 @@ func (h *InstallSoftwareHandler) CurrentTaskStatus() *TaskStatus {
 
 func (h *InstallSoftwareHandler) String() string {
 	return "Install Software Task"
-}
-
-// helper that wraps NewShellTaskWithUser + Process + error logging
-func (h *InstallSoftwareHandler) runShell(
-	ctx context.Context,
-	desc, shell string,
-	args []string,
-) error {
-	h.logOut.WriteLine("Running install software phase: %s", desc)
-	h.shellTask = NewShellTaskWithUser(desc, h.username, shell, args)
-	_, err := h.shellTask.Process(ctx)
-	if err != nil {
-		util.FileLogger().Errorf(ctx,
-			"Install software failed [%s]: %s", desc, err)
-		return err
-	}
-	return nil
 }
 
 func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskResponse, error) {
@@ -89,31 +72,9 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	if err != nil {
 		return nil, err
 	}
-
-	// 2) download (if remote)
 	tmpDir := filepath.Join(h.param.GetRemoteTmp(), pkgName)
-	cmdStr, err := module.DownloadSoftwareCommand(h.param, tmpDir)
-	if err != nil {
-		util.FileLogger().Errorf(ctx, "Download cmd generation failed: %s", err)
-		return nil, err
-	}
-	util.FileLogger().Infof(ctx, "Download command %s", cmdStr)
-	h.logOut.WriteLine("Download command %s", cmdStr)
-	if cmdStr != "" {
-		h.logOut.WriteLine("Dowloading software")
-		if err := h.runShell(ctx, "download-software", util.DefaultShell, []string{"-c", cmdStr}); err != nil {
-			return nil, err
-		}
-		// optional checksum
-		if h.param.GetHttpRemoteDownload() && h.param.GetHttpPackageChecksum() != "" {
-			if err := module.VerifyChecksum(tmpDir, h.param.GetHttpPackageChecksum()); err != nil {
-				return nil, err
-			}
-		}
-		util.FileLogger().Debugf(ctx, "Successfully downloaded the software")
-	}
 
-	// 3) figure out home dir
+	// 2) figure out home dir
 	home := ""
 	if h.param.GetYbHomeDir() != "" {
 		home = h.param.GetYbHomeDir()
@@ -124,13 +85,13 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	}
 	ybSoftwareDir := filepath.Join(home, "yb-software", pkgFolder)
 
-	// 4) define our sequence of shell steps
+	// 3) define our sequence of shell steps
 	err = h.execShellCommands(ctx, home, ybSoftwareDir, releaseVersion, tmpDir)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5) symlink for master & tserver
+	// 4) symlink for master & tserver
 	err = h.setupSymlinks(ctx, home, ybSoftwareDir)
 	if err != nil {
 		return nil, err
@@ -153,8 +114,8 @@ func (h *InstallSoftwareHandler) execShellCommands(
 ) error {
 	releasesDir := filepath.Join(home, "releases", releaseVersion)
 	steps := []struct {
-		desc string
-		cmd  string
+		Desc string
+		Cmd  string
 	}{
 		{"make-yb-software-dir", fmt.Sprintf("mkdir -p %s", ybSoftwareDir)},
 		{
@@ -175,11 +136,8 @@ func (h *InstallSoftwareHandler) execShellCommands(
 			),
 		},
 	}
-
-	for _, step := range steps {
-		if err := h.runShell(ctx, step.desc, util.DefaultShell, []string{"-c", step.cmd}); err != nil {
-			return err
-		}
+	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
+		return err
 	}
 	return nil
 }
@@ -200,8 +158,8 @@ func (h *InstallSoftwareHandler) setupSymlinks(
 			src := filepath.Join(ybSoftwareDir, f)
 			dst := filepath.Join(targetDir, f)
 			desc := fmt.Sprintf("symlink-%s-to-%s", src, dst)
-			cmd := fmt.Sprintf("ln -sf %s %s", src, dst)
-			if err := h.runShell(ctx, desc, util.DefaultShell, []string{"-c", cmd}); err != nil {
+			cmd := fmt.Sprintf("unlink %s > /dev/null 2>&1; ln -sf %s %s", dst, src, dst)
+			if _, err := module.RunShellCmd(ctx, h.username, desc, cmd, h.logOut); err != nil {
 				return err
 			}
 		}

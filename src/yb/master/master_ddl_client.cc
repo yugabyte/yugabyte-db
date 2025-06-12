@@ -70,10 +70,15 @@ Status MasterDDLClient::WaitForCreateNamespaceDone(const NamespaceId& id, MonoDe
 }
 
 Result<RefreshYsqlLeaseInfoPB> MasterDDLClient::RefreshYsqlLease(
-    const std::string& permanent_uuid, int64_t instance_seqno) {
+    const std::string& permanent_uuid, int64_t instance_seqno, uint64_t time_ms,
+    std::optional<uint64_t> current_lease_epoch) {
   RefreshYsqlLeaseRequestPB req;
   req.mutable_instance()->set_permanent_uuid(permanent_uuid);
   req.mutable_instance()->set_instance_seqno(instance_seqno);
+  req.set_local_request_send_time_ms(time_ms);
+  if (current_lease_epoch) {
+    req.set_current_lease_epoch(*current_lease_epoch);
+  }
   RefreshYsqlLeaseResponsePB resp;
   rpc::RpcController rpc;
   RETURN_NOT_OK(proxy_.RefreshYsqlLease(req, &resp, &rpc));

@@ -37,7 +37,19 @@ export default defineConfig({
                     path: 'src/v2/helpers/mutators/YBAxios.ts',
                     name: 'YBAxiosInstance',
                 },
-                header
+                header,
+                operations: {
+                    attachUniverse: {
+                        requestOptions: false,
+                        transformer: (output) => ({
+                            ...output,
+                            body: {
+                                ...output.body,
+                                formData: output.body.formData?.replace(/attachUniverseSpec/g, "attachUniverseReqBody"),
+                            }
+                        })
+                    }
+                }
             }
         },
         input: {

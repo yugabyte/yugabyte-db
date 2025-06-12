@@ -97,12 +97,14 @@ import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskTypesModule;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import io.prometheus.client.CollectorRegistry;
 import java.security.KeyStore;
+import java.security.Provider;
 import java.security.SecureRandom;
 import java.security.Security;
 import javax.net.ssl.HttpsURLConnection;
@@ -112,7 +114,8 @@ import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.DomainValidator;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
+import org.bouncycastle.jsse.provider.BouncyCastleJsseProvider;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.core.http.url.DefaultUrlResolver;
@@ -157,8 +160,27 @@ public class MainModule extends AbstractModule {
     }
     install(new TaskTypesModule());
 
-    Security.addProvider(new PemKeyStoreProvider());
-    Security.addProvider(new BouncyCastleProvider());
+    if (!config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      Security.addProvider(new PemKeyStoreProvider());
+    } else {
+      Provider[] providers = Security.getProviders();
+      log.info("Removing all providers configured in JVM (java.security file)");
+      if (providers != null) {
+        for (Provider provider : providers) {
+          // We have to leave SUN provider in place as it is used to get entropy for SecureRandom
+          // We'll have to fugure out how to actually provide a proper entropy source.
+          // See https://github.com/bcgit/bc-java/issues/1285 for more details.
+          if (!provider.getName().equals("SUN")) {
+            Security.removeProvider(provider.getName());
+          }
+        }
+      }
+    }
+    log.info("Adding BC-FIPS providers");
+    Security.setProperty("ssl.KeyManagerFactory.algorithm", "PKIX");
+    Security.setProperty("ssl.TrustManagerFactory.algorithm", "PKIX");
+    Security.insertProviderAt(new BouncyCastleFipsProvider("C:HYBRID;ENABLE{All};"), 1);
+    Security.insertProviderAt(new BouncyCastleJsseProvider("fips:BCFIPS"), 2);
     TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CustomerConfKeys());

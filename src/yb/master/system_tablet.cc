@@ -29,8 +29,9 @@ SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable
                            const TabletId& tablet_id)
     : log_prefix_(Format("T $0: ", tablet_id)), // Don't have UUID here to log in T XX P YY format.
       doc_read_context_(std::make_shared<docdb::DocReadContext>(
-          log_prefix_, TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, schema,
-          kSysCatalogSchemaVersion)),
+          log_prefix_, TableType::YQL_TABLE_TYPE,
+          docdb::Index::kFalse, std::make_shared<dockv::SchemaPackingRegistry>(log_prefix_),
+          schema, kSysCatalogSchemaVersion)),
       yql_virtual_table_(std::move(yql_virtual_table)),
       tablet_id_(tablet_id) {
 }

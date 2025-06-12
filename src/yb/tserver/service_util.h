@@ -83,11 +83,7 @@ Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
     // Maintain compat in release mode, but complain.
     std::string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
         method_name, requestor_string, req->ShortDebugString());
-#ifdef NDEBUG
-    YB_LOG_EVERY_N(ERROR, 100) << msg;
-#else
-    LOG(FATAL) << msg;
-#endif
+    YB_LOG_EVERY_N(DFATAL, 100) << msg;
     return true;
   }
   if (PREDICT_FALSE(req->dest_uuid() != local_uuid)) {

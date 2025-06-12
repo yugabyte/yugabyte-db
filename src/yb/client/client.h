@@ -404,7 +404,7 @@ class YBClient {
   Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
-  Result<YBTableInfo> GetYBTableInfoById(const TableId& table_id);
+  Result<YBTableInfo> GetYBTableInfoById(const TableId& table_id, bool include_hidden);
 
   Status GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                             StatusCallback callback);
@@ -673,10 +673,10 @@ class YBClient {
 
   void AcquireObjectLocksGlobalAsync(
       const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-      MonoDelta rpc_timeout);
+      CoarseTimePoint deadline, std::function<Status()>&& should_retry);
   void ReleaseObjectLocksGlobalAsync(
       const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-      MonoDelta rpc_timeout);
+      CoarseTimePoint deadline);
 
   // Update a CDC stream's options.
   Status UpdateCDCStream(

@@ -3486,8 +3486,9 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
 	{
 		ereport(DEBUG1,
-				(errmsg("\n++ BEGIN pg_hint_plan_planner\n        query: %s",
-						query_string)));
+				(errmsg("\n++ BEGIN pg_hint_plan_planner\n        query: %s\n"
+					    "        query id: %lu",
+						query_string, parse->queryId)));
 	}
 
 	/*

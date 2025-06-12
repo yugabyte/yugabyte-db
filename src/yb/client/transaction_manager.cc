@@ -194,8 +194,8 @@ class LoadStatusTabletsTask {
     // TODO(dtxn) async
     auto tablets = GetTransactionStatusTablets();
     if (!tablets.ok()) {
-      YB_LOG_EVERY_N_SECS(ERROR, 1) << "Failed to get tablets of txn status tables: "
-                                    << tablets.status();
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Failed to get tablets of txn status tables: "
+                                      << tablets.status();
       if (callback_) {
         callback_(tablets.status());
       }
@@ -292,8 +292,8 @@ class TransactionManager::Impl {
     }
 
     if (!tasks_pool_.Enqueue(&thread_pool_, client_, &table_state_, version, std::move(cb))) {
-      YB_LOG_EVERY_N_SECS(ERROR, 1) << "Update tasks overflow, number of tasks: "
-                                    << tasks_pool_.size();
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Update tasks overflow, number of tasks: "
+                                      << tasks_pool_.size();
       if (callback) {
         callback(STATUS_FORMAT(ServiceUnavailable,
                                "Update tasks queue overflow, number of tasks: $0",

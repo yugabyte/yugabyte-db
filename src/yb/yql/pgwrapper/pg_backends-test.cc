@@ -610,13 +610,13 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
 
   const uint64_t orig_cat_ver = VERIFY_RESULT(GetCatalogVersion());
   constexpr auto kFuncName = "testfunc";
-  // CREATE FUNCTION does not incur catalog version bump, so use original catalog version.
   RETURN_NOT_OK(conn_->ExecuteFormat(
-      "CREATE FUNCTION $0 () RETURNS int LANGUAGE sql AS 'SELECT $1'", kFuncName, orig_cat_ver));
+      "CREATE FUNCTION $0 () RETURNS int LANGUAGE sql AS 'SELECT $1'",
+      kFuncName, orig_cat_ver + 1));
   const uint64_t orig_cat_ver2 = VERIFY_RESULT(GetCatalogVersion());
-  SCHECK_EQ(orig_cat_ver, orig_cat_ver2,
+  SCHECK_EQ(orig_cat_ver + 1, orig_cat_ver2,
             IllegalState,
-            "CREATE FUNCTION should not cause catalog version bump");
+            "CREATE FUNCTION should cause catalog version bump");
 
   LOG(INFO) << "Spawn write threads";
   TestThreadHolder thread_holder;
@@ -669,7 +669,7 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
       break;
     }
 
-    const uint64_t cat_ver = orig_cat_ver + i;
+    const uint64_t cat_ver = orig_cat_ver2 + i;
     RETURN_NOT_OK(wait_for_backends_cat_ver_func(cat_ver));
 
     // CREATE OR REPLACE FUNCTION incurs catalog version bump, so use catalog version plus one.

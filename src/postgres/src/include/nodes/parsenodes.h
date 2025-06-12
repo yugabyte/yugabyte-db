@@ -1175,7 +1175,8 @@ typedef struct RangeTblEntry
 	List	   *securityQuals;	/* security barrier quals to apply, if any */
 
 	/* YB */
-	char	   *ybHintAlias; 	/* alias to use for hinting - unique across a query */
+	char	   *ybHintAlias;	/* alias to use for hinting - unique across a
+								 * query */
 	/* unique identifer (across all blocks) for a base rel - starting at '1' */
 	uint32		ybUniqueBaseId;
 } RangeTblEntry;

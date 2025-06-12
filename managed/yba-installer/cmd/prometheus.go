@@ -191,7 +191,7 @@ func (prom Prometheus) Restart() error {
 func (prom Prometheus) Uninstall(removeData bool) error {
 	log.Info("Uninstalling prometheus")
 	if err := prom.Stop(); err != nil {
-		return err
+		log.Warn("failed to stop prometheus, continuing with uninstall: " + err.Error())
 	}
 
 	err := os.Remove(prom.SystemdFileLocation)
@@ -266,8 +266,12 @@ func (prom Prometheus) Status() (common.Status, error) {
 	status.ServiceFileLoc = prom.SystemdFileLocation
 
 	// Get the service status
-	props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
+	props, err := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
 		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if err != nil {
+		log.Error("Failed to get prometheus status: " + err.Error())
+		return status, err
+	}
 	if props["LoadState"] == "not-found" {
 		status.Status = common.StatusNotInstalled
 	} else if props["SubState"] == "running" {
@@ -454,17 +458,10 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		}
 	}
 
-	links := []struct {
-		pkgDir, linkDir, binary string
-	}{
-		{promPkg, prom.PromDir, "prometheus"},
-		{promPkg, prom.PromDir, "promtool"},
-		{promPkg, prom.PromDir, "consoles"},
-		{promPkg, prom.PromDir, "console_libraries"},
-	}
-	for _, link := range links {
-		if err := common.CreateSymlink(link.pkgDir, link.linkDir, link.binary); err != nil {
-			log.Error("failed to create symlink for " + link.binary + ": " + err.Error())
+	binaries := []string{"prometheus", "promtool", "consoles", "console_libraries"}
+	for _, binary := range binaries {
+		if err := common.Symlink(fmt.Sprintf("%s/%s", promPkg, binary), fmt.Sprintf("%s/%s", prom.PromDir, binary)); err != nil {
+			log.Error("failed to create symlink for " + binary + ": " + err.Error())
 			return err
 		}
 	}
@@ -482,8 +479,8 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 func (prom Prometheus) createDataSymlinks() error {
 	if common.HasSudoAccess() {
 		// for root the log file is in /var/log in case of SELinux
-		if err := common.CreateSymlink(prom.LogDir,
-			filepath.Join(common.GetBaseInstall(), "data/logs"), "prometheus.log"); err != nil {
+		if err := common.Symlink(fmt.Sprintf("%s/prometheus.log", prom.LogDir),
+			fmt.Sprintf("%s/prometheus.log", filepath.Join(common.GetBaseInstall(), "data/logs"))); err != nil {
 			return err
 		}
 	}

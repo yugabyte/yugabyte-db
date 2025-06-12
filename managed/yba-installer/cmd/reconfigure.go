@@ -39,24 +39,30 @@ var reconfigureCmd = &cobra.Command{
 		}
 
 		// Regenerate self signed certs if hostname has changed or if certs are missing from the config.
-		var serverCertPath, serverKeyPath string = "", ""
-		if viper.GetString("server_cert_path") == "" || viper.GetString("server_key_path") == "" {
-			log.Info("Generating new self-signed server certificates")
-			serverCertPath, serverKeyPath = common.GenerateSelfSignedCerts()
-		} else if state.Config.Hostname != viper.GetString("host") && state.Config.SelfSignedCert {
-			log.Info("Regenerating self signed certs for hostname change")
-			serverCertPath, serverKeyPath = common.RegenerateSelfSignedCerts()
-		}
-		if serverCertPath != "" || serverKeyPath != "" {
-			log.Debug("Populating new self signed certs in yba-ctl.yml: " +
-				serverCertPath + ", " + serverKeyPath)
-			common.SetYamlValue(common.InputFile(), "server_cert_path", serverCertPath)
-			common.SetYamlValue(common.InputFile(), "server_key_path", serverKeyPath)
-			common.InitViper()
-			state.Config.Hostname = viper.GetString("host")
-			state.Config.SelfSignedCert = true // Ensure we track self signed certs after reconfig
+		/*
+			var serverCertPath, serverKeyPath string = "", ""
+			if viper.GetString("server_cert_path") == "" || viper.GetString("server_key_path") == "" {
+				log.Info("Generating new self-signed server certificates")
+				serverCertPath, serverKeyPath = common.GenerateSelfSignedCerts()
+			} else if state.Config.Hostname != viper.GetString("host") && state.Config.SelfSignedCert {
+				log.Info("Regenerating self signed certs for hostname change")
+				serverCertPath, serverKeyPath = common.RegenerateSelfSignedCerts()
+			}
+			if serverCertPath != "" || serverKeyPath != "" {
+				log.Debug("Populating new self signed certs in yba-ctl.yml: " +
+					serverCertPath + ", " + serverKeyPath)
+				common.SetYamlValue(common.InputFile(), "server_cert_path", serverCertPath)
+				common.SetYamlValue(common.InputFile(), "server_key_path", serverKeyPath)
+				common.InitViper()
+				state.Config.Hostname = viper.GetString("host")
+				state.Config.SelfSignedCert = true // Ensure we track self signed certs after reconfig
+			}
+		*/
+		if err := handleCertReconfig(state); err != nil {
+			log.Fatal("failed to handle cert reconfig: " + err.Error())
 		}
 
+		// Always regenerate the server.pem file
 		if err := createPemFormatKeyAndCert(); err != nil {
 			log.Fatal("failed to create server.pem: " + err.Error())
 		}
@@ -117,6 +123,69 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("failed to write state: " + err.Error())
 		}
 	},
+}
+
+func handleCertReconfig(state *ybactlstate.State) error {
+	hasStateChange := false
+	if isMoveToSelfSignedCert(state) {
+		log.Info("Generating new self-signed server certificates")
+		hasStateChange = true
+		state.Config.SelfSignedCert = true
+		if err := common.GenerateSelfSignedCerts(); err != nil {
+			return fmt.Errorf("failed to generate self signed certs during reconfigure: %w", err)
+		}
+	}
+	if isMoveToCustomCert(state) {
+		hasStateChange = true
+		state.Config.SelfSignedCert = false
+	}
+	if isSelfSignedHostnameChange(state) {
+		log.Info("Regenerating self signed certs for hostname change")
+		hasStateChange = true
+		state.Config.Hostname = viper.GetString("host")
+		if err := common.RegenerateSelfSignedCerts(); err != nil {
+			return fmt.Errorf("failed to regenerate self signed certs during reconfigure: %w", err)
+		}
+	}
+
+	// Update the state file if any changes were made
+	if hasStateChange {
+		if err := ybactlstate.StoreState(state); err != nil {
+			return fmt.Errorf("failed to write state: %w", err)
+		}
+	}
+	return nil
+}
+
+func isMoveToSelfSignedCert(state *ybactlstate.State) bool {
+	// Check if the server_cert_path and server_key_path are empty and state shows self signed is true
+	if len(viper.GetString("server_cert_path")) == 0 &&
+		len(viper.GetString("server_key_path")) == 0 &&
+		!state.Config.SelfSignedCert {
+		log.Info("Moving to self signed certs")
+		return true
+	}
+	return false
+}
+
+func isSelfSignedHostnameChange(state *ybactlstate.State) bool {
+	// Check if the hostname has changed and state shows self signed is true
+	if state.Config.Hostname != viper.GetString("host") && state.Config.SelfSignedCert {
+		log.Info("Hostname has changed")
+		return true
+	}
+	return false
+}
+
+func isMoveToCustomCert(state *ybactlstate.State) bool {
+	// Check if the server_cert_path and server_key_path are not empty and state shows self signed is false
+	if len(viper.GetString("server_cert_path")) != 0 &&
+		len(viper.GetString("server_key_path")) != 0 &&
+		state.Config.SelfSignedCert {
+		log.Info("Moving to custom certs")
+		return true
+	}
+	return false
 }
 
 var configGenCmd = &cobra.Command{

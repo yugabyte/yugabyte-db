@@ -464,6 +464,21 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
   num_tablets_ = 1;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  size_t tablet_entries = 0;
+  for (const auto& peer : peers) {
+    auto list = peer->tablet()->vector_indexes().List();
+    if (!list) {
+      continue;
+    }
+    auto current_entries = ASSERT_RESULT((*list)[0]->TotalEntries());
+    LOG(INFO) << "P " << peer->permanent_uuid() << ": Total entries: " << current_entries;
+    if (tablet_entries) {
+      ASSERT_EQ(tablet_entries, current_entries);
+    } else {
+      tablet_entries = current_entries;
+    }
+  }
 }
 
 TEST_P(PgVectorIndexTest, ManyRowsWithFilter) {

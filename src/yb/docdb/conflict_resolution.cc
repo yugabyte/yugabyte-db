@@ -89,10 +89,10 @@ using TransactionConflictInfoMap = std::unordered_map<TransactionId,
                                                       TransactionIdHash>;
 
 Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
-                          const char* reason,
-                          const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics) {
-  (*tablet_metrics)->Increment(tablet::TabletCounters::kTransactionConflicts);
-  return (STATUS(TryAgain, Format("$0 conflicts with $1 transaction: $2", our_id, reason, other_id),
+                          const std::string& reason,
+                          const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics) {
+  tablet_metrics->Increment(tablet::TabletCounters::kTransactionConflicts);
+  return (STATUS(TryAgain, Format("$0 conflicts with $1: $2", our_id, reason, other_id),
                  Slice(), TransactionError(TransactionErrorCode::kConflict)));
 }
 
@@ -127,7 +127,7 @@ class ConflictResolverContext {
 
   virtual int64_t GetTxnStartUs() const = 0;
 
-  virtual const std::shared_ptr<tablet::TabletMetrics*>& GetTabletMetrics() = 0;
+  virtual const std::shared_ptr<tablet::TabletMetricsHolder>& GetTabletMetrics() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
@@ -149,17 +149,11 @@ class ConflictResolverContext {
     return boost::none;
   }
 
-  virtual TransactionId background_txn_id() const {
-    return TransactionId::Nil();
-  }
+  virtual TransactionId wait_as_txn_id() const = 0;
 
-  virtual TabletId background_txn_status_tablet() const {
-    return TabletId();
-  }
+  virtual TabletId wait_as_txn_status_tablet() const = 0;
 
-  virtual bool ShouldWaitAsBackgroundTxn() const {
-    return false;
-  }
+  virtual bool ShouldWaitAsDifferentTxn() const = 0;
 
   std::string LogPrefix() const {
     return ToString() + ": ";
@@ -665,7 +659,7 @@ class WaitOnConflictResolver : public ConflictResolver {
 
     if (wait_start_time_.Initialized()) {
       const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(wait_start_time_);
-      (*context_->GetTabletMetrics())->Increment(
+      context_->GetTabletMetrics()->Increment(
           tablet::TabletEventStats::kTotalWaitQueueTime,
           make_unsigned(elapsed_time.ToMicroseconds()));
     }
@@ -705,10 +699,10 @@ class WaitOnConflictResolver : public ConflictResolver {
   }
 
   void TryPreWait() {
-    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
-        ? context_->background_txn_id() : context_->transaction_id();
-    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
-        ? context_->background_txn_status_tablet() : status_tablet_id_;
+    const auto& waiter_txn = context_->ShouldWaitAsDifferentTxn()
+        ? context_->wait_as_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsDifferentTxn()
+        ? context_->wait_as_txn_status_tablet() : status_tablet_id_;
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         waiter_txn, context_->subtransaction_id(), lock_batch_, waiter_status_tablet,
         serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
@@ -730,10 +724,10 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
-    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
-        ? context_->background_txn_id() : context_->transaction_id();
-    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
-        ? context_->background_txn_status_tablet() : status_tablet_id_;
+    const auto& waiter_txn = context_->ShouldWaitAsDifferentTxn()
+        ? context_->wait_as_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsDifferentTxn()
+        ? context_->wait_as_txn_status_tablet() : status_tablet_id_;
     RETURN_NOT_OK(wait_queue_->WaitOn(
         waiter_txn, context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), waiter_status_tablet, serial_no_,
@@ -908,7 +902,7 @@ class StrongConflictChecker {
   StrongConflictChecker(const TransactionId& transaction_id,
                         HybridTime read_time,
                         ConflictResolver* resolver,
-                        const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
+                        const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
                         KeyBytes* buffer)
       : transaction_id_(transaction_id),
         read_time_(read_time),
@@ -985,7 +979,7 @@ class StrongConflictChecker {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
-          (*tablet_metrics_)->Increment(tablet::TabletCounters::kTransactionConflicts);
+          tablet_metrics_->Increment(tablet::TabletCounters::kTransactionConflicts);
           return STATUS_EC_FORMAT(
               TryAgain, TransactionError(TransactionErrorCode::kConflict),
               "$0 conflict with concurrently committed data. Value write after transaction start: "
@@ -1011,7 +1005,7 @@ class StrongConflictChecker {
   const TransactionId& transaction_id_;
   const HybridTime read_time_;
   ConflictResolver& resolver_;
-  std::shared_ptr<tablet::TabletMetrics*> tablet_metrics_;
+  std::shared_ptr<tablet::TabletMetricsHolder> tablet_metrics_;
   KeyBytes& buffer_;
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
@@ -1023,7 +1017,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
   ConflictResolverContextBase(const DocOperations& doc_ops,
                               HybridTime resolution_ht,
                               int64_t txn_start_us,
-                              const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
+                              const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
                               ConflictManagementPolicy conflict_management_policy)
       : doc_ops_(doc_ops),
         resolution_ht_(resolution_ht),
@@ -1048,7 +1042,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     return txn_start_us_;
   }
 
-  const std::shared_ptr<tablet::TabletMetrics*>& GetTabletMetrics() override {
+  const std::shared_ptr<tablet::TabletMetricsHolder>& GetTabletMetrics() override {
     return tablet_metrics_;
   }
 
@@ -1085,7 +1079,10 @@ class ConflictResolverContextBase : public ConflictResolverContext {
       if (our_priority <= their_priority) {
         return MakeConflictStatus(
             our_transaction_id, transaction.id,
-            our_priority == their_priority ? "same priority" : "higher priority",
+            our_priority == their_priority ?
+              Format("same priority transaction (pri: $0)", our_priority) :
+              Format("higher priority transaction (our pri: $0, their pri: $1)",
+                     our_priority, their_priority),
             GetTabletMetrics());
       }
     }
@@ -1104,7 +1101,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 
   bool fetched_metadata_for_transactions_ = false;
 
-  std::shared_ptr<tablet::TabletMetrics*> tablet_metrics_;
+  std::shared_ptr<tablet::TabletMetricsHolder> tablet_metrics_;
 
   const ConflictManagementPolicy conflict_management_policy_;
 };
@@ -1112,13 +1109,14 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 // Utility class for ResolveTransactionConflicts implementation.
 class TransactionConflictResolverContext : public ConflictResolverContextBase {
  public:
-  TransactionConflictResolverContext(const DocOperations& doc_ops,
-                                     const LWKeyValueWriteBatchPB& write_batch,
-                                     HybridTime resolution_ht,
-                                     HybridTime read_time,
-                                     int64_t txn_start_us,
-                                     const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
-                                     ConflictManagementPolicy conflict_management_policy)
+  TransactionConflictResolverContext(
+      const DocOperations& doc_ops,
+      const LWKeyValueWriteBatchPB& write_batch,
+      HybridTime resolution_ht,
+      HybridTime read_time,
+      int64_t txn_start_us,
+      const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+      ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
             doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy),
         write_batch_(write_batch),
@@ -1150,24 +1148,28 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   Status InitTxnMetadata(ConflictResolver* resolver) override {
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
     if (write_batch_.has_background_transaction_id()) {
-      background_transaction_id_ =
+      background_transaction_meta_.emplace();
+      background_transaction_meta_->transaction_id =
           VERIFY_RESULT(FullyDecodeTransactionId(write_batch_.background_transaction_id()));
-      std::string_view status_tablet_string(write_batch_.background_txn_status_tablet());
-      background_txn_status_tablet_.emplace(status_tablet_string);
+      background_transaction_meta_->status_tablet = write_batch_.background_txn_status_tablet();
       should_wait_as_background_txn_ = PgSessionRequestVersion().value_or(false);
     }
     return Status::OK();
   }
 
-  TransactionId background_txn_id() const override {
-    return *background_transaction_id_;
+  TransactionId wait_as_txn_id() const override {
+    return background_transaction_meta_
+        ? background_transaction_meta_->transaction_id
+        : TransactionId::Nil();
   }
 
-  TabletId background_txn_status_tablet() const override {
-    return *background_txn_status_tablet_;
+  TabletId wait_as_txn_status_tablet() const override {
+    return background_transaction_meta_
+        ? background_transaction_meta_->status_tablet
+        : TabletId();
   }
 
-  bool ShouldWaitAsBackgroundTxn() const override {
+  bool ShouldWaitAsDifferentTxn() const override {
     return should_wait_as_background_txn_;
   }
 
@@ -1283,7 +1285,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
           return MakeConflictStatus(
-            *transaction_id_, transaction_data.id, "committed", GetTabletMetrics());
+            *transaction_id_, transaction_data.id, "committed transaction", GetTabletMetrics());
         }
       }
     }
@@ -1293,7 +1295,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
     return other == *transaction_id_ ||
-           (background_transaction_id_ && other == *background_transaction_id_);
+           (background_transaction_meta_ && other == background_transaction_meta_->transaction_id);
   }
 
   TransactionId transaction_id() const override {
@@ -1337,8 +1339,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   //   the in-progress DocDB transaction, if any.
   // - For transaction-level advisory lock requests: the below points to
   //   the session-level transaction, if exists.
-  boost::optional<TransactionId> background_transaction_id_ = boost::none;
-  boost::optional<TabletId> background_txn_status_tablet_ = boost::none;
+  std::optional<TransactionMetadata> background_transaction_meta_;
 
   // When set, indicates that we need to wait as background transaction. Currently, this is used
   // in the following path alone,
@@ -1355,13 +1356,25 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
 class OperationConflictResolverContext : public ConflictResolverContextBase {
  public:
-  OperationConflictResolverContext(const DocOperations* doc_ops,
-                                   HybridTime resolution_ht,
-                                   int64_t txn_start_us,
-                                   const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
-                                   ConflictManagementPolicy conflict_management_policy)
+  OperationConflictResolverContext(
+      const DocOperations* doc_ops,
+      HybridTime resolution_ht,
+      int64_t txn_start_us,
+      const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+      ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
             *doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy) {
+  }
+
+  Status InitObjectLockingTxnMeta(const LWKeyValueWriteBatchPB& write_batch) {
+    if (write_batch.has_object_locking_txn_meta()) {
+      object_locking_txn_meta_.emplace();
+      object_locking_txn_meta_->transaction_id = VERIFY_RESULT(
+          FullyDecodeTransactionId(write_batch.object_locking_txn_meta().transaction_id()));
+      object_locking_txn_meta_->status_tablet =
+          write_batch.object_locking_txn_meta().status_tablet();
+    }
+    return Status::OK();
   }
 
   virtual ~OperationConflictResolverContext() {}
@@ -1431,27 +1444,49 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     }
     return false;
   }
+
+  bool ShouldWaitAsDifferentTxn() const override {
+    return object_locking_txn_meta_.has_value();
+  }
+
+  TransactionId wait_as_txn_id() const override {
+    return object_locking_txn_meta_
+        ? object_locking_txn_meta_->transaction_id
+        : TransactionId::Nil();
+  }
+
+  TabletId wait_as_txn_status_tablet() const override {
+    return object_locking_txn_meta_
+        ? object_locking_txn_meta_->status_tablet
+        : TabletId();
+  }
+
+ private:
+  // When object locking is enabled, a fast path txn could deadlock with a ddl transaction.
+  // Hence the fast path txn is made to register the wait-for probes with the deadlock detector.
+  std::optional<TransactionMetadata> object_locking_txn_meta_;
 };
 
 } // namespace
 
-Status ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                   const ConflictManagementPolicy conflict_management_policy,
-                                   const LWKeyValueWriteBatchPB& write_batch,
-                                   HybridTime resolution_ht,
-                                   HybridTime read_time,
-                                   int64_t txn_start_us,
-                                   uint64_t request_start_us,
-                                   int64_t request_id,
-                                   const DocDB& doc_db,
-                                   PartialRangeKeyIntents partial_range_key_intents,
-                                   TransactionStatusManager* status_manager,
-                                   const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
-                                   LockBatch* lock_batch,
-                                   WaitQueue* wait_queue,
-                                   bool is_advisory_lock_request,
-                                   CoarseTimePoint deadline,
-                                   ResolutionCallback callback) {
+Status ResolveTransactionConflicts(
+    const DocOperations& doc_ops,
+    const ConflictManagementPolicy conflict_management_policy,
+    const LWKeyValueWriteBatchPB& write_batch,
+    HybridTime resolution_ht,
+    HybridTime read_time,
+    int64_t txn_start_us,
+    uint64_t request_start_us,
+    int64_t request_id,
+    const DocDB& doc_db,
+    PartialRangeKeyIntents partial_range_key_intents,
+    TransactionStatusManager* status_manager,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+    LockBatch* lock_batch,
+    WaitQueue* wait_queue,
+    bool is_advisory_lock_request,
+    CoarseTimePoint deadline,
+    ResolutionCallback callback) {
   DCHECK(resolution_ht.is_valid());
   TRACE_FUNC();
 
@@ -1483,27 +1518,31 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
   return Status::OK();
 }
 
-Status ResolveOperationConflicts(const DocOperations& doc_ops,
-                                 const ConflictManagementPolicy conflict_management_policy,
-                                 HybridTime intial_resolution_ht,
-                                 int64_t txn_start_us,
-                                 uint64_t request_start_us,
-                                 int64_t request_id,
-                                 const DocDB& doc_db,
-                                 PartialRangeKeyIntents partial_range_key_intents,
-                                 TransactionStatusManager* status_manager,
-                                 const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
-                                 LockBatch* lock_batch,
-                                 WaitQueue* wait_queue,
-                                 CoarseTimePoint deadline,
-                                 ResolutionCallback callback) {
+Status ResolveOperationConflicts(
+    const DocOperations& doc_ops,
+    const ConflictManagementPolicy conflict_management_policy,
+    const LWKeyValueWriteBatchPB& write_batch,
+    HybridTime intial_resolution_ht,
+    uint64_t request_start_us,
+    int64_t request_id,
+    const DocDB& doc_db,
+    PartialRangeKeyIntents partial_range_key_intents,
+    TransactionStatusManager* status_manager,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
+    LockBatch* lock_batch,
+    WaitQueue* wait_queue,
+    CoarseTimePoint deadline,
+    ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
       << ", initial_resolution_ht: " << intial_resolution_ht;
-
+  auto txn_start_us = write_batch.has_object_locking_txn_meta()
+      ? write_batch.object_locking_txn_meta().pg_txn_start_us()
+      : write_batch.transaction().pg_txn_start_us();
   auto context = std::make_unique<OperationConflictResolverContext>(
       &doc_ops, intial_resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy);
+  RETURN_NOT_OK(context->InitObjectLockingTxnMeta(write_batch));
 
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
     RSTATUS_DCHECK(

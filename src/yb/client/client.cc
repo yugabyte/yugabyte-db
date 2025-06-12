@@ -775,10 +775,11 @@ Result<YBTableInfo> YBClient::GetYBTableInfo(const YBTableName& table_name) {
   return info;
 }
 
-Result<YBTableInfo> YBClient::GetYBTableInfoById(const TableId& table_id) {
+Result<YBTableInfo> YBClient::GetYBTableInfoById(const TableId& table_id, bool include_hidden) {
   YBTableInfo info;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
+  RETURN_NOT_OK(data_->GetTableSchema(
+      this, table_id, deadline, &info, master::IncludeHidden(include_hidden)));
   return info;
 }
 
@@ -1639,7 +1640,7 @@ Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
   if (replica_identities) {
     replica_identities->reserve(resp.stream().replica_identity_map_size());
     for (const auto& entry : resp.stream().replica_identity_map()) {
-      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first));
+      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first, true /* include_hidden */));
 
       const auto pg_table_id = table_info.pg_table_id;
       auto table_oid = VERIFY_RESULT(
@@ -1999,17 +2000,13 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::AcquireObjectLocksGlobalAsync(
     const master::AcquireObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-    MonoDelta rpc_timeout) {
-  TRACE_FUNC();
-  auto deadline = CoarseMonoClock::Now() + rpc_timeout;
-  data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback);
+    CoarseTimePoint deadline, std::function<Status()>&& should_retry) {
+  data_->AcquireObjectLocksGlobalAsync(this, request, deadline, callback, std::move(should_retry));
 }
 
 void YBClient::ReleaseObjectLocksGlobalAsync(
     const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
-    MonoDelta rpc_timeout) {
-  TRACE_FUNC();
-  auto deadline = CoarseMonoClock::Now() + rpc_timeout;
+    CoarseTimePoint deadline) {
   data_->ReleaseObjectLocksGlobalAsync(this, request, deadline, callback);
 }
 
@@ -2531,7 +2528,7 @@ Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>*
   master_uuids->clear();
   for (const ServerEntryPB& master : resp.masters()) {
     if (master.has_error()) {
-      LOG_WITH_PREFIX(ERROR) << "Master " << master.ShortDebugString() << " hit error "
+      LOG_WITH_PREFIX(WARNING) << "Master " << master.ShortDebugString() << " hit error "
         << master.error().ShortDebugString();
       return StatusFromPB(master.error());
     }

@@ -151,13 +151,12 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
   If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
 
-{{< note title="Note" >}}
+{{< note title="Base directory" >}}
 
-When you start yugabyted with a non-default `--base_dir` value, you must set the `--base_dir` flag for every subsequent yugabyted command.
+yugabyted uses `$HOME/var` by default to store data, configurations, and logs. You can change the base directory when starting a cluster using the `--base_dir` flag. If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the cluster.
+
 For example, to get the status of the cluster you just created, you would enter `bin/yugabyted status --base_dir=/home/yugabyte/yb_data`.
-
 {{< /note >}}
-
 
 ## Connect to the database
 

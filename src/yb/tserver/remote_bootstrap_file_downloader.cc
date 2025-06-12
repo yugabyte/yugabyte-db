@@ -39,7 +39,7 @@
 using namespace yb::size_literals;
 
 DECLARE_uint64(rpc_max_message_size);
-DEFINE_UNKNOWN_int32(remote_bootstrap_max_chunk_size, 64_MB,
+DEFINE_RUNTIME_int32(remote_bootstrap_max_chunk_size, 64_MB,
              "Maximum chunk size to be transferred at a time during remote bootstrap.");
 
 DEPRECATE_FLAG(int64, remote_boostrap_rate_limit_bytes_per_sec, "10_2022");
@@ -87,9 +87,8 @@ RemoteBootstrapFileDownloader::RemoteBootstrapFileDownloader(
 }
 
 void RemoteBootstrapFileDownloader::Start(
-    std::shared_ptr<RemoteBootstrapServiceProxy> proxy, std::string session_id,
-    MonoDelta session_idle_timeout) {
-  proxy_ = std::move(proxy);
+    FetchDataFunction fetch_data, std::string session_id, MonoDelta session_idle_timeout) {
+  fetch_data_ = std::move(fetch_data);
   session_id_ = std::move(session_id);
   session_idle_timeout_ = session_idle_timeout;
 }
@@ -99,7 +98,8 @@ Env& RemoteBootstrapFileDownloader::env() const {
 }
 
 Status RemoteBootstrapFileDownloader::DownloadFile(
-    const tablet::FilePB& file_pb, const std::string& dir, DataIdPB *data_id) {
+    const tablet::FilePB& file_pb, const std::string& dir, DataIdPB *data_id,
+    std::function<void(size_t)> chunk_download_cb) {
   auto file_path = JoinPathSegments(dir, file_pb.name());
   RETURN_NOT_OK(env().CreateDirs(DirName(file_path)));
 
@@ -113,8 +113,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
         return Status::OK();
       }
       // TODO fallback to copy.
-      LOG_WITH_PREFIX(ERROR) << "Failed to link file: " << file_path << " => " << it->second
-                             << ": " << link_status;
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to link file: " << file_path << " => " << it->second << ": " << link_status;
     }
   }
 
@@ -126,7 +126,7 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
   RETURN_NOT_OK(env().NewWritableFile(file_path, &file));
 
   data_id->set_file_name(file_pb.name());
-  RETURN_NOT_OK_PREPEND(DownloadFile(*data_id, file.get()),
+  RETURN_NOT_OK_PREPEND(DownloadFile(*data_id, file.get(), chunk_download_cb),
                         Format("Unable to download $0 file $1",
                                DataIdPB::IdType_Name(data_id->type()), file_path));
   VLOG_WITH_PREFIX(2) << "Downloaded file " << file_path;
@@ -140,7 +140,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
 
 template<class Appendable>
 Status RemoteBootstrapFileDownloader::DownloadFile(
-    const DataIdPB& data_id, Appendable* appendable) {
+    const DataIdPB& data_id, Appendable* appendable,
+    std::function<void(size_t)> chunk_download_cb) {
   constexpr int kBytesReservedForMessageHeaders = 16384;
 
   // For periodic sync, indicates number of bytes which need to be sync'ed.
@@ -155,8 +156,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     static auto rate_updater = []() {
       auto remote_bootstrap_clients_started = RemoteClientBase::StartedClientsCount();
       if (remote_bootstrap_clients_started < 1) {
-        YB_LOG_EVERY_N(ERROR, 100) << "Invalid number of remote bootstrap sessions: "
-                                   << remote_bootstrap_clients_started;
+        YB_LOG_EVERY_N(DFATAL, 100) << "Invalid number of remote bootstrap sessions: "
+                                     << remote_bootstrap_clients_started;
         return static_cast<uint64_t>(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec);
       }
       return static_cast<uint64_t>(
@@ -203,11 +204,12 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
       SCOPED_WAIT_STATUS(RemoteBootstrap_RateLimiter);
       status = rate_limiter->SendOrReceiveData([this, &req, &resp, &controller]() {
         SCOPED_WAIT_STATUS(RemoteBootstrap_FetchData);
-        return proxy_->FetchData(req, &resp, &controller);
+        return fetch_data_(req, &resp, &controller);
       }, [&resp]() { return resp.ByteSize(); });
     }
     RETURN_NOT_OK_UNWIND_PREPEND(status, controller, "Unable to fetch data from remote");
-    DCHECK_LE(resp.chunk().data().size(), max_length);
+    const auto chunk_size = resp.chunk().data().size();
+    DCHECK_LE(chunk_size, max_length);
     iterations++;
 
     // Sanity-check for corruption.
@@ -222,21 +224,23 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     RETURN_NOT_OK(appendable->Append(resp.chunk().data()));
     append_data_timer.stop();
     VLOG_WITH_PREFIX(3) << "Verified and appended successfully: resp size: " << resp.ByteSize()
-                        << ", chunk size: " << resp.chunk().data().size();
+                        << ", chunk size: " << chunk_size;
 
-    if (offset + resp.chunk().data().size() ==
-            implicit_cast<size_t>(resp.chunk().total_data_length())) {
+    if (offset + chunk_size == implicit_cast<size_t>(resp.chunk().total_data_length())) {
       done = true;
     }
-    offset += resp.chunk().data().size();
+    offset += chunk_size;
     if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
-      periodic_sync_unsynced_bytes += resp.chunk().data().size();
+      periodic_sync_unsynced_bytes += chunk_size;
       if (periodic_sync_unsynced_bytes > FLAGS_bytes_remote_bootstrap_durable_write_mb * 1_MB) {
         sync_timer.resume();
         RETURN_NOT_OK(appendable->Sync());
         sync_timer.stop();
         periodic_sync_unsynced_bytes = 0;
       }
+    }
+    if (chunk_download_cb) {
+      chunk_download_cb(chunk_size);
     }
   }
 

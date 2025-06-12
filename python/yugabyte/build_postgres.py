@@ -817,8 +817,11 @@ class PostgresBuilder(YbBuildToolBase):
         work_dirs = [
             self.pg_build_root,
             os.path.join(self.pg_build_root, 'contrib'),
+            os.path.join(self.pg_build_root, 'src/test/modules/dummy_seclabel'),
+            os.path.join(self.pg_build_root, 'src/tools/pg_bsd_indent'),
         ] + external_extension_dirs
 
+        # TODO(#27196): parallelize this for loop.
         for work_dir in work_dirs:
             # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
             # But in the case where the YB project is built with make,

@@ -272,7 +272,7 @@ extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
 /*
  * Returns the number of seconday indices excluding primary indexes.
  */
-extern int YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo);
+extern int	YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo);
 
 /*
  * Returns whether the current slot satisfies the partial index's predicate.

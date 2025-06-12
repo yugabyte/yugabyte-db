@@ -476,6 +476,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow CipherTrust KMS",
           "Allow the usage of CipherTrust KMS.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> telemetryAllowLoki =
+      new ConfKeyInfo<>(
+          "yb.telemetry.allow_loki",
+          ScopeType.GLOBAL,
+          "Allow Loki Exporter in Telemetry Provider",
+          "Allow the usage of Loki Exporter in Telemetry Provider.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
       new ConfKeyInfo<>(

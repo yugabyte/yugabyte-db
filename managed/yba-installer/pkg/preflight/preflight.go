@@ -33,7 +33,7 @@ func Run(checkList []Check, skipChecks ...string) *checks.MappedResults {
 	for _, check := range checkList {
 		// Skip the check if needed
 		if common.Contains(skipChecks, check.Name()) {
-			if !check.SkipAllowed() {
+			if !check.SkipAllowed() && os.Getenv("YBA_MODE") != "dev" {
 				log.Fatal("The preflight check '" + check.Name() + "' is at a critical level " +
 					"and cannot be skipped.")
 			}

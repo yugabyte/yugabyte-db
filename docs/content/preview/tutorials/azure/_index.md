@@ -35,7 +35,7 @@ type: indexpage
   {{<index/item
     title="Azure OpenAI"
     body="Build a scalable generative AI application using YugabyteDB as the database backend."
-    href="azure-openai/"
+    href="../ai/azure-openai/"
     icon="/images/tutorials/azure/icons/OpenAI-Icon.svg">}}
 
   {{<index/item

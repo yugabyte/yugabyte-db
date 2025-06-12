@@ -42,6 +42,7 @@ using yb::operator"" _KB;
 using yb::operator"" _MB;
 
 DECLARE_bool(rpc_dump_all_traces);
+DECLARE_int32(print_trace_every);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DEFINE_UNKNOWN_int32(rpcz_max_cql_query_dump_size, 4_KB,
              "The maximum size of the CQL query string in the RPCZ dump.");
@@ -224,7 +225,7 @@ void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_cod
     case rpc::ErrorStatusPB::FATAL_VERSION_MISMATCH: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_UNAUTHORIZED: FALLTHROUGH_INTENDED;
     case rpc::ErrorStatusPB::FATAL_UNKNOWN: {
-      LOG(ERROR) << "Unexpected error status: "
+      LOG(WARNING) << "Unexpected error status: "
                  << rpc::ErrorStatusPB::RpcErrorCodePB_Name(error_code);
       ErrorResponse(stream_id_, ErrorResponse::Code::SERVER_ERROR, "Server error")
           .Serialize(compression_scheme, &msg);
@@ -323,20 +324,19 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
 void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
-  auto trace_ = trace();
-  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
+  bool must_log_trace = false;
+  if (PREDICT_FALSE(
+          FLAGS_rpc_dump_all_traces ||
           // rpcs with an invalid request may have a null request_
-          || (trace_ && request_ && request_->trace_requested())
-          || (trace_ && trace_->must_print())
-          || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-      LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:";
-      rpc::RpcCallInProgressPB call_in_progress_pb;
-      GetCallDetails(&call_in_progress_pb);
-      LOG(WARNING) << call_in_progress_pb.DebugString() << "Trace: ";
-      if (trace_) {
-        trace_->Dump(&LOG(WARNING), /* include_time_deltas */ true);
-      }
+          (request_ && request_->trace_requested()) ||
+          total_time > FLAGS_rpc_slow_query_threshold_ms)) {
+    rpc::RpcCallInProgressPB call_in_progress_pb;
+    GetCallDetails(&call_in_progress_pb);
+    LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:\n"
+                 << call_in_progress_pb.DebugString();
+    must_log_trace = true;
   }
+  Trace::DumpTraceIfNecessary(trace(), FLAGS_print_trace_every, must_log_trace);
 }
 
 std::string CQLInboundCall::ToString() const {

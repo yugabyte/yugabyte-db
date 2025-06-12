@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/pg_client_session.h"
+#include <sys/types.h>
 
 #include <algorithm>
 #include <array>
@@ -42,8 +43,9 @@
 #include "yb/common/common_util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/pgsql_error.h"
-#include "yb/common/transaction_error.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction_error.h"
+#include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/rpc/lightweight_message.h"
@@ -116,12 +118,15 @@ DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 DECLARE_string(ysql_sequence_cache_method);
 
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_int32(tserver_yb_client_default_timeout_ms);
+DECLARE_int32(txn_print_trace_every_n);
+DECLARE_int32(txn_slow_op_threshold_ms);
 
 namespace yb::tserver {
 namespace {
@@ -602,69 +607,6 @@ class VectorIndexQuery {
 };
 using VectorIndexQueryPtr = std::shared_ptr<VectorIndexQuery>;
 
-Result<PgClientSessionOperations> PrepareOperations(
-    PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
-    const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query) {
-  auto write_time = HybridTime::FromPB(req->write_time());
-  PgClientSessionOperations ops;
-  ops.reserve(req->ops().size());
-  client::YBTablePtr table;
-  bool finished = false;
-  auto se = ScopeExit([&finished, session] {
-    if (!finished) {
-      session->Abort();
-    }
-  });
-  const auto read_from_followers = req->options().read_from_followers();
-  for (auto& op : *req->mutable_ops()) {
-    if (op.has_read()) {
-      auto& read = *op.mutable_read();
-      RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
-      if (read.index_request().has_vector_idx_options()) {
-        if (req->ops_size() != 1) {
-          auto status = STATUS_FORMAT(
-              NotSupported, "Only single vector index query is supported, while $0 provided",
-              req->ops_size());
-          LOG(DFATAL) << status << ": " << req->ShortDebugString();
-          return status;
-        }
-        if (!vector_index_query ||
-            !vector_index_query->IsContinuation(read.index_request().paging_state())) {
-          vector_index_query = std::make_shared<VectorIndexQuery>();
-        }
-        vector_index_query->Prepare(read, table, ops);
-      } else {
-        auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
-        if (read_from_followers) {
-          read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
-        }
-        ops.push_back(PgClientSessionOperation {
-          .op = std::move(read_op),
-          .vector_index_read_request = nullptr,
-        });
-      }
-    } else {
-      auto& write = *op.mutable_write();
-      RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
-      auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, *sidecars, &write);
-      if (write_time) {
-        write_op->SetWriteTime(write_time);
-      }
-      ops.push_back(PgClientSessionOperation {
-        .op = std::move(write_op),
-        .vector_index_read_request = nullptr,
-      });
-    }
-  }
-
-  for (const auto& pg_client_session_operation : ops) {
-    session->Apply(pg_client_session_operation.op);
-  }
-
-  finished = true;
-  return ops;
-}
-
 [[nodiscard]] std::vector<RefCntSlice> ExtractRowsSidecar(
     const PgPerformResponsePB& resp, const rpc::Sidecars& sidecars) {
   std::vector<RefCntSlice> result;
@@ -687,7 +629,7 @@ std::byte* SerializeWithCachedSizesToArray(
   return pointer_cast<std::byte*>(msg.SerializeWithCachedSizesToArray(pointer_cast<uint8_t*>(out)));
 }
 
-struct PerformData {
+struct PerformData : public PgResponseCacheWaiter {
   uint64_t session_id;
   PgTableCache& table_cache;
 
@@ -711,7 +653,6 @@ struct PerformData {
         sidecars(*sidecars_) {}
 
   virtual ~PerformData() = default;
-  virtual void SendResponse() = 0;
 
   void FlushDone(client::FlushStatus* flush_status) {
     TabletReadTime used_read_time;
@@ -747,6 +688,10 @@ struct PerformData {
       used_read_time_applier(std::move(used_read_time));
     }
     SendResponse();
+  }
+
+  std::pair<PgPerformResponsePB&, rpc::Sidecars&> ResponseAndSidecars() override {
+    return std::pair<PgPerformResponsePB&, rpc::Sidecars&>(resp, sidecars);
   }
 
  private:
@@ -1080,13 +1025,15 @@ class TransactionProvider {
     }
   }
 
-  Result<const TransactionId&> NextTxnIdForPlain(CoarseTimePoint deadline) {
+  Result<TransactionMetadata> NextTxnMetaForPlain(
+      CoarseTimePoint deadline, bool is_for_release = false) {
+    client::internal::InFlightOpsGroupsWithMetadata ops_info;
     if (!next_plain_) {
+      VLOG_WITH_FUNC(1) << "requesting new transaction";
       auto txn = Build(deadline, {});
       // Don't execute txn->GetMetadata() here since the transaction is not iniatialized with
       // its full metadata yet, like isolation level.
       Synchronizer synchronizer;
-      client::internal::InFlightOpsGroupsWithMetadata ops_info;
       if (txn->batcher_if().Prepare(
           &ops_info, client::ForceConsistentRead::kFalse, deadline, client::Initial::kFalse,
           synchronizer.AsStdStatusCallback())) {
@@ -1094,8 +1041,25 @@ class TransactionProvider {
       }
       RETURN_NOT_OK(synchronizer.Wait());
       next_plain_.swap(txn);
+    } else {
+      VLOG_WITH_FUNC(1) << "trying to reuse existing transaction " << next_plain_->id();
     }
-    return next_plain_->id();
+    // next_plain_ would be ready at this point i.e status tablet picked.
+    auto txn_meta_res = next_plain_->metadata();
+    if (txn_meta_res.ok()) {
+      return txn_meta_res;
+    }
+    VLOG_WITH_FUNC(1) << "transaction already failed";
+    if (!is_for_release) {
+      return txn_meta_res.status();
+    }
+    // If the transaction has already failed due to some reason, we should release the locks.
+    // And also reset next_plain_, so the subsequent ysql transaction would use a new docdb txn.
+    TransactionMetadata txn_meta_for_release;
+    txn_meta_for_release.transaction_id = next_plain_->id();
+    next_plain_ = nullptr;
+    VLOG_WITH_FUNC(1) << "next_plain_ transaction reset";
+    return txn_meta_for_release;
   }
 
  private:
@@ -1137,6 +1101,79 @@ class TransactionProvider {
   const PgClientSession::TransactionBuilder builder_;
   client::YBTransactionPtr next_plain_;
 };
+
+Result<PgClientSessionOperations> PrepareOperations(
+    PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
+    const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
+    bool has_distributed_txn, CoarseTimePoint deadline,
+    TransactionProvider& transaction_provider) {
+  auto write_time = HybridTime::FromPB(req->write_time());
+  PgClientSessionOperations ops;
+  ops.reserve(req->ops().size());
+  client::YBTablePtr table;
+  bool finished = false;
+  auto se = ScopeExit([&finished, session] {
+    if (!finished) {
+      session->Abort();
+    }
+  });
+  const auto read_from_followers = req->options().read_from_followers();
+  bool set_object_locking_txn = false;
+  for (auto& op : *req->mutable_ops()) {
+    if (op.has_read()) {
+      auto& read = *op.mutable_read();
+      RETURN_NOT_OK(GetTable(read.table_id(), tables, &table));
+      if (read.index_request().has_vector_idx_options()) {
+        if (req->ops_size() != 1) {
+          auto status = STATUS_FORMAT(
+              NotSupported, "Only single vector index query is supported, while $0 provided",
+              req->ops_size());
+          LOG(DFATAL) << status << ": " << req->ShortDebugString();
+          return status;
+        }
+        if (!vector_index_query ||
+            !vector_index_query->IsContinuation(read.index_request().paging_state())) {
+          vector_index_query = std::make_shared<VectorIndexQuery>();
+        }
+        vector_index_query->Prepare(read, table, ops);
+      } else {
+        auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
+        if (read_from_followers) {
+          read_op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+        }
+        ops.push_back(PgClientSessionOperation {
+          .op = std::move(read_op),
+          .vector_index_read_request = nullptr,
+        });
+      }
+    } else {
+      auto& write = *op.mutable_write();
+      RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
+      auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, *sidecars, &write);
+      if (write_time) {
+        write_op->SetWriteTime(write_time);
+      }
+      ops.push_back(PgClientSessionOperation {
+        .op = std::move(write_op),
+        .vector_index_read_request = nullptr,
+      });
+      set_object_locking_txn = true;
+    }
+  }
+
+  for (const auto& pg_client_session_operation : ops) {
+    session->Apply(pg_client_session_operation.op);
+  }
+  set_object_locking_txn = set_object_locking_txn && !has_distributed_txn &&
+                           GetAtomicFlag(&FLAGS_enable_object_locking_for_table_locks);
+  if (set_object_locking_txn) {
+    session->SetObjectLockingTxnMeta(
+        VERIFY_RESULT(transaction_provider.NextTxnMetaForPlain(deadline)));
+  }
+
+  finished = true;
+  return ops;
+}
 
 struct RpcPerformQuery : public PerformData {
   rpc::RpcContext context;
@@ -1194,8 +1231,8 @@ Status MergeStatus(Status&& main, Status&& aux) {
 template <typename Request>
 Request AcquireRequestFor(
     const std::string& session_host_uuid, const TransactionId& txn_id, SubTransactionId subtxn_id,
-    uint64_t database_id, uint64_t object_id, TableLockType lock_type, uint64_t lease_epoch,
-    ClockBase* clock, CoarseTimePoint deadline) {
+    auto lock_oid, TableLockType lock_type, uint64_t lease_epoch, ClockBase* clock,
+    CoarseTimePoint deadline, const TabletId& status_tablet) {
   auto now = clock->Now();
   Request req;
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
@@ -1211,9 +1248,12 @@ Request AcquireRequestFor(
     req.set_propagated_hybrid_time(now.ToUint64());
   }
   auto* lock = req.add_object_locks();
-  lock->set_database_oid(database_id);
-  lock->set_object_oid(object_id);
+  lock->set_database_oid(lock_oid.database_oid());
+  lock->set_relation_oid(lock_oid.relation_oid());
+  lock->set_object_oid(lock_oid.object_oid());
+  lock->set_object_sub_oid(lock_oid.object_sub_oid());
   lock->set_lock_type(lock_type);
+  req.set_status_tablet(status_tablet);
   return req;
 }
 
@@ -1267,7 +1307,8 @@ void ReleaseWithRetries(
   // interval it can safely give up. The Master is responsible for cleaning up the locks for any
   // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
   // used here defaults to 60s, which is much larger than the default lease interval of 15s.
-  auto timeout = MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+  auto deadline = MonoTime::Now() +
+      MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
   if (!lease_validator.IsLeaseValid(release_req->lease_epoch())) {
     LOG(INFO) << "Lease epoch " << release_req->lease_epoch() << " is not valid. Will not retry "
               << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
@@ -1291,7 +1332,40 @@ void ReleaseWithRetries(
           ReleaseWithRetries(client, lease_validator, release_req, attempt + 1);
         }
       },
-      timeout);
+      ToCoarse(deadline));
+}
+
+void AcquireObjectLockLocallyWithRetries(
+    std::weak_ptr<TSLocalLockManager> lock_manager, AcquireObjectLockRequestPB&& req,
+    CoarseTimePoint deadline, StdStatusCallback&& lock_cb,
+    std::function<Status(CoarseTimePoint)> check_txn_running) {
+  auto retry_cb = [lock_manager, req, lock_cb = std::move(lock_cb), deadline,
+                   check_txn_running](const Status& s) mutable {
+    if (!s.IsTryAgain()) {
+      return lock_cb(s);
+    }
+    auto txn_status = check_txn_running(deadline);
+    if (!txn_status.ok()) {
+      // Transaction has already failed.
+      return lock_cb(txn_status);
+    }
+    if (CoarseMonoClock::Now() < deadline) {
+      return AcquireObjectLockLocallyWithRetries(
+          lock_manager, std::move(req), deadline, std::move(lock_cb), check_txn_running);
+    }
+    return lock_cb(s);
+  };
+  auto shared_lock_manager = lock_manager.lock();
+  if (!shared_lock_manager) {
+    return retry_cb(STATUS_FORMAT(
+        IllegalState,
+        "TsLocalLockManager unavailable, tserver could have underwent lease apoch change"));
+  }
+  shared_lock_manager->AcquireObjectLocksAsync(req, deadline, std::move(retry_cb));
+}
+
+bool IsReadPointResetRequested(const PgPerformOptionsPB& options) {
+  return options.has_read_time() && !options.read_time().has_read_ht();
 }
 
 } // namespace
@@ -1321,9 +1395,9 @@ class PgClientSession::Impl {
     PgCreateTable helper(req);
     RETURN_NOT_OK(helper.Prepare());
 
-  if (xcluster_context()) {
-    xcluster_context()->PrepareCreateTableHelper(req, helper);
-  }
+    if (xcluster_context()) {
+      xcluster_context()->PrepareCreateTableHelper(req, helper);
+    }
 
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
@@ -1435,19 +1509,19 @@ class PgClientSession::Impl {
       alterer->DropColumn(drop_column);
     }
 
-    if (!req.rename_table().table_name().empty()) {
-      client::YBTableName new_table_name(
-          YQL_DATABASE_PGSQL, req.rename_table().database_name(), req.rename_table().table_name());
+    if (!req.rename_table().table_name().empty() ||
+        !req.rename_table().schema_name().empty()) {
+      const auto ns_id = PgObjectId::GetYbNamespaceIdFromPB(req.table_id());
+      // Change table name and/or schema name. DB name cannot be changed.
+      client::YBTableName new_table_name(YQL_DATABASE_PGSQL);
+      new_table_name.set_table_id(table_id);
+      new_table_name.set_namespace_id(ns_id);
+      if (!req.rename_table().table_name().empty()) {
+        new_table_name.set_table_name(req.rename_table().table_name());
+      }
       if (!req.rename_table().schema_name().empty()) {
         new_table_name.set_pgschema_name(req.rename_table().schema_name());
       }
-      alterer->RenameTo(new_table_name);
-    } else if (!req.rename_table().schema_name().empty()) {
-      client::YBTableName new_table_name(YQL_DATABASE_PGSQL);
-      new_table_name.set_pgschema_name(req.rename_table().schema_name());
-      new_table_name.set_table_id(table_id);
-      const auto ns_id = PgObjectId::GetYbNamespaceIdFromPB(req.table_id());
-      new_table_name.set_namespace_id(ns_id);
       alterer->RenameTo(new_table_name);
     }
 
@@ -1754,13 +1828,15 @@ class PgClientSession::Impl {
   }
 
   Status CleanupObjectLocks() {
+    auto deadline = CoarseMonoClock::Now() +
+                    MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
     return MergeStatus(
         ReleaseObjectLocksIfNecessary(
             GetSessionData(PgClientSessionKind::kPlain).transaction, PgClientSessionKind::kPlain,
-            CoarseTimePoint::max()),
+            deadline),
         ReleaseObjectLocksIfNecessary(
             GetSessionData(PgClientSessionKind::kDdl).transaction, PgClientSessionKind::kDdl,
-            CoarseTimePoint::max()));
+            deadline));
   }
 
   Status Perform(
@@ -2110,8 +2186,8 @@ class PgClientSession::Impl {
   }
 
   void GetTableKeyRanges(
-      yb::tserver::PgGetTableKeyRangesRequestPB const& req,
-      yb::tserver::PgGetTableKeyRangesResponsePB* resp, yb::rpc::RpcContext context) {
+      PgGetTableKeyRangesRequestPB const& req,
+      PgGetTableKeyRangesResponsePB* resp, rpc::RpcContext context) {
     const auto table = table_cache().Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
     resp->set_current_ht(clock()->Now().ToUint64());
     if (!table.ok()) {
@@ -2307,7 +2383,7 @@ class PgClientSession::Impl {
     return status;
   }
 
-  Status AcquireObjectLock(
+  Status DoAcquireObjectLock(
       const PgAcquireObjectLockRequestPB& req, PgAcquireObjectLockResponsePB* resp,
       rpc::RpcContext* context) {
     RSTATUS_DCHECK(IsObjectLockingEnabled(), IllegalState, "Table Locking feature not enabled.");
@@ -2323,33 +2399,60 @@ class PgClientSession::Impl {
     if (setup_session_result.is_plain && setup_session_result.session_data.transaction) {
       RETURN_NOT_OK(setup_session_result.session_data.transaction->GetMetadata(deadline).get());
     }
-    auto& txn_id = setup_session_result.session_data.transaction
-        ? setup_session_result.session_data.transaction->id()
-        : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline));
+    auto txn_meta_res = setup_session_result.session_data.transaction
+        ? setup_session_result.session_data.transaction->GetMetadata(deadline).get()
+        : transaction_provider_.NextTxnMetaForPlain(deadline);
+    RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "txn_id " << txn_id
+        << "txn_id " << txn_meta_res->transaction_id
         << " lock_type: " << AsString(lock_type)
         << " req: " << req.ShortDebugString();
 
+    auto callback = MakeRpcOperationCompletionCallback(
+        std::move(*context), resp, nullptr /* clock */);
     if (IsTableLockTypeGlobal(lock_type)) {
       if (setup_session_result.is_plain) {
         plain_session_has_exclusive_object_locks_.store(true);
       }
       auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
-          instance_uuid(), txn_id, options.active_sub_transaction_id(), req.database_oid(),
-          req.object_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline);
-      auto status_future = MakeFuture<Status>([&](auto callback) {
-        client_.AcquireObjectLocksGlobalAsync(
-            lock_req, callback,
-            MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms));
-      });
-      return status_future.get();
+          instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
+          req.lock_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline,
+          txn_meta_res->status_tablet);
+      client_.AcquireObjectLocksGlobalAsync(
+          lock_req, std::move(callback), deadline,
+          [txn = setup_session_result.session_data.transaction]() -> Status {
+            RETURN_NOT_OK(txn->metadata());
+            return Status::OK();
+          });
+      return Status::OK();
     }
     auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
-        instance_uuid(), txn_id, options.active_sub_transaction_id(), req.database_oid(),
-        req.object_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline);
-    return ts_lock_manager()->AcquireObjectLocks(lock_req, deadline);
+        instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
+        req.lock_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline,
+        txn_meta_res->status_tablet);
+    AcquireObjectLockLocallyWithRetries(
+        ts_lock_manager(), std::move(lock_req), deadline, std::move(callback),
+        [session_impl = this, txn = setup_session_result.session_data.transaction]
+            (CoarseTimePoint deadline) -> Status {
+          if (txn) {
+            RETURN_NOT_OK(txn->metadata());
+          } else {
+            RETURN_NOT_OK(session_impl->transaction_provider_.NextTxnMetaForPlain(deadline));
+          }
+          return Status::OK();
+        });
+    return Status::OK();
+  }
+
+  void AcquireObjectLock(
+      const PgAcquireObjectLockRequestPB& req, PgAcquireObjectLockResponsePB* resp,
+      yb::rpc::RpcContext context) {
+    auto s = DoAcquireObjectLock(req, resp, &context);
+    if (!s.ok()) {
+      StatusToPB(s, resp->mutable_status());
+      context.RespondSuccess();
+    }
   }
 
   void StartShutdown() {
@@ -2429,7 +2532,7 @@ class PgClientSession::Impl {
           // If we failed to report the status of this DDL transaction, we can just log and ignore
           // it, as the poller in the YB-Master will figure out the status of this transaction using
           // the transaction status tablet and PG catalog.
-          ERROR_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
+          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
                       Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
         }
 
@@ -2444,8 +2547,8 @@ class PgClientSession::Impl {
           // (commit.has_value() is false), the purpose is to use the side effect of
           // WaitForDdlVerificationToFinish to trigger the start of a background task to
           // complete the DDL transaction at the DocDB side.
-          ERROR_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
-                       "WaitForDdlVerificationToFinish call failed");
+          WARN_NOT_OK(client_.WaitForDdlVerificationToFinish(*metadata),
+                      "WaitForDdlVerificationToFinish call failed");
         }
       }
     }
@@ -2482,9 +2585,9 @@ class PgClientSession::Impl {
       VLOG_WITH_PREFIX(3)
           << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
-          options.mutable_caching_info(), &data->resp, &data->sidecars, deadline));
+          options.mutable_caching_info(), deadline, data));
       if (!data->cache_setter) {
-        data->SendResponse();
+
         return Status::OK();
       }
     }
@@ -2496,31 +2599,55 @@ class PgClientSession::Impl {
     auto* session = setup_session_result.session_data.session.get();
     auto& transaction = setup_session_result.session_data.transaction;
 
-    if (context) {
-      if (options.trace_requested()) {
+    TracePtr trace = Trace::CurrentTrace();
+    bool trace_created_locally = false;
+    MonoTime start_time = MonoTime::kUninitialized;
+    if (options.trace_requested()) {
+      if (transaction) {
+        transaction->EnsureTraceCreated();
+        trace = transaction->trace();
+        trace->set_must_print(true);
+      }
+      if (context) {
         context->EnsureTraceCreated();
+        // If available, prefer to use the current Rpc's trace for logging.
+        trace = context->trace();
         if (transaction) {
-          transaction->EnsureTraceCreated();
-          context->trace()->AddChildTrace(transaction->trace());
+          // Make current Rpc-trace the child of the transaction trace.
+          // Traces will be printed at the end of the transaction.
+          transaction->trace()->AddChildTrace(context->trace());
           transaction->trace()->set_must_print(true);
         } else {
+          // There is no transaction here, so the trace will be printed at the end of the Rpc.
           context->trace()->set_must_print(true);
         }
       }
+      if (!context && !transaction) {
+        // This is the codepath where there is no rpc (because we are using shared memory) and
+        // no transaction. A trace will be locally created and printed at the end of the
+        // session->FlushAsync callback.
+        DCHECK(!trace) << "trace should not be set if context and transaction are not set";
+        trace = new Trace();
+        TRACE_TO(trace.get(), "DoPerform performing operation with no context or transaction");
+        trace_created_locally = true;
+        start_time = ToSteady(CoarseMonoClock::now());
+        trace->set_must_print(true);
+      }
     }
-    ADOPT_TRACE(context ? context->trace() : Trace::CurrentTrace());
+    ADOPT_TRACE(trace.get());
 
-    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, options);
+    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result);
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
     data->subtxn_id = options.active_sub_transaction_id();
 
     data->ops = VERIFY_RESULT(PrepareOperations(
-        &data->req, session, &data->sidecars, tables, vector_index_query_data_));
+        &data->req, session, &data->sidecars, tables, vector_index_query_data_,
+        transaction ? true : false /* has_distributed_txn */, deadline, transaction_provider_));
     data->vector_index_query = vector_index_query_data_;
-    TracePtr trace(Trace::CurrentTrace());
-    session->FlushAsync([this, data, trace](client::FlushStatus* flush_status) {
+    session->FlushAsync([this, data, trace, trace_created_locally,
+                         start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
       data->FlushDone(flush_status);
       const auto ops_count = data->ops.size();
@@ -2533,6 +2660,11 @@ class PgClientSession::Impl {
             << "FlushAsync of " << ops_count << " ops completed for non-distributed transaction";
       }
       VLOG_WITH_PREFIX(5) << "Perform resp: " << data->resp.ShortDebugString();
+      if (trace_created_locally) {
+        const bool must_log_trace =
+            ToSteady(CoarseMonoClock::now()) - start_time >= FLAGS_txn_slow_op_threshold_ms * 1ms;
+        Trace::DumpTraceIfNecessary(trace.get(), FLAGS_txn_print_trace_every_n, must_log_trace);
+      }
     });
     if (setup_session_result.is_plain) {
       const auto& read_point = *session->read_point();
@@ -2654,11 +2786,12 @@ class PgClientSession::Impl {
       kind = PgClientSessionKind::kDdl;
       EnsureSession(kind, deadline);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
-          true /* use_transaction */, false /* use_regular_transaction_block */, deadline));
+          true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
+          options.priority()));
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline);
-      RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(txn_serial_no));
+      RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(options));
       if (txn_serial_no != txn_serial_no_) {
         read_point_history_.Clear();
       } else if (read_time_serial_no != read_time_serial_no_) {
@@ -2694,6 +2827,9 @@ class PgClientSession::Impl {
         RSTATUS_DCHECK(
             is_plain_session, IllegalState,
             "Read time manipulation can't be specified for non kPlain sessions");
+        RSTATUS_DCHECK(
+            !options.defer_read_point(), IllegalState,
+            "Cannot manipulate read time when read point needs to be deferred.");
         ProcessReadTimeManipulation(
             options.read_time_manipulation(), read_time_serial_no,
             ClampUncertaintyWindow(options.clamp_uncertainty_window()));
@@ -2701,7 +2837,7 @@ class PgClientSession::Impl {
         const auto read_time = ReadHybridTime::FromPB(options.read_time());
         session.SetReadPoint(read_time);
         VLOG_WITH_PREFIX(3) << "Read time: " << read_time;
-      } else if (options.has_read_time() ||
+      } else if (IsReadPointResetRequested(options) ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
         ResetReadPoint(kind);
@@ -2713,15 +2849,8 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(
         UpdateReadPointForXClusterConsistentReads(options, deadline, session.read_point()));
 
-    if (options.defer_read_point()) {
-      // Deferring allows avoiding read restart errors in case of a READ ONLY transaction by setting
-      // the read point to the global limit (i.e., read time + max clock skew) and hence waiting out
-      // any ambiguity of data visibility that might arise from clock skew.
-      RSTATUS_DCHECK(
-        !txn, IllegalState,
-        "Deferring read point is only allowed in SERIALIZABLE DEFERRABLE READ ONLY, a distributed "
-        "transaction is unexpected here.");
-
+    if (!options.ddl_mode() && !options.use_catalog_session() && options.defer_read_point()) {
+      // For DMLs, only fast path writes cannot be deferred.
       RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
     }
 
@@ -2880,8 +3009,10 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
+  // All DDLs use kHighestPriority unless specified otherwise.
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
-    bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline) {
+      bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline,
+      uint64_t priority = kHighPriTxnUpperBound) {
     if (!use_transaction) {
       return nullptr;
     }
@@ -2910,6 +3041,7 @@ class PgClientSession::Impl {
           ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
       txn = transaction_provider_.Take<PgClientSessionKind::kDdl>(deadline);
       RETURN_NOT_OK(txn->Init(isolation));
+      txn->SetPriority(priority);
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
       EnsureSession(kSessionKind, deadline)->SetTransaction(txn);
@@ -2973,23 +3105,33 @@ class PgClientSession::Impl {
     return session;
   }
 
-  Status CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial_no) {
+  Status CheckPlainSessionPendingUsedReadTime(const PgPerformOptionsPB& options) {
     if (!plain_session_used_read_time_.pending_update) {
       return Status::OK();
     }
-    auto& session = *Session(PgClientSessionKind::kPlain);
+    auto& session_data = GetSessionData(PgClientSessionKind::kPlain);
+    auto& session = *session_data.session;
     const auto& read_point = *session.read_point();
     TabletReadTime read_time_data;
     if (!read_point.GetReadTime()) {
       auto& used_read_time = plain_session_used_read_time_.value;
       std::lock_guard guard(used_read_time.lock);
       if (!used_read_time.data) {
-        if (txn_serial_no_ != txn_serial_no) {
+        if (txn_serial_no_ != options.txn_serial_no()) {
           // Allow sending request with new txn_serial_no in case previous request with different
           // txn_serial_no has not been finished yet. This may help to prevent stuck in case of
           // request timeout.
           return Status::OK();
         }
+        if (options.read_time_serial_no() == read_time_serial_no_ &&
+            !session_data.transaction &&
+            options.isolation() == IsolationLevel::NON_TRANSACTIONAL &&
+            IsReadPointResetRequested(options)) {
+          // Read time from previous operations is not required for non-transaction operation which
+          // will reset session's read time prior to the execution.
+          return Status::OK();
+        }
+
         return STATUS(
             IllegalState, "Expecting a used read time from the previous RPC but didn't find one");
       }
@@ -3132,7 +3274,7 @@ class PgClientSession::Impl {
           // collected. One way to fix this we need to add a periodic scan job in YB-Master to look
           // for any table/index that are involved in a DDL transaction and start a background task
           // to complete the DDL transaction at the DocDB side.
-          LOG(ERROR) << "DdlAtomicityFinishTransaction failed: " << status;
+          LOG(DFATAL) << "DdlAtomicityFinishTransaction failed: " << status;
         }
         return MergeStatus(std::move(commit_status), std::move(status));
       }
@@ -3173,9 +3315,12 @@ class PgClientSession::Impl {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
     }
+    auto txn_meta_res = txn
+        ? txn->GetMetadata(deadline).get()
+        : transaction_provider_.NextTxnMetaForPlain(deadline, !subtxn_id);
+    RETURN_NOT_OK(txn_meta_res);
     return DoReleaseObjectLocks(
-        txn ? txn->id() : VERIFY_RESULT_REF(transaction_provider_.NextTxnIdForPlain(deadline)),
-        subtxn_id, deadline, has_exclusive_locks);
+        txn_meta_res->transaction_id, subtxn_id, deadline, has_exclusive_locks);
   }
 
   Status DoReleaseObjectLocks(
@@ -3197,13 +3342,11 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result,
-                                              const PgPerformOptionsPB& options) {
+  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
     auto* read_point = result.session_data.session->read_point();
     if (!result.is_plain ||
         result.session_data.transaction ||
-        (read_point && read_point->GetReadTime()) ||
-        options.non_transactional_buffered_write()) {
+        (read_point && read_point->GetReadTime())) {
       return {};
     }
 

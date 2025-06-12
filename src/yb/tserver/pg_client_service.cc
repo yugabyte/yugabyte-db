@@ -47,6 +47,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -70,6 +71,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/debug.h"
@@ -139,12 +141,16 @@ TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultiplier,
     "Idle timeout interval in milliseconds used by shared memory exchange thread pool.");
 
+DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
+                 "Whether tservers should monitor their ysql op lease and kill their hosted pg "
+                 "sessions when it expires. Only available as a flag for tests.");
+
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 METRIC_DEFINE_event_stats(
     server, pg_client_exchange_response_size, "The size of PgClient exchange response in bytes",
@@ -213,9 +219,10 @@ class LockablePgClientSession {
   }
 
   Status StartExchange(const std::string& instance_id, ThreadPool& thread_pool) {
-    auto exchange = VERIFY_RESULT(SharedExchange::Make(instance_id, id(), Create::kTrue));
+    shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
+        instance_id, id(), Create::kTrue));
     exchange_runnable_ = std::make_shared<SharedExchangeRunnable>(
-        std::move(exchange), [this](size_t size) {
+        shared_mem_manager_.exchange(), shared_mem_manager_.session_id(), [this](size_t size) {
       Touch();
       std::unique_lock lock(mutex_);
       session_.ProcessSharedRequest(size, &exchange_runnable_->exchange());
@@ -276,6 +283,7 @@ class LockablePgClientSession {
 
   std::mutex mutex_;
   PgClientSession session_;
+  PgSessionSharedMemoryManager shared_mem_manager_;
   std::shared_ptr<SharedExchangeRunnable> exchange_runnable_;
   const CoarseDuration lifetime_;
   std::atomic<CoarseTimePoint> expiration_;
@@ -533,6 +541,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
         table_cache_(client_future_),
         check_expired_sessions_("check_expired_sessions", &messenger->scheduler()),
         check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
+        check_ysql_lease_("check_ysql_lease_liveness", &messenger->scheduler()),
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
@@ -566,8 +575,10 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
     ScheduleCheckObjectIdAllocators();
+    ScheduleCheckYsqlLeaseWithNoLease();
     if (FLAGS_pg_client_use_shared_memory) {
-      WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
+      WARN_NOT_OK(PgSessionSharedMemoryManager::Cleanup(instance_id_),
+                  "Cleanup shared memory failed");
     }
     shared_mem_pool_.Start(messenger->scheduler());
   }
@@ -591,6 +602,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     sessions.clear();
     check_expired_sessions_.Shutdown();
     check_object_id_allocators_.Shutdown();
+    check_ysql_lease_.Shutdown();
     if (exchange_thread_pool_) {
       exchange_thread_pool_->Shutdown();
     }
@@ -1037,9 +1049,13 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
       // only one transaction id in PgGetLockStatusRequestPB for now.
       // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
       // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
+      //
+      // TODO: Support specific transaction id filtering for getting object lock status
+      // https://github.com/yugabyte/yugabyte-db/issues/27331
       lock_status_req.add_transaction_ids(req.transaction_id());
       return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
+    RETURN_NOT_OK(GetObjectLockStatus(remote_tservers, resp));
     const auto& min_txn_age_ms = req.min_txn_age_ms();
     const auto& max_num_txns = req.max_num_txns();
     RSTATUS_DCHECK(max_num_txns > 0, InvalidArgument,
@@ -1188,6 +1204,157 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     for (auto i = 0 ; i < src->node_locks_size() ; i++) {
       dest->add_node_locks()->Swap(src->mutable_node_locks(i));
     }
+    return Status::OK();
+  }
+
+  // Get object lock status from all tablet servers and the master.
+  //
+  // The function first collects object lock status from all tablet servers.
+  // Then, to accurately determine the state of global locks (those that span across
+  // the master and all tablet servers), it collects lock status from the master.
+  // A global lock is considered GRANTED only if all participants(the master and
+  // every tablet server) report it as GRANTED. If any participant reports it as WAITING,
+  // or if any participant is missing, the global lock is treated as WAITING.
+  Status GetObjectLockStatus(
+      const std::vector<RemoteTabletServerPtr>& remote_tservers,
+      PgGetLockStatusResponsePB* resp) {
+    if (!FLAGS_enable_object_locking_for_table_locks) {
+      return Status::OK();
+    }
+
+    using LockInfoWithCounter = std::pair<ObjectLockInfoPB, size_t>;
+    std::unordered_map<ObjectLockContext, LockInfoWithCounter> object_lock_info_map;
+
+    // Collect object lock infos from all tservers.
+    GetObjectLockStatusRequestPB req;
+    std::vector<std::future<Status>> status_futures;
+    status_futures.reserve(remote_tservers.size());
+    std::vector<std::shared_ptr<GetObjectLockStatusResponsePB>> node_responses;
+    node_responses.reserve(remote_tservers.size());
+    for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+      auto proxy = remote_tserver->proxy();
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<GetObjectLockStatusResponsePB>();
+      node_responses.push_back(node_resp);
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      proxy->GetObjectLockStatusAsync(
+          req, node_resp.get(), controller.get(), [controller, status_promise] {
+            status_promise->set_value(controller->status());
+          });
+    }
+
+    // Collect global object lock infos from master.
+    // There may be some global locks , waiting on the master, are not yet be visible to TServers.
+    // Also ensures accurate wait_start timestamps, since master observes the earliest wait times.
+    auto master_proxy = std::make_shared<master::MasterDdlProxy>(
+        &client().proxy_cache(), client().GetMasterLeaderAddress());
+    master::GetObjectLockStatusRequestPB master_req;
+    master::GetObjectLockStatusResponsePB master_resp;
+    auto master_controller = std::make_shared<rpc::RpcController>();
+    auto master_promise = std::make_shared<std::promise<Status>>();
+    master_proxy->GetObjectLockStatusAsync(
+        master_req, &master_resp, master_controller.get(),
+        [master_controller, master_promise] {
+          master_promise->set_value(master_controller->status());
+        });
+
+    // Process responses from tservers
+    for (size_t i = 0; i < status_futures.size(); i++) {
+      auto& node_resp = node_responses[i];
+      auto s = status_futures[i].get();
+      if (!s.ok()) {
+        return s;
+      }
+      if (node_resp->has_error()) {
+        *resp->mutable_status() = node_resp->error().status();
+        return Status::OK();
+      }
+      VLOG(4) << "Processing GetObjectLockStatusResponsePB from tserver: "
+              << node_resp->ShortDebugString();
+      for (int j = 0; j < node_resp->object_lock_infos_size(); j++) {
+        auto* lock_infos = node_resp->mutable_object_lock_infos(j);
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
+        auto [it, inserted] = object_lock_info_map.try_emplace(
+          ObjectLockContext{
+            txn_id,
+            lock_infos->subtransaction_id(),
+            lock_infos->database_oid(),
+            lock_infos->relation_oid(),
+            lock_infos->object_oid(),
+            lock_infos->object_sub_oid(),
+            lock_infos->mode()
+          },
+          LockInfoWithCounter{ObjectLockInfoPB(), 1});
+        auto& existing_lock_info = it->second.first;
+        if (inserted) {
+          // First time seeing this lock
+          existing_lock_info.Swap(lock_infos);
+          continue;
+        }
+        // We've seen this lock before, increment counter
+        it->second.second++;
+        // If existing lock is GRANTED but current one is WAITING, replace with WAITING
+        // (A globally acquired lock is only truly granted if all servers grant it)
+        if (existing_lock_info.lock_state() == ObjectLockState::GRANTED &&
+            lock_infos->lock_state() == ObjectLockState::WAITING) {
+          VLOG(4) << "Replacing GRANTED lock with WAITING lock for txn_id: " << txn_id
+                  << ", subtxn_id: " << lock_infos->subtransaction_id()
+                  << ", object_oid: " << lock_infos->object_oid()
+                  << ", database_oid: " << lock_infos->database_oid()
+                  << ", lock_type: " << TableLockType_Name(lock_infos->mode());
+          existing_lock_info.Swap(lock_infos);
+        }
+      }
+    }
+
+    // Process responses from master
+    // A global lock is treated GRANTED only if it's granted on the master AND all tablet servers.
+    auto s = master_promise->get_future().get();
+    if (!s.ok()) {
+      return s;
+    }
+    if (master_resp.has_error()) {
+      *resp->mutable_status() = master_resp.error().status();
+      return Status::OK();
+    }
+    VLOG(4) << "Processing GetObjectLockStatusResponsePB from master: "
+            << master_resp.ShortDebugString();
+    for (int i = 0; i < master_resp.object_lock_infos_size(); i++) {
+      auto* lock_infos = master_resp.mutable_object_lock_infos(i);
+      auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
+      auto [it, inserted] = object_lock_info_map.try_emplace(
+        ObjectLockContext{
+          txn_id,
+          lock_infos->subtransaction_id(),
+          lock_infos->database_oid(),
+          lock_infos->relation_oid(),
+          lock_infos->object_oid(),
+          lock_infos->object_sub_oid(),
+          lock_infos->mode()
+        },
+        LockInfoWithCounter{ObjectLockInfoPB(), 1});
+      auto& existing_lock_info = it->second.first;
+      auto tserver_count = it->second.second;
+      if (!inserted && tserver_count == remote_tservers.size() &&
+          existing_lock_info.lock_state() == ObjectLockState::GRANTED) {
+        continue;
+      }
+      // If the lock was not reported by all tablet servers as GRANTED, treat the
+      // global lock as WAITING.
+      // Note: The wait_start timestamp will be from the master(first lock acquisition)
+      lock_infos->set_lock_state(ObjectLockState::WAITING);
+      existing_lock_info.Swap(lock_infos);
+    }
+
+    // Populate the response with consolidated lock info.
+    for (auto& [_, object_lock_info] : object_lock_info_map) {
+      resp->add_object_lock_infos()->Swap(&object_lock_info.first);
+    }
+
+    VLOG(4) << "Added " << resp->object_lock_infos_size() << " object locks to response";
+
     return Status::OK();
   }
 
@@ -1916,30 +2083,96 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
   }
 
-  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info, MonoTime time) {
-    std::lock_guard lock(mutex_);
-    last_lease_refresh_time_ = time;
-    if (lease_refresh_info.new_lease()) {
-      LOG(INFO) << Format(
-          "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
-          lease_refresh_info.lease_epoch());
-      lease_epoch_ = lease_refresh_info.lease_epoch();
-      auto s = tablet_server_.RestartPG();
-      if (!s.ok()) {
-        LOG(WARNING) << "Failed to restart PG postmaster: " << s;
+  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
+    {
+      std::lock_guard lock(mutex_);
+      lease_expiry_time_ =
+          CoarseTimePoint{std::chrono::milliseconds(lease_refresh_info.lease_expiry_time_ms())};
+      if (lease_expiry_time_ < CoarseMonoClock::Now()) {
+        // This function is passed the timestamp from before the RefreshYsqlLeaseRpc is sent.  So it
+        // is possible the RPC takes longer than the lease TTL the master gave us, in which case
+        // this tserver still does not have a live lease.
+        return;
+      }
+      bool had_live_lease = ysql_lease_is_live_;
+      ysql_lease_is_live_ = true;
+      if (lease_refresh_info.new_lease() || lease_epoch_ != lease_refresh_info.lease_epoch()) {
+        LOG(INFO) << Format(
+            "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
+            lease_refresh_info.lease_epoch());
+        lease_epoch_ = lease_refresh_info.lease_epoch();
+      } else if (!had_live_lease) {
+        LOG(INFO) << Format(
+            "Master leader refreshed our lease for epoch $0. We thought this lease had "
+            "expired but it hadn't. Restarting pg.",
+            lease_epoch_);
+      } else {
+        // Lease was live and is live after this update. The epoch didn't change. Nothing left to
+        // do.
+        return;
       }
     }
+    // No need to hold lock while restarting the pg process.
+    WARN_NOT_OK(tablet_server_.RestartPG(), "Failed to restart PG postmaster.");
   }
 
   YSQLLeaseInfo GetYSQLLeaseInfo() {
     SharedLock lock(mutex_);
     YSQLLeaseInfo lease_info;
-    // todo(zdrudi): For now just return is live if we've ever received a lease.
-    lease_info.is_live = last_lease_refresh_time_.Initialized();
+    lease_info.is_live = ysql_lease_is_live_;
     if (lease_info.is_live) {
       lease_info.lease_epoch = lease_epoch_;
     }
     return lease_info;
+  }
+
+  void ScheduleCheckYsqlLeaseWithNoLease() {
+    ScheduleCheckYsqlLease(CoarseMonoClock::now() + 1s);
+  }
+
+  void ScheduleCheckYsqlLease(CoarseTimePoint next_check_time) {
+    check_ysql_lease_.Schedule(
+        [this, next_check_time](const Status& status) {
+          if (!status.ok()) {
+            return;
+          }
+          if (CoarseMonoClock::now() < next_check_time) {
+            ScheduleCheckYsqlLease(next_check_time);
+            return;
+          }
+          CheckYsqlLeaseStatus();
+        },
+        next_check_time - CoarseMonoClock::now());
+  }
+
+  std::optional<CoarseTimePoint> CheckYsqlLeaseStatusInner() {
+    {
+      std::lock_guard lock(mutex_);
+      if (!ysql_lease_is_live_) {
+        return {};
+      }
+      if (CoarseMonoClock::now() < lease_expiry_time_) {
+        return lease_expiry_time_;
+      }
+      ysql_lease_is_live_ = false;
+      LOG(INFO) << "Lease has expired, killing pg sessions.";
+    }
+    // todo(zdrudi): make this a fatal?
+    WARN_NOT_OK(tablet_server_.KillPg(), "Couldn't stop PG");
+    return {};
+  }
+
+  void CheckYsqlLeaseStatus() {
+    if (PREDICT_FALSE(!FLAGS_TEST_enable_ysql_operation_lease_expiry_check)) {
+      ScheduleCheckYsqlLeaseWithNoLease();
+      return;
+    }
+    auto lease_expiry = CheckYsqlLeaseStatusInner();
+    if (lease_expiry) {
+      ScheduleCheckYsqlLease(*lease_expiry);
+    } else {
+      ScheduleCheckYsqlLeaseWithNoLease();
+    }
   }
 
   void CleanupSessions(
@@ -2450,6 +2683,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
   rpc::ScheduledTaskTracker check_expired_sessions_ GUARDED_BY(mutex_);
   CoarseTimePoint check_expired_sessions_time_ GUARDED_BY(mutex_);
   rpc::ScheduledTaskTracker check_object_id_allocators_;
+  rpc::ScheduledTaskTracker check_ysql_lease_;
 
   PgResponseCache response_cache_;
 
@@ -2483,8 +2717,9 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
   std::optional<cdc::CDCStateTable> cdc_state_table_;
   PgTxnSnapshotManager txn_snapshot_manager_;
 
-  MonoTime last_lease_refresh_time_ GUARDED_BY(mutex_);
-  uint64_t lease_epoch_ GUARDED_BY(mutex_);
+  CoarseTimePoint lease_expiry_time_ GUARDED_BY(mutex_);
+  bool ysql_lease_is_live_ GUARDED_BY(mutex_) {false};
+  uint64_t lease_epoch_ GUARDED_BY(mutex_) = 0;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -2524,9 +2759,9 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
   return impl_->GetLocalPgTxnSnapshot(snapshot_id);
 }
 
-void PgClientServiceImpl::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB&
-                                             lease_refresh_info, MonoTime time) {
-  impl_->ProcessLeaseUpdate(lease_refresh_info, time);
+void PgClientServiceImpl::ProcessLeaseUpdate(
+    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
+  impl_->ProcessLeaseUpdate(lease_refresh_info);
 }
 
 YSQLLeaseInfo PgClientServiceImpl::GetYSQLLeaseInfo() const {

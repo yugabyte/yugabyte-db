@@ -40,26 +40,8 @@ public class CdcStreamManager {
     this.ybClientService = clientService;
   }
 
-  private YBClient getYBClientForUniverse(Universe universe) {
-    LOG.info("Getting YBClient for universeId='{}'", universe.getUniverseUUID());
-
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-
-    LOG.info("Masters for universeId='{}' are: {}", universe.getUniverseUUID(), masterAddresses);
-
-    try {
-      YBClient client = ybClientService.getClient(masterAddresses, certificate);
-      LOG.info("Got client for universeId='{}'", universe.getUniverseUUID());
-      return client;
-    } catch (Exception ex) {
-      LOG.error("Exception while trying to getYBClientForUniverse.", ex);
-      throw new RuntimeException(ex);
-    }
-  }
-
   public List<CdcStream> getAllCdcStreams(Universe universe) throws Exception {
-    try (YBClient client = getYBClientForUniverse(universe)) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       List<CdcStream> streams = new ArrayList<>();
       ListCDCStreamsResponse response =
           client.listCDCStreams(null, null, MasterReplicationOuterClass.IdTypePB.NAMESPACE_ID);
@@ -116,7 +98,7 @@ public class CdcStreamManager {
   public CdcStreamCreateResponse createCdcStream(
       Universe universe, String databaseName, String format, String checkpointType)
       throws Exception {
-    try (YBClient client = getYBClientForUniverse(universe)) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
 
       LOG.info(
           "Creating CDC stream for universeId='{}' dbName='{}' format='{}', checkpointType='{}'",
@@ -145,7 +127,7 @@ public class CdcStreamManager {
 
   public CdcStreamDeleteResponse deleteCdcStream(Universe universe, String streamId)
       throws Exception {
-    try (YBClient client = getYBClientForUniverse(universe)) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       HashSet<String> streamsToDelete = new HashSet<>();
       streamsToDelete.add(streamId);
 
@@ -161,7 +143,7 @@ public class CdcStreamManager {
   }
 
   public CDCReplicationSlotResponse listReplicationSlot(Universe universe) throws Exception {
-    try (YBClient client = getYBClientForUniverse(universe)) {
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
 
       ListCDCStreamsResponse response =
           client.listCDCStreams(null, null, MasterReplicationOuterClass.IdTypePB.NAMESPACE_ID);

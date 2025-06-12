@@ -35,6 +35,7 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_HASH_JOIN = "Hash Join";
   public static final String NODE_INDEX_ONLY_SCAN = "Index Only Scan";
   public static final String NODE_INDEX_SCAN = "Index Scan";
+  public static final String NODE_INDEX_SCAN_BACKWARD = "Index Scan Backward";
   public static final String NODE_LIMIT = "Limit";
   public static final String NODE_MERGE_JOIN = "Merge Join";
   public static final String NODE_MODIFY_TABLE = "ModifyTable";
@@ -45,6 +46,7 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_VALUES_SCAN = "Values Scan";
   public static final String NODE_YB_BITMAP_TABLE_SCAN = "YB Bitmap Table Scan";
   public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
+  public static final String INDEX_SCAN_DIRECTION_BACKWARD = "Backward";
 
   public static final String PLAN = "Plan";
 
@@ -74,6 +76,7 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder alias(String value);
     PlanCheckerBuilder indexName(String value);
     PlanCheckerBuilder nodeType(String value);
+    PlanCheckerBuilder scanDirection(String value);
     PlanCheckerBuilder operation(String value);
     PlanCheckerBuilder planRows(ValueChecker<Long> checker);
     PlanCheckerBuilder plans(Checker... checker);
@@ -112,7 +115,11 @@ public class ExplainAnalyzeUtils {
 
     // Seek and Next Estimation
     PlanCheckerBuilder estimatedSeeks(ValueChecker<Double> checker);
-    PlanCheckerBuilder estimatedNexts(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedNextsAndPrevs(ValueChecker<Double> checker);
+
+    // Roundtrips Estimation
+    PlanCheckerBuilder estimatedTableRoundtrips(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedIndexRoundtrips(ValueChecker<Double> checker);
 
     // Estimated Docdb Result Width
     PlanCheckerBuilder estimatedDocdbResultWidth(ValueChecker<Long> checker);

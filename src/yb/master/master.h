@@ -238,6 +238,7 @@ class Master : public tserver::DbServerBase {
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override {}
+  void RegisterPgProcessKiller(std::function<Status(void)> killer) override {}
 
  protected:
   Status RegisterServices();
@@ -277,6 +278,9 @@ class Master : public tserver::DbServerBase {
   // The metric entity for the cluster.
   scoped_refptr<MetricEntity> metric_entity_cluster_;
 
+  // Master's tablet server implementation used to host virtual tables like system.peers.
+  std::unique_ptr<MasterTabletServer> master_tablet_server_;
+
   std::unique_ptr<SysCatalogTable> sys_catalog_;
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
@@ -306,9 +310,6 @@ class Master : public tserver::DbServerBase {
 
   // The maintenance manager for this master.
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
-
-  // Master's tablet server implementation used to host virtual tables like system.peers.
-  std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
   std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::mutex master_metrics_mutex_;

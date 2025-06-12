@@ -5,8 +5,11 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.Util.getRandomPassword;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -15,7 +18,6 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleResourceDefinition;
-import com.yugabyte.yw.common.rbac.RoleUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -24,10 +26,12 @@ import com.yugabyte.yw.forms.UserProfileFormData;
 import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding;
@@ -42,6 +46,7 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.Authorization;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -69,8 +74,8 @@ public class UsersController extends AuthenticatedController {
   private final UserService userService;
   private final TokenAuthenticator tokenAuthenticator;
   private final RuntimeConfigFactory runtimeConfigFactory;
-  private final RoleUtil roleUtil;
   private final RoleBindingUtil roleBindingUtil;
+  private final Commissioner commissioner;
 
   @Inject
   public UsersController(
@@ -78,14 +83,14 @@ public class UsersController extends AuthenticatedController {
       UserService userService,
       TokenAuthenticator tokenAuthenticator,
       RuntimeConfigFactory runtimeConfigFactory,
-      RoleUtil roleUtil,
-      RoleBindingUtil roleBindingUtil) {
+      RoleBindingUtil roleBindingUtil,
+      Commissioner commissioner) {
     this.passwordPolicyService = passwordPolicyService;
     this.userService = userService;
     this.tokenAuthenticator = tokenAuthenticator;
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.roleUtil = roleUtil;
     this.roleBindingUtil = roleBindingUtil;
+    this.commissioner = commissioner;
   }
 
   /**
@@ -126,7 +131,8 @@ public class UsersController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT),
         checkOnlyPermission = true)
   })
-  public Result list(UUID customerUUID) {
+  public Result list(
+      UUID customerUUID, @ApiParam(value = "Optional email to filter user list") String email) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
     Set<UUID> resourceUUIDs =
@@ -134,6 +140,7 @@ public class UsersController extends AuthenticatedController {
     List<Users> users = Users.getAll(customerUUID);
     List<UserWithFeatures> userWithFeaturesList =
         users.stream()
+            .filter(user -> StringUtils.isBlank(email) || user.getEmail().equals(email))
             .filter(user -> resourceUUIDs.contains(user.getUuid()))
             .map(user -> userService.getUserWithFeatures(customer, user))
             .collect(Collectors.toList());
@@ -491,6 +498,11 @@ public class UsersController extends AuthenticatedController {
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getNewPassword());
     user.setPassword(formData.getNewPassword());
     user.save();
+    if (confGetter.getConfForScope(
+        Customer.get(customerUUID), CustomerConfKeys.notifyUserOnPasswordReset)) {
+      sendPasswordResetNotification(customerUUID, user);
+    }
+
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -626,5 +638,27 @@ public class UsersController extends AuthenticatedController {
             Json.toJson(formData));
     user.save();
     return ok(Json.toJson(user));
+  }
+
+  private void sendPasswordResetNotification(UUID customerUUID, Users user) {
+    SendUserNotification.Params taskParams = new SendUserNotification.Params();
+    taskParams.customerUUID = customerUUID;
+    taskParams.userUUID = user.getUuid();
+    taskParams.emailSubject = "YugabyteDB Anywhere Password Reset Notification";
+    taskParams.emailBody =
+        "This is to confirm that your account password for "
+            + "YugabyteDB Anywhere (YBA) was successfully changed.\n\n"
+            + "If you made this change, no further action is required.\n\n"
+            + "If you did not request this change or believe your account may be compromised,"
+            + " please reset your password immediately or contact support.\n\n";
+    UUID taskUUID = commissioner.submit(TaskType.SendUserNotification, taskParams);
+    log.info("Submitted task to notify user {}, task uuid = {}.", user.getEmail(), taskUUID);
+    CustomerTask.createWithBackgroundUser(
+        Customer.getOrBadRequest(customerUUID),
+        user.getUuid(),
+        taskUUID,
+        CustomerTask.TargetType.User,
+        CustomerTask.TaskType.SendUserNotification,
+        user.getEmail());
   }
 }

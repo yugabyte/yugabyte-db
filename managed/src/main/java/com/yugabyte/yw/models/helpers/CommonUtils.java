@@ -92,7 +92,8 @@ public class CommonUtils {
           "HC_VAULT_TOKEN",
           "VAULTTOKEN",
           "SAS_TOKEN",
-          "REFRESH_TOKEN");
+          "REFRESH_TOKEN",
+          "PASSWORD");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
       Arrays.asList(
@@ -179,6 +180,8 @@ public class CommonUtils {
           entry('8', '\''),
           entry('9', '\''),
           entry(' ', '\''));
+
+  public static final String FIPS_ENABLED = "yb.fips.enabled";
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.

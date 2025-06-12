@@ -687,6 +687,10 @@ const char *yb_metric_event_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_write"),
 	[YB_STORAGE_EVENT_INTENTSDB_BYTES_PER_MULTIGET] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_bytes_per_multiget"),
+	[YB_STORAGE_EVENT_INTENTSDB_WRITE_JOIN_GROUP_MICROS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_write_thread_join_group_micros"),
+	[YB_STORAGE_EVENT_INTENTSDB_REMOVE_JOIN_GROUP_MICROS] =
+	BUILD_METRIC_LABEL("intentsdb_rocksdb_remove_thread_join_group_micros"),
 	[YB_STORAGE_EVENT_SNAPSHOT_READ_INFLIGHT_WAIT_DURATION] =
 	BUILD_METRIC_LABEL("snapshot_read_inflight_wait_duration"),
 	[YB_STORAGE_EVENT_QL_READ_LATENCY] =
@@ -1440,7 +1444,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 
 	if (es->ybShowHints)
 	{
-		char *generatedHints = ybGenerateHintString(plannedstmt);
+		char	   *generatedHints = ybGenerateHintString(plannedstmt);
+
 		if (generatedHints != NULL)
 			ExplainPropertyText("Generated hints", generatedHints, es);
 		else
@@ -2069,6 +2074,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->ybHintAlias != NULL)
 			{
 				StringInfoData buf;
+
 				initStringInfo(&buf);
 				appendStringInfo(&buf, "%s %s", pname, plan->ybHintAlias);
 				pname = sname = buf.data;
@@ -2429,7 +2435,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			{
 				BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
 				const char *indexname =
-				explain_get_index_name(bitmapindexscan->indexid);
+					explain_get_index_name(bitmapindexscan->indexid);
 
 				if (es->format == EXPLAIN_FORMAT_TEXT)
 					appendStringInfo(es->str, " on %s",
@@ -2819,7 +2825,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_YbBitmapTableScan:
 			{
 				YbBitmapTableScanState *bitmapscanstate =
-				(YbBitmapTableScanState *) planstate;
+					(YbBitmapTableScanState *) planstate;
 				YbBitmapTableScan *bitmapplan = (YbBitmapTableScan *) plan;
 				List	   *storage_filter = (bitmapscanstate->work_mem_exceeded ?
 											  bitmapplan->fallback_pushdown.quals :
@@ -4112,7 +4118,7 @@ show_incremental_sort_info(IncrementalSortState *incrsortstate,
 		for (n = 0; n < incrsortstate->shared_info->num_workers; n++)
 		{
 			IncrementalSortInfo *incsort_info =
-			&incrsortstate->shared_info->sinfo[n];
+				&incrsortstate->shared_info->sinfo[n];
 
 			/*
 			 * If a worker hasn't processed any sort groups at all, then
@@ -4601,6 +4607,7 @@ show_instrumentation_count(const char *qlabel, int which,
 	if (IsYugaByteEnabled() && which == 2)
 	{
 		YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
+
 		nfiltered += yb_instr->rows_removed_by_recheck;
 	}
 
@@ -4854,8 +4861,21 @@ show_yb_planning_stats(YbPlanInfo *planinfo, ExplainState *es)
 {
 	ExplainPropertyFloat("Estimated Seeks", NULL,
 						 planinfo->estimated_num_seeks, 0, es);
-	ExplainPropertyFloat("Estimated Nexts", NULL,
-						 planinfo->estimated_num_nexts, 0, es);
+	ExplainPropertyFloat("Estimated Nexts And Prevs", NULL,
+						 planinfo->estimated_num_nexts_prevs, 0, es);
+
+	/*
+	 * YB_TODO(#27210): Do not print values of estimated_num_table_result_pages
+	 * or estimated_num_index_result_pages if == 0.
+	 */
+	if (planinfo->estimated_num_table_result_pages >= 0)
+		ExplainPropertyFloat("Estimated Table Roundtrips", NULL,
+							 planinfo->estimated_num_table_result_pages, 0, es);
+
+	if (planinfo->estimated_num_index_result_pages >= 0)
+		ExplainPropertyFloat("Estimated Index Roundtrips", NULL,
+							 planinfo->estimated_num_index_result_pages, 0, es);
+
 	ExplainPropertyInteger("Estimated Docdb Result Width", NULL,
 						   planinfo->estimated_docdb_result_width, es);
 }
@@ -5442,7 +5462,7 @@ ExplainCustomChildren(CustomScanState *css, List *ancestors, ExplainState *es)
 {
 	ListCell   *cell;
 	const char *label =
-	(list_length(css->custom_ps) != 1 ? "children" : "child");
+		(list_length(css->custom_ps) != 1 ? "children" : "child");
 
 	foreach(cell, css->custom_ps)
 		ExplainNode((PlanState *) lfirst(cell), ancestors, label, NULL, es);

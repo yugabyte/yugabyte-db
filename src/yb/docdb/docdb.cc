@@ -75,8 +75,8 @@ using std::vector;
 
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
-             "Max number of intent records allowed in single cdc batch. ");
+DEFINE_RUNTIME_uint64(cdc_max_stream_intent_records, 1680,
+                      "Max number of intent records allowed in single cdc batch.");
 
 DEFINE_RUNTIME_bool(cdc_enable_caching_db_block, true,
                     "When set to true, cache the DB block read for CDC in block cache.");
@@ -191,7 +191,7 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
@@ -206,8 +206,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
       transactional_table, partial_range_key_intents));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
-    LOG(ERROR) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
-               << ", read pairs: " << AsString(read_pairs);
+    LOG(DFATAL) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
+                << ", read pairs: " << AsString(read_pairs);
     return STATUS(Corruption, "Empty lock batch");
   }
   result.need_read_snapshot = determine_keys_to_lock_result.need_read_snapshot;
@@ -220,15 +220,15 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
   auto lock_status = result.lock_batch.status();
   if (!lock_status.ok()) {
-    if (tablet_metrics != nullptr) {
-      (*tablet_metrics)->Increment(tablet::TabletCounters::kFailedBatchLock);
+    if (tablet_metrics) {
+      tablet_metrics->Increment(tablet::TabletCounters::kFailedBatchLock);
     }
     return lock_status.CloneAndAppend(
         Format("Timeout: $0", deadline - ToCoarse(start_time)));
   }
-  if (tablet_metrics != nullptr) {
+  if (tablet_metrics) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
-    (*tablet_metrics)->Increment(
+    tablet_metrics->Increment(
         tablet::TabletEventStats::kWriteLockLatency,
         make_unsigned(elapsed_time.ToMicroseconds()));
   }
@@ -350,7 +350,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
     write_id = stream_state->write_id;
     reverse_index_iter.Next();
   }
-  const uint64_t& max_records = FLAGS_cdc_max_stream_intent_records;
+  const auto max_records = FLAGS_cdc_max_stream_intent_records;
   uint64_t cur_records = 0;
 
   while (reverse_index_iter.Valid()) {

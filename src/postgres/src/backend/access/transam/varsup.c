@@ -703,7 +703,7 @@ GetNewObjectId(void)
 	}
 
 	const bool	ysql_enable_pg_per_database_oid_allocator =
-	*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator;
+		*YBCGetGFlags()->ysql_enable_pg_per_database_oid_allocator;
 
 	if (ysql_enable_pg_per_database_oid_allocator &&
 		IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())

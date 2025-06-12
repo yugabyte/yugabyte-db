@@ -85,6 +85,7 @@ DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(load_balancer_initial_delay_secs);
+DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_int32(TEST_sleep_before_reporting_lb_ui_ms);
 
 namespace yb {
@@ -1745,13 +1746,21 @@ TEST_F(MasterPathHandlersItest, TestClusterBalancerWarnings) {
   auto hp = HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr());
   ASSERT_OK(yb_admin_client_->ChangeBlacklist({hp}, true /* add */, false /* blacklist_leader */));
 
-  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms); // Let the load balancer run once
-  auto rows = ASSERT_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
-  ASSERT_EQ(rows.size(), 1);
-  ASSERT_EQ(rows[0].size(), 2);
-  ASSERT_STR_CONTAINS(rows[0][0], "Could not find a valid tserver to host tablet");
-  // 3 user tablets + system tablets
-  auto tablet_count = std::stoi(rows[0][1]);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_reporting_lb_ui_ms) = 500;
+  std::vector<std::string> row;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
+    if (rows.empty()) {
+      return false;
+    }
+    SCHECK_EQ(rows.size(), 1, IllegalState, "Expected one row");
+    row = rows[0];
+    return true;
+  }, 10s /* timeout */, "Waiting for warnings to show up in the Warnings Summary table"));
+
+  ASSERT_EQ(row.size(), 2);
+  ASSERT_STR_CONTAINS(row[0], "Could not find a valid tserver to host tablet");
+  auto tablet_count = std::stoi(row[1]);
   ASSERT_GT(tablet_count, 3);
 }
 
@@ -1762,16 +1771,20 @@ TEST_F(MasterPathHandlersItest, ClusterBalancerTasksSummary) {
   ASSERT_OK(yb_admin_client_->ChangeBlacklist({hp}, true /* add */, true /* blacklist_leader */));
 
   // Test that leader stepdown task is shown in the task summary table, with a description
-  // explaining that the tserver is leader blacklisted.
+  // explaining that the tserver is leader blacklisted. The task summary table might include
+  // other tasks as well, so we just check that the leader stepdown task is present.
   // Wait 500ms before loading the UI so the task has a chance to complete.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_reporting_lb_ui_ms) = 500;
   std::vector<std::string> row;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Tasks Summary"));
-    if (rows.empty()) return false;
-    SCHECK_EQ(rows.size(), 1, IllegalState, "Expected one row");
-    row = rows[0];
-    return true;
+    for (const auto& r : rows) {
+      if (r.size() == 4 && r[0].find("Stepdown Leader RPC for tablet") != std::string::npos) {
+        row = r;
+        return true;
+      }
+    }
+    return false;
   }, 5s, "Leader stepdown task not shown in the table"));
 
   LOG(INFO) << "Got row: " << VectorToString(row);
@@ -1780,12 +1793,56 @@ TEST_F(MasterPathHandlersItest, ClusterBalancerTasksSummary) {
   auto count  = row[2];
   auto status = row[3];
 
-  ASSERT_STR_CONTAINS(desc, "Stepdown Leader RPC for tablet");
   ASSERT_STR_CONTAINS(desc, "Leader is on leader blacklisted tserver");
   ASSERT_EQ(state, "kComplete");
   // 1 user tablet + system tablets
   ASSERT_GT(std::stoi(count), 1);
   ASSERT_EQ(status, "OK");
+}
+
+TEST_F(MasterPathHandlersItest, ClusterBalancerOngoingRbs) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
+  CreateTestTable(3 /* num_tablets */);
+  auto& cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = cm.GetTableInfoFromNamespaceNameAndTableName(
+      table_name.namespace_type(), table_name.namespace_name(), table_name.table_name());
+  std::unordered_set<TabletId> tablet_ids;
+  for (auto& tablet : ASSERT_RESULT(table_info->GetTablets())) {
+    tablet_ids.insert(tablet->tablet_id());
+  }
+  std::unordered_set<TabletServerId> orig_tserver_ids;
+  for (auto& ts : cluster_->mini_tablet_servers()) {
+    orig_tserver_ids.insert(ts->server()->permanent_uuid());
+  }
+
+  ASSERT_OK(cluster_->AddTabletServer());
+  std::string table_desc, source_uuid, dest_uuid, rbs_progress;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Ongoing Remote Bootstraps"));
+    for (auto& row : rows) {
+      LOG(INFO) << "Got row: " << VectorToString(row);
+      auto tablet_id = row[0];
+      if (tablet_ids.contains(tablet_id)) {
+        table_desc = row[1];
+        source_uuid = row[2];
+        dest_uuid = row[3];
+        rbs_progress = row[4];
+        return true;
+      }
+    }
+    return false;
+  }, 15s, "Ongoing remote bootstraps should show up in table"));
+  ASSERT_EQ(table_desc, Format("$0.$1", table_name.namespace_name(), table_name.table_name()));
+  ASSERT_TRUE(orig_tserver_ids.contains(source_uuid));
+  ASSERT_EQ(dest_uuid, cluster_->mini_tablet_server(3)->server()->permanent_uuid());
+  ASSERT_FALSE(rbs_progress.empty());
+
+  // Once all RBSs finish, there should be no rows in the table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Ongoing Remote Bootstraps"));
+    return rows.empty();
+  }, 30s, "Ongoing remote bootstraps should be empty"));
 }
 
 TEST_F(MasterPathHandlersItest, StatefulServices) {

@@ -47,11 +47,14 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
@@ -101,7 +104,7 @@ DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeM
                  "Time to wait for tservers to register to master.");
 
 DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_int32(memstore_size_mb);
@@ -110,6 +113,7 @@ DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(fs_data_dirs);
 DECLARE_string(use_private_ip);
+DECLARE_bool(TEST_enable_ysql_operation_lease_expiry_check);
 
 namespace yb {
 
@@ -187,6 +191,12 @@ bool IsForTable(const tablet::TabletPeer& peer, const TableId& table_id) {
   return false;
 }
 
+bool IsTabletInCollection(const master::TabletInfoPtr& tablet, const master::TabletInfos& tablets) {
+  return tablets.end() != std::find_if(
+      tablets.begin(), tablets.end(),
+      [&tablet](const master::TabletInfoPtr& p) { return p->tablet_id() == tablet->tablet_id(); });
+}
+
 } // namespace
 
 MiniCluster::MiniCluster(const MiniClusterOptions& options)
@@ -216,6 +226,11 @@ Status MiniCluster::StartAsync(
 
   // We are testing public/private IPs using mini cluster. So set mode to 'cloud'.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "cloud";
+
+  // todo(zdrudi): There are currently use after free issues with how the minicluster handles the
+  // pg process. The background ysql lease checker can call a method on a null pointer. This is only
+  // an issue in the test harness so we disable the tserver's ysql op lease check for miniclusters.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
 
   // This dictates the RF of newly created tables.
   SetAtomicFlag(options_.num_tablet_servers >= 3 ? 3 : 1, &FLAGS_replication_factor);
@@ -1218,16 +1233,19 @@ Status WaitUntilTabletHasLeader(
 }
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline) {
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline,
+    RequireLeaderIsReady require_leader_is_ready) {
   for (const auto& tablet_id : ListTabletIdsForTable(cluster, table_id)) {
-    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline));
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline, require_leader_is_ready));
   }
   return Status::OK();
 }
 
 Status WaitForTableLeaders(
-    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout) {
-  return WaitForTableLeaders(cluster, table_id, CoarseMonoClock::Now() + timeout);
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout,
+    RequireLeaderIsReady require_leader_is_ready) {
+  return WaitForTableLeaders(
+      cluster, table_id, CoarseMonoClock::Now() + timeout, require_leader_is_ready);
 }
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
@@ -1538,6 +1556,70 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t byte
   }
 }
 
+Status InvokeSplitTabletRpc(MiniCluster* cluster, const TabletId& tablet_id, MonoDelta timeout) {
+  auto& master = *VERIFY_RESULT(cluster->GetLeaderMiniMaster());
+  auto  proxy = master::MasterAdminProxy(&cluster->proxy_cache(), master.bound_rpc_addr());
+
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+
+  rpc::RpcController controller;
+  controller.set_timeout(timeout);
+  master::SplitTabletResponsePB resp;
+  RETURN_NOT_OK(proxy.SplitTablet(req, &resp, &controller));
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
+}
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const master::TableInfoPtr& table,
+    const master::TabletInfoPtr& tablet, MonoDelta rpc_timeout) {
+  // Keep current tablets.
+  const auto tablets = VERIFY_RESULT(table->GetTablets());
+
+  // Sanity check that tablet belongs to the table.
+  if (!IsTabletInCollection(tablet, tablets)) {
+    return STATUS(InvalidArgument, "The tablet does not belong to table's tablets list.");
+  }
+
+  // Send split RPC.
+  RETURN_NOT_OK(InvokeSplitTabletRpc(cluster, tablet->tablet_id(), rpc_timeout));
+
+  // Wait for new tablets are added.
+  RETURN_NOT_OK(WaitForTableActiveTabletLeadersPeers(cluster, table->id(), tablets.size() + 1));
+
+  // Wait until split is replicated across all tablet servers.
+  RETURN_NOT_OK(WaitAllReplicasReady(
+      cluster, table->id(), MonoDelta::FromSeconds(20) * kTimeMultiplier));
+
+  // Select new tablets ids
+  const auto all_tablets = VERIFY_RESULT(table->GetTablets());
+  std::vector<TabletId> new_tablet_ids;
+  new_tablet_ids.reserve(all_tablets.size());
+  for (const auto& t : all_tablets) {
+    if (!IsTabletInCollection(t, tablets)) {
+      new_tablet_ids.push_back(t->tablet_id());
+    }
+  }
+
+  // Wait for new peers are fully compacted.
+  return WaitForPeersPostSplitCompacted(cluster, new_tablet_ids);
+}
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const TabletId& tablet_id, MonoDelta rpc_timeout) {
+  auto* master = VERIFY_RESULT(cluster->GetLeaderMiniMaster());
+  auto& catalog_manager = master->catalog_manager();
+  const auto tablet = VERIFY_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+
+  // Get current number of tablets for the table.
+  const auto table = catalog_manager.GetTableInfo(tablet->table()->id());
+
+  return InvokeSplitTabletRpcAndWaitForDataCompacted(cluster, table, tablet, rpc_timeout);
+}
+
 Status WaitAllReplicasSynchronizedWithLeader(
     MiniCluster* cluster, CoarseTimePoint deadline) {
   auto leaders = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
@@ -1650,7 +1732,7 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster) {
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter) {
   auto peers = ListTabletPeers(cluster, filter);
   for (const auto& peer : peers) {
-    peer->shared_tablet()->TEST_DocDBDumpToLog(tablet::IncludeIntents::kTrue);
+    peer->shared_tablet()->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
   }
 }
 

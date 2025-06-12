@@ -74,7 +74,7 @@ var deleteRoleBindingCmd = &cobra.Command{
 
 		rUsers := make([]ybaclient.UserWithFeatures, 0)
 		for _, user := range rUsersResponse {
-			if strings.Compare(user.GetEmail(), email) == 0 {
+			if strings.EqualFold(user.GetEmail(), email) {
 				rUsers = append(rUsers, user)
 			}
 		}

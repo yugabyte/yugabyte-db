@@ -22,8 +22,9 @@
 
 #include "yb/server/server_base.proxy.h"
 
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/master_leader_poller.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/condition_variable.h"
@@ -44,7 +45,7 @@ DEFINE_test_flag(bool, tserver_enable_ysql_lease_refresh, true,
 DEFINE_test_flag(double, tserver_ysql_lease_refresh_failure_prob, 0.0,
     "Probablity to pretend we got a failure in response to a lease refresh RPC.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
 namespace tserver {
@@ -117,23 +118,29 @@ Status YsqlLeasePoller::Poll() {
       MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms));
   if (!proxy_) {
     auto hostport = VERIFY_RESULT(finder_.UpdateMasterLeaderHostPort(timeout));
+    VLOG_WITH_PREFIX(1) << "Connected to leader master server at " << hostport;
     proxy_ = master::MasterDdlProxy(&finder_.get_proxy_cache(), hostport);
   }
 
   master::RefreshYsqlLeaseRequestPB req;
   *req.mutable_instance() = server_.instance_pb();
-  req.set_needs_bootstrap(!server_.HasBootstrappedLocalLockManager());
+  auto current_lease_info = VERIFY_RESULT(server_.GetYSQLLeaseInfo());
+  if (current_lease_info.is_live) {
+    req.set_current_lease_epoch(current_lease_info.lease_epoch);
+  }
+  req.set_local_request_send_time_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                         CoarseMonoClock::now().time_since_epoch())
+                                         .count());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   master::RefreshYsqlLeaseResponsePB resp;
-  MonoTime pre_request_time = MonoTime::Now();
   RETURN_NOT_OK(proxy_->RefreshYsqlLease(req, &resp, &rpc));
   if (RandomActWithProbability(
           GetAtomicFlag(&FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob))) {
     return STATUS_FORMAT(NetworkError, "Pretending to fail ysql lease refresh RPC");
   }
   RETURN_NOT_OK(ResponseStatus(resp));
-  return server_.ProcessLeaseUpdate(resp.info(), pre_request_time);
+  return server_.ProcessLeaseUpdate(resp.info());
 }
 
 MonoDelta YsqlLeasePoller::IntervalToNextPoll(int32_t consecutive_failures) {

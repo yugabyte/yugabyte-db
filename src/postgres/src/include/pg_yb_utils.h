@@ -78,6 +78,15 @@
 #define YB_RELCACHE_MSGS (1)
 
 /*
+ * Postgres code uses process-level storage (e.g. static variables) to store
+ * long-lived data in a backend process. During expression pushdown, we may be
+ * reading & writing to the same variable from multiple threads in the same
+ * process, so using process-level storage is not safe. We use thread-local
+ * storage to ensure thread safety for these variables.
+ */
+#define YB_THREAD_LOCAL __thread
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -701,7 +710,12 @@ extern bool yb_test_inval_message_portability;
 /*
  * If > 0, add a delay after apply invalidation messages.
  */
-extern int yb_test_delay_after_applying_inval_message_ms;
+extern int	yb_test_delay_after_applying_inval_message_ms;
+
+/*
+ * If > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.
+ */
+extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
@@ -741,8 +755,8 @@ extern bool yb_enable_advisory_locks;
  * Enable invalidation messages.
  */
 extern bool yb_enable_invalidation_messages;
-extern int yb_invalidation_message_expiration_secs;
-extern int yb_max_num_invalidation_messages;
+extern int	yb_invalidation_message_expiration_secs;
+extern int	yb_max_num_invalidation_messages;
 
 typedef struct YBUpdateOptimizationOptions
 {
@@ -755,6 +769,10 @@ typedef struct YBUpdateOptimizationOptions
 /* GUC variables to control the behavior of optimizing update queries. */
 extern YBUpdateOptimizationOptions yb_update_optimization_options;
 
+/* GUC variables to control the speculative executive of PL statements. */
+extern bool yb_speculatively_execute_pl_statements;
+extern bool yb_whitelist_extra_stmts_for_pl_speculative_execution;
+
 extern bool yb_enable_docdb_vector_type;
 
 /*
@@ -764,6 +782,8 @@ extern bool yb_enable_docdb_vector_type;
 extern bool yb_silence_advisory_locks_not_supported_error;
 
 extern bool yb_skip_data_insert_for_xcluster_target;
+
+extern bool yb_force_early_ddl_serialization;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -808,7 +828,7 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
-extern int YBGetDdlNestingLevel();
+extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetDdlOriginalNodeTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
 extern void YbSetIsGlobalDDL();
@@ -947,19 +967,19 @@ extern void YBGetCollationInfo(Oid collation_id,
 /*
  * Setup collation info in attr.
  */
-extern void		YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
+extern void YBSetupAttrCollationInfo(YbcPgAttrValueDescriptor *attr, const YbcPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.
  */
-extern bool		YBIsCollationValidNonC(Oid collation_id);
+extern bool YBIsCollationValidNonC(Oid collation_id);
 
 /*
  * Check whether the DB collation is UTF-8.
  */
-extern bool		YBIsDbLocaleDefault();
+extern bool YBIsDbLocaleDefault();
 
-extern bool		YBRequiresCacheToCheckLocale(Oid collation_id);
+extern bool YBRequiresCacheToCheckLocale(Oid collation_id);
 
 /*
  * For the column 'attr_num' and its collation id, return the collation id that
@@ -1296,8 +1316,7 @@ extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
  */
 extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
 
-extern void YbGetRedactedQueryString(const char *query, int query_len,
-									 const char **redacted_query, int *redacted_query_len);
+extern const char *YbGetRedactedQueryString(const char *query, int *redacted_query_len);
 
 /* Check if optimizations for UPDATE queries have been enabled. */
 extern bool YbIsUpdateOptimizationEnabled();
@@ -1370,5 +1389,7 @@ extern bool YbIsInvalidationMessageEnabled();
 extern bool YbRefreshMatviewInPlace();
 
 extern void YbForceSendInvalMessages();
+
+extern long YbGetPeakRssKb();
 
 #endif							/* PG_YB_UTILS_H */

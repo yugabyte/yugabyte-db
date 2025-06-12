@@ -37,6 +37,100 @@ DefaultLimitNOFILE=1048576
 
 You must reboot the system for these two settings to take effect.
 
+#### Transparent hugepages
+
+Note: Only perform this step for [legacy provisioning](./software-on-prem-legacy/). This step is performed automatically during [automatic provisioning](./software-on-prem/).
+
+Transparent hugepages (THP) should be enabled for optimal performance. Download and run the following script as root:
+
+- [install-yb-enable-transparent-huge-pages-service.sh](/files/install-yb-enable-transparent-huge-pages-service.sh)
+
+You must reboot the system for these settings to take effect.
+
+<details>
+  <summary>More information</summary>
+
+The script performs the following steps:
+
+1. Create a one-shot systemd service for configuring THP settings.
+
+    ```sh
+    unit_filename="yb-enable-transparent-huge-pages.service"
+    unit_filepath="/etc/systemd/system/"
+    unit_file_full_path=${unit_filepath}${unit_filename}
+
+    unit_file_definition=$(cat <<EOF
+    [Unit]
+    Description=YugabyteDB Enable Transparent Hugepages (THP)
+    DefaultDependencies=no
+    After=local-fs.target
+    Before=sysinit.target
+
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    ExecStart=/bin/sh -c '\
+        echo always > /sys/kernel/mm/transparent_hugepage/enabled && \
+        echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag && \
+        echo 0 > /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none'
+
+    [Install]
+    WantedBy=basic.target
+    EOF
+    )
+
+    # Always perform this, because if we update settings, we always apply.
+    echo "Configuring ${unit_file_full_path}"
+    echo "${unit_file_definition}" > ${unit_file_full_path}
+    ```
+
+    This creates a one-shot systemd unit file under `/etc/systemd/system/yb-enable-transparent-huge-pages.service`.
+
+1. Load all the services on the system and check the status of the newly created service.
+
+    ```sh
+    # Load the services
+    echo "Loading and enabling service"
+
+    systemctl daemon-reload
+    systemctl enable ${unit_filename}
+    systemctl start ${unit_filename}
+    systemctl --no-pager status ${unit_filename}
+
+    status=$(systemctl show yb-enable-transparent-huge-pages.service \
+        --property=ExecMainStatus,ActiveState)
+
+    exec_main_status=$(echo "$status" | grep ExecMainStatus | cut -d= -f2)
+    active_state=$(echo "$status" | grep ActiveState | cut -d= -f2)
+
+    if [[ "$exec_main_status" -ne 0 || "$active_state" != "active" ]]; then
+      echo "Service failed: ExecMainStatus=$exec_main_status, ActiveState=$active_state"
+      echo "Check status/logs for ${unit_file_full_path}"
+    fi
+    ```
+
+1. Ensure that all the THP settings are correctly set.
+
+    ```sh
+    cat /sys/kernel/mm/transparent_hugepage/enabled 
+    ```
+
+    Should return "always".
+
+    ```sh
+    cat /sys/kernel/mm/transparent_hugepage/defrag 
+    ```
+
+    Should return "defer+madvise".
+
+    ```sh
+    cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none 0
+    ```
+
+    Should return 0.
+
+</details>
+
 ### Additional software
 
 YugabyteDB Anywhere requires the following additional software to be pre-installed on nodes:
@@ -48,7 +142,7 @@ YugabyteDB Anywhere requires the following additional software to be pre-install
 
 #### Python
 
-Install Python 3.8 on the nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
+Install Python 3.6-3.11 on the nodes. (If you are using [Legacy on-premises provisioning](software-on-prem-legacy/), Python 3.5-3.9 is supported, and 3.6 is recommended.)
 
 Install the Python SELinux package corresponding to your version of Python. You can use pip to do this. Ensure the version of pip matches the version of Python.
 

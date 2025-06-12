@@ -246,7 +246,19 @@ CreateConstraintEntry(const char *constraintName,
 
 	tup = heap_form_tuple(RelationGetDescr(conDesc), values, nulls);
 
-	CatalogTupleInsert(conDesc, tup);
+	if (IsYsqlUpgrade && OidIsValid(relId))
+	{
+		/*
+		 * During YSQL upgrade, the constraint on shared relations should be
+		 * inserted in all databases.
+		 */
+		Relation	rel = RelationIdGetRelation(relId);
+
+		YBCatalogTupleInsert(conDesc, tup, rel->rd_rel->relisshared);
+		RelationClose(rel);
+	}
+	else
+		CatalogTupleInsert(conDesc, tup);
 
 	ObjectAddressSet(conobject, ConstraintRelationId, conOid);
 

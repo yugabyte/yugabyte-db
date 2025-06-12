@@ -1,0 +1,11 @@
+error: Invalid option `invalid_opt` inside `invalid_opt `
+ --> tests/compile-fail/invalid_pgcast_options.rs:3:11
+  |
+3 | #[pg_cast(invalid_opt)]
+  |           ^^^^^^^^^^^
+
+error: failed parsing pg_extern arguments
+ --> tests/compile-fail/invalid_pgcast_options.rs:3:11
+  |
+3 | #[pg_cast(invalid_opt)]
+  |           ^^^^^^^^^^^

@@ -211,33 +211,26 @@ class SharedMemoryManager {
 
 YB_STRONGLY_TYPED_BOOL(Create);
 
+class SharedExchangeHeader;
+
 class SharedExchange {
  public:
-  SharedExchange(SharedExchange&&);
-  ~SharedExchange();
+  SharedExchange(SharedExchangeHeader& header, size_t exchange_size);
 
   std::byte* Obtain(size_t required_size);
   Status SendRequest();
   Result<Slice> FetchResponse(CoarseTimePoint deadline);
-  bool ResponseReady() const;
-  bool ReadyToSend() const;
+  bool ResponseReady();
+  bool ReadyToSend();
   void Respond(size_t size);
   Result<size_t> Poll();
   void SignalStop();
 
-  const std::string& instance_id() const;
-  uint64_t session_id() const;
-
-  static Status Cleanup(const std::string& instance_id);
-
-  static Result<SharedExchange> Make(
-      const std::string& instance_id, uint64_t session_id, Create create);
-
  private:
-  class Impl;
-
-  explicit SharedExchange(std::unique_ptr<Impl> impl);
-  std::unique_ptr<Impl> impl_;
+  SharedExchangeHeader& header_;
+  size_t exchange_size_;
+  size_t last_size_;
+  bool failed_previous_request_ = false;
 };
 
 using SharedExchangeListener = std::function<void(size_t)>;
@@ -245,7 +238,8 @@ using SharedExchangeListener = std::function<void(size_t)>;
 class SharedExchangeRunnable :
     public Runnable, public std::enable_shared_from_this<SharedExchangeRunnable> {
  public:
-  SharedExchangeRunnable(SharedExchange exchange, const SharedExchangeListener& listener);
+  SharedExchangeRunnable(
+      SharedExchange& exchange, uint64_t session_id, const SharedExchangeListener& listener);
 
   ~SharedExchangeRunnable();
 
@@ -265,7 +259,8 @@ class SharedExchangeRunnable :
  private:
   void Run() override;
 
-  SharedExchange exchange_;
+  SharedExchange& exchange_;
+  uint64_t session_id_;
   SharedExchangeListener listener_;
   CountDownLatch stop_latch_{0};
 };
@@ -273,6 +268,31 @@ class SharedExchangeRunnable :
 struct SharedExchangeMessage {
   uint64_t session_id;
   size_t size;
+};
+
+class PgSessionSharedMemoryManager {
+ public:
+  PgSessionSharedMemoryManager();
+  PgSessionSharedMemoryManager(PgSessionSharedMemoryManager&&);
+  ~PgSessionSharedMemoryManager();
+
+  PgSessionSharedMemoryManager& operator=(PgSessionSharedMemoryManager&&);
+
+  const std::string& instance_id() const;
+  uint64_t session_id() const;
+
+  SharedExchange& exchange();
+
+  static Result<PgSessionSharedMemoryManager> Make(
+      const std::string& instance_id, uint64_t session_id, Create create);
+
+  static Status Cleanup(const std::string& instance_id);
+
+ private:
+  class Impl;
+
+  explicit PgSessionSharedMemoryManager(std::unique_ptr<Impl> impl);
+  std::unique_ptr<Impl> impl_;
 };
 
 constexpr size_t kTooBigResponseMask = 1ULL << 63;

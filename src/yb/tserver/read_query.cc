@@ -196,7 +196,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
-  std::shared_ptr<yb::tserver::TabletConsensusInfoPB> tablet_consensus_info_;
+  std::shared_ptr<TabletConsensusInfoPB> tablet_consensus_info_;
 };
 
 bool ReadQuery::transactional() const {

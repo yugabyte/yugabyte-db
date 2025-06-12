@@ -14,6 +14,7 @@
 
 #include "yb/consensus/consensus.pb.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 
@@ -314,7 +315,7 @@ class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
   RetrySpecificTSRpcTask(Master* master,
                          ThreadPool* callback_pool,
                          const std::string& permanent_uuid,
-                         AsyncTaskThrottlerBase* async_task_throttler)
+                         AsyncTaskThrottlerBase* async_task_throttler = nullptr)
     : RetryingTSRpcTask(master,
                         callback_pool,
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
@@ -362,7 +363,7 @@ class RetrySpecificTSRpcTaskWithTable : public RetryingTSRpcTaskWithTable {
     const std::string& permanent_uuid,
     scoped_refptr<TableInfo> table,
     LeaderEpoch epoch,
-    AsyncTaskThrottlerBase* async_task_throttler)
+    AsyncTaskThrottlerBase* async_task_throttler = nullptr)
     : RetryingTSRpcTaskWithTable(master,
         callback_pool, std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
         table, std::move(epoch), async_task_throttler),

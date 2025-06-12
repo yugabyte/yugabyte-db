@@ -40,7 +40,7 @@ public class CheckXUniverseAutoFlagsTest extends CommissionerBaseTest {
     targetUniverse = ModelFactory.createUniverse("target-universe");
     mockClient = mock(YBClient.class);
     try {
-      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       doCallRealMethod()
           .when(mockGFlagsValidation)
           .getFilteredAutoFlagsWithNonInitialValue(anyMap(), anyString(), any());

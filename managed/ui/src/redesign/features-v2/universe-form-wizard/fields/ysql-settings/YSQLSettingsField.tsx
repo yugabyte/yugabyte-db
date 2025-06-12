@@ -8,13 +8,7 @@
  */
 
 import { ReactElement } from 'react';
-import {
-  YBInputFieldProps,
-  yba,
-  mui,
-  YBToggleField,
-  YBPasswordField
-} from '@yugabyte-ui-library/core';
+import { mui, YBToggleField, YBPasswordField } from '@yugabyte-ui-library/core';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 
@@ -55,9 +49,8 @@ export const YSQLField = ({ disabled }: YSQLProps): ReactElement => {
         sx={{ display: 'flex', flexDirection: 'row', padding: '16px 24px', alignItems: 'center' }}
       >
         <Box sx={{ marginBottom: '-5px', mr: 1 }}>
-          <YBToggleField name={YSQL_FIELD} control={control} />
+          <YBToggleField name={YSQL_FIELD} control={control} label="Enable YSQL End Point" />
         </Box>
-        <Typography variant="body2">Enable YSQL End Point</Typography>
       </Box>
       {ysqlEnabled && (
         <Box
@@ -71,9 +64,12 @@ export const YSQLField = ({ disabled }: YSQLProps): ReactElement => {
           <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
             <NextLineIcon />
             <Box sx={{ marginBottom: '-5px', mr: 1, ml: 2 }}>
-              <YBToggleField name={YSQL_AUTH_FIELD} control={control} />
+              <YBToggleField
+                name={YSQL_AUTH_FIELD}
+                control={control}
+                label={'Enable YSQL Authentication'}
+              />
             </Box>
-            <Typography variant="body2">Enable YSQL Authentication</Typography>
           </Box>
           {ysqlAuthEnabled && (
             <Box sx={{ display: 'flex', flexDirection: 'column', mt: 4, pl: 5 }}>

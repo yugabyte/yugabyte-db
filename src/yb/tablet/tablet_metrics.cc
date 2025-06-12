@@ -79,6 +79,16 @@ METRIC_DEFINE_event_stats(
     table, total_wait_queue_time, "Wait Queue Time", yb::MetricUnit::kMicroseconds,
     "Number of microseconds spent in the wait queue for requests which enter the wait queue");
 
+METRIC_DEFINE_event_stats(
+    table, intentsdb_rocksdb_write_thread_join_group_micros,
+    "intents db write thread join duration", yb::MetricUnit::kMicroseconds,
+    "The time taken for intents db write thread to join the write group");
+
+METRIC_DEFINE_event_stats(
+    table, intentsdb_rocksdb_remove_thread_join_group_micros,
+    "Intents db remove thread join duration", yb::MetricUnit::kMicroseconds,
+    "The time taken for intents db remove thread to join the write group");
+
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
   yb::MetricUnit::kMaintenanceOperations,
@@ -268,6 +278,12 @@ const EventStatsEntry kEventStats[] = {
   {pggate::YB_STORAGE_EVENT_TOTAL_WAIT_QUEUE_TIME,
       TabletEventStats::kTotalWaitQueueTime,
       &METRIC_total_wait_queue_time},
+  {pggate::YB_STORAGE_EVENT_INTENTSDB_WRITE_JOIN_GROUP_MICROS,
+      TabletEventStats::kIntentDbWriteThreadJoinDuration,
+      &METRIC_intentsdb_rocksdb_write_thread_join_group_micros},
+  {pggate::YB_STORAGE_EVENT_INTENTSDB_REMOVE_JOIN_GROUP_MICROS,
+      TabletEventStats::kIntentDbRemoveThreadJoinDuration,
+      &METRIC_intentsdb_rocksdb_remove_thread_join_group_micros},
 };
 
 class TabletMetricsImpl final : public TabletMetrics {
@@ -478,5 +494,7 @@ ScopedTabletMetricsLatencyTracker::~ScopedTabletMetricsLatencyTracker() {
       event_stats_,
       MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds());
 }
+
+
 } // namespace tablet
 } // namespace yb

@@ -296,7 +296,7 @@ struct TabletCheckpointInfo {
 struct CDCStateMetadataInfo {
   TabletStreamInfo producer_tablet_info;
 
-  mutable uint64_t commit_timestamp;
+  mutable HybridTime commit_timestamp;
   mutable OpId last_streamed_op_id;
   mutable SchemaDetailsMap schema_details_map;
 
@@ -417,7 +417,7 @@ class CDCServiceImpl::Impl {
   explicit Impl(CDCServiceContext* context, rw_spinlock* mutex) : mutex_(*mutex) {}
 
   void UpdateCDCStateMetadata(
-      const TabletStreamInfo& producer_tablet, const uint64_t& timestamp,
+      const TabletStreamInfo& producer_tablet, HybridTime timestamp,
       const SchemaDetailsMap& schema_details, const OpId& op_id) {
     std::lock_guard l(mutex_);
     auto it = cdc_state_metadata_.find(producer_tablet);
@@ -442,7 +442,7 @@ class CDCServiceImpl::Impl {
       }
       return it->schema_details_map;
     }
-    CDCStateMetadataInfo info = CDCStateMetadataInfo{
+    auto info = CDCStateMetadataInfo{
         .producer_tablet_info = producer_tablet,
         .commit_timestamp = {},
         .last_streamed_op_id = OpId::Invalid(),
@@ -789,7 +789,7 @@ class CDCServiceImpl::Impl {
       if (it != table_to_schema_packing_storage_.end()) {
         result.emplace(table_id, it->second);
       } else {
-        result.emplace(table_id, dockv::SchemaPackingStorage(table_type));
+        result.emplace(table_id, dockv::SchemaPackingStorage(table_type, schema_packing_registry_));
       }
     }
 
@@ -800,7 +800,8 @@ class CDCServiceImpl::Impl {
     std::lock_guard l(mutex_);
 
     for (const auto& [table_id, schema_packing_storage] : schema_packing_storages) {
-      table_to_schema_packing_storage_.insert_or_assign(table_id, schema_packing_storage);
+      table_to_schema_packing_storage_.erase(table_id);
+      table_to_schema_packing_storage_.emplace(table_id, schema_packing_storage);
     }
   }
 
@@ -816,6 +817,9 @@ class CDCServiceImpl::Impl {
 
  private:
   rw_spinlock& mutex_;
+
+  const dockv::SchemaPackingRegistryPtr schema_packing_registry_ =
+      std::make_shared<dockv::SchemaPackingRegistry>("CDCService: ");
 
   TabletCheckpoints tablet_checkpoints_ GUARDED_BY(mutex_);
 
@@ -1786,7 +1790,7 @@ void CDCServiceImpl::GetChanges(
       return;
     }
   } else {
-    uint64_t commit_timestamp;
+    HybridTime commit_timestamp;
     OpId last_streamed_op_id;
     auto cached_schema_details = impl_->GetOrAddSchema(producer_tablet, req->need_schema_info());
 
@@ -2094,7 +2098,7 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
       if (ignore_failures) {
         LOG(WARNING) << msg.str();
       } else {
-        LOG(ERROR) << msg.str();
+        LOG(DFATAL) << msg.str();
 
         return result.ok() ? STATUS_FORMAT(
                                  InternalError,
@@ -5115,7 +5119,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     std::string error_msg = Format(
         "VirtualWAL initialisation failed for stream_id: $0 & session_id: $1", stream_id,
         session_id);
-    LOG(ERROR) << s.CloneAndPrepend(error_msg);
+    LOG(DFATAL) << s.CloneAndPrepend(error_msg);
     RPC_STATUS_RETURN_ERROR(
         s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     return;

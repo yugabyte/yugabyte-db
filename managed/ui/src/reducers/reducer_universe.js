@@ -66,7 +66,9 @@ import {
   UPDATE_BACKUP_STATE,
   UPDATE_BACKUP_STATE_RESPONSE,
   FETCH_SUPPORTED_RELEASES,
-  FETCH_SUPPORTED_RELEASES_RESPONSE
+  FETCH_SUPPORTED_RELEASES_RESPONSE,
+  GET_UNIVERSE_PA_REGISTRATION_STATUS,
+  GET_UNIVERSE_PA_REGISTRATION_STATUS_RESPONSE
 } from '../actions/universe';
 import _ from 'lodash';
 import {
@@ -94,6 +96,7 @@ const INITIAL_STATE = {
   universeList: getInitialState([]),
   error: null,
   formSubmitSuccess: false,
+  universePaRegistrationStatus: getInitialState({}),
   universeConfigTemplate: getInitialState({}),
   universeMasterInfo: getInitialState([]),
   universeResourceTemplate: getInitialState({}),
@@ -214,6 +217,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'universeMasterInfo', []);
     case GET_MASTER_INFO_RESPONSE:
       return setPromiseResponse(state, 'universeMasterInfo', action);
+    case GET_UNIVERSE_PA_REGISTRATION_STATUS:
+      return setLoadingState(state, 'universePaRegistrationStatus', {});
+    case GET_UNIVERSE_PA_REGISTRATION_STATUS_RESPONSE:
+      return setPromiseResponse(state, 'universePaRegistrationStatus', action);
     case GET_NODE_INSTANCE_LIST:
       return setLoadingState(state, 'nodeInstanceList', []);
     case GET_NODE_INSTANCE_LIST_RESPONSE:

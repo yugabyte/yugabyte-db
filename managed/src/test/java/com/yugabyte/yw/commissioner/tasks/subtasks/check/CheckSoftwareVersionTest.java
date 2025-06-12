@@ -56,7 +56,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     defaultUniverse.save();
     mockClient = mock(YBClient.class);
     try {
-      lenient().when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      lenient().when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     } catch (Exception ignored) {
       fail();
     }

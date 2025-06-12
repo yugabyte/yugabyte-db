@@ -400,6 +400,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Query character limit in slow queries.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> slowQueryRetentionDays =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.retention_period_days",
+          ScopeType.UNIVERSE,
+          "Slow queries retention period",
+          "Data retention period (in days) if slow query aggregation is enabled.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> slowQueryDisableAggregation =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.disable_aggregation",
+          ScopeType.UNIVERSE,
+          "Disable Slow queries aggregation",
+          "If enabled, slow queries data will be stored for universe, once per hour.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ansibleStrategy =
       new ConfKeyInfo<>(
           "yb.ansible.strategy",
@@ -1654,4 +1670,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Threshold of memory percent for non-yba processes",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableBackupsDuringDDL =
+      new ConfKeyInfo<>(
+          "yb.backup.enable_backups_during_ddl",
+          ScopeType.UNIVERSE,
+          "Enable backups during DDL",
+          "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

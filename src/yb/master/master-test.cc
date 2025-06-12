@@ -98,7 +98,7 @@ DECLARE_bool(master_register_ts_check_desired_host_port);
 DECLARE_string(use_private_ip);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -120,31 +120,13 @@ class MasterTest : public MasterTestBase {
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
       YQLDatabase db_type, const std::string& name);
+
+  Result<TSHeartbeatResponsePB> SendNewTSRegistrationHeartbeat(const std::string& uuid);
+
+ private:
+  // Used by SendNewTSRegistrationHeartbeat to avoid host port collisions.
+  uint32_t registered_ts_count_ = 0;
 };
-
-Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
-    TSToMasterCommonPB common, std::optional<TSRegistrationPB> registration,
-    std::optional<TabletReportPB> report) {
-  SysClusterConfigEntryPB config =
-      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
-  auto universe_uuid = config.universe_uuid();
-
-  TSHeartbeatRequestPB req;
-  TSHeartbeatResponsePB resp;
-  req.mutable_common()->Swap(&common);
-  if (registration) {
-    req.mutable_registration()->Swap(&registration.value());
-  }
-  if (report) {
-    req.mutable_tablet_report()->Swap(&report.value());
-  }
-  req.set_universe_uuid(universe_uuid);
-  RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return resp;
-}
 
 TEST_F(MasterTest, TestPingServer) {
   // Ping the server.
@@ -1800,72 +1782,8 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
-  // Alter table: try to change the table namespace name into an invalid one.
-  {
-    AlterTableRequestPB req;
-    AlterTableResponsePB resp;
-    req.mutable_table()->set_table_name(kTableName);
-    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    req.mutable_new_namespace()->set_name("nonexistingns");
-    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "YCQL keyspace name not found");
-  }
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-  CheckTables(
-      {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
-          EXPECTED_SYSTEM_TABLES
-      }, tables);
-
-  // Alter table: try to change the table namespace id into an invalid one.
-  {
-    AlterTableRequestPB req;
-    AlterTableResponsePB resp;
-    req.mutable_table()->set_table_name(kTableName);
-    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    req.mutable_new_namespace()->set_id("deadbeafdeadbeafdeadbeafdeadbeaf");
-    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace identifier not found");
-  }
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-  CheckTables(
-      {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
-          EXPECTED_SYSTEM_TABLES
-      }, tables);
-
-  // Alter table: change namespace name into the default one.
-  {
-    AlterTableRequestPB req;
-    AlterTableResponsePB resp;
-    req.mutable_table()->set_table_name(kTableName);
-    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    req.mutable_new_namespace()->set_name(default_namespace_name);
-    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-  CheckTables(
-      {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
-              USER_TABLE_RELATION),
-          EXPECTED_SYSTEM_TABLES
-      }, tables);
-
   // Delete the table.
-  ASSERT_OK(DeleteTable(default_namespace_name, kTableName));
+  ASSERT_OK(DeleteTable(other_ns_name, kTableName));
 
   // List tables, should show 1 table.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
@@ -2337,23 +2255,6 @@ TEST_F(MasterTest, TestFullTableName) {
           std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION)
       }, tables);
 
-  // Try to alter table: change namespace name into the default one.
-  // Try to change 'testns::testtb' into 'default_namespace::testtb', but the target table exists,
-  // so it must fail.
-  {
-    AlterTableRequestPB req;
-    AlterTableResponsePB resp;
-    req.mutable_table()->set_table_name(kTableName);
-    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    req.mutable_new_namespace()->set_name(default_namespace_name);
-    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_ALREADY_PRESENT);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::ALREADY_PRESENT);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        " already exists");
-  }
   // Check that nothing's changed (still have 3 tables).
   ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(2 + kNumSystemTables, tables.tables_size());
@@ -2859,58 +2760,98 @@ TEST_F(MasterTest, TestGetClosestLiveTserver) {
 }
 
 TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
 
   const char* kTsUUID = "my-ts-uuid";
   auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto result = ddl_client.RefreshYsqlLease(kTsUUID, 1);
+  auto result = ddl_client.RefreshYsqlLease(
+      kTsUUID, 1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {});
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
 }
 
 TEST_F(MasterTest, RefreshYsqlLease) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
-  const char *kTsUUID = "my-ts-uuid";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
+  const std::string kTsUUID1 = "ts-uuid1";
+  const std::string kTsUUID2 = "ts-uuid2";
 
-  SysClusterConfigEntryPB config =
-      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
-  auto universe_uuid = config.universe_uuid();
-
-  // Register the fake TS, without sending any tablet report.
-  TSRegistrationPB fake_reg;
-  *fake_reg.mutable_common()->add_private_rpc_addresses() = MakeHostPortPB("localhost", 1000);
-  *fake_reg.mutable_common()->add_http_addresses() = MakeHostPortPB("localhost", 2000);
-  *fake_reg.mutable_resources() = master::ResourcesPB();
-
-  TSToMasterCommonPB common;
-  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
-  common.mutable_ts_instance()->set_instance_seqno(1);
-  {
-    TSHeartbeatRequestPB req;
-    TSHeartbeatResponsePB resp;
-    req.mutable_common()->CopyFrom(common);
-    req.mutable_registration()->CopyFrom(fake_reg);
-    req.set_universe_uuid(universe_uuid);
-    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
-
-    ASSERT_FALSE(resp.needs_reregister());
-    ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_TRUE(resp.has_tablet_report_limit());
-  }
-
-  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
-  ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
-  auto reg = descs[0]->GetTSRegistrationPB();
-  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
-      << "Master got different registration";
-
-  auto ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
-  ASSERT_EQ(ts_desc, descs[0]);
+  auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID1));
+  ASSERT_FALSE(reg_resp1.needs_reregister());
 
   auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
-  auto info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, /* instance_seqno */1));
+  auto lease_refresh_send_time_ms = MonoTime::Now().GetDeltaSinceMin().ToMilliseconds();
+  auto info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 1);
+  ASSERT_GT(
+      info.lease_expiry_time_ms(),
+      lease_refresh_send_time_ms);
+
+  // todo(zdrudi): but we need to do this and check the bootstrap entries...
+  // Refresh lease again. Since we omitted current lease epoch, master leader should still say this
+  // is a new lease.
+  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, {}));
+  ASSERT_TRUE(info.new_lease());
+  ASSERT_EQ(info.lease_epoch(), 1);
+  ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
+
+  // Refresh lease again. We included current lease epoch but it's incorrect.
+  info = ASSERT_RESULT(
+      ddl_client.RefreshYsqlLease(kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, 0));
+  ASSERT_TRUE(info.new_lease());
+  ASSERT_EQ(info.lease_epoch(), 1);
+  ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
+
+  // Refresh lease again. Current lease epoch is correct so master leader should not set new lease
+  // bit.
+  info = ASSERT_RESULT(
+      ddl_client.RefreshYsqlLease(kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, 1));
+  ASSERT_FALSE(info.new_lease());
+  ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
+}
+
+Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
+    TSToMasterCommonPB common, std::optional<TSRegistrationPB> registration,
+    std::optional<TabletReportPB> report) {
+  SysClusterConfigEntryPB config =
+      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+  auto universe_uuid = config.universe_uuid();
+
+  TSHeartbeatRequestPB req;
+  TSHeartbeatResponsePB resp;
+  req.mutable_common()->Swap(&common);
+  if (registration) {
+    req.mutable_registration()->Swap(&registration.value());
+  }
+  if (report) {
+    req.mutable_tablet_report()->Swap(&report.value());
+  }
+  req.set_universe_uuid(universe_uuid);
+  RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp;
+}
+
+Result<TSHeartbeatResponsePB> MasterTest::SendNewTSRegistrationHeartbeat(const std::string& uuid) {
+  TSRegistrationPB reg;
+  *reg.mutable_common()->add_private_rpc_addresses() =
+      MakeHostPortPB("localhost", 1000 + registered_ts_count_);
+  *reg.mutable_common()->add_http_addresses() =
+      MakeHostPortPB("localhost", 2000 + registered_ts_count_);
+  *reg.mutable_resources() = master::ResourcesPB();
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(uuid);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+  auto result = SendHeartbeat(common, reg);
+  if (result.ok()) {
+    registered_ts_count_++;
+  }
+  return result;
 }
 
 } // namespace master

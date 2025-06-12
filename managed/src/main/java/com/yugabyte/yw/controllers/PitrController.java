@@ -265,9 +265,6 @@ public class PitrController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<PitrConfig> pitrConfigList = new LinkedList<>();
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
     ListSnapshotSchedulesResponse scheduleResp;
     List<SnapshotScheduleInfo> scheduleInfoList = null;
 
@@ -276,15 +273,12 @@ public class PitrController extends AuthenticatedController {
     if (universe.getUniverseDetails().universePaused) {
       pitrConfigList = createPitrConfigsWithUnknownState(universeUUID);
     } else {
-      try {
-        client = ybClientService.getClient(masterHostPorts, certificate);
+      try (YBClient client = ybClientService.getUniverseClient(universe)) {
         scheduleResp = client.listSnapshotSchedules(null);
         scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
       } catch (Exception ex) {
         log.error(ex.getMessage());
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
-      } finally {
-        ybClientService.closeClient(client, masterHostPorts);
       }
 
       if (scheduleResp.hasError()) {
@@ -358,20 +352,14 @@ public class PitrController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Time to restore specified is incorrect");
     }
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams.pitrConfigUUID);
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
     ListSnapshotSchedulesResponse scheduleResp;
     List<SnapshotScheduleInfo> scheduleInfoList = null;
-    YBClient client = null;
-    try {
-      client = ybClientService.getClient(masterHostPorts, certificate);
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       scheduleResp = client.listSnapshotSchedules(taskParams.pitrConfigUUID);
       scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
     } catch (Exception ex) {
       log.error(ex.getMessage());
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
-    } finally {
-      ybClientService.closeClient(client, masterHostPorts);
     }
 
     if (scheduleInfoList == null || scheduleInfoList.size() != 1) {
@@ -545,20 +533,14 @@ public class PitrController extends AuthenticatedController {
 
     // Validate that a snapshot schedule exists for the database that needs to be cloned.
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams.pitrConfigUUID);
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
     ListSnapshotSchedulesResponse scheduleResp;
     List<SnapshotScheduleInfo> scheduleInfoList = null;
-    YBClient client = null;
-    try {
-      client = ybClientService.getClient(masterHostPorts, certificate);
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       scheduleResp = client.listSnapshotSchedules(pitrConfig.getUuid());
       scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
     } catch (Exception ex) {
       log.error(ex.getMessage());
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
-    } finally {
-      ybClientService.closeClient(client, masterHostPorts);
     }
 
     if (scheduleInfoList == null || scheduleInfoList.size() != 1) {

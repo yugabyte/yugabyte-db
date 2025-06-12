@@ -1200,8 +1200,10 @@ class PgGetLockStatusTestFastElection : public PgGetLockStatusTestRF3 {
 };
 
 TEST_F_EX(
-    PgGetLockStatusTestRF3, TestPgLocksAfterTserverShutdown, PgGetLockStatusTestFastElection) {
+    PgGetLockStatusTestRF3, YB_DISABLE_TEST_IN_TSAN(TestPgLocksAfterTserverShutdown),
+    PgGetLockStatusTestFastElection) {
   const auto kTable = "foo";
+  const auto kTimeoutSecs = 25 * kTimeMultiplier;
   auto setup_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT) SPLIT INTO 1 TABLETS", kTable));
   ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10), 0", kTable));
@@ -1224,10 +1226,12 @@ TEST_F_EX(
   }
   ASSERT_NE(leader_ts, cluster_->mini_tablet_server(kPgTsIndex));
   leader_ts->Shutdown();
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kTimeoutSecs)));
   ASSERT_OK(WaitForTableLeaders(
-      cluster_.get(), ASSERT_RESULT(GetTableIDFromTableName("transactions")),
-      5s * kTimeMultiplier));
-  ASSERT_OK(WaitForTableLeaders(cluster_.get(), table_id, 5s * kTimeMultiplier));
+      cluster_.get(), ASSERT_RESULT(GetTableIDFromTableName("transactions")), kTimeoutSecs * 1s,
+      RequireLeaderIsReady::kTrue));
+  ASSERT_OK(WaitForTableLeaders(
+      cluster_.get(), table_id, kTimeoutSecs * 1s, RequireLeaderIsReady::kTrue));
   ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksDistTxnsQuery)), 1);
 }
 

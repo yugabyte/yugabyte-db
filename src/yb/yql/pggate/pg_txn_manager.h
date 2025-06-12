@@ -46,7 +46,7 @@ YB_DEFINE_ENUM(
   ((SERIALIZABLE, 3))
 );
 
-YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
+YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
@@ -96,9 +96,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
   Status SetupPerformOptions(
-      tserver::PgPerformOptionsPB* options,
-      EnsureReadTimeIsSet ensure_read_time = EnsureReadTimeIsSet::kFalse,
-      bool non_transactional_buffered_write = false);
+      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -202,7 +200,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // On a transaction conflict error we want to recreate the transaction with the same priority as
   // the last transaction. This avoids the case where the current transaction gets a higher priority
   // and cancels the other transaction.
-  uint64_t priority_ = 0;
+  std::optional<uint64_t> priority_;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
   bool snapshot_read_time_is_used_ = false;

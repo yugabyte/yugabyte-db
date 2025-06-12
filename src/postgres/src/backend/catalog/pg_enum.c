@@ -95,7 +95,8 @@ EnumValuesCreate(Oid enumTypeOid, List *vals)
 		elemno = 0;
 		foreach(lc, vals)
 		{
-			char *label = strVal(lfirst(lc));
+			char	   *label = strVal(lfirst(lc));
+
 			oids[elemno] = YbLookupOidAssignmentForEnumLabel(enumTypeOid, label);
 			elemno++;
 		}

@@ -147,6 +147,13 @@ public class OtelCollectorConfigFormat {
 
   @Data
   @EqualsAndHashCode(callSuper = true)
+  public static class LokiExporter extends Exporter {
+    private String endpoint;
+    private Map<String, String> headers;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
   public static class SplunkExporter extends Exporter {
     private String token;
     private String endpoint;

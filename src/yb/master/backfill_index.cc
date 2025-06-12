@@ -126,6 +126,7 @@ namespace master {
 
 using namespace std::literals;
 using server::MonitoredTaskState;
+using strings::b2a_hex;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
@@ -425,10 +426,18 @@ IndexPermissions NextPermission(IndexPermissions perm) {
 
 Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
-    uint32_t current_version, const LeaderEpoch& epoch, bool respect_backfill_deferrals) {
-  DVLOG(3) << __PRETTY_FUNCTION__ << " " << AsString(*indexed_table);
+    uint32_t current_version, const LeaderEpoch& epoch, bool respect_backfill_deferrals,
+    bool update_ysql_to_backfill) {
+  DVLOG(3) << __PRETTY_FUNCTION__ << " "
+           << yb::Format(
+                  "$0, version: $1, respect_deferrals: $2, update_ysql_to_backfill: $3",
+                  yb::ToString(*indexed_table), current_version, respect_backfill_deferrals,
+                  update_ysql_to_backfill);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
+  // For YSQL, master won't automatically move the index permission to DO_BACKFILL unless
+  // postgres calls CatalogManager::BackfillIndex() because postgres drives permission changes.
+  const bool update_to_backfill = (!is_ysql_table || update_ysql_to_backfill);
   const bool defer_backfill = !is_ysql_table && GetAtomicFlag(&FLAGS_defer_index_backfill);
   const bool is_backfilling = indexed_table->IsBackfilling();
 
@@ -461,16 +470,13 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         }
       } else if (idx_pb.index_permissions() == INDEX_PERM_INDEX_UNUSED) {
         indexes_to_delete.emplace_back(idx_pb);
-      // For YSQL, there should never be indexes to update from master side because postgres drives
-      // permission changes.
-      } else if (idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE && !is_ysql_table) {
+      } else if (
+          idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE && update_to_backfill) {
         indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
       }
     }
 
-    // TODO(#6218): Do we really not want to continue backfill
-    // across master failovers for YSQL?
-    if (!is_ysql_table && !is_backfilling && l.data().pb.backfill_jobs_size() > 0) {
+    if (!is_backfilling && l.data().pb.backfill_jobs_size() > 0) {
       // If a backfill job was started for a set of indexes and then the leader
       // fails over, we should be careful that we are restarting the backfill job
       // with the same set of indexes.
@@ -504,24 +510,20 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   }
 
   // For YSQL online schema migration of indexes, instead of master driving the schema changes,
-  // postgres will drive it.  Postgres will use three of the DocDB index permissions:
+  // postgres will drive it.  Postgres will use four of the DocDB index permissions:
   //
   // - INDEX_PERM_WRITE_AND_DELETE (set from the start)
+  // - INDEX_PERM_DO_BACKFILL (set by master, when postgres initiates BackfillIndex)
   // - INDEX_PERM_READ_WRITE_AND_DELETE (set by master)
   // - INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING (set by master)
   //
   // This changes how we treat indexes_to_foo:
   //
-  // - indexes_to_update should always be empty because we never want master to set index
-  //   permissions.
+  // - indexes_to_update: used for moving from WRITE_AND_DELETE to DO_BACKFILL.
   // - indexes_to_delete is impossible to be nonempty, and, in the future, when we do use
   //   INDEX_PERM_INDEX_UNUSED, we want to use some other delete trigger that makes sure no
   //   transactions are left using the index.  Prepare for that by doing nothing when nonempty.
-  // - indexes_to_backfill is impossible to be nonempty, but, in the future, we want to set
-  //   INDEX_PERM_DO_BACKFILL so that backfill resumes on master leader changes.  Prepare for that
-  //   by handling indexes_to_backfill like for YCQL.
-  //
-  // TODO(jason): when using INDEX_PERM_DO_BACKFILL, update this comment (issue #6218).
+  // - indexes_to_backfill: used to launch StartBackfillingData once the index ready to backfill.
 
   if (!indexes_to_update.empty()) {
     VLOG(1) << "Updating index permissions for " << yb::ToString(indexes_to_update) << " on "
@@ -841,9 +843,9 @@ Status BackfillTable::UpdateRowsProcessedForIndexTable(const uint64_t number_row
 Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
   if (!s.ok()) {
     // Move on to ABORTED permission.
-    LOG_WITH_PREFIX(ERROR)
+    LOG_WITH_PREFIX(DFATAL)
         << "Failed backfill. Could not compute safe time for "
-        << yb::ToString(indexed_table_) << " " << s;
+        << AsString(indexed_table_) << " " << s;
     if (!timestamp_chosen_.exchange(true)) {
       RETURN_NOT_OK(Abort());
     }
@@ -958,8 +960,8 @@ Status BackfillTable::DoBackfill() {
 
 Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& failed_indexes) {
   if (!s.ok()) {
-    LOG_WITH_PREFIX(ERROR) << "failed to backfill the index: " << yb::ToString(failed_indexes)
-                           << " due to " << s;
+    LOG_WITH_PREFIX(WARNING) << "failed to backfill the index: " << AsString(failed_indexes)
+                            << " due to " << s;
     RETURN_NOT_OK_PREPEND(
         MarkIndexesAsFailed(failed_indexes, s.message().ToBuffer()),
         "Couldn't mark indexes as failed");
@@ -1168,8 +1170,8 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
   DVLOG(3) << __PRETTY_FUNCTION__;
   auto res = master_->catalog_manager()->FindTableById(index_table_id);
   if (!res && res.status().IsNotFound()) {
-    LOG(ERROR) << "Index " << index_table_id << " was not found."
-               << " This is ok in case somebody issued a delete index. : " << res.ToString();
+    LOG(WARNING) << "Index " << index_table_id << " was not found."
+                 << " This is ok in case somebody issued a delete index. : " << res.ToString();
     return Status::OK();
   }
   scoped_refptr<TableInfo> index_table_info = VERIFY_RESULT_PREPEND(std::move(res),
@@ -1192,8 +1194,8 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
       auto index_table_rlock = index_table_info->LockForRead();
       auto state = index_table_rlock->pb.state();
       if (!index_table_rlock->is_running() || FLAGS_TEST_simulate_cannot_enable_compactions) {
-        LOG(ERROR) << "Index " << index_table_id << " is in state "
-                   << SysTablesEntryPB_State_Name(state) << " : cannot enable compactions on it";
+        LOG(WARNING) << "Index " << index_table_id << " is in state "
+                     << SysTablesEntryPB_State_Name(state) << " : cannot enable compactions on it";
         // Treating it as success so that we can proceed with updating other indexes.
         return Status::OK();
       }
@@ -1272,8 +1274,7 @@ BackfillTablet::BackfillTablet(
     }
   }
   if (!backfilled_until_.empty()) {
-    VLOG_WITH_PREFIX(1) << " resuming backfill from "
-                        << yb::ToString(backfilled_until_);
+    VLOG_WITH_PREFIX(1) << " resuming backfill from " << b2a_hex(backfilled_until_);
   } else if (done()) {
     VLOG_WITH_PREFIX(1) << " backfill already done.";
   } else {
@@ -1293,7 +1294,7 @@ Status BackfillTablet::LaunchNextChunkOrDone() {
     VLOG_WITH_PREFIX(1) << "is done";
     return backfill_table_->Done(Status::OK(), /* failed_indexes */ {});
   } else if (!backfill_table_->done()) {
-    VLOG_WITH_PREFIX(2) << "Launching next chunk from " << backfilled_until_;
+    VLOG_WITH_PREFIX(2) << "Launching next chunk from " << b2a_hex(backfilled_until_);
     auto chunk = std::make_shared<BackfillChunk>(shared_from_this(),
                                                  backfilled_until_,
                                                  backfill_table_->epoch());
@@ -1324,7 +1325,7 @@ Status BackfillTablet::UpdateBackfilledUntil(
     const string& backfilled_until, const uint64_t number_rows_processed) {
   backfilled_until_ = backfilled_until;
   VLOG_WITH_PREFIX(2) << "Done backfilling the tablet " << yb::ToString(tablet_) << " until "
-                      << yb::ToString(backfilled_until_);
+                      << b2a_hex(backfilled_until_);
   {
     auto l = tablet_->LockForWrite();
     for (const auto& idx_id : backfill_table_->indexes_to_build()) {
@@ -1421,7 +1422,9 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
   } else {
     safe_time = HybridTime(resp_.safe_time());
     if (safe_time.is_special()) {
-      LOG(ERROR) << "GetSafeTime for " << tablet_->ToString() << " got " << safe_time;
+      status = STATUS_FORMAT(
+          InternalError, "GetSafeTime for $0 got $1", tablet_->ToString(), safe_time);
+      LOG(DFATAL) << status;
     } else {
       VLOG(3) << "GetSafeTime for " << tablet_->ToString() << " got " << safe_time;
     }

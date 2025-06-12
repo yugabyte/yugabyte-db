@@ -24,6 +24,8 @@
 #ifndef YB_TCMALLOC_UTILS_H
 #define YB_TCMALLOC_UTILS_H
 
+extern int yb_log_heap_snapshot_on_exit_threshold;
+
 /*
  * Handle and process logging of heap snapshot interrupt.
  */
@@ -31,4 +33,9 @@ extern void HandleLogHeapSnapshotInterrupt(void);
 extern void HandleLogHeapSnapshotPeakInterrupt(void);
 extern void ProcessLogHeapSnapshotInterrupt(void);
 
-#endif /* YB_TCMALLOC_UTILS_H */
+/*
+ * Setup the hook to log the heap snapshot when a backend process exits.
+ */
+extern void YbSetupHeapSnapshotProcExit(void);
+
+#endif							/* YB_TCMALLOC_UTILS_H */

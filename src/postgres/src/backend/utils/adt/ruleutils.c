@@ -1566,6 +1566,24 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 														keycoltype,
 														keycoltype));
 		}
+
+		/*
+		 * YB: During a YSQL major upgrade, we want to recreate an index with
+		 * the correct original column names, even if the table
+		 * columns were renamed after the index's creation.
+		 * Therefore, when yb_major_version_upgrade_compatibility is set and
+		 * includeYbMetadata is true, we retrieve and emit the original
+		 * attribute names in the index definition for non-expression
+		 * columns (attnum != 0).
+		 */
+		if (yb_major_version_upgrade_compatibility != 0 && includeYbMetadata
+			&& attnum != 0)
+		{
+			char	   *attname;
+
+			attname = get_attname(indexrelid, keyno + 1, false);
+			appendStringInfo(&buf, " AS %s", quote_identifier(attname));
+		}
 	}
 
 	if (!attrsOnly)
@@ -12726,7 +12744,7 @@ get_range_partbound_string(List *bound_datums)
 	foreach(cell, bound_datums)
 	{
 		PartitionRangeDatum *datum =
-		lfirst_node(PartitionRangeDatum, cell);
+			lfirst_node(PartitionRangeDatum, cell);
 
 		appendStringInfoString(buf, sep);
 		if (datum->kind == PARTITION_RANGE_DATUM_MINVALUE)

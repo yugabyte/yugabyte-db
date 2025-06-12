@@ -33,7 +33,7 @@ var LoginCmd = &cobra.Command{
 		}
 		var email, password string
 		var data []byte
-		url := viperVariablesInAuth(cmd, force)
+		url := ViperVariablesInAuth(cmd, force)
 		if !force {
 			// Prompt for the email
 			fmt.Print("Enter email or username: ")
@@ -102,7 +102,11 @@ var LoginCmd = &cobra.Command{
 		}
 		logrus.Debugf("API Login response without errors\n")
 
-		authUtil(url, r.GetApiToken())
+		showToken, err := cmd.Flags().GetBool("show-api-token")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		InitializeAuthenticatedSession(url, r.GetApiToken(), showToken)
 	},
 }
 
@@ -117,6 +121,9 @@ func init() {
 			"[Optional] Password for the user. %s. Use single quotes ('') to provide "+
 				"values with special characters.",
 			formatter.Colorize("Required for non-interactive usage", formatter.GreenColor)))
+	LoginCmd.Flags().
+		Bool("show-api-token", false, "[Optional] Show the API token after login. (default false)")
+
 	LoginCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 }

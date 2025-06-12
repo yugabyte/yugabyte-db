@@ -110,7 +110,7 @@ struct PrepareDocWriteOperationResult {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const std::shared_ptr<tablet::TabletMetrics*>& tablet_metrics,
+    const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
@@ -136,22 +136,6 @@ Status AssembleDocWriteBatch(
     std::atomic<int64_t>* monotonic_counter,
     ReadRestartData* read_restart_data,
     const std::string& table_name);
-
-struct ExternalTxnApplyStateData {
-  HybridTime commit_ht;
-  SubtxnSet aborted_subtransactions;
-  IntraTxnWriteId write_id = 0;
-
-  // Only apply intents that are within the filter. Used by xCluster to only apply intents that
-  // match the key range of the matching producer tablet.
-  KeyBounds filter_range;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(commit_ht, aborted_subtransactions, write_id);
-  }
-};
-
-using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,

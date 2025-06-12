@@ -189,8 +189,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
     }
     // Before performing any advanced checks, ensure that the YBA view of masters is the same as the
     // of the db to be conservative.
-    try (YBClient ybClient =
-        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+    try (YBClient ybClient = ybService.getUniverseClient(universe)) {
       checkClusterConsistency(universe, ybClient);
       Map<String, Long> maybeFailedMasters = getMaybeFailedMastersForUniverse(universe, ybClient);
       if (MapUtils.isEmpty(maybeFailedMasters)) {

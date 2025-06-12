@@ -401,10 +401,12 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
 
     for (size_t i = 1; i <= opts_.num_tablet_servers; i++) {
       RETURN_NOT_OK_PREPEND(
-          AddTabletServer(
-              ExternalMiniClusterOptions::kDefaultStartCqlProxy, {}, -1,
-              /* wait_for_registration */ false),
+          LaunchTabletServer(
+              ExternalMiniClusterOptions::kDefaultStartCqlProxy, {}, -1),
           Format("Failed starting tablet server $0", i));
+    }
+    for (const auto& ts : tablet_servers_) {
+      RETURN_NOT_OK(ts->WaitProcessReady());
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
         opts_.num_tablet_servers, kTabletServerRegistrationTimeout));
@@ -589,7 +591,7 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
   }
 
   ExternalMasterPtr master = new ExternalMaster(
-      add_new_master_at_, messenger_, proxy_cache_.get(), exe,
+      add_new_master_at_, opts_.cluster_short_name, messenger_, proxy_cache_.get(), exe,
       GetDataPath(Format("master-$0", add_new_master_at_)),
       SubstituteInFlags(flags, add_new_master_at_), addr, http_port, peer_addrs);
 
@@ -1440,6 +1442,22 @@ string ExternalMiniCluster::GetBindIpForTabletServer(size_t index) const {
 Status ExternalMiniCluster::AddTabletServer(
     bool start_cql_proxy, const std::vector<std::string>& extra_flags, int num_drives,
     bool wait_for_registration) {
+  auto idx = VERIFY_RESULT(LaunchTabletServer(start_cql_proxy, extra_flags, num_drives));
+  auto ts = tablet_servers_[idx];
+  RETURN_NOT_OK(ts->WaitProcessReady());
+  if (!wait_for_registration) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(WaitForTabletServerToRegister(ts->uuid(), kTabletServerRegistrationTimeout));
+  if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
+    RETURN_NOT_OK(WaitForTabletServersToAcceptYSQLConnection(
+        {idx}, MonoTime::Now() + kTabletServerRegistrationTimeout));
+  }
+  return Status::OK();
+}
+
+Result<size_t> ExternalMiniCluster::LaunchTabletServer(
+    bool start_cql_proxy, const std::vector<std::string>& extra_flags, int num_drives) {
   CHECK(GetLeaderMaster() != nullptr)
       << "Must have started at least 1 master before adding tablet servers";
 
@@ -1507,13 +1525,12 @@ Status ExternalMiniCluster::AddTabletServer(
     num_drives = opts_.num_drives;
   }
 
-  scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
-      idx, messenger_, proxy_cache_.get(), exe, GetDataPath(Format("ts-$0", idx + 1)),
-      num_drives, GetBindIpForTabletServer(idx), ts_rpc_port, ts_http_port, redis_rpc_port,
-      redis_http_port, cql_rpc_port, cql_http_port, pgsql_rpc_port,
-      ysql_conn_mgr_rpc_port, pgsql_http_port,
-      master_hostports, SubstituteInFlags(flags, idx));
-  RETURN_NOT_OK(ts->Start(start_cql_proxy));
+  auto ts = make_scoped_refptr<ExternalTabletServer>(
+      idx, opts_.cluster_short_name, messenger_, proxy_cache_.get(), exe,
+      GetDataPath(Format("ts-$0", idx + 1)), num_drives, GetBindIpForTabletServer(idx), ts_rpc_port,
+      ts_http_port, redis_rpc_port, redis_http_port, cql_rpc_port, cql_http_port, pgsql_rpc_port,
+      ysql_conn_mgr_rpc_port, pgsql_http_port, master_hostports, SubstituteInFlags(flags, idx));
+  RETURN_NOT_OK(ts->Launch(start_cql_proxy));
   tablet_servers_.push_back(ts);
 
   // Add yb controller for the new ts if we already have controllers for existing TSs.
@@ -1522,15 +1539,7 @@ Status ExternalMiniCluster::AddTabletServer(
     RETURN_NOT_OK(AddYbControllerServer(ts));
   }
 
-  if (wait_for_registration) {
-    RETURN_NOT_OK(WaitForTabletServerToRegister(ts->uuid(), kTabletServerRegistrationTimeout));
-    if (opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections) {
-      RETURN_NOT_OK(WaitForTabletServersToAcceptYSQLConnection(
-          {idx}, MonoTime::Now() + kTabletServerRegistrationTimeout));
-    }
-  }
-
-  return Status::OK();
+  return idx;
 }
 
 Status ExternalMiniCluster::RemoveTabletServer(const std::string& ts_uuid, MonoTime deadline) {
@@ -1814,7 +1823,7 @@ Result<Response> CheckedResponse(const Response& response) {
 } // namespace
 
 Result<tserver::GetTabletStatusResponsePB> ExternalMiniCluster::GetTabletStatus(
-      const ExternalTabletServer& ts, const yb::TabletId& tablet_id) {
+      const ExternalTabletServer& ts, const TabletId& tablet_id) {
   auto rpc = DefaultRpcController();
 
   tserver::GetTabletStatusRequestPB req;
@@ -1840,7 +1849,7 @@ Result<tserver::CheckTserverTabletHealthResponsePB> ExternalMiniCluster::GetTabl
 }
 
 Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
-    const yb::TabletId& tablet_id) {
+    const TabletId& tablet_id) {
   size_t attempts = 50;
   while (attempts > 0) {
     --attempts;
@@ -1865,7 +1874,7 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
 }
 
 Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
-      const ExternalTabletServer& ts, const yb::TabletId& tablet_id, bool fail_on_response_error) {
+      const ExternalTabletServer& ts, const TabletId& tablet_id, bool fail_on_response_error) {
   rpc::RpcController rpc;
   rpc.set_timeout(kDefaultTimeout);
 
@@ -1881,25 +1890,18 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
 }
 
 Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
-    ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-    tserver::FlushTabletsRequestPB_Operation operation) {
-  tserver::FlushTabletsRequestPB req;
-  tserver::FlushTabletsResponsePB resp;
-  rpc::RpcController controller;
-  controller.set_timeout(10s * kTimeMultiplier);
+    size_t idx, const std::vector<TabletId>& tablet_ids) {
+  return tablet_servers_[idx]->FlushTablets(tablet_ids);
+}
 
-  req.set_dest_uuid(ts->uuid());
-  req.set_operation(operation);
-  for (const auto& tablet_id : tablet_ids) {
-    req.add_tablet_ids(tablet_id);
-  }
-  if (tablet_ids.empty()) {
-    req.set_all_tablets(true);
-  }
+Status ExternalMiniCluster::CompactTabletsOnSingleTServer(
+    size_t idx, const std::vector<TabletId>& tablet_ids) {
+  return tablet_servers_[idx]->CompactTablets(tablet_ids);
+}
 
-  auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
-    proxy_cache_.get(), ts->bound_rpc_addr());
-  return ts_admin_service_proxy->FlushTablets(req, &resp, &controller);
+Status ExternalMiniCluster::LogGCOnSingleTServer(
+    size_t idx, const std::vector<TabletId>& tablet_ids, bool rollover) {
+  return tablet_servers_[idx]->LogGC(tablet_ids, rollover);
 }
 
 Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(
@@ -2067,7 +2069,7 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
 }
 
 Result<size_t> ExternalMiniCluster::GetTabletLeaderIndex(
-    const yb::TabletId& tablet_id, bool require_lease) {
+    const TabletId& tablet_id, bool require_lease) {
   for (size_t i = 0; i < num_tablet_servers(); ++i) {
     auto tserver = tablet_server(i);
     if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
@@ -2471,22 +2473,19 @@ ScopedResumeExternalDaemon::~ScopedResumeExternalDaemon() {
 // ExternalMaster
 //------------------------------------------------------------
 ExternalMaster::ExternalMaster(
-    size_t master_index,
-    rpc::Messenger* messenger,
-    rpc::ProxyCache* proxy_cache,
-    const string& exe,
-    const string& data_dir,
-    const std::vector<string>& extra_flags,
-    const string& rpc_bind_address,
-    uint16_t http_port,
+    size_t master_index, const std::string& cluster_short_name, rpc::Messenger* messenger,
+    rpc::ProxyCache* proxy_cache, const string& exe, const string& data_dir,
+    const std::vector<string>& extra_flags, const string& rpc_bind_address, uint16_t http_port,
     const string& master_addrs)
-    : ExternalDaemon(Format("m-$0", master_index + 1), messenger,
-                     proxy_cache, exe, data_dir,
-                     {GetServerTypeDataPath(data_dir, "master")}, extra_flags),
+    : ExternalDaemon(
+          Format(
+              "$0m-$1", cluster_short_name.empty() ? "" : cluster_short_name + "-",
+              master_index + 1),
+          messenger, proxy_cache, exe, data_dir, {GetServerTypeDataPath(data_dir, "master")},
+          extra_flags),
       rpc_bind_address_(rpc_bind_address),
       master_addrs_(master_addrs),
-      http_port_(http_port) {
-}
+      http_port_(http_port) {}
 
 ExternalMaster::~ExternalMaster() {
 }
@@ -2529,7 +2528,7 @@ Status ExternalMaster::Start(bool shell_mode) {
     flags.Add("master_addresses", master_addrs_);
   }
   RETURN_NOT_OK(StartProcess(flags.value()));
-  return Status::OK();
+  return WaitProcessReady();
 }
 
 Status ExternalMaster::Restart() {
@@ -2550,15 +2549,19 @@ Status ExternalMaster::Restart() {
 //------------------------------------------------------------
 
 ExternalTabletServer::ExternalTabletServer(
-    size_t tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
-    const std::string& exe, const std::string& data_dir, uint16_t num_drives,
-    std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
-    uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,
-    uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port, uint16_t pgsql_http_port,
-    const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags)
-    : ExternalDaemon(Format("ts-$0", tablet_server_index + 1),
-                     messenger, proxy_cache, exe, data_dir,
-                     FsDataDirs(data_dir, "tserver", num_drives), extra_flags),
+    size_t tablet_server_index, const std::string& cluster_short_name, rpc::Messenger* messenger,
+    rpc::ProxyCache* proxy_cache, const std::string& exe, const std::string& data_dir,
+    uint16_t num_drives, std::string bind_host, uint16_t rpc_port, uint16_t http_port,
+    uint16_t redis_rpc_port, uint16_t redis_http_port, uint16_t cql_rpc_port,
+    uint16_t cql_http_port, uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port,
+    uint16_t pgsql_http_port, const std::vector<HostPort>& master_addrs,
+    const std::vector<std::string>& extra_flags)
+    : ExternalDaemon(
+          Format(
+              "$0ts-$1", cluster_short_name.empty() ? "" : cluster_short_name + "-",
+              tablet_server_index + 1),
+          messenger, proxy_cache, exe, data_dir, FsDataDirs(data_dir, "tserver", num_drives),
+          extra_flags),
       master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
       bind_host_(std::move(bind_host)),
       rpc_port_(rpc_port),
@@ -2577,7 +2580,14 @@ ExternalTabletServer::~ExternalTabletServer() {
 
 Status ExternalTabletServer::Start(
     bool start_cql_proxy, bool set_proxy_addrs,
-    std::vector<std::pair<string, string>> extra_flags) {
+    const std::vector<std::pair<std::string, std::string>>& extra_flags) {
+  RETURN_NOT_OK(Launch(start_cql_proxy, set_proxy_addrs, extra_flags));
+  return WaitProcessReady();
+}
+
+Status ExternalTabletServer::Launch(
+    bool start_cql_proxy, bool set_proxy_addrs,
+    const std::vector<std::pair<std::string, std::string>>& extra_flags) {
   auto dirs = FsRootDirs(root_dir_, num_drives_);
   for (const auto& dir : dirs) {
     RETURN_NOT_OK(Env::Default()->CreateDirs(dir));
@@ -2606,9 +2616,7 @@ Status ExternalTabletServer::Start(
     flags.Add(flag_value.first, flag_value.second);
   }
 
-  RETURN_NOT_OK(StartProcess(flags.value()));
-
-  return Status::OK();
+  return StartProcess(flags.value());
 }
 
 Status ExternalTabletServer::BuildServerStateFromInfoPath() {
@@ -2710,6 +2718,44 @@ Result<int> ExternalTabletServer::SignalPostmaster(int signal) {
 
   LOG(INFO) << Format("Sending postmaster process (PID: $0) signal: $1", postmaster_pid, signal);
   return kill(postmaster_pid, signal);
+}
+
+Status ExternalTabletServer::FlushTablets(const std::vector<TabletId>& tablet_ids) {
+  return ExecuteFlushTablets(tablet_ids, tserver::FlushTabletsRequestPB::FLUSH, [](auto&){});
+}
+
+Status ExternalTabletServer::CompactTablets(const std::vector<TabletId>& tablet_ids) {
+  return ExecuteFlushTablets(tablet_ids, tserver::FlushTabletsRequestPB::COMPACT, [](auto&){});
+}
+
+Status ExternalTabletServer::LogGC(const std::vector<TabletId>& tablet_ids, bool rollover) {
+  return ExecuteFlushTablets(
+      tablet_ids, tserver::FlushTabletsRequestPB::LOG_GC, [rollover](auto& req) {
+        req.set_rollover(rollover);
+      });
+}
+
+template <class F>
+Status ExternalTabletServer::ExecuteFlushTablets(
+    const std::vector<TabletId>& tablet_ids, tserver::FlushTabletsRequestPB::Operation operation,
+    const F& f) {
+  tserver::FlushTabletsRequestPB req;
+  tserver::FlushTabletsResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(10s * kTimeMultiplier);
+
+  req.set_dest_uuid(uuid());
+  req.set_operation(operation);
+  for (const auto& tablet_id : tablet_ids) {
+    req.add_tablet_ids(tablet_id);
+  }
+  if (tablet_ids.empty()) {
+    req.set_all_tablets(true);
+  }
+  f(req);
+
+  auto ts_admin_service_proxy = Proxy<tserver::TabletServerAdminServiceProxy>();
+  return ts_admin_service_proxy->FlushTablets(req, &resp, &controller);
 }
 
 Status RestartAllMasters(ExternalMiniCluster* cluster) {

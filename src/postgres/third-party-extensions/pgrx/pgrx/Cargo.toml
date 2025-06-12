@@ -1,0 +1,76 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+
+[package]
+name = "pgrx"
+version = "0.14.1"
+authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
+license = "MIT"
+description = "pgrx:  A Rust framework for creating Postgres extensions"
+homepage = "https://github.com/pgcentralfoundation/pgrx/"
+repository = "https://github.com/pgcentralfoundation/pgrx/"
+documentation = "https://docs.rs/pgrx"
+categories = ["database"]
+keywords = ["database", "postgres", "postgresql", "extension"]
+readme = "../README.md"
+edition = "2021"
+include = ["src/**/*"]
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = ["cshim"]
+cshim = ["pgrx-pg-sys/cshim"]
+pg13 = ["pgrx-pg-sys/pg13"]
+pg14 = ["pgrx-pg-sys/pg14"]
+pg15 = ["pgrx-pg-sys/pg15"]
+pg16 = ["pgrx-pg-sys/pg16"]
+pg17 = ["pgrx-pg-sys/pg17"]
+no-schema-generation = ["pgrx-macros/no-schema-generation", "pgrx-sql-entity-graph/no-schema-generation"]
+unsafe-postgres = []     # when trying to compile against something that looks like Postgres but claims to be different
+nightly = []    # For features and functionality which require nightly Rust - for example, std::mem::allocator.
+
+[package.metadata.docs.rs]
+features = ["pg14", "cshim"]
+no-default-features = true
+# Enable `#[cfg(docsrs)]` (https://docs.rs/about/builds#cross-compiling)
+rustc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+pgrx-macros.workspace = true
+pgrx-pg-sys.workspace = true
+pgrx-sql-entity-graph.workspace = true
+
+thiserror.workspace = true # error handling and logging
+
+# used to internally impl things
+once_cell = "1.21.3" # polyfill until std::lazy::OnceCell stabilizes
+uuid = { version = "1.16.0", features = ["v4"] } # PgLwLock and shmem
+enum-map = "2.7.3"
+
+# exposed in public API
+atomic-traits = "0.4.0" # PgAtomic and shmem init
+bitflags = "2.9.0" # BackgroundWorker
+bitvec = "1.0" # processing array nullbitmaps
+heapless = "0.8" # shmem and PgLwLock
+libc.workspace = true # FFI type compat
+seahash = "4.1.0" # derive(PostgresHash)
+serde.workspace = true # impls on pub types
+serde_cbor = "0.11.2" # derive(PostgresType)
+serde_json.workspace = true # everything JSON
+
+[lints]
+clippy.cast_ptr_alignment = "allow"
+clippy.len_without_is_empty = "allow"
+clippy.missing_safety_doc = "allow"
+clippy.too_many_arguments = "allow"
+clippy.type_complexity = "allow"
+clippy.unnecessary_cast = "allow"

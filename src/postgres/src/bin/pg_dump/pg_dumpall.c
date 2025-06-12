@@ -106,16 +106,15 @@ static char *filename = NULL;
 static SimpleStringList database_exclude_patterns = {NULL, NULL};
 static SimpleStringList database_exclude_names = {NULL, NULL};
 
-static char *masterHosts = NULL;
-
 #define exit_nicely(code) exit(code)
 
 static int	include_yb_metadata = 0;	/* In this mode DDL statements include
 										 * YB specific metadata such as tablet
 										 * partitions. */
-static int	yb_dump_role_checks = 0;	/* Add to the dump additional checks if the used ROLE
-										 * exists. The ROLE usage statements are skipped if
-										 * the ROLE does not exist. */
+static int	yb_dump_role_checks = 0;	/* Add to the dump additional checks
+										 * if the used ROLE exists. The ROLE
+										 * usage statements are skipped if the
+										 * ROLE does not exist. */
 static int	dump_single_database = 0;	/* Dump only one DB specified by
 										 * '--database' argument. */
 
@@ -145,7 +144,6 @@ main(int argc, char *argv[])
 		{"password", no_argument, NULL, 'W'},
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
-		{"masters", required_argument, NULL, 'm'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
@@ -245,7 +243,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:m:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -284,10 +282,6 @@ main(int argc, char *argv[])
 
 			case 'l':
 				pgdb = pg_strdup(optarg);
-				break;
-
-			case 'm':			/* DEPRECATED and NOT USED: YB master hosts */
-				masterHosts = pg_strdup(optarg);
 				break;
 
 			case 'O':
@@ -735,8 +729,6 @@ help(void)
 	printf(_("  --with-data                  dump the data\n"));
 	printf(_("  --with-schema                dump the schema\n"));
 	printf(_("  --with-statistics            dump the statistics\n"));
-	printf(_("  -m, --masters=HOST:PORT      DEPRECATED and NOT USED\n"
-			 "                               comma-separated list of YB-Master hosts and ports\n"));
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR     connect using connection string\n"));
@@ -965,7 +957,7 @@ dumpRoles(PGconn *conn)
 				(strcmp(rolename, "yugabyte") == 0 || strcmp(rolename, "postgres") == 0);
 		else
 			yb_skip_create_role = ((binary_upgrade || include_yb_metadata) &&
-				(strcmp(PQgetvalue(res, i, i_is_current_user), "t") == 0));
+								   (strcmp(PQgetvalue(res, i, i_is_current_user), "t") == 0));
 
 		if (!yb_skip_create_role)
 		{
@@ -1122,6 +1114,7 @@ dumpRoleMembership(PGconn *conn)
 		char	   *yb_grantor = NULL;
 
 		PQExpBuffer yb_sql = createPQExpBuffer();
+
 		appendPQExpBuffer(yb_sql, "GRANT %s", fmtId(roleid));
 		appendPQExpBuffer(yb_sql, " TO %s", fmtId(member));
 		if (*option == 't')
@@ -1141,11 +1134,13 @@ dumpRoleMembership(PGconn *conn)
 		if (yb_dump_role_checks)
 		{
 			PQExpBuffer yb_source_sql = yb_sql;
+
 			yb_sql = createPQExpBuffer();
 			YBWwrapInRoleChecks(conn, yb_source_sql, "grant privilege",
-								member,		/* role1 */
-								yb_grantor,	/* role2; note: yb_grantor can be NULL */
-								NULL,		/* role3 */
+								member, /* role1 */
+								yb_grantor, /* role2; note: yb_grantor can be
+											 * NULL */
+								NULL,	/* role3 */
 								yb_sql);
 			destroyPQExpBuffer(yb_source_sql);
 		}
@@ -1159,7 +1154,7 @@ dumpRoleMembership(PGconn *conn)
 
 	fprintf(OPF, "\n");
 	if (!yb_dump_role_checks)
-		fprintf(OPF, "\n"); /* Second EOL. */
+		fprintf(OPF, "\n");		/* Second EOL. */
 }
 
 
@@ -1275,7 +1270,7 @@ dumpTablespaces(PGconn *conn)
 					   "pg_catalog.pg_tablespace_location(oid), "
 					   "spcacl, acldefault('t', spcowner) AS acldefault, "
 					   "spcoptions,"	/* YB: processing is done later in
-										   ybProcessTablespaceSpcOptions */
+										 * ybProcessTablespaceSpcOptions */
 					   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 					   "FROM pg_catalog.pg_tablespace "
 					   "WHERE spcname !~ '^pg_' "
@@ -1645,12 +1640,6 @@ runPgDump(const char *dbname, const char *create_opts)
 
 	appendPQExpBuffer(cmd, "\"%s\" %s %s", pg_dump_bin,
 					  pgdumpopts->data, create_opts);
-
-	/*
-	 * DEPRECATED: Custom YB-Master host/port to use.
-	 */
-	if (masterHosts != NULL)
-		fprintf(stderr, "WARNING: ignoring the deprecated argument --masters (-m)\n");
 
 	/*
 	 * If we have a filename, use the undocumented plain-append pg_dump

@@ -135,6 +135,7 @@ public class SetupYNP extends AbstractTaskBase {
             .add(targetPackagePath.getParent().toString())
             .build();
     log.info("Creating release path in staging directory: {}", command);
+
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
     log.info("Uploading {} to {}", packagePath, targetPackagePath);
     nodeUniverseManager.uploadFileToNode(
@@ -148,7 +149,7 @@ public class SetupYNP extends AbstractTaskBase {
     // Create the node agent home directory.
     sb.append(" && mkdir -m 755 -p ").append(nodeAgentInstallPath);
     // Extract only the installer file.
-    sb.append(" && mkdir -p ").append(ynpStagingDir).append("/thirdparty");
+    sb.append(" && mkdir -m 755 -p ").append(ynpStagingDir).append("/thirdparty");
     sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
     sb.append(" --strip-components=2 -C ")
         .append(ynpStagingDir)

@@ -111,7 +111,7 @@ Status YsqlCatalogConfig::SetInitDbDone(const Status& initdb_status, const Leade
   if (initdb_status.ok()) {
     LOG(INFO) << "Global initdb completed successfully";
   } else {
-    LOG(ERROR) << "Global initdb failed: " << initdb_status;
+    LOG(FATAL) << "Global initdb failed: " << initdb_status;
   }
 
   auto [l, pb] = LockForWrite(epoch);

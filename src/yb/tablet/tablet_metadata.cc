@@ -132,7 +132,6 @@ std::string MakeTableInfoLogPrefix(
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kIntentsDirName = "intents";
 const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
@@ -144,7 +143,9 @@ TableInfo::TableInfo(const std::string& log_prefix_,
                      SkipTableTombstoneCheck skip_table_tombstone_check,
                      PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
+      doc_read_context(new docdb::DocReadContext(
+          log_prefix, table_type, docdb::Index::kFalse,
+          std::make_shared<dockv::SchemaPackingRegistry>(log_prefix_))),
       index_map(std::make_shared<IndexMap>()),
       skip_table_tombstone_check(skip_table_tombstone_check) {
   CompleteInit();
@@ -172,8 +173,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
-          log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
-          schema_version)),
+          log_prefix, table_type, docdb::Index(index_info.has_value()),
+          std::make_shared<dockv::SchemaPackingRegistry>(log_prefix), schema, schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -388,7 +389,12 @@ SchemaPtr TableInfo::SharedSchema() const {
 Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     const TableInfoPtr& self, SchemaVersion schema_version, HybridTime history_cutoff) {
   if (schema_version == docdb::kLatestSchemaVersion) {
+    auto min_active_version =
+        self->doc_read_context->schema_packing_storage.registry().MinActiveVersion();
     schema_version = self->schema_version;
+    if (min_active_version && schema_version > *min_active_version) {
+      schema_version = *min_active_version;
+    }
   }
   auto packing = self->doc_read_context->schema_packing_storage.GetPacking(schema_version);
   if (!packing.ok()) {
@@ -425,7 +431,6 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .packed_row_version = docdb::PackedRowVersion(
         self->table_type, self->doc_read_context->schema().is_colocated()),
-    .schema = rpc::SharedField(self->doc_read_context, &self->doc_read_context->schema())
   };
 }
 
@@ -880,10 +885,11 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 
   const auto& rocksdb_dir = this->rocksdb_dir();
   LOG_WITH_PREFIX(INFO) << "Destroying regular db at: " << rocksdb_dir;
-  rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir, rocksdb_options);
+  auto status = DestroyDB(rocksdb_dir, rocksdb_options);
 
   if (!status.ok()) {
-    LOG_WITH_PREFIX(ERROR) << "Failed to destroy regular DB at: " << rocksdb_dir << ": " << status;
+    LOG_WITH_PREFIX(WARNING)
+        << "Failed to destroy regular DB at: " << rocksdb_dir << ": " << status;
   } else {
     LOG_WITH_PREFIX(INFO) << "Successfully destroyed regular DB at: " << rocksdb_dir;
   }
@@ -899,8 +905,8 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     status = rocksdb::DestroyDB(intents_dir, rocksdb_options);
 
     if (!status.ok()) {
-      LOG_WITH_PREFIX(ERROR) << "Failed to destroy provisional records DB at: " << intents_dir
-                             << ": " << status;
+      LOG_WITH_PREFIX(DFATAL) << "Failed to destroy provisional records DB at: " << intents_dir
+                              << ": " << status;
     } else {
       LOG_WITH_PREFIX(INFO) << "Successfully destroyed provisional records DB at: " << intents_dir;
     }
@@ -934,7 +940,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
   std::lock_guard lock(data_mutex_);
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
-  const auto intents_dir = docdb::GetStorageDir(rocksdb_dir, kIntentsDirName);
+  const auto intents_dir = docdb::GetStorageDir(rocksdb_dir, docdb::kIntentsDirName);
   return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
       !fs_manager_->env()->FileExists(rocksdb_dir) &&
       !fs_manager_->env()->FileExists(intents_dir);
@@ -2445,7 +2451,7 @@ bool RaftGroupMetadata::OnPostSplitCompactionDone() {
 }
 
 std::string RaftGroupMetadata::intents_rocksdb_dir() const {
-  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kIntentsDirName);
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, docdb::kIntentsDirName);
 }
 
 std::string RaftGroupMetadata::snapshots_dir() const {

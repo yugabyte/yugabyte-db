@@ -1702,6 +1702,10 @@ struct CompactRangeOptions {
   // may be triggered to cover the whole set of files considered for a compaction. It is guaranteed
   // to pick at least one file for a compaction job even if its size is above the specified limit.
   uint64_t input_size_limit_per_job = 0;
+
+  // UNSAFE: Skip corrupt data blocks, this will result in data loss. Use with extra care only
+  // when/while there are no other options available.
+  SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe = SkipCorruptDataBlocksUnsafe::kFalse;
 };
 
 }  // namespace rocksdb

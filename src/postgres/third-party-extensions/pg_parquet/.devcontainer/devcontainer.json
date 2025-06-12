@@ -1,0 +1,20 @@
+{
+    "name": "pg_parquet Dev Environment",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspace",
+    "postAttachCommand": "sudo chown -R rust /workspace",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "vadimcn.vscode-lldb",
+                "GitHub.copilot",
+                "eamodio.gitlens",
+                "bradymholt.pgformatter",
+                "rust-lang.rust-analyzer",
+                "ms-vscode.cpptools",
+                "henriiik.docker-linter"
+            ]
+        }
+    }
+}

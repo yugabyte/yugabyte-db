@@ -37,7 +37,7 @@
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
     "Reject specified percentage of writes to the YSQL catalog tables.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 DEFINE_test_flag(bool, ysql_require_force_catalog_modifications, false,
     "Fail YSQL catalog writes requests if force_catalog_modifications is not set.");
@@ -179,8 +179,8 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
       for (const auto db_oid : db_oids) {
         if (!master_->catalog_manager()->GetYsqlDBCatalogVersion(db_oid, &catalog_version,
                                                                  &last_breaking_version).ok()) {
-          LOG_WITH_FUNC(ERROR) << "failed to get db catalog version for "
-                               << db_oid << ", ignoring";
+          LOG_WITH_FUNC(DFATAL) << "failed to get db catalog version for "
+                                << db_oid << ", ignoring";
         } else {
           LOG_WITH_FUNC(INFO) << "db catalog version for " << db_oid << ": "
                               << catalog_version << ", breaking version: "
@@ -190,7 +190,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
     } else {
       if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
                                                              &last_breaking_version).ok()) {
-        LOG_WITH_FUNC(ERROR) << "failed to get catalog version, ignoring";
+        LOG_WITH_FUNC(DFATAL) << "failed to get catalog version, ignoring";
       } else {
         LOG_WITH_FUNC(INFO) << "catalog version: " << catalog_version << ", breaking version: "
                             << last_breaking_version;

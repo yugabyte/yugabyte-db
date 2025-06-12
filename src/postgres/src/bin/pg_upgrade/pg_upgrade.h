@@ -447,8 +447,8 @@ void		prep_status_progress(const char *fmt,...) pg_attribute_printf(1, 2);
 unsigned int str2uint(const char *str);
 
 extern bool is_yugabyte_enabled();
-extern int 	yb_fprintf_and_log(FILE *stream, const char *fmt, ...);
-extern void yb_fatal(const char *fmt, ...);
+extern int	yb_fprintf_and_log(FILE *stream, const char *fmt,...);
+extern void yb_fatal(const char *fmt,...);
 
 /* version.c */
 

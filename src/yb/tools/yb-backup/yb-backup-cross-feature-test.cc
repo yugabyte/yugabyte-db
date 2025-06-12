@@ -2627,12 +2627,9 @@ TEST_P(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
        "create"}));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(0, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(1, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(2, {}));
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
@@ -2643,12 +2640,9 @@ TEST_P(
   ASSERT_NO_FATALS(
       InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
 
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(0), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(1), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
-  ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(cluster_->tablet_server(2), {},
-      tserver::FlushTabletsRequestPB::COMPACT));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(0, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(1, {}));
+  ASSERT_OK(cluster_->CompactTabletsOnSingleTServer(2, {}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -2830,6 +2824,51 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithout
   // Verify index table is not restored.
   ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(index_table_name)));
 
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingNextColumnId)) {
+  const std::string backup_db_name = "backup_db";
+  const std::string restore_db_name = "restored_db";
+  const std::string table_name = "my_table";
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("CREATE DATABASE $0", backup_db_name), "CREATE DATABASE"));
+  SetDbName(backup_db_name);
+  {
+    ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (x INT PRIMARY KEY)", table_name)));
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN y INT", table_name), "ALTER TABLE"));
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN z INT", table_name), "ALTER TABLE"));
+    ASSERT_NO_FATALS(
+        InsertRows(Format("INSERT INTO $0 (x, y, z) VALUES (1,2,3), (4,5,6)", table_name), 2));
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("ALTER TABLE $0 DROP COLUMN z", table_name), "ALTER TABLE"));
+  }
+  // Take a backup.
+  const auto backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql." + backup_db_name, "create"}));
+  // Restore.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql." + restore_db_name, "restore"}));
+  SetDbName(restore_db_name);  // Connecting to the second DB.
+  {
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("ALTER TABLE $0 ADD COLUMN q TEXT", table_name), "ALTER TABLE"));
+    ASSERT_NO_FATALS(
+        InsertRows(Format("INSERT INTO $0 (x, y, q) VALUES (7,8,'foobar')", table_name), 1));
+  }
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY x", table_name),
+      R"#(
+ x | y |   q
+---+---+--------
+ 1 | 2 |
+ 4 | 5 |
+ 7 | 8 | foobar
+(3 rows)
+)#"));
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

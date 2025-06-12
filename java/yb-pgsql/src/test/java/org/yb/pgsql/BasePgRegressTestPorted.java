@@ -26,7 +26,6 @@ public class BasePgRegressTestPorted extends BasePgRegressTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("TEST_generate_ybrowid_sequentially", "true");
-    flagMap.put("ysql_enable_inheritance", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
     appendToYsqlPgConf(flagMap, "yb_use_hash_splitting_by_default=false");
     return flagMap;

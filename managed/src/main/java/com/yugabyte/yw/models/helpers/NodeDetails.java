@@ -94,6 +94,9 @@ public class NodeDetails {
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.3.0.0")
   public boolean autoSyncMasterAddrs;
 
+  @ApiModelProperty(hidden = true, value = "YbaApi Internal. OSS migration pending for this node")
+  public boolean migrationPending;
+
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
@@ -112,7 +115,9 @@ public class NodeDetails {
     Provisioned(DELETE, ADD),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
     SoftwareInstalled(START, DELETE, ADD),
-    // Set after the YB software is upgraded via Rolling Restart.
+    // Set after the YB master software is upgraded via Rolling Restart.
+    UpgradeMasterSoftware(),
+    // Set after the YB tserver software is upgraded via Rolling Restart.
     UpgradeSoftware(),
     // set when software version is rollback.
     RollbackUpgrade(),
@@ -435,6 +440,7 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
+        || state == NodeState.UpgradeMasterSoftware
         || state == NodeState.FinalizeUpgrade
         || state == NodeState.RollbackUpgrade
         || state == NodeState.UpdateGFlags

@@ -17,7 +17,11 @@
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
+#include "yb/util/size_literals.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
+
+using namespace yb::size_literals;
 
 DEPRECATE_FLAG(int32, pgsql_rpc_keepalive_time_ms, "02_2024");
 
@@ -65,7 +69,13 @@ DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid
 DEFINE_test_flag(bool, index_read_multiple_partitions, false,
       "Test flag used to simulate tablet spliting by joining tables' partitions.");
 
-DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, 1024 * 1024,
+#if defined(__APPLE__)
+constexpr int32_t kDefaultYsqlOutputBufferSize = 256_KB;
+#else
+constexpr int32_t kDefaultYsqlOutputBufferSize = 1_MB;
+#endif
+
+DEFINE_NON_RUNTIME_int32(ysql_output_buffer_size, kDefaultYsqlOutputBufferSize,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
