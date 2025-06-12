@@ -480,6 +480,18 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
 
+Status InvokeSplitTabletRpc(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const master::TableInfoPtr& table, const master::TabletInfoPtr& tablet,
+    MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
+Status InvokeSplitTabletRpcAndWaitForDataCompacted(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta rpc_timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
 Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseTimePoint deadline);
 
 Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout);

@@ -51,7 +51,7 @@ func (yc *YbaCtlComponent) Install() error {
 
 	// Symlink yba-ctl into a bin directory that should be in the path
 	if common.HasSudoAccess() {
-		err := common.CreateSymlink(common.YbactlInstallDir(), "/usr/bin", common.GoBinaryName)
+		err := common.Symlink(fmt.Sprintf("%s/%s", common.YbactlInstallDir(), common.GoBinaryName), fmt.Sprintf("/usr/bin/%s", common.GoBinaryName))
 		if err != nil {
 			return fmt.Errorf("could not create symlink: %w", err)
 		}
@@ -64,7 +64,7 @@ func (yc *YbaCtlComponent) Install() error {
 		}
 
 		// Create the symlink
-		err = common.CreateSymlink(common.YbactlInstallDir(), usrBin, common.GoBinaryName)
+		err = common.Symlink(fmt.Sprintf("%s/%s", common.YbactlInstallDir(), common.GoBinaryName), fmt.Sprintf("%s/%s", usrBin, common.GoBinaryName))
 		if err != nil {
 			return fmt.Errorf("could not create symlink: %w", err)
 		}

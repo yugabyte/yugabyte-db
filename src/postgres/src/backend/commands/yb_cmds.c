@@ -1339,6 +1339,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			case AT_AddConstraintRecurse:
 			case AT_DropConstraintRecurse:
 			case AT_ValidateConstraintRecurse:
+			case AT_DropExpression:
 				break;
 			default:
 				/*
@@ -1539,6 +1540,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 		case AT_SetTableSpace:
 		case AT_ValidateConstraint:
 		case AT_ValidateConstraintRecurse:
+		case AT_DropExpression:
 			{
 				Assert(cmd->subtype != AT_DropConstraint);
 				if (cmd->subtype == AT_AlterColumnType)
@@ -1891,7 +1893,6 @@ YBCRename(Oid relationId, ObjectType renameType, const char *relname,
 {
 	YbcPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
-	char	   *db_name = get_database_name(databaseId);
 
 	switch (renameType)
 	{
@@ -1900,7 +1901,7 @@ YBCRename(Oid relationId, ObjectType renameType, const char *relname,
 		case OBJECT_INDEX:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  YbGetRelfileNodeIdFromRelId(relationId), &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, relname));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, relname));
 			break;
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:

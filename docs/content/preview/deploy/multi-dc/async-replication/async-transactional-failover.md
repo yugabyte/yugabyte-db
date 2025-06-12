@@ -16,13 +16,11 @@ type: docs
 
 Unplanned failover is the process of promoting the Standby universe and switching application traffic to it in case the Primary universe becomes unavailable. One of the common reasons for such a scenario is an outage of the Primary universe region.
 
-
-{{< warning title="Warning!!" >}}
+{{< warning title="Warning" >}}
 Failover has a non-zero RPO, meaning it can result in the loss of committed data.
 
 Failover should only be performed when you are certain the Primary universe will not recover soon, and the data loss is acceptable.
 {{< /warning >}}
-
 
 ## Performing failover
 
@@ -89,13 +87,12 @@ Use PITR to restore the universe to a consistent state that cuts off any partial
 
 If there are multiple databases, perform PITR on each database sequentially, one after the other.
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
 <li>
     <a href="#yugabyted-pitr" class="nav-link active" id="yugabyted-pitr-tab" data-bs-toggle="tab"
     role="tab" aria-controls="yugabyted-pitr" aria-selected="true">
     <img src="/icons/database.svg" alt="Server Icon">
-    Yugabyted
+    yugabyted
     </a>
 </li>
 <li>
@@ -123,73 +120,73 @@ Restore the database to the `safe_time`:
 
 1. Find the Snapshot Schedule name for the database:
 
-```sh
-./bin/yb-admin \
-    -master_addresses <B_master_addresses> \
-    list_snapshot_schedules
-```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <B_master_addresses> \
+        list_snapshot_schedules
+    ```
 
-Expect output similar to the following:
+    Expect output similar to the following:
 
-```output.json
-{
-    "schedules": [
-        {
-            "id": "034bdaa2-56fa-44fb-a6da-40b1d9c22b49",
-            "options": {
-                "filter": "ysql.dr_db2",
-                "interval": "1440 min",
-                "retention": "10080 min"
-            },
-            "snapshots": [
-                {
-                    "id": "a83eca3e-e6a2-44f6-a9f2-f218d27f223c",
-                    "snapshot_time": "2023-06-08 17:56:46.109379"
-                }
-            ]
-        }
-    ]
-}
-```
+    ```output.json
+    {
+        "schedules": [
+            {
+                "id": "034bdaa2-56fa-44fb-a6da-40b1d9c22b49",
+                "options": {
+                    "filter": "ysql.dr_db2",
+                    "interval": "1440 min",
+                    "retention": "10080 min"
+                },
+                "snapshots": [
+                    {
+                        "id": "a83eca3e-e6a2-44f6-a9f2-f218d27f223c",
+                        "snapshot_time": "2023-06-08 17:56:46.109379"
+                    }
+                ]
+            }
+        ]
+    }
+    ```
 
-2. Restore to the `safe_time` of the database:
+1. Restore to the `safe_time` of the database:
 
-```sh
-./bin/yb-admin \
-    -master_addresses <B_master_addresses> \
-    restore_snapshot_schedule <schedule_id> "<safe_time>"
-```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <B_master_addresses> \
+        restore_snapshot_schedule <schedule_id> "<safe_time>"
+    ```
 
-Expect output similar to the following:
+    Expect output similar to the following:
 
-```output.json
-{
-    "snapshot_id": "034bdaa2-56fa-44fb-a6da-40b1d9c22b49",
-    "restoration_id": "e05e06d7-1766-412e-a364-8914691d84a3"
-}
-```
+    ```output.json
+    {
+        "snapshot_id": "034bdaa2-56fa-44fb-a6da-40b1d9c22b49",
+        "restoration_id": "e05e06d7-1766-412e-a364-8914691d84a3"
+    }
+    ```
 
-3. Verify that restoration completed successfully by running the following command. Repeat this step until the restore state is RESTORED.
+1. Verify that restoration completed successfully by running the following command. Repeat this step until the restore state is RESTORED.
 
-```sh
-./bin/yb-admin \
-    -master_addresses <B_master_addresses> \
-    list_snapshot_restorations
-```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <B_master_addresses> \
+        list_snapshot_restorations
+    ```
 
-Expect output similar to the following:
+    Expect output similar to the following:
 
-```output.json
-{
-    "restorations": [
-        {
-            "id": "a3fdc1c0-3e07-4607-91a7-1527b7b8d9ea",
-            "snapshot_id": "3ecbfc16-e2a5-43a3-bf0d-82e04e72be65",
-            "state": "RESTORED"
-        }
-    ]
-}
-```
+    ```output.json
+    {
+        "restorations": [
+            {
+                "id": "a3fdc1c0-3e07-4607-91a7-1527b7b8d9ea",
+                "snapshot_id": "3ecbfc16-e2a5-43a3-bf0d-82e04e72be65",
+                "state": "RESTORED"
+            }
+        ]
+    }
+    ```
 
 </div>
 </div>
@@ -207,14 +204,15 @@ Expect output similar to the following:
 {{< note >}}
 _Not applicable for Automatic mode_
 {{< /note >}}
-Since xCluster does not replicate sequence data, you need to manually adjust the sequence next values on universe B after failover to ensure consistency with the tables using them.
+
+Because xCluster does not replicate sequence data, you need to manually adjust the sequence next values on universe B after failover to ensure consistency with the tables using them.
 
 For example, if you have a SERIAL column in a table and the highest value in that column after failover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
 
-Use the [nextval](https://www.postgresql.org/docs/current/functions-sequence.html) function to set the sequence next values appropriately.
-
+Use the [nextval](../../../../api/ysql/exprs/func_nextval/) function to set the sequence next values appropriately.
 
 ### Switch applications to B
+
 Update the application connection strings to point to the new Primary universe (B).
 
 After completing the preceding steps, the former Standby (B) is the new Primary (active) universe. There is no Standby until the former Primary (A) comes back up and is restored to the correct state.
@@ -225,7 +223,7 @@ If the former Primary universe (A) doesn't come back and you end up creating a n
 
 If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the databases on A need to be dropped and recreated from a backup of B (Bootstrap). Before dropping the databases on A, you can analyze them to determine the exact data that was lost by the failover.
 
-Once you are ready to drop the databases on A, follow the steps:
+When you are ready to drop the databases on A, proceed to the next steps.
 
 ### Disable PITR
 
@@ -234,7 +232,7 @@ Once you are ready to drop the databases on A, follow the steps:
     <a href="#yugabyted-drop-pitr" class="nav-link active" id="yugabyted-drop-pitr-tab" data-bs-toggle="tab"
     role="tab" aria-controls="yugabyted-drop-pitr" aria-selected="true">
     <img src="/icons/database.svg" alt="Server Icon">
-    Yugaybted
+    yugabyted
     </a>
 </li>
 <li>
@@ -262,18 +260,19 @@ Disable point-in-time recovery for the database(s) on A:
 
 - List the snapshot schedules to obtain the schedule ID:
 
-```sh
-./bin/yb-admin -master_addresses <A_master_addresses> \
-    list_snapshot_schedules
-```
+    ```sh
+    ./bin/yb-admin -master_addresses <A_master_addresses> \
+        list_snapshot_schedules
+    ```
 
 - Delete the snapshot schedule:
 
-```sh
-./bin/yb-admin \
-    -master_addresses <A_master_addresses> \
-    delete_snapshot_schedule <schedule_id>
-```
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <A_master_addresses> \
+        delete_snapshot_schedule <schedule_id>
+    ```
+
 </div>
 </div>
 
@@ -289,7 +288,7 @@ Disable point-in-time recovery for the database(s) on A:
 <li>
     <a href="#manual-drop" class="nav-link" id="manual-drop-tab" data-bs-toggle="tab"
     role="tab" aria-controls="manual-drop" aria-selected="false">
-    Manual
+    Fully Manual
     </a>
 </li>
 </ul>
@@ -334,10 +333,11 @@ Outbound xCluster Replication group rg1 deleted successfully
 </div>
 
 ### Drop the database(s)
+
 Drop the database(s) on A.
 
 ### Perform setup from B to A
-Set up xCluster Replication from the Primary to Standby universe (B to A) by following the steps in [Set up transactional xCluster](../async-transactional-setup-automatic/).
 
+Set up xCluster Replication from the Primary to Standby universe (B to A) by following the steps in [Set up transactional xCluster](../async-transactional-setup-automatic/).
 
 If your eventual desired configuration is for A to be the Primary universe and B the Standby, follow the steps for [Planned switchover](../async-transactional-switchover/).

@@ -3910,8 +3910,13 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   }
 
   Result<FileNumbersHolder> result = FileNumbersHolder();
-  for (auto listener : db_options_.listeners) {
-    listener->OnCompactionStarted();
+
+  {
+    mutex_.Unlock();
+    for (auto listener : db_options_.listeners) {
+      listener->OnCompactionStarted();
+    }
+    mutex_.Lock();
   }
 
   if (!c) {

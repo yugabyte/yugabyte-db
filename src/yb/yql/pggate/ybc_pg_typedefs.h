@@ -905,21 +905,6 @@ typedef struct {
   const char* tgt_owner;
 } YbcCloneInfo;
 
-// A thread-safe way to cache compiled regexes.
-typedef struct {
-  int num;
-  void* array;
-} YbcPgThreadLocalRegexpCache;
-
-typedef void (*YbcPgThreadLocalRegexpCacheCleanup)(YbcPgThreadLocalRegexpCache*);
-
-// A thread-safe way to control the behavior of regex matching.
-typedef struct {
-  int pg_regex_strategy; // PG_Locale_Strategy
-  void* pg_regex_locale; // struct pg_locale_t
-  YbcPgOid pg_regex_collation;
-} YbcPgThreadLocalRegexpMetadata;
-
 typedef struct {
   void *slot;
 } YbcPgInsertOnConflictKeyInfo;

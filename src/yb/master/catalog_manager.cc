@@ -7407,33 +7407,31 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     LOG_WITH_PREFIX(INFO) << "PG table OID for AlterTable request: " << table->GetPgTableOid();
   }
 
-  NamespaceId new_namespace_id;
-  if (req->has_new_namespace()) {
-    // Lookup the new namespace and verify if it exists.
-    TRACE("Looking up new namespace");
-    scoped_refptr<NamespaceInfo> ns;
-    NamespaceIdentifierPB namespace_identifier = req->new_namespace();
-    // Use original namespace_id as new_namespace_id for YSQL tables.
-    if (table->GetTableType() == PGSQL_TABLE_TYPE && !namespace_identifier.has_id()) {
-      namespace_identifier.set_id(table->namespace_id());
-    }
-    ns = VERIFY_NAMESPACE_FOUND(FindNamespace(namespace_identifier), resp);
+  // Lookup the namespace and verify if it exists.
+  TRACE("Looking up namespace");
+  auto namespace_identifier = req->table().namespace_();
+  // Use original namespace_id if it's not provided in the request.
+  if (!namespace_identifier.has_id()) {
+    namespace_identifier.set_id(table->namespace_id());
+  }
 
+  const auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(namespace_identifier), resp);
+  NamespaceId namespace_id;
+  {
     auto ns_lock = ns->LockForRead();
-    new_namespace_id = ns->id();
+    namespace_id = ns->id();
     // Don't use Namespaces that aren't running.
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
       Status s = STATUS_SUBSTITUTE(TryAgain,
-          "Namespace not running (State=$0). Cannot create $1.$2",
-          SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name() );
+          "Namespace not running (State=$0). Cannot alter table $1.$2",
+          SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name());
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
   }
-  if (req->has_new_namespace() || req->has_new_table_name()) {
-    if (new_namespace_id.empty()) {
-      const Status s = STATUS(InvalidArgument, "No namespace used");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
-    }
+
+  if (namespace_id.empty()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED,
+        STATUS(InvalidArgument, "No namespace used"));
   }
 
   if (!FLAGS_ysql_yb_enable_replica_identity &&
@@ -7491,10 +7489,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
   }
 
+  DCHECK_EQ(namespace_id, l->namespace_id());
+
   bool has_changes = false;
   auto& table_pb = l.mutable_data()->pb;
   const TableName table_name = l->name();
-  const NamespaceId namespace_id = l->namespace_id();
   const TableName new_table_name = req->has_new_table_name() ? req->new_table_name() : table_name;
 
   // Calculate new schema for the on-disk state, not persisted yet.
@@ -7526,17 +7525,17 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   }
 
   // Try to acquire the new table name.
-  if (req->has_new_namespace() || req->has_new_table_name()) {
+  if (req->has_new_table_name()) {
 
     // Postgres handles name uniqueness constraints in it's own layer.
     if (l->table_type() != PGSQL_TABLE_TYPE) {
       // Verify that the table does not exist.
       scoped_refptr<TableInfo> other_table = FindPtrOrNull(
-          table_names_map_, {new_namespace_id, new_table_name});
+          table_names_map_, {namespace_id, new_table_name});
       if (other_table != nullptr) {
         Status s = STATUS_SUBSTITUTE(AlreadyPresent,
             "Object '$0.$1' already exists",
-            GetNamespaceNameUnlocked(new_namespace_id), other_table->name());
+            GetNamespaceNameUnlocked(namespace_id), other_table->name());
         LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
                      << ". Failed alterring table with error: "
                      << s.ToString() << " Request:\n" << req->DebugString();
@@ -7544,12 +7543,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       }
 
       // Acquire the new table name (now we have 2 name for the same table).
-      table_names_map_[{new_namespace_id, new_table_name}] = table;
+      table_names_map_[{namespace_id, new_table_name}] = table;
     }
 
-    table_pb.set_namespace_id(new_namespace_id);
     table_pb.set_name(new_table_name);
-
     has_changes = true;
   }
 
@@ -7615,11 +7612,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
   RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
-      table, ddl_log_entries, new_namespace_id, new_table_name, epoch, resp));
+      table, ddl_log_entries, namespace_id, new_table_name, epoch, resp));
 
   // Remove the old name. Not present if PGSQL.
-  if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-      (req->has_new_namespace() || req->has_new_table_name())) {
+  if (table->GetTableType() != PGSQL_TABLE_TYPE && req->has_new_table_name()) {
     TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
           namespace_id, table_name);
     table_names_map_.erase({namespace_id, table_name});
@@ -9251,7 +9247,10 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   // Only allow YSQL database deletion if it does not contain any replicated tables. No need to
   // check this for YCQL keyspaces, as YCQL does not allow drops of non-empty keyspaces, regardless
   // of their replication status.
-  RETURN_NOT_OK(CheckIfDatabaseHasReplication(database));
+  // Skip this check during major YSQL upgrade since we are not actually dropping the database.
+  if (!ysql_manager_->IsMajorUpgradeInProgress()) {
+    RETURN_NOT_OK(CheckIfDatabaseHasReplication(database));
+  }
 
   // Set the Namespace to DELETING.
   TRACE("Locking database");
