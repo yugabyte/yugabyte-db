@@ -1,0 +1,33 @@
+error[E0277]: the trait bound `BrokenType: std::cmp::Eq` is not satisfied
+ --> tests/compile-fail/total-eq-for-postgres_eq.rs:4:59
+  |
+4 | #[derive(Serialize, Deserialize, PartialEq, PostgresType, PostgresEq)]
+  |                                                           ^^^^^^^^^^ the trait `std::cmp::Eq` is not implemented for `BrokenType`
+  |
+  = help: see issue #48214
+  = note: this error originates in the derive macro `PostgresEq` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `BrokenType` with `#[derive(Eq)]`
+  |
+5 + #[derive(Eq)]
+6 | pub struct BrokenType {
+  |
+
+error[E0277]: the trait bound `BrokenType: std::cmp::Eq` is not satisfied
+ --> tests/compile-fail/total-eq-for-postgres_eq.rs:4:59
+  |
+4 | #[derive(Serialize, Deserialize, PartialEq, PostgresType, PostgresEq)]
+  |                                                           ^^^^^^^^^^ the trait `std::cmp::Eq` is not implemented for `BrokenType`
+  |
+note: required by a bound in `brokentype_eq`
+ --> tests/compile-fail/total-eq-for-postgres_eq.rs:4:59
+  |
+4 | #[derive(Serialize, Deserialize, PartialEq, PostgresType, PostgresEq)]
+  |                                                           ^^^^^^^^^^ required by this bound in `brokentype_eq`
+5 | pub struct BrokenType {
+  |            ---------- required by a bound in this function
+  = note: this error originates in the attribute macro `::pgrx::pgrx_macros::pg_operator` which comes from the expansion of the derive macro `PostgresEq` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `BrokenType` with `#[derive(Eq)]`
+  |
+5 + #[derive(Eq)]
+6 | pub struct BrokenType {
+  |

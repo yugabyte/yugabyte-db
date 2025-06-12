@@ -1,0 +1,6 @@
+comment = 'custom_types:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/custom_types'
+relocatable = false
+superuser = false
+trusted = false

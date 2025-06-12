@@ -17,48 +17,42 @@ import (
 // rollback function is best effort and will not throw any errors
 func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 	log.Warn("Error encountered during upgrade, rolling back to previously installed YBA version.")
-	// Restore YBA data
-	if backupDir != "" {
-		backup := common.FindRecentBackup(backupDir)
-		log.Info(fmt.Sprintf("Rolling YBA data back from %s", backup))
-		RestoreBackupScriptHelper(backup, common.GetBaseInstall(), true, true, false, false, true,
-			fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
-				common.GetActiveSymlink(), state.Version),
-			common.GetBaseInstall()+"/data/yb-platform",
-			common.GetActiveSymlink()+"/ybdb/bin/ysqlsh",
-			common.GetActiveSymlink()+"/pgsql/bin/pg_restore")
-	}
-
-	// Validate symlink
-	activePath, err := filepath.EvalSymlinks(common.GetActiveSymlink())
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	activePathBase := filepath.Base(activePath)
-	if state.Version != activePathBase {
-		log.Fatal("the active symlink is not pointing to the current installed version, aborting rollback")
-	}
-
-	// Copy back over correct yba-ctl
-	findArgs := []string{common.GetActiveSymlink() + "/", "-name", "yba-ctl", "-exec", "cp", "{}",
-		common.YbactlInstallDir(), ";"}
-	if out := shell.Run("find", findArgs...); !out.SucceededOrLog() {
-		log.Warn(fmt.Sprintf("failed to reinstall yba-ctl: %s", out.Error.Error()))
-	}
-
-	// Remove newest install
-	common.RemoveAll(common.GetSoftwareRoot())
-
-	// Reset Status back to installed, the version has not yet been updated
-	state.CurrentStatus = ybactlstate.InstalledStatus
-	if err := ybactlstate.StoreState(state); err != nil {
-		log.Warn("failed to write state back to installed: " + err.Error())
-	}
+	// copy back yba-ctl.yml and .yba_installer.state
+	common.CopyFile(filepath.Join(backupDir, common.InputFileName), common.InputFile())
+	common.CopyFile(filepath.Join(backupDir, ybactlstate.StateFileName), filepath.Join(common.YbactlInstallDir(), ybactlstate.StateFileName))
 
 	// reconfigure with the old binary
 	if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "reconfigure"); !out.SucceededOrLog() {
 		log.Warn(fmt.Sprintf("failed to reconfigure with old yba version: %s", out.Error.Error()))
 	}
+
+	// Stop YBA to prevent any potential schema changes PLAT-16051
+	if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "stop", "yb-platform"); !out.SucceededOrLog() {
+		log.Warn(fmt.Sprintf("failed to stop yba: %s", out.Error.Error()))
+	}
+
+	// Restore YBA data
+	if backupDir != "" {
+		backup := common.FindRecentBackup(backupDir)
+		log.Info(fmt.Sprintf("Rolling YBA data back from %s", backup))
+		err := RestoreBackupScriptHelper(backup, common.GetBaseInstall(), true, true, false, false, true,
+			fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh",
+				common.GetActiveSymlink(), state.Version),
+			common.GetBaseInstall()+"/data/yb-platform",
+			common.GetActiveSymlink()+"/ybdb/bin/ysqlsh",
+			common.GetActiveSymlink()+"/pgsql/bin/pg_restore")
+		if err != nil {
+			log.Warn(fmt.Sprintf("failed to restore backup: %s", err.Error()))
+		}
+	}
+
+	// Start old YBA up again
+	if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "start", "yb-platform"); !out.SucceededOrLog() {
+		log.Warn(fmt.Sprintf("failed to stop yba: %s", out.Error.Error()))
+	}
+
+	// Remove newest install
+	common.RemoveAll(common.GetSoftwareRoot())
 
 	// cleanup old backups
 	if err := common.KeepMostRecentFiles(backupDir, common.BackupRegex, 2); err != nil {
@@ -105,6 +99,15 @@ func upgradeCmd() *cobra.Command {
 			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
+			backupDir := filepath.Join(common.GetDataRoot(), "upgradeYbaBackup")
+			if rollback {
+				if err := common.MkdirAll(backupDir, common.DirMode); err != nil {
+					log.Fatal(fmt.Sprintf("failed to create backup directory: %s", err.Error()))
+				}
+				// take backup of yba-ctl.yml and .yba_installer.state
+				common.CopyFile(common.InputFile(), filepath.Join(backupDir, common.InputFileName))
+				common.CopyFile(filepath.Join(common.YbactlInstallDir(), ybactlstate.StateFileName), filepath.Join(backupDir, ybactlstate.StateFileName))
+			}
 			state, err := ybactlstate.Initialize()
 			// Can have no state if upgrading from a version before state existed.
 			if err != nil {
@@ -116,19 +119,10 @@ func upgradeCmd() *cobra.Command {
 				state.CurrentStatus = ybactlstate.InstalledStatus
 			}
 
-			if err := state.TransitionStatus(ybactlstate.UpgradingStatus); err != nil {
-				log.Fatal("cannot upgrade, invalid status transition: " + err.Error())
-			}
-
 			if err := state.ValidateReconfig(); err != nil {
 				log.Fatal("invalid reconfigure during upgrade: " + err.Error())
 			}
 			log.Info("Current state: " + state.Version)
-
-			// Upgrade yba-ctl first.
-			if err := ybaCtl.Install(); err != nil {
-				log.Fatal("failed to upgrade yba-ctl")
-			}
 
 			//Todo: this is a temporary hidden feature to migrate data
 			//from Pg to Ybdb and vice-a-versa.
@@ -139,26 +133,20 @@ func upgradeCmd() *cobra.Command {
 			}
 
 			// Take a backup of YBA as a safety measure
-			backupDir := filepath.Join(common.GetDataRoot(), "upgradeYbaBackup")
 			if rollback {
-				if err := common.MkdirAll(backupDir, common.DirMode); err == nil {
-					log.Info(fmt.Sprintf("Taking YBA backup to %s", backupDir))
-					usePromProtocol := true
-					// PLAT-14522 introduced prometheus_protocol which isn't present in <2.20.7.0-b40 or <2024.1.3.0-b55
-					if common.LessVersions(state.Version, "2.20.7.0-b40") ||
-						(common.LessVersions("2024.1.0.0-b0", state.Version) && common.LessVersions(state.Version, "2024.1.3.0-b55")) {
-						usePromProtocol = false
-					}
-					if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),
-						fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
-						common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
-						common.GetActiveSymlink()+"/pgsql/bin/pg_dump",
-						true, true, false, true, false, usePromProtocol); errB != nil {
-						if rollback {
-							rollbackUpgrade("", state)
-						}
-						log.Fatal("Failed taking backup of YBA")
-					}
+				log.Info(fmt.Sprintf("Taking YBA backup to %s", backupDir))
+				usePromProtocol := true
+				// PLAT-14522 introduced prometheus_protocol which isn't present in <2.20.7.0-b40 or <2024.1.3.0-b55
+				if common.LessVersions(state.Version, "2.20.7.0-b40") ||
+					(common.LessVersions("2024.1.0.0-b0", state.Version) && common.LessVersions(state.Version, "2024.1.3.0-b55")) {
+					usePromProtocol = false
+				}
+				if errB := CreateBackupScriptHelper(backupDir, common.GetBaseInstall(),
+					fmt.Sprintf("%s/yba_installer/packages/yugabyte-%s/devops/bin/yb_platform_backup.sh", common.GetActiveSymlink(), state.Version),
+					common.GetActiveSymlink()+"/ybdb/postgres/bin/ysql_dump",
+					common.GetActiveSymlink()+"/pgsql/bin/pg_dump",
+					true, true, false, true, false, usePromProtocol); errB != nil {
+					log.Fatal("Failed taking backup of YBA, aborting upgrade: " + errB.Error())
 				}
 			}
 
@@ -181,6 +169,10 @@ func upgradeCmd() *cobra.Command {
 				}
 			}
 			*/
+
+			if err := state.TransitionStatus(ybactlstate.UpgradingStatus); err != nil {
+				log.Fatal("cannot upgrade, invalid status transition: " + err.Error())
+			}
 
 			// Here is the postgres minor version/no upgrade workflow
 			if err := common.Upgrade(ybactl.Version); err != nil {
@@ -262,6 +254,11 @@ func upgradeCmd() *cobra.Command {
 			}
 			common.PrintStatus(state.CurrentStatus.String(), statuses...)
 			// Here ends the postgres minor version/no upgrade workflow
+
+			// Upgrade yba-ctl. Maybe make separate function for this?
+			if err := ybaCtl.Install(); err != nil {
+				log.Fatal("failed to upgrade yba-ctl")
+			}
 
 			state.CurrentStatus = ybactlstate.InstalledStatus
 			state.Version = ybactl.Version

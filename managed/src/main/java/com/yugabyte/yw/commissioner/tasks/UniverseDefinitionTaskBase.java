@@ -46,6 +46,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPo
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
@@ -1133,9 +1134,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createPlacementInfoTask(null /* blacklistNodes */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-    if (CollectionUtils.isNotEmpty(tserverNodes) && primaryCluster.userIntent.enableYSQL) {
-      createWaitForServersTasks(tserverNodes, ServerType.YSQLSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    if (CollectionUtils.isNotEmpty(tserverNodes)) {
+      addParallelTasks(
+          tserverNodes,
+          node -> getWaitForServerReadyTask(node, ServerType.TSERVER),
+          WaitForServerReady.class.getSimpleName(),
+          SubTaskGroupType.ConfigureUniverse);
+      if (primaryCluster.userIntent.enableYSQL) {
+        createWaitForServersTasks(tserverNodes, ServerType.YSQLSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
     }
 
     // Manage encryption at rest
@@ -2749,7 +2757,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
     }
 
-    // Wait for new masters to be responsive.
+    // Wait for new tservers to be responsive.
     createWaitForServersTasks(nodesToBeStarted, ServerType.TSERVER)
         .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 

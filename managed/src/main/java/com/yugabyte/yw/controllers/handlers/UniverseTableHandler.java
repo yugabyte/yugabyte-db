@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers.handlers;
 
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
-import static com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
@@ -131,9 +130,7 @@ public class UniverseTableHandler {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
 
-    String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response =
-        listTablesOrBadRequest(masterAddresses, certificate, false /* excludeSystemTables */);
+    ListTablesResponse response = listTablesOrBadRequest(universe, false /* excludeSystemTables */);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
         response.getTableInfoList();
 
@@ -314,18 +311,14 @@ public class UniverseTableHandler {
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
 
     GetTableSchemaResponse schemaResponse;
-    try {
-      client = ybClientService.getClient(masterAddresses, certificate);
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       schemaResponse = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybClientService.closeClient(client, masterAddresses);
     }
+
     if (schemaResponse == null) {
       throw new PlatformServiceException(BAD_REQUEST, "No table for UUID: " + tableUUID);
     }
@@ -405,8 +398,7 @@ public class UniverseTableHandler {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
 
-    String certificate = universe.getCertificateNodetoNode();
-    ListNamespacesResponse response = listNamespacesOrBadRequest(masterAddresses, certificate);
+    ListNamespacesResponse response = listNamespacesOrBadRequest(universe);
     List<NamespaceInfoResp> namespaceInfoRespList = new ArrayList<>();
     for (MasterTypes.NamespaceIdentifierPB namespace : response.getNamespacesList()) {
       if (includeSystemNamespaces) {
@@ -426,14 +418,11 @@ public class UniverseTableHandler {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-    YBClient client = null;
     String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
-    try {
-      String certificate = universe.getCertificateNodetoNode();
-      client = ybClientService.getClient(masterAddresses, certificate);
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       GetTableSchemaResponse response =
           client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
       return createFromResponse(universe, tableUUID, response);
@@ -443,8 +432,6 @@ public class UniverseTableHandler {
     } catch (Exception e) {
       LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybClientService.closeClient(client, masterAddresses);
     }
   }
 
@@ -537,18 +524,13 @@ public class UniverseTableHandler {
     return taskUUID;
   }
 
-  public ListTablesResponse listTablesOrBadRequest(
-      String masterAddresses, String certificate, boolean excludeSystemTables) {
-    YBClient client = null;
+  public ListTablesResponse listTablesOrBadRequest(Universe universe, boolean excludeSystemTables) {
     ListTablesResponse response;
-    try {
-      client = ybClientService.getClient(masterAddresses, certificate);
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       checkLeaderMasterAvailability(client);
       response = client.getTablesList(null, excludeSystemTables, null);
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybClientService.closeClient(client, masterAddresses);
     }
     if (response == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Table list can not be empty");
@@ -565,19 +547,15 @@ public class UniverseTableHandler {
     }
   }
 
-  public ListNamespacesResponse listNamespacesOrBadRequest(
-      String masterAddresses, String certificate) {
-    YBClient client = null;
+  public ListNamespacesResponse listNamespacesOrBadRequest(Universe universe) {
     ListNamespacesResponse response;
-    try {
-      client = ybClientService.getClient(masterAddresses, certificate);
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
       checkLeaderMasterAvailability(client);
       response = client.getNamespacesList();
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybClientService.closeClient(client, masterAddresses);
     }
+
     if (response == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Table list can not be empty");
     }

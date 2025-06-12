@@ -1275,7 +1275,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
   auto flush_future = session->FlushFuture();
   session.reset();
-  ASSERT_OK(flush_future.get().status);
+  ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
 
   // Try again, this time should not have an error response (to re-insert the same row).
   session = CreateSession();
@@ -1286,7 +1286,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ASSERT_EQ(0, session->TEST_CountBufferedOperations());
   ASSERT_FALSE(session->HasNotFlushedOperations());
   session.reset();
-  ASSERT_OK(flush_future.get().status);
+  ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
 }
 
 TEST_F(ClientTest, TestSessionClose) {

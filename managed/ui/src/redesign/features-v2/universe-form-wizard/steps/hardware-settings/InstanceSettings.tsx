@@ -63,6 +63,9 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
             }}
           >
             <CPUArchField disabled={false} />
+            <br />
+            <br />
+            <>Remaining fields Work In progress</>
           </Box>
         </StyledContent>
       </StyledPanel>

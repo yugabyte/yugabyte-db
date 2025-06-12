@@ -2230,15 +2230,26 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 Status TSTabletManager::TriggerAdminCompaction(
   const TabletPtrs& tablets, const AdminCompactionOptions& options) {
   CountDownLatch latch(tablets.size());
+  Status first_compaction_error;
+  std::mutex first_compaction_error_mutex;
   std::vector<TabletId> tablet_ids;
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
 
-  tablet::AdminCompactionOptions tablet_compaction_options {
+  tablet::AdminCompactionOptions tablet_compaction_options{
       .compaction_completion_callback =
-          options.should_wait ? latch.CountDownCallback() : std::function<void()>{},
+          options.should_wait ? [&latch, &first_compaction_error,
+                                 &first_compaction_error_mutex](const Status& status) {
+            {
+              std::lock_guard lock(first_compaction_error_mutex);
+              if (first_compaction_error.ok()) {
+                first_compaction_error = status;
+              }
+            }
+            latch.CountDown();
+          } : StdStatusCallback{},
       .vector_index_ids = options.vector_index_ids,
-  };
+      .skip_corrupt_data_blocks_unsafe = options.skip_corrupt_data_blocks_unsafe};
 
   for (auto tablet : tablets) {
     RETURN_NOT_OK(tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options));
@@ -2251,9 +2262,17 @@ Status TSTabletManager::TriggerAdminCompaction(
 
   if (options.should_wait) {
     latch.Wait();
-    LOG(INFO) << yb::Format(
-        "Admin compaction finished for tablets $0, $1 bytes took $2 seconds", tablet_ids,
-        total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+    std::lock_guard lock(first_compaction_error_mutex);
+    const auto log_message = Format(
+        "Admin compaction $0 for tablets $1, $2 bytes took $3 seconds",
+        first_compaction_error.ok() ? "finished" : "failed", tablet_ids, total_size,
+        ToSeconds(CoarseMonoClock::Now() - start_time));
+    if (first_compaction_error.ok()) {
+      LOG(INFO) << log_message;
+    } else {
+      LOG(WARNING) << log_message << ": " << first_compaction_error;
+      return first_compaction_error;
+    }
   }
 
   return Status::OK();

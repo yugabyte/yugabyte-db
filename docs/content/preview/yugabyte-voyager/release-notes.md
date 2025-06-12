@@ -17,6 +17,24 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.6.1 - June 3, 2025
+
+### New feature
+
+- Added support for the [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
+
+  This is required for [YugabyteDB Aeon](/preview/yugabyte-cloud/) or restricted environments where only the YugabyteDB Connector is supported.
+
+### Enhancements
+
+- Issues in the assessment report are now displayed in sorted order by issue category.
+- Voyager now exits cleanly when an invalid `CONTROL_PLANE_TYPE` is provided, avoiding stack traces on the console.
+- Refined the warning message when a load balancer is detected during the import data phase.
+
+### Bug fixes
+
+- Fixed an issue where SSL mode `ALLOW` was supported but incorrectly flagged as invalid by import commands.
+
 ## v2025.5.2 - May 20, 2025
 
 ### New features

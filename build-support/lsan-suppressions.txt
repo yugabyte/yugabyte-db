@@ -45,6 +45,9 @@ leak:__strdup
 leak:guc_strdup
 leak:postmaster_strdup
 
+# https://github.com/yugabyte/yugabyte-db/issues/27496
+leak:CloneAndAddErrorCode
+
 # https://github.com/yugabyte/yugabyte-db/issues/14745
 leak:ThreadSafeObjectPool
 

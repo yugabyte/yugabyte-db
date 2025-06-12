@@ -8499,12 +8499,11 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	double		num_baserel_result_pages = 0;
 
-	if (!is_primary_index && !index_only && !baserel_is_colocated)
+	if (!is_primary_index && !index_only)
 	{
 		/*
-		 * We need a second round trip to the base table only in case this is a
-		 * secondary index scan, not an index only scan and the table is not
-		 * correlated.
+		 * We need to lookup the base table only in case this is a
+		 * secondary index scan.
 		 */
 
 		Cost		baserel_roundtrip_cost;

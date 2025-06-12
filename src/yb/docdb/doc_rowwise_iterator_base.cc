@@ -136,17 +136,17 @@ void DocRowwiseIteratorBase::SetSchema(const Schema& schema) {
 }
 
 void DocRowwiseIteratorBase::InitForTableType(
-    TableType table_type, Slice sub_doc_key, SkipSeek skip_seek) {
+    TableType table_type, Slice sub_doc_key, SkipSeek skip_seek,
+    AddTablePrefixToKey add_table_prefix_to_key) {
   CheckInitOnce();
   table_type_ = table_type;
   ignore_ttl_ = (table_type_ == TableType::PGSQL_TABLE_TYPE);
   InitIterator();
 
-  if (!sub_doc_key.empty()) {
-    row_key_.Reset(sub_doc_key);
-  } else {
+  if (sub_doc_key.empty() || add_table_prefix_to_key) {
     dockv::DocKeyEncoder(&row_key_).Schema(*schema_);
   }
+  row_key_.AppendRawBytes(sub_doc_key);
   if (!skip_seek) {
     Seek(row_key_);
   }

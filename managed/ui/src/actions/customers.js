@@ -25,6 +25,10 @@ export const FETCH_PASSWORD_POLICY_RESPONSE = 'FETCH_PASSWORD_POLICY_RESPONSE';
 export const FETCH_ADMIN_NOTIFICATIONS = 'FETCH_ADMIN_NOTIFICATIONS';
 export const FETCH_ADMIN_NOTIFICATIONS_RESPONSE = 'FETCH_ADMIN_NOTIFICATIONS_RESPONSE';
 
+// Get Perf Advisor susbcription details
+export const FETCH_PERF_ADVISOR_DETAILS = 'FETCH_PERF_ADVISOR_DETAILS';
+export const FETCH_PERF_ADVISOR_DETAILS_RESPONSE = 'FETCH_PERF_ADVISOR_DETAILS_RESPONSE';
+
 // Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
@@ -279,6 +283,22 @@ export function fetchAdminNotifications() {
 export function fetchAdminNotificationsResponse(response) {
   return {
     type: FETCH_ADMIN_NOTIFICATIONS_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchPerfAdvisorList() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/troubleshooting_platform`);
+  return {
+    type: FETCH_PERF_ADVISOR_DETAILS,
+    payload: request
+  };
+}
+
+export function fetchPerfAdvisorListResponse(response) {
+  return {
+    type: FETCH_PERF_ADVISOR_DETAILS_RESPONSE,
     payload: response
   };
 }

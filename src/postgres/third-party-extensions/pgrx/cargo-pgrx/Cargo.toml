@@ -1,0 +1,84 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+
+[package]
+name = "cargo-pgrx"
+version = "0.14.1"
+authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
+license = "MIT"
+description = "Cargo subcommand for 'pgrx' to make Postgres extension development easy"
+homepage = "https://github.com/pgcentralfoundation/pgrx/"
+repository = "https://github.com/pgcentralfoundation/pgrx/"
+documentation = "https://docs.rs/cargo-pgrx"
+categories = ["development-tools::cargo-plugins", "command-line-utilities", "database"]
+keywords = ["database", "postgres", "postgresql", "extension"]
+readme = "README.md"
+exclude = ["*.png"]
+edition = "2021"
+
+[dependencies]
+pgrx-pg-config.workspace = true
+pgrx-sql-entity-graph.workspace = true
+
+cargo_metadata.workspace = true
+cargo-edit.workspace = true
+cargo_toml.workspace = true
+clap-cargo.workspace = true
+libc.workspace = true
+regex.workspace = true
+toml.workspace = true
+toml_edit.workspace = true
+
+clap = { version = "4.4.2", features = ["env", "suggestions", "cargo", "derive", "wrap_help"] }
+jobslot = "0.2.20" # as seen in gmake -j{N}
+semver = "1.0.26" # checking pgrx versions match
+tempfile = "3.19.1"
+
+# emit better diagnostics
+color-eyre = "0.6.3"
+eyre.workspace = true
+owo-colors.workspace = true
+tracing = "0.1"
+tracing-error = "0.2.1"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+
+# for downloading/unpacking things from the Postgres file servers
+bzip2 = "0.5.2"
+env_proxy = "0.4.1"
+serde.workspace = true
+serde-xml-rs = "0.6.0"
+tar = "0.4.44"
+ureq = { version = "3.0.10", default-features = false, features = ["gzip"] }
+url.workspace = true
+zip-extract = "0.2.2"
+
+# SQL schema generation
+proc-macro2.workspace = true
+quote.workspace = true
+[dependencies.object]
+version = "0.36.7"
+default-features = false
+features = [
+    "read_core", "std", # we use object read-only and like having actual errors
+    "coff", "elf", "macho", "pe", "xcoff", # support all object formats to allow cross-builds
+]
+
+
+[features]
+default = ["rustls"]
+native-tls = ["ureq/native-tls"]
+rustls = [
+    "ureq/rustls",
+    "ureq/native-tls" # induces rustls to use the OS-level root of trust
+]
+
+[lints.clippy]
+or-fun-call = "allow" # kinda sus lint imo
+too_many_arguments = "allow"

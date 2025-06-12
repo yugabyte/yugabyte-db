@@ -668,27 +668,27 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k1 = 4",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 21, 20, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 21, 20, 0, 1, 10);
         testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k1 >= 4",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 341, 340, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 341, 340, 0, 1, 10);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k1 IN (4, 8, 12)",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 63, 63, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 63, 63, 0, 1, 10);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k2 = 4",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 21, 20, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 21, 20, 0, 1, 10);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k2 >= 4",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 341, 340, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 341, 340, 0, 1, 10);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k2 IN (4, 8, 12)",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 63, 63, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 63, 63, 0, 1, 10);
       // Try a non-colocated table with a secondary index.
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s "
@@ -1116,14 +1116,14 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
        */
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(test test_index_k1) */ SELECT * FROM test WHERE k1 > 50000 and v1 > 80000",
-        "test", "test_index_k1", 50000, 50000, 0, 0, 10);
+        "test", "test_index_k1", 50000, 50000, 0, 10, 10);
 
       /* The filter on v1 will be executed on the included column in test_index_k1_v1. As a result,
        * fewer seeks will be needed on the base table.
        */
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(test test_index_k1_v1) */ SELECT * FROM test WHERE k1 > 50000 and v1 > 80000",
-        "test", "test_index_k1_v1", 10000, 50000, 0, 0, 10);
+        "test", "test_index_k1_v1", 10000, 50000, 0, 10, 10);
     }
   }
 
@@ -1200,7 +1200,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         "t_25862", "t_25862_pkey", 1302084.0, 1333333334.0, 1, 0, 2);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+ IndexScan(t_25862 t_25862_idx) */ SELECT * FROM t_25862 WHERE v1 > 0",
-        "t_25862", "t_25862_idx", 1334635417.0, 1333333334.0, 0, 0, 2);
+        "t_25862", "t_25862_idx", 1334635417.0, 1333333334.0, 0, 1302084.0, 2);
       testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(stmt,
         "/*+ IndexOnlyScan(t_25862 t_25862_idx) */ SELECT v1 FROM t_25862 WHERE v1 > 0",
         "t_25862", "t_25862_idx", 1302084.0, 1333333334.0, 1, 0, 1);

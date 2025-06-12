@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
@@ -31,7 +32,10 @@
 #include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/dockv/doc_ttl_util.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
@@ -44,6 +48,8 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
@@ -68,6 +74,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
@@ -83,35 +90,49 @@
 
 using namespace std::literals; // NOLINT
 
-DECLARE_int32(replication_factor);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_int32(priority_thread_pool_size);
-DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
-DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_bool(tablet_enable_ttl_file_filter);
-DECLARE_int32(rocksdb_base_background_compactions);
-DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
-DECLARE_int32(rocksdb_max_background_compactions);
-DECLARE_uint64(rocksdb_max_file_size_for_compaction);
-DECLARE_bool(file_expiration_ignore_value_ttl);
-DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
+DECLARE_bool(TEST_disable_adding_last_compaction_to_tablet_metadata);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
-DECLARE_int32(scheduled_full_compaction_frequency_hours);
-DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
-DECLARE_int32(auto_compact_check_interval_sec);
-DECLARE_uint32(auto_compact_stat_window_seconds);
-DECLARE_uint32(auto_compact_min_obsolete_keys_found);
-DECLARE_double(auto_compact_percent_obsolete);
 DECLARE_bool(TEST_pause_before_full_compaction);
-DECLARE_bool(TEST_disable_adding_last_compaction_to_tablet_metadata);
+DECLARE_bool(enable_ondisk_compression);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(file_expiration_ignore_value_ttl);
+DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
+DECLARE_bool(rocksdb_allow_multiple_pending_compactions_for_priority_thread_pool);
+DECLARE_bool(rocksdb_determine_compaction_input_at_start);
+DECLARE_bool(tablet_enable_ttl_file_filter);
+DECLARE_bool(use_priority_thread_pool_for_compactions);
+DECLARE_bool(ycql_enable_packed_row);
+
+DECLARE_double(auto_compact_percent_obsolete);
+
+DECLARE_int32(auto_compact_check_interval_sec);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(full_compaction_pool_max_queue_size);
 DECLARE_int32(full_compaction_pool_max_threads);
-DECLARE_bool(enable_load_balancing);
+DECLARE_int32(priority_thread_pool_size);
+DECLARE_int32(replication_factor);
+DECLARE_int32(rocksdb_base_background_compactions);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(rocksdb_max_background_compactions);
+DECLARE_int32(scheduled_full_compaction_frequency_hours);
+DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
-namespace yb {
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 
-namespace tserver {
+DECLARE_uint32(auto_compact_min_obsolete_keys_found);
+DECLARE_uint32(auto_compact_stat_window_seconds);
+
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+
+DECLARE_string(allow_compaction_failures_for_tablet_ids);
+
+namespace yb::tserver {
 
 namespace {
 
@@ -189,6 +210,8 @@ class CompactionTest : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_priority_thread_pool_size) = 2;
 
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+
     // Disable scheduled compactions by default so we don't have surprise compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_frequency_hours) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_scheduled_full_compaction_jitter_factor_percentage) = 0;
@@ -202,12 +225,8 @@ class CompactionTest : public YBTest {
     // These flags should be set after minicluster start, so it wouldn't override them.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = kMemStoreSize;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 3;
-    // Patch tablet options inside tablet manager, will be applied to newly created tablets.
-    for (int i = 0 ; i < NumTabletServers(); i++) {
-      ANNOTATE_IGNORE_WRITES_BEGIN();
-      cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(rocksdb_listener_);
-      ANNOTATE_IGNORE_WRITES_END();
-    }
+
+    AddRocksDBListener(rocksdb_listener_);
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     transaction_manager_ = std::make_unique<client::TransactionManager>(
@@ -225,6 +244,15 @@ class CompactionTest : public YBTest {
     YBTest::TearDown();
   }
 
+  void AddRocksDBListener(std::shared_ptr<rocksdb::EventListener> listener) {
+    // Patch tablet options inside tablet manager, will be applied to newly created tablets.
+    for (int i = 0 ; i < NumTabletServers(); i++) {
+      ANNOTATE_IGNORE_WRITES_BEGIN();
+      cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(listener);
+      ANNOTATE_IGNORE_WRITES_END();
+    }
+  }
+
   void SetupWorkload(IsolationLevel isolation_level, int num_tablets = kDefaultNumTablets) {
     workload_.reset(new TestWorkload(cluster_.get()));
     workload_->set_timeout_allowed(true);
@@ -238,6 +266,10 @@ class CompactionTest : public YBTest {
     workload_->set_table_ttl(table_ttl_to_use());
     workload_->set_sequential_write(sequential_write());
     workload_->Setup();
+
+    const auto workload_table_info =
+        ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+    workload_table_id_ = workload_table_info->id();
   }
 
  protected:
@@ -354,12 +386,30 @@ class CompactionTest : public YBTest {
       const bool trigger_manual_compaction);
   void TestCompactionTaskMetrics(const int num_files, bool manual_compactions);
 
+  Status TriggerAdminCompactions(
+      ShouldWait should_wait, rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+                                  rocksdb::SkipCorruptDataBlocksUnsafe::kFalse) {
+    for (int i = 0; i < NumTabletServers(); i++) {
+      auto ts_tablet_manager = cluster_->GetTabletManager(i);
+      const auto tablet_peers = ts_tablet_manager->GetTabletPeersWithTableId(workload_table_id_);
+      TSTabletManager::TabletPtrs workload_tablet_ptrs;
+      for (const auto& tablet_peer : tablet_peers) {
+        workload_tablet_ptrs.push_back(tablet_peer->shared_tablet());
+      }
+      RETURN_NOT_OK(ts_tablet_manager->TriggerAdminCompaction(
+          workload_tablet_ptrs,
+          AdminCompactionOptions{should_wait, skip_corrupt_data_blocks_unsafe}));
+    }
+    return Status::OK();
+  }
+
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<client::YBClient> client_;
   server::ClockPtr clock_{new server::HybridClock()};
   std::unique_ptr<client::TransactionManager> transaction_manager_;
   std::unique_ptr<client::TransactionPool> transaction_pool_;
   std::unique_ptr<TestWorkload> workload_;
+  TableId workload_table_id_;
   std::shared_ptr<RocksDbListener> rocksdb_listener_;
 };
 
@@ -1807,14 +1857,159 @@ TEST_F(CompactionTest, CheckLastRequestTimePersistence) {
   ASSERT_GT(table_info->LockForRead()->pb.last_full_compaction_request_time(), last_request_time);
 }
 
+// Covers https://github.com/yugabyte/yugabyte-db/issues/27426. Refer to D44394 for the description.
+TEST_F(CompactionTest, BackgroundCompactionDuringPostSplitCompaction) {
+  constexpr size_t kNumTablets = 1;
+  constexpr size_t kNumFiles = 9;
+  constexpr size_t kTrigger = kNumFiles - 2;
+  constexpr uint64_t kSstFileSize = 500_KB;
+  constexpr uint64_t kThreshold = kSstFileSize * 0.80;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
+
+  // Configuring flags to guarantee a background compaction will kick in between post split
+  // compaction iterations.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = kSstFileSize;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = kThreshold;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = kTrigger;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = kThreshold;
+
+  // Configuring flags to guarantee background compaction picks SST files at the end of post split
+  // compaction and keeps them locked till the compaction is finished.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_determine_compaction_input_at_start) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_rocksdb_allow_multiple_pending_compactions_for_priority_thread_pool) = true;
+
+  // Sanity checks for minimal requirements.
+  ASSERT_GT(ANNOTATE_UNPROTECTED_READ(FLAGS_full_compaction_pool_max_threads), 0);
+  ASSERT_GT(ANNOTATE_UNPROTECTED_READ(FLAGS_priority_thread_pool_size), 1);
+
+  // Helpers to extract files information.
+  auto files_ids = [](auto&& files) {
+    return AsString(files, [](auto&& file) { return file.name_id; });
+  };
+  auto max_file_id = [](auto&& files) {
+    return std::ranges::max_element(files, {}, &rocksdb::LiveFileMetaData::name_id)->name_id;
+  };
+  auto min_file_id = [](auto&& files) {
+    return std::ranges::min_element(files, {}, &rocksdb::LiveFileMetaData::name_id)->name_id;
+  };
+
+  // Additional RocksDB listener to guarantee compaction flow.
+  struct DBListener : public rocksdb::EventListener {
+    bool background_compaction_in_progress = false;
+    size_t num_post_split_iterations = 0;
+    std::mutex mutex;
+    std::condition_variable_any compaction_started_cv;
+
+    void OnCompactionStarted() override {
+      UniqueLock lock(mutex);
+
+      // Background compaction will be always
+      if (num_post_split_iterations == kTrigger && !background_compaction_in_progress) {
+        LOG(INFO) << "Background compaction started";
+        background_compaction_in_progress = true;
+
+        // Wait for the next post split compaction iteration got triggered or exit on timeout.
+        compaction_started_cv.wait_for(
+            lock, std::chrono::seconds(30),
+            [this] { return num_post_split_iterations != kTrigger; });
+      } else {
+        ++num_post_split_iterations;
+        compaction_started_cv.notify_all();
+      }
+    }
+
+    void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& info) override {
+      LOG(INFO) << "Compaction completed, reason: " << info.compaction_reason;
+
+      std::lock_guard lock(mutex);
+      if (info.is_no_op_compaction) {
+        // Sanity check, the only no-op compaction is the post split compaction final iteration.
+        ASSERT_EQ(info.compaction_reason, rocksdb::CompactionReason::kPostSplitCompaction);
+
+        LOG(INFO) << "Number of post split compaction iterations: " << num_post_split_iterations;
+        num_post_split_iterations = 0; // Resetting to track compactions for the next child.
+
+        // This no op post split compaction iteration happens in any case, let's unblock
+        // background compaction to complete it.
+        compaction_started_cv.notify_all();
+      } else if (info.compaction_reason != rocksdb::CompactionReason::kPostSplitCompaction) {
+        background_compaction_in_progress = false;
+        EXPECT_EQ(info.compaction_reason, rocksdb::CompactionReason::kUniversalSizeAmplification);
+        LOG(INFO) << "Background compaction done";
+      }
+    }
+  };
+  auto listener = std::make_shared<DBListener>();
+  AddRocksDBListener(listener);
+
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL, kNumTablets);
+
+  // Change the table to have a default time to live. This is required for the easiest reproing,
+  // but the issue may happen even without default TTL.
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), /* ttl_sec = */ 1000));
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFiles));
+
+  // Flush mem tables to have the predictable number of SST files.
+  const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+  ASSERT_OK(workload_->client().FlushTables(
+      {table_info->id()}, /* add_indexes = */ false,
+      /* timeout_secs = */ 60, /* is_compaction = */ false));
+
+  // Remember parent files before split.
+  auto dbs = GetAllRocksDbs(cluster_.get(), /* include_intents = */ false);
+  ASSERT_EQ(dbs.size(), 1);
+
+  uint64_t parent_max_file_id = 0;
+  {
+    const auto files = dbs.front()->GetLiveFilesMetaData();
+    parent_max_file_id = max_file_id(files);
+    LOG(INFO) << "Parent files: " << files_ids(files);
+  }
+
+  // Trigger manual tablet split.
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  ASSERT_EQ(peers.size(), kNumTablets);
+  const auto tablet = ASSERT_RESULT(peers.front()->shared_tablet_safe());
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), tablet->tablet_id()));
+
+  // Wait until parent tablet got cleaned up.
+  ASSERT_OK(LoggedWaitFor(
+      [cluster = cluster_.get()]{
+        return ListTabletPeers(cluster, ListPeersFilter::kAll).size() == 2;
+      }, 60s, "Parent tablet cleanup"));
+
+  // Total number of compactions equals to a sum of number of post split compaction iterations and
+  // one background compaction. Number of post split compaction iterations equals to the number of
+  // parent files plus one empty iteration to indicate post split compaction completion.
+  constexpr size_t kNumParentFiles = kNumFiles + 1; // One more file due to an explicit flush.
+  constexpr size_t kNumPostSplitCompactionIterations = kNumParentFiles + 1;
+  constexpr size_t kNumBackgroundCompactions = 1;
+  constexpr size_t kNumExpectedCompactions =
+      kNumPostSplitCompactionIterations + kNumBackgroundCompactions;
+
+  // Postpone status check for logging children files.
+  auto status = WaitForNumCompactionsPerDb(kNumExpectedCompactions);
+
+  // Make sure child tablets do not have parent files.
+  dbs = GetAllRocksDbs(cluster_.get(), /* include_intents = */ false);
+  ASSERT_EQ(dbs.size(), 2);
+  for (auto* db : dbs) {
+    const auto files = db->GetLiveFilesMetaData();
+    LOG(INFO) << "Child files: " << files_ids(files);
+    ASSERT_LT(parent_max_file_id, min_file_id(files));
+  }
+
+  ASSERT_OK(status);
+}
+
 class FullCompactionMonitoringTest : public CompactionTest {
  protected:
   void SetUp() override {
     CompactionTest::SetUp();
     SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
-    const auto workload_table_info =
-        ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
-    workload_table_id_ = workload_table_info->id();
 
     // Disable automatic compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
@@ -1824,20 +2019,6 @@ class FullCompactionMonitoringTest : public CompactionTest {
   void TearDown() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
     CompactionTest::TearDown();
-  }
-
-  // should_wait determines whether the function is asynchronous or synchronous.
-  void TriggerAdminCompactions(bool should_wait) {
-    for (int i = 0; i < NumTabletServers(); i++) {
-      auto ts_tablet_manager = cluster_->GetTabletManager(i);
-      const auto tablet_peers = ts_tablet_manager->GetTabletPeersWithTableId(workload_table_id_);
-      TSTabletManager::TabletPtrs workload_tablet_ptrs;
-      for (const auto& tablet_peer : tablet_peers) {
-        workload_tablet_ptrs.push_back(tablet_peer->shared_tablet());
-      }
-      ASSERT_OK(ts_tablet_manager->TriggerAdminCompaction(
-          workload_tablet_ptrs, AdminCompactionOptions{ should_wait }));
-    }
   }
 
   Status WaitForAllTabletsToHaveFullCompactionState(tablet::FullCompactionState expected_state) {
@@ -1863,19 +2044,17 @@ class FullCompactionMonitoringTest : public CompactionTest {
         30s /* timeout */,
         description);
   }
-
-  TableId workload_table_id_;
 };
 
 TEST_F(FullCompactionMonitoringTest, IdleStateAfterAdminCompactionCompleted) {
   ASSERT_OK(WaitForAllTabletsToHaveFullCompactionState(tablet::IDLE));
-  TriggerAdminCompactions(true /* should_wait */);
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kTrue));
   ASSERT_OK(WaitForAllTabletsToHaveFullCompactionState(tablet::IDLE));
 }
 
 TEST_F(FullCompactionMonitoringTest, CompactingStateDuringAdminCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
-  TriggerAdminCompactions(false /* should_wait */);
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kFalse));
   ASSERT_OK(WaitForAllTabletsToHaveFullCompactionState(tablet::COMPACTING));
 }
 
@@ -2000,7 +2179,7 @@ TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChang
 
 TEST_F(MasterFullCompactionMonitoringTest, CompactionStateDuringAdminCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
-  TriggerAdminCompactions(false /* should_wait */);
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kFalse));
   ASSERT_OK(WaitForCompactionStatusesToSatisfy(
       test_tablets_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
         return status.full_compaction_state == tablet::COMPACTING &&
@@ -2009,7 +2188,7 @@ TEST_F(MasterFullCompactionMonitoringTest, CompactionStateDuringAdminCompaction)
 }
 
 TEST_F(MasterFullCompactionMonitoringTest, IdleStateAfterAdminCompactionCompletion) {
-  TriggerAdminCompactions(true /* should_wait */);
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kTrue));
   ASSERT_OK(WaitForCompactionStatusesToSatisfy(
       test_tablets_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
         return status.full_compaction_state == tablet::IDLE &&
@@ -2017,5 +2196,150 @@ TEST_F(MasterFullCompactionMonitoringTest, IdleStateAfterAdminCompactionCompleti
       }));
 }
 
-} // namespace tserver
-} // namespace yb
+namespace {
+
+Status IterateTabletRows(
+    tablet::Tablet* tablet, ColumnIdRep key_column_id,
+    std::function<Status(const yb::qlexpr::QLTableRow& row)> callback) {
+  const SchemaPtr schema = tablet->metadata()->schema();
+  dockv::ReaderProjection projection(*schema);
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection));
+  qlexpr::QLTableRow row;
+  std::unordered_set<int32_t> tablet_keys;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    auto key_opt = row.GetValue(key_column_id);
+    SCHECK(key_opt.is_initialized(), InternalError, "Key is not initialized");
+    auto key = key_opt->int32_value();
+    SCHECK(
+        tablet_keys.insert(key).second,
+        InternalError,
+        Format("Duplicate key $0 in tablet $1", key, tablet->tablet_id()));
+    RETURN_NOT_OK(callback(row));
+  }
+  return Status::OK();
+}
+
+size_t RoundUpToBlockSize(size_t size) {
+  return (size + FLAGS_db_block_size_bytes - 1) / FLAGS_db_block_size_bytes *
+         FLAGS_db_block_size_bytes;
+}
+
+} // namespace
+
+TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
+  constexpr auto kNumFilesToWrite = 3;
+  const size_t kCorruptionOffset = FLAGS_db_block_size_bytes * 2;
+  const size_t kCorruptionSize = FLAGS_db_block_size_bytes * 3;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = kCorruptionSize * 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+  const auto tablets = ASSERT_RESULT(table_info->GetTablets());
+  ASSERT_GE(tablets.size(), 1);
+
+  const auto tablet_id = tablets[0]->tablet_id();
+  const auto tablet_peers = ASSERT_RESULT(ListTabletActivePeers(cluster_.get(), tablet_id));
+
+  // RF=1
+  ASSERT_EQ(tablet_peers.size(), 1);
+
+  const auto tablet_peer = tablet_peers[0];
+  const auto shared_tablet = tablet_peer->shared_tablet();
+
+  client::TableHandle table;
+  ASSERT_OK(table.Open(workload_->table_name(), client_.get()));
+  const auto key_column_id =  table.schema().ColumnId(0);
+
+  std::unordered_map<int32_t, qlexpr::QLTableRow> original_data;
+  ASSERT_OK(IterateTabletRows(
+      shared_tablet.get(), key_column_id,
+      [&original_data, key_column_id](const qlexpr::QLTableRow& row) {
+        original_data.emplace(row.GetValue(key_column_id)->int32_value(), row);
+        return Status::OK();
+      }));
+
+  rocksdb::TablePropertiesCollection all_sst_props;
+  ASSERT_OK(shared_tablet->regular_db()->GetPropertiesOfAllTables(&all_sst_props));
+
+  const auto tablet_num_keys = original_data.size();
+
+  size_t num_max_corrupt_keys_estimate = 0;
+  size_t tablet_num_corrupt_data_blocks_estimate = 0;
+  size_t tablet_num_total_data_blocks = 0;
+
+  for (auto& sst_file : shared_tablet->regular_db()->GetLiveFilesMetaData()) {
+    const auto base_file_path = sst_file.BaseFilePath();
+    const auto data_file_path = sst_file.DataFilePath();
+    const auto& sst_props = *all_sst_props[base_file_path];
+    tablet_num_total_data_blocks += sst_props.num_data_blocks;
+    const double compression_ratio =
+        1.0 * (sst_props.raw_key_size + sst_props.raw_value_size) / sst_props.data_size;
+
+    struct CorruptRange {
+      size_t offset;
+      size_t size;
+    };
+    for (auto corrupt_range :
+         {CorruptRange{0, static_cast<size_t>(FLAGS_db_block_size_bytes / 5)},
+          CorruptRange{kCorruptionOffset, kCorruptionSize}}) {
+      ASSERT_OK(yb::CorruptFile(
+          data_file_path, corrupt_range.offset, corrupt_range.size, CorruptionType::kZero));
+      tablet_num_corrupt_data_blocks_estimate +=
+          RoundUpToBlockSize(corrupt_range.size * compression_ratio) / FLAGS_db_block_size_bytes;
+      // RocksDB record started before or ending after corrupt region is likely to be also corrupt.
+      num_max_corrupt_keys_estimate += 2;
+    }
+  }
+
+  LOG(INFO) << "num_total_data_blocks: " << tablet_num_total_data_blocks;
+
+  num_max_corrupt_keys_estimate +=
+      tablet_num_keys * tablet_num_corrupt_data_blocks_estimate / tablet_num_total_data_blocks;
+
+  LOG(INFO) << "tablet_num_total_data_blocks: " << tablet_num_total_data_blocks
+            << ", tablet_num_keys: " << tablet_num_keys
+            << ", tablet_num_corrupt_data_blocks_estimate: "
+            << tablet_num_corrupt_data_blocks_estimate
+            << ", num_max_corrupt_keys_estimate: " << num_max_corrupt_keys_estimate;
+
+  // Clear block cache.
+  cluster_->GetTabletManager(0)->TEST_tablet_options()->block_cache->Evict(
+      std::numeric_limits<size_t>::max() / 2);
+
+  ASSERT_OK(SET_FLAG(allow_compaction_failures_for_tablet_ids, tablet_id));
+
+  // Should fail.
+  auto status = TriggerAdminCompactions(ShouldWait::kTrue);
+  ASSERT_TRUE(status.IsCorruption()) << status;
+
+  // Should success.
+  ASSERT_OK(
+      TriggerAdminCompactions(ShouldWait::kTrue, rocksdb::SkipCorruptDataBlocksUnsafe::kTrue));
+  ASSERT_OK(TriggerAdminCompactions(ShouldWait::kTrue));
+
+  // Check that expected number of rows disappeared.
+  // Check that remaining rows have the same values are before corruption.
+  size_t num_keys_remained = 0;
+  ASSERT_OK(IterateTabletRows(
+      shared_tablet.get(), key_column_id,
+      [&original_data, &num_keys_remained, key_column_id](const qlexpr::QLTableRow& row) -> Status {
+        const auto key = row.GetValue(key_column_id)->int32_value();
+        auto it = original_data.find(key);
+        SCHECK(it != original_data.end(), InternalError, "");
+        SCHECK_EQ(row.ToString(), it->second.ToString(), InternalError, "");
+        ++num_keys_remained;
+        return Status::OK();
+      }));
+
+  const auto num_keys_lost = tablet_num_keys - num_keys_remained;
+  LOG(INFO) << "num_keys_lost: " << num_keys_lost
+            << ", num_max_corrupt_keys_estimate: " << num_max_corrupt_keys_estimate;
+  ASSERT_LE(num_keys_lost, num_max_corrupt_keys_estimate);
+}
+
+} // namespace yb::tserver

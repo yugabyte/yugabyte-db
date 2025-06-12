@@ -20,6 +20,3 @@ test: yb.port.collate.icu.utf8
 
 test: yb.port.tsearch
 test: yb.port.tsdicts
-
-# TODO(neil) Must build postgres with --with-libxml
-# test: yb.port.xml

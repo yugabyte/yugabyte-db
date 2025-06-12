@@ -113,7 +113,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {
     }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(new ShellResponse());
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(

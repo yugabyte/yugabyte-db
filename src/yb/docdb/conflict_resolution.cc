@@ -149,17 +149,11 @@ class ConflictResolverContext {
     return boost::none;
   }
 
-  virtual TransactionId background_txn_id() const {
-    return TransactionId::Nil();
-  }
+  virtual TransactionId wait_as_txn_id() const = 0;
 
-  virtual TabletId background_txn_status_tablet() const {
-    return TabletId();
-  }
+  virtual TabletId wait_as_txn_status_tablet() const = 0;
 
-  virtual bool ShouldWaitAsBackgroundTxn() const {
-    return false;
-  }
+  virtual bool ShouldWaitAsDifferentTxn() const = 0;
 
   std::string LogPrefix() const {
     return ToString() + ": ";
@@ -705,10 +699,10 @@ class WaitOnConflictResolver : public ConflictResolver {
   }
 
   void TryPreWait() {
-    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
-        ? context_->background_txn_id() : context_->transaction_id();
-    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
-        ? context_->background_txn_status_tablet() : status_tablet_id_;
+    const auto& waiter_txn = context_->ShouldWaitAsDifferentTxn()
+        ? context_->wait_as_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsDifferentTxn()
+        ? context_->wait_as_txn_status_tablet() : status_tablet_id_;
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         waiter_txn, context_->subtransaction_id(), lock_batch_, waiter_status_tablet,
         serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_,
@@ -730,10 +724,10 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
-    const auto& waiter_txn = context_->ShouldWaitAsBackgroundTxn()
-        ? context_->background_txn_id() : context_->transaction_id();
-    const auto& waiter_status_tablet = context_->ShouldWaitAsBackgroundTxn()
-        ? context_->background_txn_status_tablet() : status_tablet_id_;
+    const auto& waiter_txn = context_->ShouldWaitAsDifferentTxn()
+        ? context_->wait_as_txn_id() : context_->transaction_id();
+    const auto& waiter_status_tablet = context_->ShouldWaitAsDifferentTxn()
+        ? context_->wait_as_txn_status_tablet() : status_tablet_id_;
     RETURN_NOT_OK(wait_queue_->WaitOn(
         waiter_txn, context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), waiter_status_tablet, serial_no_,
@@ -1154,24 +1148,28 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   Status InitTxnMetadata(ConflictResolver* resolver) override {
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
     if (write_batch_.has_background_transaction_id()) {
-      background_transaction_id_ =
+      background_transaction_meta_.emplace();
+      background_transaction_meta_->transaction_id =
           VERIFY_RESULT(FullyDecodeTransactionId(write_batch_.background_transaction_id()));
-      std::string_view status_tablet_string(write_batch_.background_txn_status_tablet());
-      background_txn_status_tablet_.emplace(status_tablet_string);
+      background_transaction_meta_->status_tablet = write_batch_.background_txn_status_tablet();
       should_wait_as_background_txn_ = PgSessionRequestVersion().value_or(false);
     }
     return Status::OK();
   }
 
-  TransactionId background_txn_id() const override {
-    return *background_transaction_id_;
+  TransactionId wait_as_txn_id() const override {
+    return background_transaction_meta_
+        ? background_transaction_meta_->transaction_id
+        : TransactionId::Nil();
   }
 
-  TabletId background_txn_status_tablet() const override {
-    return *background_txn_status_tablet_;
+  TabletId wait_as_txn_status_tablet() const override {
+    return background_transaction_meta_
+        ? background_transaction_meta_->status_tablet
+        : TabletId();
   }
 
-  bool ShouldWaitAsBackgroundTxn() const override {
+  bool ShouldWaitAsDifferentTxn() const override {
     return should_wait_as_background_txn_;
   }
 
@@ -1297,7 +1295,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
     return other == *transaction_id_ ||
-           (background_transaction_id_ && other == *background_transaction_id_);
+           (background_transaction_meta_ && other == background_transaction_meta_->transaction_id);
   }
 
   TransactionId transaction_id() const override {
@@ -1341,8 +1339,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   //   the in-progress DocDB transaction, if any.
   // - For transaction-level advisory lock requests: the below points to
   //   the session-level transaction, if exists.
-  boost::optional<TransactionId> background_transaction_id_ = boost::none;
-  boost::optional<TabletId> background_txn_status_tablet_ = boost::none;
+  std::optional<TransactionMetadata> background_transaction_meta_;
 
   // When set, indicates that we need to wait as background transaction. Currently, this is used
   // in the following path alone,
@@ -1367,6 +1364,17 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
       ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
             *doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy) {
+  }
+
+  Status InitObjectLockingTxnMeta(const LWKeyValueWriteBatchPB& write_batch) {
+    if (write_batch.has_object_locking_txn_meta()) {
+      object_locking_txn_meta_.emplace();
+      object_locking_txn_meta_->transaction_id = VERIFY_RESULT(
+          FullyDecodeTransactionId(write_batch.object_locking_txn_meta().transaction_id()));
+      object_locking_txn_meta_->status_tablet =
+          write_batch.object_locking_txn_meta().status_tablet();
+    }
+    return Status::OK();
   }
 
   virtual ~OperationConflictResolverContext() {}
@@ -1436,6 +1444,27 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     }
     return false;
   }
+
+  bool ShouldWaitAsDifferentTxn() const override {
+    return object_locking_txn_meta_.has_value();
+  }
+
+  TransactionId wait_as_txn_id() const override {
+    return object_locking_txn_meta_
+        ? object_locking_txn_meta_->transaction_id
+        : TransactionId::Nil();
+  }
+
+  TabletId wait_as_txn_status_tablet() const override {
+    return object_locking_txn_meta_
+        ? object_locking_txn_meta_->status_tablet
+        : TabletId();
+  }
+
+ private:
+  // When object locking is enabled, a fast path txn could deadlock with a ddl transaction.
+  // Hence the fast path txn is made to register the wait-for probes with the deadlock detector.
+  std::optional<TransactionMetadata> object_locking_txn_meta_;
 };
 
 } // namespace
@@ -1492,8 +1521,8 @@ Status ResolveTransactionConflicts(
 Status ResolveOperationConflicts(
     const DocOperations& doc_ops,
     const ConflictManagementPolicy conflict_management_policy,
+    const LWKeyValueWriteBatchPB& write_batch,
     HybridTime intial_resolution_ht,
-    int64_t txn_start_us,
     uint64_t request_start_us,
     int64_t request_id,
     const DocDB& doc_db,
@@ -1508,9 +1537,12 @@ Status ResolveOperationConflicts(
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
       << ", initial_resolution_ht: " << intial_resolution_ht;
-
+  auto txn_start_us = write_batch.has_object_locking_txn_meta()
+      ? write_batch.object_locking_txn_meta().pg_txn_start_us()
+      : write_batch.transaction().pg_txn_start_us();
   auto context = std::make_unique<OperationConflictResolverContext>(
       &doc_ops, intial_resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy);
+  RETURN_NOT_OK(context->InitObjectLockingTxnMeta(write_batch));
 
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
     RSTATUS_DCHECK(

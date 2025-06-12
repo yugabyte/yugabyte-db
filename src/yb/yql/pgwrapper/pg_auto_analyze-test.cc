@@ -55,7 +55,7 @@ DECLARE_bool(TEST_sort_auto_analyze_target_table_ids);
 DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
 DECLARE_int64(TEST_delay_after_table_analyze_ms);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 using namespace std::chrono_literals;
 
@@ -994,7 +994,7 @@ TEST_F(PgAutoAnalyzeTest, DDLsInParallelWithAutoAnalyze) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_after_table_analyze_ms) = 10;
   // Explicitly disable object locking. With object locking, concurrent DDLs will be handled
   // without relying on catalog version increments.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
 
   auto conn = ASSERT_RESULT(Connect());
   auto db_name = "abc";

@@ -11,9 +11,6 @@
 // under the License.
 //
 
-#include <memory>
-#include <optional>
-
 #include <gmock/gmock.h>
 
 #include "yb/cdc/xcluster_types.h"
@@ -56,7 +53,8 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
             /* local_client */ nullptr, target_table_name.namespace_name(), kSourceNamespaceId,
             target_table_name.namespace_id(), /* log_prefix */ "", xcluster_context,
             /* connect_to_pg_func */ nullptr,
-            /* update_safetime_func */ [](HybridTime i) { return; }) {}
+            /* update_safetime_func */
+            [&](const HybridTime& ht) { last_updated_safe_time_ = ht; }) {}
 
   Status ExecuteCommittedDDLs(
       const std::optional<HybridTime>& apply_safe_time,
@@ -80,9 +78,13 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
 
   bool HasSafeTimeBatch() const { return !safe_time_batch_->commit_times.empty(); }
 
+  xcluster::SafeTimeBatch GetSafeTimeBatch() { return *safe_time_batch_; }
+
   HybridTime safe_time_ht_;
   std::vector<std::tuple<int64, int64, std::string>> rows_;
   int get_rows_to_process_calls_ = 0;
+  HybridTime last_updated_safe_time_ = HybridTime::kInvalid;
+  HybridTime last_commit_time_processed_ = HybridTime::kInvalid;
 
  private:
   Status InitPGConnection() override { return Status::OK(); }
@@ -101,8 +103,15 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
 
   Result<bool> CheckIfAlreadyProcessed(const DDLQueryInfo& query_info) override { return false; };
 
-  Status ClearSafeTimeBatch() override {
-    safe_time_batch_ = xcluster::SafeTimeBatch();
+  Status UpdateSafeTimeBatchAfterProcessing(const HybridTime& last_commit_time_processed) override {
+    last_commit_time_processed_ = last_commit_time_processed;
+    return XClusterDDLQueueHandler::UpdateSafeTimeBatchAfterProcessing(last_commit_time_processed);
+  }
+
+  Status DoPersistAndUpdateSafeTimeBatch(
+      const std::set<HybridTime>& commit_times, const HybridTime& apply_safe_time) override {
+    safe_time_batch_->commit_times = commit_times;
+    safe_time_batch_->apply_safe_time = apply_safe_time;
     return Status::OK();
   }
 };
@@ -155,17 +164,7 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifySafeTimes) {
     ddl_queue_handler.safe_time_ht_ = ht3;
     ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht2));
   }
-  {
-    // Check that we error if we have a DDL with a commit time greater than the target safe time.
-    ddl_queue_handler.safe_time_ht_ = ht3;
-    std::set<uint64_t> commit_times{ht2.ToUint64()};
-    ddl_queue_handler.rows_.emplace_back(/* ddl_end_time */ 1, /*query_id*/ 1,
-                                         ConstructJson(/* version */ 1, kDDLCommandCreateTable));
-    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, commit_times));
-    // Should be ok if target safe time is equal or greater.
-    ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht2, commit_times));
-    ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht3, commit_times));
-  }
+  // Test for commits times larger than the safe time is in HandleCommitTimesLargerThanSafeTime.
 }
 
 TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
@@ -265,6 +264,56 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, SkipScanWhenNoNewRecords) {
   ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {}));
   ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 3);
   ASSERT_EQ(ddl_queue_handler.HasSafeTimeBatch(), false);  // Should be empty after succesful call.
+}
+
+TEST_F(XClusterDDLQueueHandlerMockedTest, HandleCommitTimesLargerThanSafeTime) {
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
+
+  // Create a batch with commit times larger than the safe time.
+  // Ensure that we don't process these DDLs and don't bump up the safe time for them either.
+  auto apply_safe_time = HybridTime::FromMicrosecondsAndLogicalValue(2, 1);
+  auto commit_times = std::set<uint64_t>{
+      HybridTime::FromMicrosecondsAndLogicalValue(1, 1).ToUint64(),
+      HybridTime::FromMicrosecondsAndLogicalValue(2, 1).ToUint64(),
+      // These are larger and should not be processed.
+      HybridTime::FromMicrosecondsAndLogicalValue(3, 1).ToUint64(),
+      HybridTime::FromMicrosecondsAndLogicalValue(4, 1).ToUint64(),
+  };
+
+  ddl_queue_handler.safe_time_ht_ = apply_safe_time;
+  // ExecuteCommittedDDLs should return OK and not fail despite the larger commit times.
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(apply_safe_time, commit_times));
+
+  // Check that we only processed the DDLs with commit times less than or equal to the safe time (ie
+  // the first 2 commit times).
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 2);
+  // Apply safe time should still get updated to the apply_safe_time.
+  ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, apply_safe_time);
+  // Check that the last commit time processed is the second one.
+  ASSERT_EQ(ddl_queue_handler.last_commit_time_processed_, apply_safe_time);
+  // Check the safe_time_batch_ afterwards still contains the larger times.
+  ASSERT_EQ(ddl_queue_handler.GetSafeTimeBatch().commit_times.size(), 2);
+  ASSERT_TRUE(ddl_queue_handler.GetSafeTimeBatch().commit_times.contains(
+      HybridTime::FromMicrosecondsAndLogicalValue(3, 1)));
+  ASSERT_TRUE(ddl_queue_handler.GetSafeTimeBatch().commit_times.contains(
+      HybridTime::FromMicrosecondsAndLogicalValue(4, 1)));
+
+  // Execute DDLs again with a higher apply_safe_time. This should process the remaining DDLs.
+  apply_safe_time = HybridTime::FromMicrosecondsAndLogicalValue(5, 1);
+  ddl_queue_handler.safe_time_ht_ = apply_safe_time;
+  // Don't pass in any new commit times, want to check that we process the current batch.
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(apply_safe_time, {}));
+
+  // The last 2 DDLs should have been processed now.
+  ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 4);
+  // Apply safe time goes to the last commit time processed (XClusterPoller will update safe time to
+  // the apply_safe_time).
+  ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, HybridTime(*commit_times.rbegin()));
+  // Check that the last commit time processed is the last one.
+  ASSERT_EQ(ddl_queue_handler.last_commit_time_processed_, HybridTime(*commit_times.rbegin()));
+  // Safe time batch should be empty now.
+  ASSERT_EQ(ddl_queue_handler.GetSafeTimeBatch().commit_times.size(), 0);
 }
 
 }  // namespace yb::tserver

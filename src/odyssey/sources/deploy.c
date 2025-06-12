@@ -58,6 +58,9 @@ int yb_send_reset_query(od_server_t *server)
 		server->reset_timeout = true;
 		return -1;
 	}
+	/* YB: drop server if in an active transaction due to conflict errors */
+	if (server->is_transaction)
+		return -2;
 	return rc;
 }
 
@@ -83,7 +86,17 @@ int od_deploy(od_client_t *client, char *context)
 		yb_check_reset_needed(&client->vars, &server->vars)) {
 		od_debug(&instance->logger, context, client, server,
 			 "deploy: RESET ALL");
-		yb_send_reset_query(server);
+		rc = yb_send_reset_query(server);
+		if (rc == -1) {
+			od_error(&instance->logger, "deploy", client, server,
+				 "failed to send RESET ALL");
+			return -1;
+		} else if (rc == -2) {
+			/* handle drop and switch of server in frontend.c */
+			od_error(&instance->logger, "deploy", client, server,
+				 "failed to send RESET ALL due to active transaction");
+			return -2;
+		}
 		yb_reset = 1;
 	}
 

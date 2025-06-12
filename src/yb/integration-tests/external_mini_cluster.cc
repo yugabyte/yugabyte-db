@@ -591,7 +591,7 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
   }
 
   ExternalMasterPtr master = new ExternalMaster(
-      add_new_master_at_, messenger_, proxy_cache_.get(), exe,
+      add_new_master_at_, opts_.cluster_short_name, messenger_, proxy_cache_.get(), exe,
       GetDataPath(Format("master-$0", add_new_master_at_)),
       SubstituteInFlags(flags, add_new_master_at_), addr, http_port, peer_addrs);
 
@@ -1526,11 +1526,10 @@ Result<size_t> ExternalMiniCluster::LaunchTabletServer(
   }
 
   auto ts = make_scoped_refptr<ExternalTabletServer>(
-      idx, messenger_, proxy_cache_.get(), exe, GetDataPath(Format("ts-$0", idx + 1)),
-      num_drives, GetBindIpForTabletServer(idx), ts_rpc_port, ts_http_port, redis_rpc_port,
-      redis_http_port, cql_rpc_port, cql_http_port, pgsql_rpc_port,
-      ysql_conn_mgr_rpc_port, pgsql_http_port,
-      master_hostports, SubstituteInFlags(flags, idx));
+      idx, opts_.cluster_short_name, messenger_, proxy_cache_.get(), exe,
+      GetDataPath(Format("ts-$0", idx + 1)), num_drives, GetBindIpForTabletServer(idx), ts_rpc_port,
+      ts_http_port, redis_rpc_port, redis_http_port, cql_rpc_port, cql_http_port, pgsql_rpc_port,
+      ysql_conn_mgr_rpc_port, pgsql_http_port, master_hostports, SubstituteInFlags(flags, idx));
   RETURN_NOT_OK(ts->Launch(start_cql_proxy));
   tablet_servers_.push_back(ts);
 
@@ -2474,22 +2473,19 @@ ScopedResumeExternalDaemon::~ScopedResumeExternalDaemon() {
 // ExternalMaster
 //------------------------------------------------------------
 ExternalMaster::ExternalMaster(
-    size_t master_index,
-    rpc::Messenger* messenger,
-    rpc::ProxyCache* proxy_cache,
-    const string& exe,
-    const string& data_dir,
-    const std::vector<string>& extra_flags,
-    const string& rpc_bind_address,
-    uint16_t http_port,
+    size_t master_index, const std::string& cluster_short_name, rpc::Messenger* messenger,
+    rpc::ProxyCache* proxy_cache, const string& exe, const string& data_dir,
+    const std::vector<string>& extra_flags, const string& rpc_bind_address, uint16_t http_port,
     const string& master_addrs)
-    : ExternalDaemon(Format("m-$0", master_index + 1), messenger,
-                     proxy_cache, exe, data_dir,
-                     {GetServerTypeDataPath(data_dir, "master")}, extra_flags),
+    : ExternalDaemon(
+          Format(
+              "$0m-$1", cluster_short_name.empty() ? "" : cluster_short_name + "-",
+              master_index + 1),
+          messenger, proxy_cache, exe, data_dir, {GetServerTypeDataPath(data_dir, "master")},
+          extra_flags),
       rpc_bind_address_(rpc_bind_address),
       master_addrs_(master_addrs),
-      http_port_(http_port) {
-}
+      http_port_(http_port) {}
 
 ExternalMaster::~ExternalMaster() {
 }
@@ -2553,15 +2549,19 @@ Status ExternalMaster::Restart() {
 //------------------------------------------------------------
 
 ExternalTabletServer::ExternalTabletServer(
-    size_t tablet_server_index, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache,
-    const std::string& exe, const std::string& data_dir, uint16_t num_drives,
-    std::string bind_host, uint16_t rpc_port, uint16_t http_port, uint16_t redis_rpc_port,
-    uint16_t redis_http_port, uint16_t cql_rpc_port, uint16_t cql_http_port,
-    uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port, uint16_t pgsql_http_port,
-    const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags)
-    : ExternalDaemon(Format("ts-$0", tablet_server_index + 1),
-                     messenger, proxy_cache, exe, data_dir,
-                     FsDataDirs(data_dir, "tserver", num_drives), extra_flags),
+    size_t tablet_server_index, const std::string& cluster_short_name, rpc::Messenger* messenger,
+    rpc::ProxyCache* proxy_cache, const std::string& exe, const std::string& data_dir,
+    uint16_t num_drives, std::string bind_host, uint16_t rpc_port, uint16_t http_port,
+    uint16_t redis_rpc_port, uint16_t redis_http_port, uint16_t cql_rpc_port,
+    uint16_t cql_http_port, uint16_t pgsql_rpc_port, uint16_t ysql_conn_mgr_rpc_port,
+    uint16_t pgsql_http_port, const std::vector<HostPort>& master_addrs,
+    const std::vector<std::string>& extra_flags)
+    : ExternalDaemon(
+          Format(
+              "$0ts-$1", cluster_short_name.empty() ? "" : cluster_short_name + "-",
+              tablet_server_index + 1),
+          messenger, proxy_cache, exe, data_dir, FsDataDirs(data_dir, "tserver", num_drives),
+          extra_flags),
       master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
       bind_host_(std::move(bind_host)),
       rpc_port_(rpc_port),

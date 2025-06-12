@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/yb_table_name.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/common/common.pb.h"
@@ -135,7 +136,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
 
   void ValidateSimpleReplicationWithPackedRowsUpgrade(
       std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
-      uint32_t num_tablet_servers = 1, bool range_partitioned = false);
+      bool use_transaction, uint32_t num_tablet_servers, bool range_partitioned);
 
   std::string GetCompleteTableName(const YBTableName& table) {
     // Append schema name before table name, if schema is available.
@@ -1150,7 +1151,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithYbAdmin) {
 
 void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
     std::vector<uint32_t> consumer_tablet_counts, std::vector<uint32_t> producer_tablet_counts,
-    uint32_t num_tablet_servers, bool range_partitioned) {
+    bool use_transaction, uint32_t num_tablet_servers, bool range_partitioned) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   constexpr auto kNumRecords = 1000;
@@ -1160,7 +1161,7 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   // 1. Write some data.
   for (const auto& producer_table : producer_tables_) {
     LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-    ASSERT_OK(InsertRowsInProducer(0, kNumRecords, producer_table));
+    ASSERT_OK(InsertRowsInProducer(0, kNumRecords, producer_table, use_transaction));
   }
 
   // Verify data is written on the producer.
@@ -1193,7 +1194,7 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
 
   // 4. Write more data.
   for (const auto& producer_table : producer_tables_) {
-    ASSERT_OK(InsertRowsInProducer(kNumRecords, kNumRecords + 5, producer_table));
+    ASSERT_OK(InsertRowsInProducer(kNumRecords, kNumRecords + 5, producer_table, use_transaction));
   }
 
   // 5. Make sure this data is also replicated now.
@@ -1209,7 +1210,8 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
 
   // 6. Write packed data.
   for (const auto& producer_table : producer_tables_) {
-    ASSERT_OK(InsertRowsInProducer(kNumRecords + 5, kNumRecords + 10, producer_table));
+    ASSERT_OK(
+        InsertRowsInProducer(kNumRecords + 5, kNumRecords + 10, producer_table, use_transaction));
   }
 
   // 7. Disable packing and resume replication
@@ -1221,7 +1223,8 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   // 8. Write some non-packed data on consumer.
   for (const auto& consumer_table : consumer_tables_) {
     ASSERT_OK(WriteWorkload(
-        kNumRecords + 10, kNumRecords + 15, &consumer_cluster_, consumer_table->name()));
+        kNumRecords + 10, kNumRecords + 15, &consumer_cluster_, consumer_table->name(),
+        /*delete_op=*/false, use_transaction));
   }
 
   // 9. Make sure full scan works now.
@@ -1240,7 +1243,8 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
 
   // 11. Write some packed rows on producer and verify that those can be read from consumer
   for (const auto& producer_table : producer_tables_) {
-    ASSERT_OK(InsertRowsInProducer(kNumRecords + 15, kNumRecords + 20, producer_table));
+    ASSERT_OK(
+        InsertRowsInProducer(kNumRecords + 15, kNumRecords + 20, producer_table, use_transaction));
   }
 
   // 12. Verify that all the data can be read now.
@@ -1252,27 +1256,46 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
   ASSERT_OK(data_replicated_correctly(kNumRecords + 20));
 }
 
-TEST_F(XClusterYsqlTest, SimpleReplication) {
-  ValidateSimpleReplicationWithPackedRowsUpgrade(
-      /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1});
-}
+struct XClusterYsqlSimpleReplicationTestParam {
+  bool use_transaction;
+  bool range_partitioned;
+  bool use_uneven_tablets;
+  XClusterYsqlSimpleReplicationTestParam(
+      bool use_transaction_, bool range_partitioned_, bool use_uneven_tablets_)
+      : use_transaction(use_transaction_),
+        range_partitioned(range_partitioned_),
+        use_uneven_tablets(use_uneven_tablets_) {}
+};
 
-TEST_F(XClusterYsqlTest, SimpleReplicationWithUnevenTabletCounts) {
-  ValidateSimpleReplicationWithPackedRowsUpgrade(
-      /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
-      /* num_tablet_servers */ 3);
-}
+class XClusterYsqlSimpleReplicationTest
+    : public XClusterYsqlTest,
+      public testing::WithParamInterface<XClusterYsqlSimpleReplicationTestParam> {};
 
-TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitions) {
-  ValidateSimpleReplicationWithPackedRowsUpgrade(
-      /* consumer_tablet_counts */ {1, 1}, /* producer_tablet_counts */ {1, 1},
-      /* num_tablet_servers */ 1, /* range_partitioned */ true);
-}
+INSTANTIATE_TEST_CASE_P(
+    , XClusterYsqlSimpleReplicationTest,
+    ::testing::Values(
+        XClusterYsqlSimpleReplicationTestParam(true, true, true),
+        XClusterYsqlSimpleReplicationTestParam(true, true, false),
+        XClusterYsqlSimpleReplicationTestParam(true, false, true),
+        XClusterYsqlSimpleReplicationTestParam(true, false, false),
+        XClusterYsqlSimpleReplicationTestParam(false, true, true),
+        XClusterYsqlSimpleReplicationTestParam(false, true, false),
+        XClusterYsqlSimpleReplicationTestParam(false, false, true),
+        XClusterYsqlSimpleReplicationTestParam(false, false, false)));
 
-TEST_F(XClusterYsqlTest, SimpleReplicationWithRangedPartitionsAndUnevenTabletCounts) {
+TEST_P(XClusterYsqlSimpleReplicationTest, Validate) {
+  uint32_t num_tablet_servers = 1;
+  std::vector<uint32_t> consumer_tablet_counts({1, 1}), producer_tablet_counts({1, 1});
+
+  if (GetParam().use_uneven_tablets) {
+    num_tablet_servers = 3;  // Use more than one TS to create uneven tablets.
+    consumer_tablet_counts = {5, 3};
+    producer_tablet_counts = {3, 5};
+  }
+
   ValidateSimpleReplicationWithPackedRowsUpgrade(
-      /* consumer_tablet_counts */ {5, 3}, /* producer_tablet_counts */ {3, 5},
-      /* num_tablet_servers */ 3, /* range_partitioned */ true);
+      consumer_tablet_counts, producer_tablet_counts, GetParam().use_transaction,
+      num_tablet_servers, GetParam().range_partitioned);
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
@@ -2225,7 +2248,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
   if (do_explict_transaction) {
     ASSERT_OK(InsertTransactionalBatchOnProducer(0, 10));
   } else {
-    ASSERT_OK(InsertRowsInProducer(0, 10));
+    ASSERT_OK(InsertRowsInProducer(0, 10, /*producer_table=*/nullptr, /*use_transaction=*/false));
   }
 
   // Verify data is written on the producer.
@@ -2275,7 +2298,9 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
   if (do_explict_transaction) {
     ASSERT_OK(InsertTransactionalBatchOnProducer(batch_insert_count, batch_insert_count * 2));
   } else {
-    ASSERT_OK(InsertRowsInProducer(batch_insert_count, batch_insert_count * 2));
+    ASSERT_OK(InsertRowsInProducer(
+        batch_insert_count, batch_insert_count * 2, /*producer_table=*/nullptr,
+        /*use_transaction=*/false));
   }
   // Verify data is written on the producer, which should previous plus
   // current new insert.
@@ -2500,7 +2525,9 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   // Write different numbers of records to the 3 producers, and verify that the
   // corresponding receivers receive the records.
   for (int i = 0; i < kNumTables; i++) {
-    ASSERT_OK(WriteWorkload(0, 2 * (i + 1), &producer_cluster_, producer_table_names[i]));
+    ASSERT_OK(WriteWorkload(
+        0, 2 * (i + 1), &producer_cluster_, producer_table_names[i], /*delete_op=*/false,
+        /*use_transaction=*/false));
     ASSERT_OK(VerifyWrittenRecords(producer_table_names[i], consumer_table_names[i]));
   }
 
@@ -2621,7 +2648,8 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
 
   for (auto& conn : consumer_conns) {
     auto namespace_name = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_database()"));
-    auto namespace_id = ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace_name));
+    auto namespace_id =
+        ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace_name));
     ASSERT_OK(
         WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, &consumer_cluster_));
   }

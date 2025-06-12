@@ -42,6 +42,7 @@ using namespace std::placeholders;
 using namespace yb::size_literals;
 
 DECLARE_bool(rpc_dump_all_traces);
+DECLARE_int32(print_trace_every);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DEFINE_UNKNOWN_uint64(redis_max_concurrent_commands, 1,
               "Max number of redis commands received from single connection, "
@@ -281,19 +282,15 @@ void RedisInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress
 void RedisInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
-
-  auto trace_ = trace();
-  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
-          || (trace_ && trace_->must_print())
-          || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-    LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:";
+  bool must_log_trace = false;
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     rpc::RpcCallInProgressPB call_in_progress_pb;
     GetCallDetails(&call_in_progress_pb);
-    LOG(WARNING) << call_in_progress_pb.DebugString() << "Trace: ";
-    if (trace_) {
-      trace_->Dump(&LOG(WARNING), /* include_time_deltas */ true);
-    }
+    LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:\n"
+                 << call_in_progress_pb.DebugString();
+    must_log_trace = true;
   }
+  Trace::DumpTraceIfNecessary(trace(), FLAGS_print_trace_every, must_log_trace);
 }
 
 string RedisInboundCall::ToString() const {

@@ -42,21 +42,14 @@ public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
     log.info("Running {}", getName());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String hostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = null;
-
     int autoFlagConfigVersion;
-    try {
-      client = ybService.getClient(hostPorts, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       WireProtocol.AutoFlagsConfigPB autoFlagsConfigPB =
           client.autoFlagsConfig().getAutoFlagsConfig();
       autoFlagConfigVersion = autoFlagsConfigPB.getConfigVersion();
     } catch (Exception e) {
       log.error("Error while fetching auto flag config version ", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
 
     try {

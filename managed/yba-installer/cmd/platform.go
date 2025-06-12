@@ -313,11 +313,11 @@ func (plat Platform) copyNodeAgentPackages() error {
 func (plat Platform) renameAndCreateSymlinks() error {
 
 	ybPlat := common.GetSoftwareRoot() + "/yb-platform"
-	if err := common.CreateSymlink(plat.PlatformPackages, ybPlat, "yugaware"); err != nil {
+	if err := common.Symlink(fmt.Sprintf("%s/yugaware", plat.PlatformPackages), fmt.Sprintf("%s/yugaware", ybPlat)); err != nil {
 		log.Error("failed to create soft link for yugaware directory")
 		return err
 	}
-	if err := common.CreateSymlink(plat.PlatformPackages, ybPlat, "devops"); err != nil {
+	if err := common.Symlink(fmt.Sprintf("%s/devops", plat.PlatformPackages), fmt.Sprintf("%s/devops", ybPlat)); err != nil {
 		log.Error("failed to create soft link for devops directory")
 		return err
 	}

@@ -14,6 +14,7 @@
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <ranges>
 #include <string>
 #include <string_view>
 
@@ -86,23 +87,24 @@ class PgReadTimeTest : public PgMiniTestBase {
         stmt_executor, 0 /* expected_num_picked_read_time_on_doc_db_metric */);
   }
 
-  void generateCSVFileForCopy(const std::string& filename, int num_rows) {
-    std::remove(filename.c_str());
-    int num_columns = 2;
-    std::ofstream temp_file(filename);
-    temp_file << "k";
-    for (int c = 0; c < num_columns - 1; ++c) {
-      temp_file << ",v" << c;
+  static void GenerateCSVFileForCopy(const std::string& filename, size_t num_rows) {
+    constexpr auto kNumColumns = 2;
+    std::ofstream out(filename);
+    out << "k";
+    for (auto c : std::views::iota(0, kNumColumns - 1)) {
+      out << ",v" << c;
     }
-    temp_file << std::endl;
-    for (int i = 0; i < num_rows; ++i) {
-      temp_file << i + 10000;
-      for (int c = 0; c < num_columns - 1; ++c) {
-        temp_file << "," << i + c;
+    for (auto i : std::views::iota(0U, num_rows)) {
+      out << std::endl << i + 10000;
+      for (auto c : std::views::iota(0, kNumColumns - 1)) {
+        out << "," << i + c;
       }
-      temp_file << std::endl;
     }
-    temp_file.close();
+  }
+
+  static Status ExecuteCopyFromCSV(
+      PGConn& conn, const std::string_view& table, const std::string_view& file_name) {
+    return conn.ExecuteFormat("COPY $0 FROM '$1' WITH (FORMAT CSV, HEADER)", table, file_name);
   }
 
  private:
@@ -347,21 +349,19 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
   // (1) Copy single row to table with multiple tserver
   ASSERT_OK(SetMaxBatchSize(&conn, 1024));
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
-  std::string csv_filename = "/tmp/pg_read_time-test-fastpath-copy.tmp";
-  generateCSVFileForCopy(csv_filename, 1);
+  const auto csv_filename = GetTestPath("pg_read_time-test-fastpath-copy.csv");
+  GenerateCSVFileForCopy(csv_filename, 1);
   CheckReadTimePickedOnDocdb(
-      [&conn, kTable, &csv_filename]() {
-      ASSERT_OK(conn.ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
-                                   kTable, csv_filename));
+      [&conn, kTable, &csv_filename] {
+        ASSERT_OK(ExecuteCopyFromCSV(conn, kTable, csv_filename));
       }, 1);
 
   // (2) Copy multiple rows to table with single tserver
-  generateCSVFileForCopy(csv_filename, 100);
+  GenerateCSVFileForCopy(csv_filename, 100);
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
   CheckReadTimePickedOnDocdb(
       [&conn, kSingleTabletTable, &csv_filename]() {
-      ASSERT_OK(conn.ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
-                                   kSingleTabletTable, csv_filename));
+        ASSERT_OK(ExecuteCopyFromCSV(conn, kSingleTabletTable, csv_filename));
       }, 1);
 
   ASSERT_OK(conn.Execute("RESET yb_disable_transactional_writes"));
@@ -378,9 +378,8 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       "CREATE INDEX $0_index ON $1(v)", kColocatedTable, kColocatedTable));
   ASSERT_OK(conn_colo.Execute("SET yb_fast_path_for_colocated_copy = 1"));
   CheckReadTimePickedOnDocdb(
-      [&conn_colo, kColocatedTable, &csv_filename]() {
-      ASSERT_OK(conn_colo.ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
-                                   kColocatedTable, csv_filename));
+      [&conn_colo, &csv_filename]() {
+        ASSERT_OK(ExecuteCopyFromCSV(conn_colo, kColocatedTable, csv_filename));
       }, 20);
   ASSERT_OK(conn_colo.Execute("RESET yb_fast_path_for_colocated_copy"));
   ASSERT_OK(ResetMaxBatchSize(&conn_colo));
@@ -411,8 +410,8 @@ TEST_F(PgReadTimeTest, TestFastPathCopyDuplicateKeyOnColocated) {
   constexpr auto kColocatedTable = "test_fast_path_copy_colocated";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", dbName));
-  std::string csv_filename = "/tmp/pg_read_time-test-fastpath-copy.tmp";
-  generateCSVFileForCopy(csv_filename, 200000);
+  const auto csv_filename = GetTestPath("pg_read_time-test-fastpath-copy.csv");
+  GenerateCSVFileForCopy(csv_filename, 200000);
   auto conn_colo = ASSERT_RESULT(ConnectToDB(dbName));
   ASSERT_OK(SetMaxBatchSize(&conn_colo, 2));
   ASSERT_OK(conn_colo.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kColocatedTable));
@@ -433,9 +432,8 @@ TEST_F(PgReadTimeTest, TestFastPathCopyDuplicateKeyOnColocated) {
       });
 
   LOG(INFO) << "copy started";
-  auto start = MonoTime::Now();
-  const auto update_status = conn_colo.ExecuteFormat("copy $0 from '$1' WITH (FORMAT CSV,HEADER)",
-                                                     kColocatedTable, csv_filename);
+  const auto start = MonoTime::Now();
+  const auto update_status = ExecuteCopyFromCSV(conn_colo, kColocatedTable, csv_filename);
   ASSERT_NOK(update_status);
   LOG(INFO) << "update_status.ToString=" << update_status.ToString();
   ASSERT_STR_CONTAINS(

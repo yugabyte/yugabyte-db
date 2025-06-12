@@ -101,10 +101,14 @@ Status DBImpl::TEST_CompactRange(int level, const Slice* begin,
        cfd->ioptions()->compaction_style == kCompactionStyleFIFO)
           ? level
           : level + 1;
-  return RunManualCompaction(cfd, level, output_level, /* output_path_id */ 0, begin, end,
-                             /* exclusive */ true, CompactionReason::kManualCompaction,
-                             /* file_number_upper_bound */ 0, /* input_size_limit_per_job */ 0,
-                             disallow_trivial_move);
+  CompactRangeOptions options = {
+      .exclusive_manual_compaction = true,
+      .target_path_id = 0,
+      .compaction_reason = CompactionReason::kManualCompaction,
+      .file_number_upper_bound = 0,
+      .input_size_limit_per_job = 0,
+  };
+  return RunManualCompaction(cfd, level, output_level, options, begin, end, disallow_trivial_move);
 }
 
 Status DBImpl::TEST_FlushMemTable(bool wait) {

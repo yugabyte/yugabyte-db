@@ -795,10 +795,9 @@ Status WriteQuery::DoExecute() {
       //     "Read time was picked before conflict resolution for a single shard operation.");
     }
     return docdb::ResolveOperationConflicts(
-        doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
-        request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
-        transaction_participant, metrics_, &prepare_result_.lock_batch, wait_queue,
-        deadline(),
+        doc_ops_, conflict_management_policy, write_batch, now, request_start_us(), request_id,
+        tablet->doc_db(), partial_range_key_intents, transaction_participant, metrics_,
+        &prepare_result_.lock_batch, wait_queue, deadline(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
             ExecuteDone(result.status());

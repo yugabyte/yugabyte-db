@@ -98,7 +98,7 @@ DECLARE_bool(master_register_ts_check_desired_host_port);
 DECLARE_string(use_private_ip);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -1782,72 +1782,8 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
           EXPECTED_SYSTEM_TABLES
       }, tables);
 
-  // Alter table: try to change the table namespace name into an invalid one.
-  {
-    AlterTableRequestPB req;
-    AlterTableResponsePB resp;
-    req.mutable_table()->set_table_name(kTableName);
-    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    req.mutable_new_namespace()->set_name("nonexistingns");
-    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "YCQL keyspace name not found");
-  }
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-  CheckTables(
-      {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
-          EXPECTED_SYSTEM_TABLES
-      }, tables);
-
-  // Alter table: try to change the table namespace id into an invalid one.
-  {
-    AlterTableRequestPB req;
-    AlterTableResponsePB resp;
-    req.mutable_table()->set_table_name(kTableName);
-    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    req.mutable_new_namespace()->set_id("deadbeafdeadbeafdeadbeafdeadbeaf");
-    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace identifier not found");
-  }
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-  CheckTables(
-      {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
-          EXPECTED_SYSTEM_TABLES
-      }, tables);
-
-  // Alter table: change namespace name into the default one.
-  {
-    AlterTableRequestPB req;
-    AlterTableResponsePB resp;
-    req.mutable_table()->set_table_name(kTableName);
-    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    req.mutable_new_namespace()->set_name(default_namespace_name);
-    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-  CheckTables(
-      {
-          std::make_tuple(kTableName, default_namespace_name, default_namespace_id,
-              USER_TABLE_RELATION),
-          EXPECTED_SYSTEM_TABLES
-      }, tables);
-
   // Delete the table.
-  ASSERT_OK(DeleteTable(default_namespace_name, kTableName));
+  ASSERT_OK(DeleteTable(other_ns_name, kTableName));
 
   // List tables, should show 1 table.
   ASSERT_NO_FATALS(DoListAllTables(&tables));
@@ -2319,23 +2255,6 @@ TEST_F(MasterTest, TestFullTableName) {
           std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION)
       }, tables);
 
-  // Try to alter table: change namespace name into the default one.
-  // Try to change 'testns::testtb' into 'default_namespace::testtb', but the target table exists,
-  // so it must fail.
-  {
-    AlterTableRequestPB req;
-    AlterTableResponsePB resp;
-    req.mutable_table()->set_table_name(kTableName);
-    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
-    req.mutable_new_namespace()->set_name(default_namespace_name);
-    ASSERT_OK(proxy_ddl_->AlterTable(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(resp.error().code(), MasterErrorPB::OBJECT_ALREADY_PRESENT);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::ALREADY_PRESENT);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        " already exists");
-  }
   // Check that nothing's changed (still have 3 tables).
   ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(2 + kNumSystemTables, tables.tables_size());

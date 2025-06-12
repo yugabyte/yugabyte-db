@@ -147,7 +147,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
   virtual Status PreReplicationSetup() { return Status::OK(); }
 
   Status WriteWorkload(const client::YBTableName& table, uint32_t start, uint32_t end) {
-    return super::WriteWorkload(table, start, end, &producer_cluster_);
+    return super::WriteWorkload(start, end, &producer_cluster_, table);
   }
 
   virtual Status PostReplicationSetup() {
@@ -493,7 +493,7 @@ class XClusterSingleClusterTest : public XClusterYsqlTestBase {
 TEST_F_EX(XClusterConsistencyTest, BootstrapAbortInFlightTxn, XClusterSingleClusterTest) {
   ASSERT_OK(TestAbortInFlightTxn());
 
-  ASSERT_OK(WriteWorkload(producer_table_->name(), 0, 10, &producer_cluster_));
+  ASSERT_OK(WriteWorkload(0, 10, &producer_cluster_, producer_table_->name()));
   auto count = ASSERT_RESULT(GetRowCount(producer_table_->name(), &producer_cluster_));
   ASSERT_EQ(count, 10);
 }

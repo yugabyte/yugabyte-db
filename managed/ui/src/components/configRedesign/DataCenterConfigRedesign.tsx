@@ -38,7 +38,7 @@ import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
-import { TroubleshootingDetails } from '../../redesign/features/Troubleshooting/TroubleshootingDetails';
+import { PerfAdvisorOverview } from '../../redesign/features/PerfAdvisor/PerfAdvisorOverview';
 import { fetchGlobalRunTimeConfigs } from '../../api/admin';
 import { runtimeConfigQueryKey } from '../../redesign/helpers/api';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
@@ -46,13 +46,13 @@ import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 interface ReactRouterProps {
   location: LocationShape;
   params: { tab?: string; section?: string; uuid?: string };
-  isTroubleshootingEnabled: boolean;
+  isPerfAdvisorEnabled: boolean;
 }
 
 export const DataCenterConfigRedesign = ({
   location,
   params,
-  isTroubleshootingEnabled
+  isPerfAdvisorEnabled
 }: ReactRouterProps) => {
   const { currentCustomer } = useSelector((state: any) => state.customer);
   const featureFlags = useSelector((state: any) => state.featureFlags);
@@ -255,13 +255,13 @@ export const DataCenterConfigRedesign = ({
               <NewStorageConfiguration activeTab={params.section} />
             </Tab>
           )}
-          {isTroubleshootingEnabled && (
+          {isPerfAdvisorEnabled && (
             <Tab
-              eventKey={ConfigTabKey.TROUBLESHOOT}
-              title={t('tab.troubleshoot.tabLabel')}
-              key="troubleshoot-config"
+              eventKey={ConfigTabKey.PERF_ADVISOR}
+              title={t('tab.perfAdvisor.tabLabel')}
+              key="perf-advisor-config"
             >
-              <TroubleshootingDetails activeTab={params.section} />
+              <PerfAdvisorOverview activeTab={params.section} />
             </Tab>
           )}
         </YBTabsWithLinksPanel>

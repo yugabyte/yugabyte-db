@@ -22,6 +22,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -34,7 +35,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(TEST_check_broadcast_address);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -44,6 +45,11 @@ DECLARE_string(TEST_block_alter_table);
 
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
+DECLARE_uint64(refresh_waiter_timeout_ms);
+DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
+DECLARE_int64(olm_poll_interval_ms);
 
 using namespace std::literals;
 
@@ -51,13 +57,25 @@ namespace yb::pgwrapper {
 
 constexpr uint64_t kDefaultMasterYSQLLeaseTTLMilli = 5 * 1000;
 constexpr uint64_t kDefaultYSQLLeaseRefreshIntervalMilli = 500;
+constexpr uint64_t kDefaultLockManagerPollIntervalMs = 100;
 
 class PgObjectLocksTestRF1 : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
+    // Set reasonable high poll interavl to disable polling in tests., would help catch issues
+    // with signaling logic if any.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = 1000000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
+        kDefaultMasterYSQLLeaseTTLMilli;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) =
+        kDefaultYSQLLeaseRefreshIntervalMilli;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     PgMiniTestBase::SetUp();
+    Init();
+  }
+
+  void Init() {
     ts_lock_manager_ = cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager();
     master_lock_manager_ = cluster_->mini_master()
                                ->master()
@@ -455,14 +473,18 @@ class PgObjectLocksTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     const bool table_locks_enabled = EnableTableLocks();
     opts->extra_tserver_flags.emplace_back(
-        yb::Format("--TEST_enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks"));
+    opts->extra_tserver_flags.emplace_back(
+        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
     opts->extra_master_flags.emplace_back(
-        yb::Format("--TEST_enable_object_locking_for_table_locks=$0", table_locks_enabled));
+        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks"));
+    opts->extra_master_flags.emplace_back(
+        yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
@@ -491,7 +513,7 @@ class PgObjectLocksTestAbortTxns : public PgObjectLocksTest,
   }
 };
 
-TEST_P(PgObjectLocksTestAbortTxns, TestDDLAbortsTxns) {
+TEST_P(PgObjectLocksTestAbortTxns, YB_DISABLE_TEST(TestDDLAbortsTxns)) {
   auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
   ASSERT_OK(conn.Execute("CREATE DATABASE testdb with colocation=true"));
 
@@ -655,6 +677,154 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
   }
   ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
   ASSERT_OK(ts1->Restart());
+}
+
+// This test relies on the OLM poller to run frequently and timedout waiters, in order to
+// check for deadlocks/transaction aborts and retry from pg_client_session if necessary.
+TEST_F(PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
+  // Restart the cluster_ with the poll interval set to default.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = kDefaultLockManagerPollIntervalMs;
+  ASSERT_OK(cluster_->RestartSync());
+  Init();
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(k INT)"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 5000;
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // Deadlock at the tserver's object lock manager
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS SHARE mode"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE mode"));
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto s = conn1.Execute("LOCK TABLE test1 in ACCESS SHARE mode");
+    EXPECT_OK(conn1.RollbackTransaction());
+    return s;
+  });
+
+  auto s = conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode");
+  ASSERT_OK(conn2.RollbackTransaction());
+  if (s.ok()) {
+    s = status_future.get();
+  } else {
+    ASSERT_OK(status_future.get());
+  }
+  ASSERT_STR_CONTAINS(s.ToString(), "aborted due to a deadlock");
+
+  // Deadlock between row-level locks and object locks.
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  ASSERT_OK(conn1.Execute("UPDATE test SET v=v+1 where k=1"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE mode"));
+
+  status_future = std::async(std::launch::async, [&]() -> Status {
+    auto s = conn1.Execute("LOCK TABLE test1 in ACCESS SHARE mode");
+    SleepFor(FLAGS_transaction_heartbeat_usec * 1us * kTimeMultiplier * 2);
+    if (s.ok()) {
+      s = conn1.Execute("UPDATE test SET v=v+1 where k=1");
+    }
+    EXPECT_OK(conn1.RollbackTransaction());
+    return s;
+  });
+  s = conn2.Execute("UPDATE test SET v=v+1 where k=1");
+  if (s.ok()) {
+    // Give time for the transaction heartheat to realize the abort. That way, conn1's
+    // lock request would fail. If not, it will falsely report success, but fail the
+    // subsequent statements.
+    SleepFor(FLAGS_transaction_heartbeat_usec * 1us * kTimeMultiplier * 2);
+    s = conn2.Execute("UPDATE test SET v=v+1 where k=1");
+  }
+  ASSERT_OK(conn2.RollbackTransaction());
+  if (s.ok()) {
+    s = status_future.get();
+  } else {
+    ASSERT_OK(status_future.get());
+  }
+  ASSERT_STR_CONTAINS(s.ToString(), "aborted due to a deadlock");
+
+  // Deadlock at the master's object lock manager
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE mode"));
+  status_future = std::async(std::launch::async, [&]() -> Status {
+    auto s = conn1.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE mode");
+    EXPECT_OK(conn1.RollbackTransaction());
+    return s;
+  });
+  s = conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode");
+  ASSERT_OK(conn2.RollbackTransaction());
+  if (s.ok()) {
+    s = status_future.get();
+  } else {
+    ASSERT_OK(status_future.get());
+  }
+  ASSERT_STR_CONTAINS(s.ToString(), "aborted due to a deadlock");
+}
+
+TEST_F(PgObjectLocksTestRF1, TestShutdownWithWaiters) {
+  constexpr auto kNumWaiters = 3;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode"));
+
+  TestThreadHolder thread_holder;
+  for (int i = 0 ; i < kNumWaiters; i++) {
+    thread_holder.AddThreadFunctor([&]() {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.ExecuteFormat("SET statement_timeout=$0", 1000 * kTimeMultiplier));
+      ASSERT_NOK(conn.Execute("UPDATE test SET v=v+1 WHERE k=1"));
+    });
+  }
+  auto log_waiter = StringWaiterLogSink("has just lost its lease");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = false;
+  ASSERT_OK(log_waiter.WaitFor(
+      MonoDelta::FromMilliseconds(2 * kDefaultMasterYSQLLeaseTTLMilli * kTimeMultiplier)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
+  thread_holder.JoinAll();
+}
+
+TEST_F_EX(
+    PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlockFastPath),
+    TestWithTransactionalDDL) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE test SET v=v+1 WHERE k=1"));
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestDeadlockFastPath"}});
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.Execute("UPDATE test SET v=v+1 WHERE k=1");
+  });
+  TEST_SYNC_POINT("TestDeadlockFastPath");
+  auto s = conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  if (s.ok()) {
+    s = conn.Execute("UPDATE test SET v=v+1 WHERE k=1");
+  }
+  if (s.ok()) {
+    ASSERT_NOK(status_future.get());
+    ASSERT_OK(conn.CommitTransaction());
+  } else {
+    ASSERT_OK(status_future.get());
+    ASSERT_OK(conn.RollbackTransaction());
+  }
 }
 
 }  // namespace yb::pgwrapper

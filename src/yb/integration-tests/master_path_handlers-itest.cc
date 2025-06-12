@@ -1746,13 +1746,21 @@ TEST_F(MasterPathHandlersItest, TestClusterBalancerWarnings) {
   auto hp = HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr());
   ASSERT_OK(yb_admin_client_->ChangeBlacklist({hp}, true /* add */, false /* blacklist_leader */));
 
-  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms); // Let the load balancer run once
-  auto rows = ASSERT_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
-  ASSERT_EQ(rows.size(), 1);
-  ASSERT_EQ(rows[0].size(), 2);
-  ASSERT_STR_CONTAINS(rows[0][0], "Could not find a valid tserver to host tablet");
-  // 3 user tablets + system tablets
-  auto tablet_count = std::stoi(rows[0][1]);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_reporting_lb_ui_ms) = 500;
+  std::vector<std::string> row;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
+    if (rows.empty()) {
+      return false;
+    }
+    SCHECK_EQ(rows.size(), 1, IllegalState, "Expected one row");
+    row = rows[0];
+    return true;
+  }, 10s /* timeout */, "Waiting for warnings to show up in the Warnings Summary table"));
+
+  ASSERT_EQ(row.size(), 2);
+  ASSERT_STR_CONTAINS(row[0], "Could not find a valid tserver to host tablet");
+  auto tablet_count = std::stoi(row[1]);
   ASSERT_GT(tablet_count, 3);
 }
 

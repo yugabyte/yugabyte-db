@@ -256,13 +256,11 @@ SELECT * FROM pctest1 WHERE c = 10;
 --secondary index
 EXPLAIN (costs off)
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                   QUERY PLAN                    
+-------------------------------------------------
  Limit
-   ->  Gather Merge
-         Workers Planned: 2
-         ->  Parallel Index Scan using pctest1_a_idx on pctest1
-(4 rows)
+   ->  Index Scan using pctest1_a_idx on pctest1
+(2 rows)
 
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
   k   | a |  b  | c  |     d     
@@ -367,13 +365,13 @@ SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
                            QUERY PLAN                           
 ----------------------------------------------------------------
- Nested Loop
-   ->  Gather
-         Workers Planned: 2
+ Gather
+   Workers Planned: 2
+   ->  Nested Loop
          ->  Parallel Index Scan using pctest1_a_idx on pctest1
                Storage Index Filter: ((a % 10) = 0)
-   ->  Index Only Scan using pctest2_b_idx on pctest2
-         Index Cond: (b = pctest1.a)
+         ->  Index Only Scan using pctest2_b_idx on pctest2
+               Index Cond: (b = pctest1.a)
 (7 rows)
 
 /*+
@@ -503,25 +501,22 @@ SELECT x, d FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
   (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
  Sort
    Sort Key: "*VALUES*".column1
    ->  Hash Right Join
          Hash Cond: (pctest1.b = "*VALUES*".column1)
-         ->  Merge Join
-               Merge Cond: (pctest1.k = pctest2.k)
-               Join Filter: (pctest1.c = pctest2.c)
-               ->  Gather Merge
-                     Workers Planned: 2
-                     ->  Parallel Index Scan using pctest1_pkey on pctest1
-               ->  Materialize
-                     ->  Gather Merge
-                           Workers Planned: 2
+         ->  Gather
+               Workers Planned: 2
+               ->  Parallel Hash Join
+                     Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
+                     ->  Parallel Seq Scan on pctest1
+                     ->  Parallel Hash
                            ->  Parallel Index Scan using pctest2_pkey on pctest2
          ->  Hash
                ->  Values Scan on "*VALUES*"
-(16 rows)
+(13 rows)
 
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
 SELECT x, d FROM
@@ -547,8 +542,8 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest4.* FROM pctest1 pctest3, pctest2 pctest4
      WHERE pctest3.k = pctest4.k AND pctest3.b = pctest4.b) s2 ON s1.b = s2.c;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (pctest3.k = pctest4.k)
    Join Filter: (pctest4.b = pctest3.b)
@@ -557,23 +552,18 @@ SELECT * FROM
          ->  Parallel Index Scan using pctest1_pkey on pctest1 pctest3
    ->  Sort
          Sort Key: pctest4.k
-         ->  Hash Join
-               Hash Cond: (pctest4.c = pctest1.b)
-               ->  Gather
-                     Workers Planned: 2
-                     ->  Parallel Index Scan using pctest2_b_idx on pctest2 pctest4
-               ->  Hash
-                     ->  Merge Join
-                           Merge Cond: (pctest1.k = pctest2.k)
-                           Join Filter: (pctest1.c = pctest2.c)
-                           ->  Gather Merge
-                                 Workers Planned: 2
-                                 ->  Parallel Index Scan using pctest1_pkey on pctest1
-                           ->  Materialize
-                                 ->  Gather Merge
-                                       Workers Planned: 2
+         ->  Gather
+               Workers Planned: 2
+               ->  Parallel Hash Join
+                     Hash Cond: (pctest4.c = pctest1.b)
+                     ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest4
+                     ->  Parallel Hash
+                           ->  Parallel Hash Join
+                                 Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
+                                 ->  Parallel Seq Scan on pctest1
+                                 ->  Parallel Hash
                                        ->  Parallel Index Scan using pctest2_pkey on pctest2
-(24 rows)
+(19 rows)
 
 /*+
   Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
@@ -919,13 +909,15 @@ SELECT * FROM pctest1 WHERE c = 10;
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Limit
    ->  Gather Merge
          Workers Planned: 2
-         ->  Parallel Index Scan using pctest1_a_idx on pctest1
-(4 rows)
+         ->  Sort
+               Sort Key: a
+               ->  Parallel Seq Scan on pctest1
+(6 rows)
 
 /*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
@@ -1117,7 +1109,7 @@ SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c) ORDER BY pcte
          Hash Cond: ((pctest1.a = pctest2.a) AND (pctest1.c = pctest2.c))
          ->  Gather
                Workers Planned: 2
-               ->  Parallel Index Scan using pctest1_c_idx on pctest1
+               ->  Parallel Index Scan using pctest1_pkey on pctest1
          ->  Hash
                ->  Gather
                      Workers Planned: 2
@@ -1218,29 +1210,28 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) s1 JOIN
   (SELECT pctest2.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
  Merge Join
-   Merge Cond: (pctest1_1.k = pctest2_1.k)
-   Join Filter: (pctest2_1.b = pctest1_1.b)
-   ->  Index Scan using pctest1_pkey on pctest1 pctest1_1
-   ->  Sort
-         Sort Key: pctest2_1.k
-         ->  Hash Join
-               Hash Cond: (pctest2_1.c = pctest1.b)
-               ->  Index Scan using pctest2_b_idx on pctest2 pctest2_1
-               ->  Hash
+   Merge Cond: (pctest2.k = pctest1.k)
+   Join Filter: (pctest1.c = pctest2.c)
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan using pctest2_pkey on pctest2
+   ->  Materialize
+         ->  Nested Loop
+               Join Filter: (pctest2_1.c = pctest1.b)
+               ->  Gather Merge
+                     Workers Planned: 2
+                     ->  Parallel Index Scan using pctest1_pkey on pctest1
+               ->  Materialize
                      ->  Merge Join
-                           Merge Cond: (pctest1.k = pctest2.k)
-                           Join Filter: (pctest1.c = pctest2.c)
-                           ->  Gather Merge
-                                 Workers Planned: 2
-                                 ->  Parallel Index Scan using pctest1_pkey on pctest1
+                           Merge Cond: (pctest1_1.k = pctest2_1.k)
+                           Join Filter: (pctest1_1.b = pctest2_1.b)
+                           ->  Index Scan using pctest1_pkey on pctest1 pctest1_1
                            ->  Materialize
-                                 ->  Gather Merge
-                                       Workers Planned: 2
-                                       ->  Parallel Index Scan using pctest2_pkey on pctest2
-(20 rows)
+                                 ->  Index Scan using pctest2_pkey on pctest2 pctest2_1
+(19 rows)
 
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
 SELECT * FROM
@@ -1250,12 +1241,12 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
  k |  a  | b | c |   d    | k |  a  | b | c |       d       
 ---+-----+---+---+--------+---+-----+---+---+---------------
- 5 | 995 | 1 | 5 | Value5 | 1 | 201 | 0 | 1 | Other value 1
- 4 | 996 | 1 | 4 | Value4 | 1 | 201 | 0 | 1 | Other value 1
  3 | 997 | 1 | 3 | Value3 | 1 | 201 | 0 | 1 | Other value 1
- 8 | 992 | 2 | 8 | Value8 | 2 | 202 | 0 | 2 | Other value 2
- 7 | 993 | 2 | 7 | Value7 | 2 | 202 | 0 | 2 | Other value 2
+ 4 | 996 | 1 | 4 | Value4 | 1 | 201 | 0 | 1 | Other value 1
+ 5 | 995 | 1 | 5 | Value5 | 1 | 201 | 0 | 1 | Other value 1
  6 | 994 | 2 | 6 | Value6 | 2 | 202 | 0 | 2 | Other value 2
+ 7 | 993 | 2 | 7 | Value7 | 2 | 202 | 0 | 2 | Other value 2
+ 8 | 992 | 2 | 8 | Value8 | 2 | 202 | 0 | 2 | Other value 2
 (6 rows)
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation

@@ -369,7 +369,6 @@ ADD_CXX_FLAGS("-Werror=return-type")
 ADD_CXX_FLAGS("-Werror=non-virtual-dtor")
 
 if(IS_CLANG)
-  ADD_CXX_FLAGS("-ftime-trace")
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")

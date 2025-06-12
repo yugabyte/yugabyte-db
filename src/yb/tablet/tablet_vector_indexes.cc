@@ -66,7 +66,8 @@ class IndexedTableReader {
     auto result = VERIFY_RESULT(tablet.NewUninitializedDocRowIterator(
         projection_, ReadHybridTime::SingleTime(read_ht), indexed_table_.table_id));
     result->InitForTableType(
-        TableType::PGSQL_TABLE_TYPE, start_key ? *start_key : Slice(), docdb::SkipSeek(!start_key));
+        TableType::PGSQL_TABLE_TYPE, start_key ? *start_key : Slice(), docdb::SkipSeek(!start_key),
+        docdb::AddTablePrefixToKey::kTrue);
     return result;
   }
 
@@ -167,7 +168,7 @@ Status TabletVectorIndexes::DoCreateIndex(
     auto read_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
     if (read_op.ok()) {
       ScheduleBackfill(
-          vector_index, index_table.hybrid_time, index_table.op_id, indexed_table,
+          vector_index, indexed_table, Slice(), index_table.hybrid_time, index_table.op_id,
           std::make_shared<ScopedRWOperation>(std::move(read_op)));
     } else {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
@@ -364,17 +365,18 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
     }
 
     ScheduleBackfill(
-        vector_index, (**table_info_res).hybrid_time, (**table_info_res).op_id,
-        *indexed_table_info_res, read_op);
+        vector_index, *indexed_table_info_res, backfill_key, (**table_info_res).hybrid_time,
+        (**table_info_res).op_id, read_op);
   }
 }
 
 void TabletVectorIndexes::ScheduleBackfill(
-    const docdb::DocVectorIndexPtr& vector_index, HybridTime backfill_ht, OpId op_id,
-    const TableInfoPtr& indexed_table, std::shared_ptr<ScopedRWOperation> read_op) {
+    const docdb::DocVectorIndexPtr& vector_index, const TableInfoPtr& indexed_table, Slice key,
+    HybridTime backfill_ht, OpId op_id, std::shared_ptr<ScopedRWOperation> read_op) {
   thread_pool_provider_(VectorIndexThreadPoolType::kBackfill)->EnqueueFunctor(
-      [this, vector_index, backfill_ht, op_id, indexed_table, read_op = std::move(read_op)] {
-    auto status = Backfill(vector_index, *indexed_table, Slice(), backfill_ht, op_id);
+      [this, vector_index, backfill_ht, key = key.ToBuffer(), op_id, indexed_table,
+       read_op = std::move(read_op)] {
+    auto status = Backfill(vector_index, *indexed_table, key, backfill_ht, op_id);
     LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
         << "Backfill " << AsString(vector_index) << " failed: " << status;
   });

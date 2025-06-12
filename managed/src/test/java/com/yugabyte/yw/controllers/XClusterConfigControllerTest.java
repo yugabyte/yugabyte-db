@@ -181,11 +181,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     taskUUID = buildTaskInfo(null, TaskType.XClusterConfigSync);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
 
-    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
-    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     mockClient = mock(YBClient.class);
-    when(mockService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate))
-        .thenReturn(mockClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockClient);
+    when(mockService.getClient(any(), any())).thenReturn(mockClient);
 
     mockTableSchemaResponse(CommonTypes.TableType.YQL_TABLE_TYPE);
 

@@ -704,3 +704,12 @@ func IsValidJSON(str string) error {
 	}
 	return nil
 }
+
+// MaskObject masks the token by replacing all but the first two and last two characters with asterisks
+func MaskObject(token string) string {
+	n := len(token)
+	if n <= 4 {
+		return strings.Repeat("*", n)
+	}
+	return token[:2] + strings.Repeat("*", n-4) + token[n-2:]
+}

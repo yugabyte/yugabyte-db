@@ -432,6 +432,10 @@ public class CustomerTaskManager {
         }
         CustomerTask customerTask =
             Json.mapper().readValue(restoreCustomerTaskFilePath.toFile(), CustomerTask.class);
+        if (customerTask == null) {
+          log.warn("Restore customer task is null, skipping.");
+          return;
+        }
         Optional<CustomerTask> existingCustomerTask =
             CustomerTask.maybeGet(customerTask.getTaskUUID());
         if (existingCustomerTask.isEmpty()) {
@@ -510,19 +514,14 @@ public class CustomerTaskManager {
 
   private void enableLoadBalancer(Universe universe) {
     ChangeLoadBalancerStateResponse resp = null;
-    YBClient client = null;
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try {
-      client = ybService.getClient(masterHostPorts, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       resp = client.changeLoadBalancerState(true);
     } catch (Exception e) {
       log.error(
           "Setting load balancer to state true has failed for universe: {}",
           universe.getUniverseUUID());
-    } finally {
-      ybService.closeClient(client, masterHostPorts);
     }
+
     if (resp != null && resp.hasError()) {
       log.error(
           "Setting load balancer to state true has failed for universe: {}",
