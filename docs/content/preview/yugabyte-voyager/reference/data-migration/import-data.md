@@ -54,6 +54,16 @@ When run at the same time, flags take precedence over configuration flag setting
 
 | Flag | Parameter | Description |
 | :--- | :-------- | :---------- |
+
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+import-data:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
+
 | --batch-size |
 
 ```yaml{.nocopy}
@@ -181,14 +191,7 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --run-guardrails-checks |
 
-```yaml{.nocopy}
-import-data:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 | --target-db-host |
 
 ```yaml{.nocopy}
@@ -470,6 +473,15 @@ When run at the same time, flags take precedence over configuration flag setting
 
 | <div style="width:150px">Flag</div> | Parameter | Description |
 | :--- | :-------- | :---------- |
+
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+import-data-to-source:
+  run-guardrails-checks:
+```
+
+|Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 | --parallel-jobs |
 
 ```yaml{.nocopy}
@@ -485,14 +497,7 @@ export-dir:
 ```
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --run-guardrails-checks |
 
-```yaml{.nocopy}
-import-data-to-source:
-  run-guardrails-checks:
-```
-
-|Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 | --send-diagnostics |
 
 ```yaml{.nocopy}

@@ -95,22 +95,6 @@ import-schema:
 
 | Imports the schema objects in the order specified via the `--object-type-list` flag. <br>Default: false<br> Example: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 
-| -e, --export-dir |
-
-```yaml{.nocopy}
-export-dir:
-```
-
-| Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
-
-| --send-diagnostics |
-
-```yaml{.nocopy}
-send-diagnostics:
-```
-
-| Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-
 | --target-db-host |
 
 ```yaml{.nocopy}
@@ -209,6 +193,22 @@ target:
 ```
 
 | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+| Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
+
+| --send-diagnostics |
+
+```yaml{.nocopy}
+send-diagnostics:
+```
+
+| Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
 | --post-snapshot-import | — | **[Deprecated]** Perform schema related tasks on the target YugabyteDB after data import is complete. Use --refresh-mviews along with this flag to refresh materialized views. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --refresh-mviews | — |**[Deprecated]** Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | —  | Answer yes to all prompts during the export schema operation. <br>Default: false |

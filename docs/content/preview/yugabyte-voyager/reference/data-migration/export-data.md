@@ -52,6 +52,16 @@ When run at the same time, flags take precedence over configuration flag setting
 
 | <div style="width:150px">Flag</div> | Parameter | Description |
 | :--- | :-------- | :---------- |
+
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+export-data:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
+
 | --disable-pb |
 
 ```yaml{.nocopy}
@@ -115,14 +125,7 @@ export-dir:
 ```
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --run-guardrails-checks |
 
-```yaml{.nocopy}
-export-data:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 | --send-diagnostics |
 
 ```yaml{.nocopy}

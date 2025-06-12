@@ -31,6 +31,15 @@ When run at the same time, flags take precedence over configuration flag setting
 
 | Flag | Parameter | Description |
 | :--- | :-------- | :---------- |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+finalize-schema-post-data-import:
+  run-guardrails-checks:
+```
+
+|Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
+
 | --continue-on-error |
 
 ```yaml{.nocopy}
@@ -55,28 +64,7 @@ finalize-schema-post-data-import:
 ```
 
 |Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| -e, --export-dir |
 
-```yaml{.nocopy}
-export-dir:
-```
-
-|Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-finalize-schema-post-data-import:
-  run-guardrails-checks:
-```
-
-|Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-| --send-diagnostics |
-
-```yaml{.nocopy}
-send-diagnostics:
-```
-
-|Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --target-db-host |
 
 ```yaml{.nocopy}
@@ -165,6 +153,23 @@ target:
 ```
 
 |Path to a file containing SSL certificate authority (CA) certificate(s). |
+
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+|Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
+
+| --send-diagnostics |
+
+```yaml{.nocopy}
+send-diagnostics:
+```
+
+|Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
 

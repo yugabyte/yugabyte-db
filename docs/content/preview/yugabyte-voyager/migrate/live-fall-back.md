@@ -732,7 +732,7 @@ Run the command as follows:
 yb-voyager export schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the `online-migration.yaml` template.
+You can specify additional `export schema` parameters in the `export-schema` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
 {{% /tab %}}
   {{% tab header="CLI" lang="cli" %}}

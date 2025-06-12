@@ -36,29 +36,43 @@ The valid *arguments* for assess migration are described in the following table:
 | <div style="width:150px">Flag</div> | Parameter | Description |
 
 | :--- | :-------- | :---------- |
+
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+assess-migration:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
+
 | --assessment-metadata-dir |
 
 ```yaml{.nocopy}
-assessment-metadata-dir:
+assess-migration:
+  assessment-metadata-dir:
 ```
 
 | Directory path where assessment metadata like source database metadata and statistics are stored. Optional flag, if not provided, it will be assumed to be present at default path inside the export directory. |
 
-| -e, --export-dir |
-
-```yaml{.nocopy}
-export-dir:
-```
-
-| Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| -h, --help | — |Command line help. |
 | --iops-capture-interval |
 
 ```yaml{.nocopy}
-iops-capture-interval:
+assess-migration:
+  iops-capture-interval:
 ```
 
 | Interval (in seconds) at which Voyager will gather IOPS metadata from the source database for the given schema(s). <br> Default: 120 |
+
+| --target-db-version |
+
+```yaml{.nocopy}
+assess-migration:
+  target-db-version:
+```
+
+| Specifies the target version of YugabyteDB in the format `A.B.C.D`.<br>Default: latest stable version |
+
 | --oracle-db-sid |
 
 ```yaml{.nocopy}
@@ -90,14 +104,7 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --run-guardrails-checks |
 
-```yaml{.nocopy}
-assess-migration:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 | --source-db-host |
 
 ```yaml{.nocopy}
@@ -194,14 +201,17 @@ source:
 ```
 
 | Path of the file containing source SSL Root Certificate. |
-| --start-clean | — | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
-| --target-db-version |
+| -e, --export-dir |
 
 ```yaml{.nocopy}
-target-db-version:
+export-dir:
 ```
 
-| Specifies the target version of YugabyteDB in the format `A.B.C.D`.<br>Default: latest stable version |
+| Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+
+| --start-clean | — | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
+
+| -h, --help | — |Command line help. |
 | -y, --yes | — |Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
 {{</table>}}
@@ -232,7 +242,8 @@ The valid *arguments* for assess migration bulk are described in the following t
 | <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --bulk-assessment-dir | Directory path where assessment data is output. |
-| --continue-on-error | Print the error message to the console and continue to next schema assessment.<br>Default: true.<br>Accepted parameters: true, false, yes, no, 0, 1. |
+| --continue-on-error | Print the error message to the console and continue to next schema assessment.<br>Default: true.
+<br>Accepted parameters: true, false, yes, no, 0, 1. |
 | --fleet-config-file | Path to the CSV file with connection parameters for schema(s) to be assessed. The first line must be a header row. <br>Fields (case-insensitive): 'source-db-type', 'source-db-host', 'source-db-port', 'source-db-name', 'oracle-db-sid', 'oracle-tns-alias', 'source-db-user', 'source-db-password', 'source-db-schema'.<br>Mandatory: 'source-db-type', 'source-db-user', 'source-db-schema', and one of ['source-db-name', 'oracle-db-sid', 'oracle-tns-alias']. |
 | -h, --help | Command line help. |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
