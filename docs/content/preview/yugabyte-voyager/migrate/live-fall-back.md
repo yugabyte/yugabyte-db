@@ -698,7 +698,7 @@ source-replica:
   db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
-Refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
+Refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
 ## Assess migration
 
@@ -782,7 +782,7 @@ Then run the command as follows:
 yb-voyager analyze-schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
+You can specify additional `analyze-schema` parameters in the `analyze-schema` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
   {{% /tab %}}
 
@@ -831,7 +831,7 @@ Run the command as follows:
 yb-voyager import schema --config-file <path-to-config-file>
 ```
 
-You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
+You can specify additional `import schema` parameters in the `import-schema` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
 {{% /tab %}}
 
@@ -877,7 +877,7 @@ Run the command as follows:
 yb-voyager export data from source --config-file <path-to-config-file>
 ```
 
-You can specify additional `export data from source` parameters in the `export-data-from-source` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
+You can specify additional `export data from source` parameters in the `export-data-from-source` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
   {{% /tab %}}
 
@@ -946,7 +946,7 @@ Run the command as follows:
 yb-voyager get data-migration-report --config-file <path-to-config-file>
 ```
 
-You can specify additional `get data-migration-report` parameters in the `get-data-migration-report` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
+You can specify additional `get data-migration-report` parameters in the `get-data-migration-report` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
   {{% /tab %}}
   {{% tab header="CLI" lang="cli" %}}
@@ -974,7 +974,7 @@ Run the command as follows:
 yb-voyager import data to target --config-file <path-to-config-file>
 ```
 
-You can specify additional `import data to target` parameters in the `import-data-to-target` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
+You can specify additional `import data to target` parameters in the `import-data-to-target` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
   {{% /tab %}}
 
@@ -1064,7 +1064,7 @@ To get a consolidated report of the overall progress of data migration concernin
 yb-voyager get data-migration-report --config-file <path-to-config-file>
 ```
 
-You can specify additional `get data-migration-report` parameters in the `get-data-migration-report` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
+You can specify additional `get data-migration-report` parameters in the `get-data-migration-report` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
   {{% /tab %}}
 
@@ -1095,7 +1095,7 @@ As the migration continuously exports changes on the source database to the `EXP
 yb-voyager archive changes --config-file <path-to-config-file>
 ```
 
-You can specify additional `archive changes` parameters in the `archive-changes` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
+You can specify additional `archive changes` parameters in the `archive-changes` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
   {{% /tab %}}
 
@@ -1351,7 +1351,7 @@ Perform the following steps as part of the cutover process:
 yb-voyager initiate cutover to source --config-file <path-to-config-file>
 ```
 
-You can specify additional `initiate cutover to source` parameters in the `initiate-cutover-to-source` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
+You can specify additional `initiate cutover to source` parameters in the `initiate-cutover-to-source` section of the configuration file. For more details, refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template.
 
 {{% /tab %}}
 

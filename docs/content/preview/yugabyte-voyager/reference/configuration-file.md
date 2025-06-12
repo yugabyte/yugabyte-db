@@ -47,10 +47,10 @@ The configuration file groups parameters into logical sections based on their us
 
 You can refer to the following config file templates:
 
-* [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/offline-migration.yaml)
-* [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration.yaml)
-* [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-back.yaml)
-* [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/main/yb-voyager/config-templates/live-migration-with-fall-forward.yaml)
+* [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml)
+* [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration.yaml)
+* [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml)
+* [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-forward.yaml)
 
 All supported configuration keys are described in the following sections.
 
