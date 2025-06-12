@@ -680,7 +680,8 @@ CREATE USER ybvoyager_ff with password 'password' superuser;
 
 ## Set up a configuration file
 
-Starting with version 2025.5.2, you can use a configuration file to specify the parameters required when running Voyager commands.
+You can use a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.5.2 or later).
+
 To get started, copy the `live-migration-with-fall-forward.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):
 
 {{< tabpane text=true >}}

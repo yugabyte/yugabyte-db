@@ -43,6 +43,8 @@ When running migration assessment, keep in mind the following:
 
 - To disable unsupported PL/pgSQL object detection, set the environment variable `REPORT_UNSUPPORTED_PLPGSQL_OBJECTS=false`.
 
+- To detect certain performance optimizations, ensure that [ANALYZE](https://www.postgresql.org/docs/current/sql-analyze.html) (PostgreSQL) is run on the source database.
+
 The following table describes the type of data that is collected during a migration assessment.
 
 | Data | Collected | Details |
@@ -53,8 +55,6 @@ The following table describes the type of data that is collected during a migrat
 | Database name | Yes | Voyager collects database and schema names to be used in the generated report. |
 | Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
 | Server or database credentials | No | No server or database credentials are collected. |
-
-- To detect certain performance optimizations, ensure that [ANALYZE](https://www.postgresql.org/docs/current/sql-analyze.html)(PostgreSQL) is run on the source database.
 
 ## Get started with migration assessment
 
@@ -77,25 +77,15 @@ To get started with migration assessment, do the following:
 Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
         {{< /note >}}
 
-1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
+1. Assess your migration.
+
+    Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
     {{< tabpane text=true >}}
 
     {{% tab header="With source database connectivity" %}}
 
 This mode requires direct connectivity to the source database from the client machine where voyager is installed. You initiate the assessment by executing the `assess-migration` command of `yb-voyager`. This command facilitates a live analysis by interacting directly with the source database, to gather metadata required for assessment. A sample command is as follows:
-
- <br/>{{< tabpane text=true >}}
-
-  {{% tab header="Config file" lang="config" %}}
-
-```sh
-yb-voyager assess-migration --config-file <path-to-config-file>
-```
-
- {{% /tab %}}
-
- {{% tab header="CLI" lang="cli" %}}
 
 ```sh
 yb-voyager assess-migration --source-db-type postgresql \
@@ -104,9 +94,12 @@ yb-voyager assess-migration --source-db-type postgresql \
     --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
 ```
 
- {{% /tab %}}
+If you are using a [configuration file](../../reference/configuration-file/), use the following:
 
-  {{< /tabpane >}}
+```sh
+yb-voyager assess-migration --config-file <path-to-config-file>
+```
+
     {{% /tab %}}
 
     {{% tab header="Without source database connectivity" %}}
@@ -117,7 +110,7 @@ You can perform the following steps with these scripts:
 
 1. On a machine which has access to the source database, copy the scripts and install dependencies psql and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
 
-1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example,
+1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example:
 
     ```sh
     /path/to/yb-voyager-pg-gather-assessment-metadata.sh 'postgresql://ybvoyager@host:port/dbname' 'schema1|schema2' '/path/to/assessment_metadata_dir' '60'
@@ -125,32 +118,22 @@ You can perform the following steps with these scripts:
 
 1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
 
-      <br/>{{< tabpane text=true >}}
-
-    {{% tab header="Config file" lang="config" %}}
-
-```sh
-    yb-voyager assess-migration --config-file <path-to-config-file>
-```
-
-{{% /tab %}}
-
-{{% tab header="CLI" lang="cli" %}}
-
-```sh
+    ```sh
     yb-voyager assess-migration --source-db-type postgresql \
         --assessment-metadata-dir /path/to/assessment_metadata_dir --export-dir /path/to/export/dir
-```
+    ```
 
-{{% /tab %}}
+    If you are using a [configuration file](../../reference/configuration-file/), use the following:
 
-{{< /tabpane >}}
+    ```sh
+    yb-voyager assess-migration --config-file <path-to-config-file>
+    ```
 
     {{% /tab %}}
 
     {{< /tabpane >}}
 
-    The output of both the methods is a migration assessment report, and its path is printed on the console.
+    The output is a migration assessment report, and its path is printed on the console.
 
     {{< warning title="Important" >}}
 For the most accurate migration assessment, the source database must be actively handling its typical workloads at the time the metadata is gathered. This ensures that the recommendations for sharding strategies and cluster sizing are well-aligned with the database's real-world performance and operational needs.
