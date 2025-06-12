@@ -30,11 +30,13 @@ Now that we undestand the default behavior, here are some potential situations w
 
 ### Initial queries on a new connection are slow
 
-The effect on slow initial queries during cache warmup may be particularly significant on multi-region clusters (where the master leader is far away from the postgres backend) or when the client does not have a steady pool of connections that are being reused. 
+Initial queries on new connections may be slightly slower until the postgres catalog cache is warmed up. This effet may be particularly significant in two cases
+1. Multi-region clusters (where the master leader is far away from the postgres backend), or
+2. High connection churn, i.e. when the client does not use a steady pool of connections.
 
 To confirm that catalog caching is the cause of this initial latency, see the section [Confirming that catalog cache misses are a root cause of latency / load](#confirm-catalog-cache-misses-root-cause-of-latency).
 
-See [[Connection pooling]] and [[Preload additional system tables]] for possible solutions, once you complete the diagnosis.
+See [Connection pooling](#connection-pooling) and [Preload additional system tables](#preload-additional-system-tables) for possible solutions.
 
 ### High CPU load on yb-master leader
 
@@ -42,7 +44,7 @@ If the client does not have a steady pool of connections, the resulting connecti
 
 To confirm that catalog caching is the cause of this, see the section [Confirming that catalog cache misses are a root cause of latency / load](#confirm-catalog-cache-misses-root-cause-of-latency).
 
-See [[Connection pooling]], [[Tserver response cache]] and [[Preload additional system tables]] for possible solutions.
+See [Connection pooling](#connection-pooling), [Tserver response cache](#tserver-response-cache) and [Preload additional system tables](#preload-additional-system-tables) for possible solutions.
 
 ### Memory spikes on postgres backends or out of memory (OOM) events
 
@@ -50,15 +52,37 @@ On the flip side, automatic preloading of caches after a DDL change may cause me
 
 To confirm that catalog caching is the cause of this, correlate the time when DDLs were run (Write RPCs on yb-master) to the time of the OOM event or a spike in postgres RSS metrics.
 
-See [[Minimal catalog cache preloading]] for a possible solution.
+See [Minimal catalog cache preloading](#minimal-catalog-cache-preloading) for a possible solution. 
 
+## Knobs
 
-| Knob | What does it do? | Effect | How to use it? |
-| :---- | :---- | :---- | :---- |
-| #### Connection pooling {#connection-pooling} | When there is significant connection churn, the warm up of catalog caches on each new connection can cause high initial client latency and CPU load on the yb-master leader process.  Connection pooling allows better reuse of connections across different queries. | Reduces connection churn, so more queries should land on a backend with a warm cache. | It is highly recommended to set up connection pooling for YugabyteDB by exploring the following approaches. [Built-in connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/) on YugabyteDB server (Early Access in 2024.2). [Client-side connection pooling.](../../../drivers-orms/smart-drivers/#connection-pooling) [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like pgbouncer/odyssey.    |
-| Minimal catalog cache preloading | After a DDL change or during the preload of additional system tables, only a small subset of the catalog cache entries are preloaded.  | This reduces the memory spike that results but increases the warm up time for queries after a DDL change. | Set the yb-tserver gflag \--ysql\_minimal\_catalog\_caches\_preload=true |
-| Preload additional system tables | All catalog cache entries corresponding to specific pg catalog tables are preloaded (both on regular postgres backend startup and after a schema change)  | Decreases warm up time for these caches and hence, decreases the latency impact of initial queries on new connections. Causes more memory consumption on all backends, irrespective of a schema change. | See [Identifying the specific tables to be preloaded](#identify-the-specific-tables-to-be-preloaded) for how to identify the catalog tables to be preloaded.  Set the yb-tserver flag  \--ysql\_catalog\_preload\_additional\_tables=true to preload caches for the following tables pg\_am,pg\_amproc,pg\_cast,pg\_inherits,pg\_policy,pg\_proc,pg\_tablespace,pg\_trigger Set the yb-tserver flag \--ysql\_catalog\_preload\_additional\_table\_list=\<list of pg tables\>, to populate caches for these tables in addition to the default list. For example \--ysql\_catalog\_preload\_additional\_table\_list=pg\_operator,pg\_amop,pg\_cast,pg\_aggregate.   |
-| Tserver response cache | Enables an intermediate cache on the yb-tserver for certain Postgres \-\> yb-master RPCs It is enabled by default in YB releases \>= 2024.1 | Reduces CPU load on yb-master leader. | Set the yb-tserver flag `--ysql_enable_read_request_caching=true` |
+### Connection pooling {#connection-pooling}
+
+When there is significant connection churn, the warm up of catalog caches on each new connection can cause high initial client latency and CPU load on the yb-master leader process.  Connection pooling allows better reuse of connections across different queries, so more queries should land on a backend with a warm cache.
+
+To setup connection pooling, explore the following approaches
+
+1. [Built-in connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/) on YugabyteDB server (Early Access in 2024.2). 
+2. [Client-side connection pooling.](../../../drivers-orms/smart-drivers/#connection-pooling) 
+3. [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like pgbouncer/odyssey.
+ 
+
+### Preload additional system tables {#preload-additional-system-tables}
+
+When this setting is enabled, all catalog cache entries corresponding to specific pg catalog tables are preloaded (both on regular postgres backend startup and after a schema change). This decreases warm up time for these caches and hence, decreases the latency impact of initial queries on new connections. The downside is that it causes more memory consumption on all backends.
+
+To enable this knob, set the yb-tserver flag  `--ysql_catalog_preload_additional_tables=true` to preload caches for the following tables `pg_am,pg_amproc,pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger`. To customize this in a more granular way, use the section [Identifying the specific tables to be preloaded](#identify-the-specific-tables-to-be-preloaded) to identify the catalog tables to be preloaded.  Set the yb-tserver flag `--ysql_catalog_preload_additional_table_list=\<list of pg tables\>`, to populate caches for these tables in addition to the default list. For example `--ysql_catalog_preload_additional_table_list=pg_operator,pg_amop,pg_cast,pg_aggregate`.
+
+### Minimal catalog cache preloading {#minimal-catalog-cache-preloading}
+
+When this setting is enabled, only a small subset of the catalog cache entries is preloaded. This reduces the memory spike that results but can increase the warm up time for queries after a DDL change and also the initial query latency when [additional tables are preloaded](#preload-additional-system-tables)). 
+
+To enable this knob, set the yb-tserver gflag `--ysql_minimal_catalog_caches_preload=true`.
+### Tserver response cache (TODO: only publish in 2.20)
+
+When this setting is enabled, an intermediate cache on the yb-tserver is used to cache certain PG catalog responses from the master leader. This reduces CPU load on yb-master leader. 
+
+To enable this knob, set the yb-tserver flag `--ysql_enable_read_request_caching=true`.
 
 ## Details
 
@@ -68,10 +92,9 @@ To confirm that catalog cache misses are a cause, use these techniques
 
 1. Run [EXPLAIN (ANALYZE, DIST) \<query\>](https://docs.yugabyte.com/preview/explore/query-1-performance/explain-analyze/#:~:text=Index%20Writes.-,Catalog%20Read%20Requests,-%3A%20Number%20of%20requests) on the 1st query on a new connection shows a high number of Catalog Reads. A subsequent run of the same EXPLAIN (ANALYZE, DIST) typically shows a drop in the number of Catalog Reads.  
 2. YBA/YBM metrics dashboards show a [high number](https://docs.yugabyte.com/images/yp/metrics114.png) of [Catalog Cache Misses](https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/anywhere-metrics/#ysql-ops-and-latency:~:text=on%20other%20metrics.-,Catalog%20Cache%20Misses,-During%20YSQL%20query). There should be a [corresponding rate of increase of yb-master Read RPCs](https://docs.yugabyte.com/preview/launch-and-manage/monitor-and-alert/metrics/ybmaster/#:~:text=handler_latency_yb_tserver_TabletServerService_Read).  
-3. [YBA Performance Advisor]([)](https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/performance-advisor/) shows the anomaly **Excessive Catalog Reads.**  
+3. [YBA Performance Advisor](https://docs.yugabyte.com/preview/yugabyte-platform/alerts-monitoring/performance-advisor/) shows the anomaly **Excessive Catalog Reads.**  
 4. [Manually collect logs](#manually-collecting-logs-for-catalog-reads).
 
-### 
 
 ### Identify the specific tables to be preloaded {#identify-the-specific-tables-to-be-preloaded}
 
