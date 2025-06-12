@@ -35,7 +35,7 @@
 using namespace std::literals;
 DECLARE_bool(dump_lock_keys);
 
-DEFINE_RUNTIME_int64(olm_poll_interval_ms, 100,
+DEFINE_NON_RUNTIME_int64(olm_poll_interval_ms, 100,
     "Poll interval for Object lock Manager. Waiting requests that are unblocked by other release "
     "requests are independent of this interval since the release schedules unblocking of potential "
     "waiters. Yet this might help release timedout requests soon and also avoid probable issues "
