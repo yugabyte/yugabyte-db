@@ -5108,6 +5108,7 @@ YbWaitForBackendsCatalogVersion()
 								 " the lagging backends: SELECT * FROM"
 								 " pg_stat_activity WHERE"
 								 " backend_type != 'walsender' AND"
+								 " backend_type != 'yb-conn-mgr walsender' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
 								 catalog_version,
