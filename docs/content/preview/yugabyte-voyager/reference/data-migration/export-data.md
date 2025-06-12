@@ -537,7 +537,11 @@ target:
   ssl-mode:
 ```
 
-| Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Supported options with [YugabyteDB gRPC Connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/):**<ul><li>disable: Only try a non-SSL connection.</li><li>require: Only try an SSL connection; fail if that can’t be established</li><li> verify-ca: Only try an SSL connection; verify the server TLS certificate against the configured CA certificates, and fail if no valid matching CA certificate is found.</li></ul> <br /> **Supported options with [YugabyteDB Connector](../../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/):**<ul><li>disable: Uses an encrypted connection.</li><li>allow: Tries an unencrypted connection first and, if it fails, attempts a secure (encrypted) connection.</li><li>prefer: Tries a secure (encrypted) connection first and, if it fails, falls back to an unencrypted connection.</li><li>require: Uses a secure (encrypted) connection; fails if one cannot be established.</li><li> verify-ca: Same as require, but also verifies the server's TLS certificate against the configured Certificate Authority (CA) certificates. Fails if no valid matching CA certificates are found.</li><li>verify-full: Same as verify-ca, but also verifies that the server's certificate matches the host the connector is connecting to.</li></ul> |
+| Determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA.
+
+For a list of valid options, refer to [SSL mode options](#ssl-mode-options). |
+
+| [--target-ssl-root](../../yb-voyager-cli/#ssl-connectivity) |
 
 ```yaml{.nocopy}
 target:
@@ -549,6 +553,22 @@ target:
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 {{</table>}}
+
+#### SSL mode options
+
+The available SSL modes are as follows:
+
+- [YugabyteDB gRPC Connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
+  - disable: Only try a non-SSL connection.
+  - require: Only try an SSL connection; fail if that can't be established.
+  - verify-ca: Only try an SSL connection; verify the server TLS certificate against the configured CA certificates, and fail if no valid matching CA certificate is found.
+- [YugabyteDB Connector](../../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/):
+  - disable: Uses an unencrypted connection.
+  - allow: Tries an unencrypted connection first and, if it fails, attempts a secure (encrypted) connection.
+  - prefer: Tries a secure (encrypted) connection first and, if it fails, falls back to an unencrypted connection.
+  - require: Uses a secure (encrypted) connection; fails if one cannot be established.
+  - verify-ca: Same as require, but also verifies the server's TLS certificate against the configured Certificate Authority (CA) certificates. Fails if no valid matching CA certificates are found.
+  - verify-full: Same as verify-ca, but also verifies that the server's certificate matches the host the connector is connecting to.
 
 ### Example
 
