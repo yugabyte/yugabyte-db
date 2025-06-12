@@ -305,7 +305,7 @@ class RetryingTSRpcTask : public RetryingRpcTask {
   RetryingTSRpcTask(Master* master,
                     ThreadPool* callback_pool,
                     std::unique_ptr<TSPicker> replica_picker,
-                    AsyncTaskThrottlerBase* async_task_throttler);
+                    AsyncTaskThrottlerBase* async_task_throttler = nullptr);
 
   ~RetryingTSRpcTask() {}
 
@@ -341,7 +341,7 @@ class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
   RetrySpecificTSRpcTask(Master* master,
                          ThreadPool* callback_pool,
                          const std::string& permanent_uuid,
-                         AsyncTaskThrottlerBase* async_task_throttler)
+                         AsyncTaskThrottlerBase* async_task_throttler = nullptr)
     : RetryingTSRpcTask(master,
                         callback_pool,
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),

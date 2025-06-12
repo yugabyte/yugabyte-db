@@ -128,9 +128,13 @@ class RemoteBootstrapClient : public RemoteClientBase {
 
   Status DownloadRocksDBFiles();
 
-  // Check whether local disk has enough disk space for rocksdb files in 'new_superblock'
-  Status CheckDiskSpace(const tablet::RaftGroupReplicaSuperBlockPB& new_superblock,
-                        const std::string& rocksdb_dir);
+  uint64_t GetTotalDataSizeBytes(const tablet::RaftGroupReplicaSuperBlockPB& superblock) const;
+
+  // Check whether local disk has enough disk space for rocksdb files in superblock.
+  Status CheckDiskSpace(
+      const tablet::RaftGroupReplicaSuperBlockPB& superblock, const std::string& rocksdb_dir);
+
+  void SetInitialRbsProgressInfo();
 
   // Total number of remote bootstrap sessions. Used to calculate the transmission rate across all
   // the sessions.
@@ -162,6 +166,8 @@ class RemoteBootstrapClient : public RemoteClientBase {
   uint64_t first_wal_seqno_ = 0;
 
   bool download_retryable_requests_;
+
+  std::string bootstrap_source_uuid_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapClient);
 };
