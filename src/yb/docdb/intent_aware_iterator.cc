@@ -657,7 +657,8 @@ Slice IntentAwareIterator::LatestSubDocKey() {
 }
 
 void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
-  auto subdockey_slice = LatestSubDocKey();
+  KeyBuffer subdockey(LatestSubDocKey());
+  auto subdockey_slice = subdockey.AsSlice();
 
   // Strip the hybrid time and seek the slice.
   auto doc_ht = DocHybridTime::DecodeFromEnd(&subdockey_slice);
@@ -669,14 +670,15 @@ void IntentAwareIterator::SeekToLatestSubDocKeyInternal() {
 }
 
 void IntentAwareIterator::SeekToLatestDocKeyInternal() {
-  auto subdockey_slice = LatestSubDocKey();
+  KeyBuffer subdockey(LatestSubDocKey());
 
   // Seek to the first key for row containing found subdockey.
-  auto dockey_size = dockv::DocKey::EncodedSize(subdockey_slice, dockv::DocKeyPart::kWholeDocKey);
+  auto dockey_size =
+      dockv::DocKey::EncodedSize(subdockey.AsSlice(), dockv::DocKeyPart::kWholeDocKey);
   if (!HandleStatus(dockey_size)) {
     return;
   }
-  Seek(Slice(subdockey_slice.data(), *dockey_size));
+  Seek(Slice(subdockey.data(), *dockey_size));
 }
 
 void IntentAwareIterator::Revalidate() {
