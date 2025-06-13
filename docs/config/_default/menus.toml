@@ -1500,6 +1500,114 @@
   ["v2.20".params]
     showSection = true
 
+######### Menus for v2025.1
+
+[["v2025.1"]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/v2025.1/"
+  ["v2025.1".params]
+    classes = "separator"
+    showSection = true
+
+[["v2025.1"]]
+  name = "Quick Start"
+  weight = 4
+  identifier = "quick-start"
+  url = "/preview/quick-start-yugabytedb-managed/"
+  ["v2025.1".params]
+    showSection = true
+    hideChildren = true
+
+[["v2025.1"]]
+  name = "Explore"
+  weight = 5
+  identifier = "explore"
+  url = "/v2025.1/explore/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Develop"
+  weight = 6
+  identifier = "develop"
+  url = "/v2025.1/develop/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Secure"
+  weight = 8
+  identifier = "secure"
+  url = "/v2025.1/secure/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Launch and Manage"
+  weight = 9
+  identifier = "launch-and-manage"
+  url = "/v2025.1/launch-and-manage/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Troubleshoot"
+  parent = "launch-and-manage"
+  url = "/preview/troubleshoot/"
+
+[["v2025.1"]]
+  name = "Benchmark"
+  weight = 10
+  identifier = "benchmark"
+  url = "/v2025.1/benchmark/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Misc"
+  identifier = "misc"
+  parent = "reference"
+
+[["v2025.1"]]
+  name = "YEDIS"
+  weight = 1
+  url = "/preview/yedis/"
+  parent = "misc"
+
+[["v2025.1"]]
+  name = "Legal"
+  weight = 2
+  url = "/preview/legal/"
+  parent = "misc"
+
+[["v2025.1"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2025.1".params]
+    showSection = true
+
+######### Menus (in "v2025.1") for YB Anywhere section
+
+[["v2025.1_yugabyte-platform"]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2025.1_yugabyte-platform".params]
+    classes = "separator"
+    showSection = true
+    hideLink = true
+
 ########## Menus (in "v2.20") for YB Anywhere section
 
 [["v2.20_yugabyte-platform"]]
