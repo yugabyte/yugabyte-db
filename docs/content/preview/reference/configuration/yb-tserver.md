@@ -1871,9 +1871,9 @@ The interval at which the full compaction task will check for tablets eligible f
 Default: `300`
 {{% /tags/wrap %}}
 
-Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both `auto_compact_percent_obsolete` and `auto_compact_min_obsolete_keys_found` are evaluated over this period of time.
+Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both [auto_compact_percent_obsolete](#auto-compact-percent-obsolete) and [auto_compact_min_obsolete_keys_found](#auto-compact-min-obsolete-keys-found) are evaluated over this period of time.
 
-`auto_compact_stat_window_seconds` must be evaluated as a multiple of `auto_compact_check_interval_sec`, and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
+`auto_compact_stat_window_seconds` must be evaluated as a multiple of [auto_compact_check_interval_sec](#auto-compact-check-interval-sec), and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
 
 ##### --auto_compact_percent_obsolete
 
@@ -1883,7 +1883,7 @@ Window of time in seconds over which DocDB read statistics are analyzed for the 
 Default: `99`
 {{% /tags/wrap %}}
 
-The percentage of obsolete keys (over total keys) read over the `auto_compact_stat_window_seconds` window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+The percentage of obsolete keys (over total keys) read over the [auto_compact_stat_window_seconds](#auto-compact-percent-obsolete) window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
 
 For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
 
@@ -1895,7 +1895,7 @@ For example, if the flag is set to `99` and 100000 keys are read over that windo
 Default: `10000`
 {{% /tags/wrap %}}
 
-Minimum number of keys that must be read over the last `auto_compact_stat_window_seconds` to trigger a statistics-based full compaction.
+Minimum number of keys that must be read over the last [auto_compact_stat_window_seconds](#auto-compact-stat-window-seconds) to trigger a statistics-based full compaction.
 
 ##### --auto_compact_min_wait_between_seconds
 
@@ -1925,7 +1925,7 @@ The frequency with which full compactions should be scheduled on tablets. `0` in
 Default: `33`
 {{% /tags/wrap %}}
 
-Percentage of `scheduled_full_compaction_frequency_hours` to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
+Percentage of [scheduled_full_compaction_frequency_hours](#scheduled-full-compaction-frequency-hours) to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
 
 Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
 
