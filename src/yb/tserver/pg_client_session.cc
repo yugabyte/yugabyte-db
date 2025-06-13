@@ -1836,7 +1836,6 @@ class PgClientSession::Impl {
   Status Perform(
       PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
       const PgTablesQueryResult& tables) {
-    VLOG(5) << "Perform rpc: " << req->ShortDebugString();
     auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache(), req, resp, context);
     auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context, tables);
     if (!status.ok()) {
@@ -2560,6 +2559,7 @@ class PgClientSession::Impl {
   Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context,
                    const PgTablesQueryResult& tables) {
     auto& options = *data->req.mutable_options();
+    VLOG(5) << "Perform request: " << data->req.ShortDebugString();
     TryUpdateAshWaitState(options);
     if (!(options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed()) &&
         xcluster_context() &&
