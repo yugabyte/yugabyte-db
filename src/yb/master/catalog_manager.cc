@@ -5773,41 +5773,6 @@ Result<TableDescription> CatalogManager::DescribeTable(
   return result;
 }
 
-Result<string> CatalogManager::GetPgSchemaName(
-    const TableId& table_id, const PersistentTableInfo& table_info) {
-  RSTATUS_DCHECK_EQ(table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
-                    Format("Expected YSQL table, got: $0", table_info.GetTableType()));
-
-  uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
-  uint32_t relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-  uint32_t pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
-
-  // If this is a rewritten table, confirm that the relfilenode oid of pg_class entry with
-  // OID pg_table_oid is table_oid.
-  if (pg_table_oid != relfilenode_oid) {
-    uint32_t pg_class_relfilenode_oid = VERIFY_RESULT(
-        sys_catalog_->ReadPgClassColumnWithOidValue(
-            database_oid,
-            pg_table_oid,
-            "relfilenode"));
-    if (pg_class_relfilenode_oid != relfilenode_oid) {
-      // This must be an orphaned table from a failed rewrite.
-      return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
-          std::to_string(pg_table_oid));
-    }
-  }
-
-  const uint32_t relnamespace_oid = VERIFY_RESULT(
-      sys_catalog_->ReadPgClassColumnWithOidValue(database_oid, pg_table_oid, "relnamespace"));
-
-  if (relnamespace_oid == kPgInvalidOid) {
-    return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
-        std::to_string(pg_table_oid));
-  }
-
-  return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
-}
-
 Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
     const TableId& table_id, const PersistentTableInfo& table_info) {
   RSTATUS_DCHECK_EQ(
@@ -7861,18 +7826,15 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
       resp->mutable_schema()->CopyFrom(l->pb.schema());
     }
 
-    // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
-    // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
-    if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-        resp->schema().deprecated_pgschema_name().empty() && !table->is_system() &&
+    // Get pgschema_name for YSQL tables from PG Catalog. Skip for some special cases.
+    if (l->table_type() == TableType::PGSQL_TABLE_TYPE && !table->is_system() &&
         !table->IsSequencesSystemTable() && !table->IsColocationParentTable()) {
       TRACE("Acquired catalog manager lock for schema name lookup");
 
-      auto pgschema_name = GetPgSchemaName(table->id(), l.data());
+      auto pgschema_name = ysql_manager_->GetPgSchemaName(table->id(), l.data());
       if (!pgschema_name.ok() || pgschema_name->empty()) {
-        LOG(WARNING) << Format(
-            "Unable to find schema name for YSQL table $0.$1 due to error: $2",
-            table->namespace_name(), table->name(), pgschema_name.ToString());
+        LOG(WARNING) << "Unable to find schema name for YSQL table " << table->namespace_name()
+                     << "." << table->name() << " due to error: " << pgschema_name;
       } else {
         resp->mutable_schema()->set_deprecated_pgschema_name(*pgschema_name);
       }
@@ -8091,6 +8053,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     include_type[relation] = true;
   }
 
+  PgDbRelNamespaceMap pg_rel_nsp_cache;
   SharedLock lock(mutex_);
   for (const auto& table_info : tables_->GetAllTables()) {
     auto ltm = table_info->LockForRead();
@@ -8168,7 +8131,18 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       table->set_indexed_table_id(table_info->indexed_table_id());
     }
     table->set_state(ltm->pb.state());
-    table->set_pgschema_name(ltm->schema().deprecated_pgschema_name());
+
+    if (ltm->table_type() == PGSQL_TABLE_TYPE) {
+      const auto pgschema_name =
+          ysql_manager_->GetCachedPgSchemaName(table_info->id(), ltm.data(), pg_rel_nsp_cache);
+      if (!pgschema_name.ok() || pgschema_name->empty()) {
+        LOG(WARNING) << "Unable to find schema name for YSQL table " << ltm->namespace_name()
+                     << "." << ltm->name() << " due to error: " << pgschema_name;
+      } else {
+        table->set_pgschema_name(*pgschema_name);
+      }
+    }
+
     if (table_info->colocated()) {
       table->mutable_colocated_info()->set_colocated(true);
       if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
@@ -8212,19 +8186,23 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
     return FindPtrOrNull(table_names_map_, {ns->id(), table_name});
   }
 
-  // YQL_DATABASE_PGSQL
+  // db_type == YQL_DATABASE_PGSQL
   if (pg_schema_name.empty()) {
     return nullptr;
   }
 
   for (const auto& table : tables_->GetAllTables()) {
-    auto l = table->LockForRead();
-    auto& table_pb = l->pb;
+    auto ltm = table->LockForRead();
 
-    if (!l->started_deleting() && table_pb.namespace_id() == ns->id() &&
-        boost::iequals(table_pb.schema().deprecated_pgschema_name(), pg_schema_name) &&
-        boost::iequals(table_pb.name(), table_name)) {
-      return table;
+    if (!ltm->started_deleting() && ltm->namespace_id() == ns->id() &&
+        boost::iequals(ltm->name(), table_name)) {
+      auto tbl_pg_schema_name = ysql_manager_->GetPgSchemaName(table->id(), ltm.data());
+      if (!tbl_pg_schema_name.ok() || tbl_pg_schema_name->empty()) {
+        LOG(WARNING) << "Unable to find schema name for YSQL table " << ltm->namespace_name()
+                     << "." << ltm->name() << " due to error: " << tbl_pg_schema_name;
+      } else if (boost::iequals(*tbl_pg_schema_name, pg_schema_name)) {
+        return table;
+      }
     }
   }
   return nullptr;
