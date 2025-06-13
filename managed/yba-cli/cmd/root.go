@@ -137,13 +137,15 @@ func init() {
 	rootCmd.AddCommand(xcluster.XClusterCmd)
 	rootCmd.AddCommand(tools.TreeCmd)
 	rootCmd.AddCommand(customer.CustomerCmd)
+	rootCmd.AddCommand(group.GroupsCmd)
+	rootCmd.AddCommand(ldap.LdapCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 	addGroupsCmd(rootCmd)
 	// Add commands to be marked as preview in the list below
 	util.PreviewCommand(
 		rootCmd,
-		[]*cobra.Command{alert.AlertCmd, group.GroupsCmd, ldap.LdapCmd, oidc.OIDCCmd},
+		[]*cobra.Command{alert.AlertCmd, oidc.OIDCCmd},
 	)
 
 }
@@ -238,6 +240,7 @@ func addGroupsCmd(rootCmd *cobra.Command) {
 	auth.LoginCmd.GroupID = "authentication"
 	auth.RegisterCmd.GroupID = "authentication"
 	auth.HostCmd.GroupID = "authentication"
+	ldap.LdapCmd.GroupID = "authentication"
 
 	rootCmd.AddGroup(
 		&cobra.Group{
@@ -271,6 +274,7 @@ func addGroupsCmd(rootCmd *cobra.Command) {
 	customer.CustomerCmd.GroupID = "access-management"
 	user.UserCmd.GroupID = "access-management"
 	rbac.RBACCmd.GroupID = "access-management"
+	group.GroupsCmd.GroupID = "access-management"
 
 	rootCmd.AddGroup(
 		&cobra.Group{

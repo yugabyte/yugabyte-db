@@ -18,6 +18,10 @@
 #include <boost/program_options.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/ann_methods/ann_methods.h"
+#include "yb/ann_methods/hnswlib_wrapper.h"
+#include "yb/ann_methods/usearch_wrapper.h"
+
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/thread_annotations.h"
 
@@ -27,15 +31,12 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 
-#include "yb/vector_index/ann_methods.h"
 #include "yb/vector_index/ann_validation.h"
 #include "yb/vector_index/benchmark_data.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_options.h"
 #include "yb/vector_index/hnsw_util.h"
-#include "yb/vector_index/hnswlib_wrapper.h"
 #include "yb/vector_index/sharded_index.h"
-#include "yb/vector_index/usearch_wrapper.h"
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
 
@@ -109,7 +110,7 @@ struct BenchmarkArguments {
   std::string load_index_from_path;
   std::string query_vecs_path;
   std::string save_index_to_path;
-  ANNMethodKind ann_method;
+  ann_methods::ANNMethodKind ann_method;
 
   // Parsed version of k_values.
   std::set<size_t> k_values;
@@ -188,7 +189,7 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
 
   const auto ann_method_help =
       Format("Approximate nearest neighbor search method to use. Possible values: $0.",
-             ValidEnumValuesCommaSeparatedForHelp<ANNMethodKind>());
+             ValidEnumValuesCommaSeparatedForHelp<ann_methods::ANNMethodKind>());
   const auto distance_kind_help =
       Format("What kind of distance function (metric) to use. Possible values: $0." +
              ValidEnumValuesCommaSeparatedForHelp<DistanceKind>());
@@ -364,14 +365,14 @@ class BenchmarkTool {
     if (args_.num_index_shards > 1) {
       index_pre_factory_ = [pre_factory = index_pre_factory_, num_shards = args_.num_index_shards](
           const HNSWOptions& options) {
-        return [factory = pre_factory(options), num_shards]() {
+        return [factory = pre_factory(options), num_shards](FactoryMode) {
           return std::make_unique<ShardedVectorIndex<IndexedVector, IndexedDistanceResult>>(
               factory, num_shards);
         };
       };
     }
 
-    vector_index_ = index_pre_factory_(hnsw_options())();
+    vector_index_ = index_pre_factory_(hnsw_options())(FactoryMode::kCreate);
 
     RETURN_NOT_OK(vector_index_->Reserve(
         num_points_to_insert(),
@@ -757,7 +758,7 @@ class BenchmarkTool {
   std::vector<InputVector> input_vectors_;
 };
 
-template<ANNMethodKind ann_method_kind,
+template<ann_methods::ANNMethodKind ann_method_kind,
          DistanceKind distance_kind,
          IndexableVectorType InputVector,
          IndexableVectorType IndexedVector>
@@ -769,15 +770,16 @@ std::optional<Status> BenchmarkExecuteHelper(
   if (args.ann_method == ann_method_kind &&
       args.hnsw_options.distance_kind == distance_kind &&
       input_coordinate_kind == CoordinateTypeTraits<typename InputVector::value_type>::kKind) {
-    using FactoryType = typename ANNMethodTraits<ann_method_kind>::template FactoryType<
-        IndexedVector,
-        typename DistanceTraits<IndexedVector, distance_kind>::Result>;
+    using FactoryType = typename ann_methods::ANNMethodTraits<ann_method_kind>::template
+        FactoryType<IndexedVector,
+                    typename DistanceTraits<IndexedVector, distance_kind>::Result>;
+    PreVectorIndexFactory<IndexedVector, IndexedDistanceResult> pre_index_factory =
+        [](const HNSWOptions& options) -> VectorIndexFactory<IndexedVector, IndexedDistanceResult> {
+      using namespace std::placeholders;
+      return std::bind(&FactoryType::Create, _1, options);
+    };
     return BenchmarkTool<InputVector, InputDistanceResult, IndexedVector, IndexedDistanceResult>(
-        args,
-        [](const HNSWOptions& options) {
-          return std::bind(&FactoryType::Create, options);
-        }
-    ).Execute();
+        args, pre_index_factory).Execute();
   }
   return std::nullopt;
 }
@@ -814,7 +816,7 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
 
 #define YB_VECTOR_INDEX_BENCHMARK_HELPER(method, distance_enum_element, input_type, indexed_type) \
     if (auto status = BenchmarkExecuteHelper< \
-            ANNMethodKind::BOOST_PP_CAT(k, method), \
+            ann_methods::ANNMethodKind::BOOST_PP_CAT(k, method), \
             distance_enum_element, \
             std::vector<input_type>, \
             std::vector<indexed_type>>(args_copy, input_coordinate_kind); status.has_value()) { \

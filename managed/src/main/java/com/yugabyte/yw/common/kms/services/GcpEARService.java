@@ -171,7 +171,7 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
 
   @Override
   protected byte[] validateRetrieveKeyWithService(
-      UUID configUUID, byte[] keyRef, ObjectNode authConfig, ObjectNode encryptionContext) {
+      UUID configUUID, byte[] keyRef, ObjectNode encryptionContext, ObjectNode authConfig) {
     this.gcpEARServiceUtil = getGcpEarServiceUtil();
     byte[] keyVal;
     try {

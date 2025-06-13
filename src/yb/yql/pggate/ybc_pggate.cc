@@ -163,6 +163,10 @@ DEFINE_RUNTIME_PREVIEW_bool(
     "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
     "and SET TRANSACTION SNAPSHOT");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
+    "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
+    " right away without incurring a master lookup");
+
 DEFINE_RUNTIME_PG_FLAG(
     bool, yb_force_early_ddl_serialization, true,
     "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
@@ -1183,9 +1187,8 @@ YbcStatus YBCPgAlterTableSetReplicaIdentity(YbcPgStatement handle, const char id
   return ToYBCStatus(pgapi->AlterTableSetReplicaIdentity(handle, identity_type));
 }
 
-YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *db_name,
-                                     const char *newname) {
-  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
+YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *newname) {
+  return ToYBCStatus(pgapi->AlterTableRenameTable(handle, newname));
 }
 
 YbcStatus YBCPgAlterTableIncrementSchemaVersion(YbcPgStatement handle) {
@@ -2278,6 +2281,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
+      .ysql_enable_neghit_full_inheritscache =
+        &FLAGS_ysql_enable_neghit_full_inheritscache,
       .TEST_ysql_yb_ddl_transaction_block_enabled =
           &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
       .enable_object_locking_for_table_locks =
@@ -2392,19 +2397,6 @@ int YBCPgGetThreadLocalYbExpressionVersion() {
 
 void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
   PgSetThreadLocalYbExpressionVersion(yb_expr_version);
-}
-
-YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
-  return PgGetThreadLocalRegexpCache();
-}
-
-YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
-    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup) {
-  return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
-}
-
-YbcPgThreadLocalRegexpMetadata* YBCPgGetThreadLocalRegexpMetadata() {
-  return PgGetThreadLocalRegexpMetadata();
 }
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {

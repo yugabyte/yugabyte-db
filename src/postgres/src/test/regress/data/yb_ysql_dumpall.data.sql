@@ -184,7 +184,12 @@ GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -212,9 +217,9 @@ SET row_security = off;
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
 BEGIN
-IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
-END IF;
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+  END IF;
 END $$;
 
 --
@@ -253,9 +258,9 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YB: re-enable auto analyze after all catalog changes
 DO $$
 BEGIN
-IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
-END IF;
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+  END IF;
 END $$;
 
 --
@@ -277,7 +282,12 @@ END $$;
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -305,9 +315,9 @@ SET row_security = off;
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
 BEGIN
-IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
-END IF;
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+  END IF;
 END $$;
 
 --
@@ -346,9 +356,9 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YB: re-enable auto analyze after all catalog changes
 DO $$
 BEGIN
-IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
-END IF;
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+  END IF;
 END $$;
 
 --
@@ -368,7 +378,12 @@ END $$;
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -408,7 +423,12 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCA
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -478,7 +498,12 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -518,7 +543,12 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROV
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;

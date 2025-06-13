@@ -43,6 +43,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestCommitTimeTieWithPublicationRefreshRecord(bool special_record_in_separate_response);
   void TestSlotRowDeletion(bool multiple_streams);
   void TestColocatedUpdateWithIndex(bool use_pk_as_index);
+  void TestColocatedUpdateAffectingNoRows(bool use_multi_shard);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -2033,8 +2034,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
 
   for (auto record : change_resp.cdc_sdk_proto_records()) {
-    ASSERT_EQ(record.row_message().table(), "test1");
     UpdateRecordCount(record, count);
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    ASSERT_EQ(record.row_message().table(), "test1");
   }
 
 
@@ -2132,8 +2137,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesRemoval) {
 
   change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
   for (auto record : change_resp.cdc_sdk_proto_records()) {
-    ASSERT_EQ(record.row_message().table(), "test1");
     UpdateRecordCount(record, count);
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    ASSERT_EQ(record.row_message().table(), "test1");
   }
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expecpted_count[i], count[i]);
@@ -4279,9 +4288,14 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALSafeTimeWithDynamicTableA
   auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
   for (auto record : change_resp.cdc_sdk_proto_records()) {
-    // Assert that all the records belong to test1 table.
-    ASSERT_EQ(record.row_message().table(), "test1");
     UpdateRecordCount(record, count);
+    // Assert that all the records belong to test1 table. Skip the BEGIN / COMMIT records from this
+    // assertion as they don't contain table name.
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    ASSERT_EQ(record.row_message().table(), "test1");
   }
 
   // Call GetConsistentChanges once more. This call will move the Virtual WAL safe time forward.
@@ -4311,12 +4325,17 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALSafeTimeWithDynamicTableA
       ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(stream_id, {} /* table_ids */, 1, false));
   ASSERT_EQ(resp.records.size(), 3);
   for (auto record : resp.records) {
+    UpdateRecordCount(record, count);
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+
     ASSERT_EQ(record.row_message().table(), "test2");
     if (record.row_message().op() == RowMessage_Op_INSERT) {
       // Assert that the insert is the one with id = 3.
       ASSERT_EQ(record.row_message().new_tuple()[0].pg_ql_value().int32_value(), 3);
     }
-    UpdateRecordCount(record, count);
   }
 
   for (int i = 0; i < 8; i++) {
@@ -4429,6 +4448,62 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedUpdateWithIndexMulti
   ASSERT_EQ(update_record_2.row_message().new_tuple()[0].pg_ql_value().int32_value(), 2);
   ASSERT_EQ(update_record_2.row_message().new_tuple()[1].pg_ql_value().string_value(), "def");
   ASSERT_EQ(update_record_2.row_message().new_tuple()[2].pg_ql_value().int32_value(), 100);
+}
+
+void CDCSDKConsumptionConsistentChangesTest::TestColocatedUpdateAffectingNoRows(
+    bool use_multi_shard) {
+  ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */, true /* cdc_populate_safepoint_record */));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Create a dummy_table so that multiple BEGINS and COMMITS are added for each txn.
+  ASSERT_OK(conn.Execute("CREATE TABLE dummy_table (id int primary key)"));
+
+  // Create a stream.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Insert and delete a row and then try to update it. This UPDATE will create WAL op with zero
+  // write pairs. We should not receive any record  (including any BEGIN / COMMIT) corresponding to
+  // this UPDATE.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 2"));
+  if (use_multi_shard) {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 60 WHERE key = 2"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+  } else {
+    ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 60 WHERE key = 2"));
+  }
+
+  // Insert another row.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (100, 100)"));
+
+  // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN and COMMIT
+  // in that order.
+  const int expected_count[] = {0, 2, 0, 1, 0, 0, 3, 3};
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // 3 from first INSERT, 3 from DELETE, 0 from UPDATE and 3 from second INSERT.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 9);
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, count);
+  }
+  for (auto i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedSingleShardUpdateAffectingNoRows) {
+  TestColocatedUpdateAffectingNoRows(false /* use_multi_shard*/);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedMultiShardUpdateAffectingNoRows) {
+  TestColocatedUpdateAffectingNoRows(true /* use_multi_shard*/);
 }
 
 }  // namespace cdc

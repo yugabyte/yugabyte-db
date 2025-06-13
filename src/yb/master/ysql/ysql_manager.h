@@ -111,6 +111,20 @@ class YsqlManager : public YsqlManagerIf {
 
   Status ValidateTServerVersion(const VersionInfoPB& version) const override;
 
+  Result<uint32_t> GetYqlTableOid(
+      const TableId& table_id, const PersistentTableInfo& table_info) const;
+
+  // Use GetCachedPgSchemaName() with internal cache if you need to get PgSchemaName
+  // for several tables.
+  // cache : [db oid -> ( [relnamespace oid -> relnamespace name],
+  //                      [table oid -> relnamespace oid] )]
+  Result<std::string> GetCachedPgSchemaName(
+      const TableId& table_id, const PersistentTableInfo& table_info,
+      PgDbRelNamespaceMap& cache) const override;
+  // Use GetPgSchemaName() if you need to get PgSchemaName for a single table.
+  Result<std::string> GetPgSchemaName(
+      const TableId& table_id, const PersistentTableInfo& table_info) const override;
+
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
 

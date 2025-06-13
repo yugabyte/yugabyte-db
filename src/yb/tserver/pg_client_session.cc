@@ -1364,6 +1364,10 @@ void AcquireObjectLockLocallyWithRetries(
   shared_lock_manager->AcquireObjectLocksAsync(req, deadline, std::move(retry_cb));
 }
 
+bool IsReadPointResetRequested(const PgPerformOptionsPB& options) {
+  return options.has_read_time() && !options.read_time().has_read_ht();
+}
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -1505,19 +1509,19 @@ class PgClientSession::Impl {
       alterer->DropColumn(drop_column);
     }
 
-    if (!req.rename_table().table_name().empty()) {
-      client::YBTableName new_table_name(
-          YQL_DATABASE_PGSQL, req.rename_table().database_name(), req.rename_table().table_name());
+    if (!req.rename_table().table_name().empty() ||
+        !req.rename_table().schema_name().empty()) {
+      const auto ns_id = PgObjectId::GetYbNamespaceIdFromPB(req.table_id());
+      // Change table name and/or schema name. DB name cannot be changed.
+      client::YBTableName new_table_name(YQL_DATABASE_PGSQL);
+      new_table_name.set_table_id(table_id);
+      new_table_name.set_namespace_id(ns_id);
+      if (!req.rename_table().table_name().empty()) {
+        new_table_name.set_table_name(req.rename_table().table_name());
+      }
       if (!req.rename_table().schema_name().empty()) {
         new_table_name.set_pgschema_name(req.rename_table().schema_name());
       }
-      alterer->RenameTo(new_table_name);
-    } else if (!req.rename_table().schema_name().empty()) {
-      client::YBTableName new_table_name(YQL_DATABASE_PGSQL);
-      new_table_name.set_pgschema_name(req.rename_table().schema_name());
-      new_table_name.set_table_id(table_id);
-      const auto ns_id = PgObjectId::GetYbNamespaceIdFromPB(req.table_id());
-      new_table_name.set_namespace_id(ns_id);
       alterer->RenameTo(new_table_name);
     }
 
@@ -1838,7 +1842,6 @@ class PgClientSession::Impl {
   Status Perform(
       PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
       const PgTablesQueryResult& tables) {
-    VLOG(5) << "Perform rpc: " << req->ShortDebugString();
     auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache(), req, resp, context);
     auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context, tables);
     if (!status.ok()) {
@@ -2562,6 +2565,7 @@ class PgClientSession::Impl {
   Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context,
                    const PgTablesQueryResult& tables) {
     auto& options = *data->req.mutable_options();
+    VLOG(5) << "Perform request: " << data->req.ShortDebugString();
     TryUpdateAshWaitState(options);
     if (!(options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed()) &&
         xcluster_context() &&
@@ -2632,7 +2636,7 @@ class PgClientSession::Impl {
     }
     ADOPT_TRACE(trace.get());
 
-    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, options);
+    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result);
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
@@ -2787,7 +2791,7 @@ class PgClientSession::Impl {
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline);
-      RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(txn_serial_no));
+      RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(options));
       if (txn_serial_no != txn_serial_no_) {
         read_point_history_.Clear();
       } else if (read_time_serial_no != read_time_serial_no_) {
@@ -2833,7 +2837,7 @@ class PgClientSession::Impl {
         const auto read_time = ReadHybridTime::FromPB(options.read_time());
         session.SetReadPoint(read_time);
         VLOG_WITH_PREFIX(3) << "Read time: " << read_time;
-      } else if (options.has_read_time() ||
+      } else if (IsReadPointResetRequested(options) ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
         ResetReadPoint(kind);
@@ -3101,23 +3105,33 @@ class PgClientSession::Impl {
     return session;
   }
 
-  Status CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial_no) {
+  Status CheckPlainSessionPendingUsedReadTime(const PgPerformOptionsPB& options) {
     if (!plain_session_used_read_time_.pending_update) {
       return Status::OK();
     }
-    auto& session = *Session(PgClientSessionKind::kPlain);
+    auto& session_data = GetSessionData(PgClientSessionKind::kPlain);
+    auto& session = *session_data.session;
     const auto& read_point = *session.read_point();
     TabletReadTime read_time_data;
     if (!read_point.GetReadTime()) {
       auto& used_read_time = plain_session_used_read_time_.value;
       std::lock_guard guard(used_read_time.lock);
       if (!used_read_time.data) {
-        if (txn_serial_no_ != txn_serial_no) {
+        if (txn_serial_no_ != options.txn_serial_no()) {
           // Allow sending request with new txn_serial_no in case previous request with different
           // txn_serial_no has not been finished yet. This may help to prevent stuck in case of
           // request timeout.
           return Status::OK();
         }
+        if (options.read_time_serial_no() == read_time_serial_no_ &&
+            !session_data.transaction &&
+            options.isolation() == IsolationLevel::NON_TRANSACTIONAL &&
+            IsReadPointResetRequested(options)) {
+          // Read time from previous operations is not required for non-transaction operation which
+          // will reset session's read time prior to the execution.
+          return Status::OK();
+        }
+
         return STATUS(
             IllegalState, "Expecting a used read time from the previous RPC but didn't find one");
       }
@@ -3328,13 +3342,11 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result,
-                                              const PgPerformOptionsPB& options) {
+  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
     auto* read_point = result.session_data.session->read_point();
     if (!result.is_plain ||
         result.session_data.transaction ||
-        (read_point && read_point->GetReadTime()) ||
-        options.non_transactional_buffered_write()) {
+        (read_point && read_point->GetReadTime())) {
       return {};
     }
 

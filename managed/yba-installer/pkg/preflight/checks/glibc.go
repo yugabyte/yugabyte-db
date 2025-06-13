@@ -2,6 +2,7 @@ package checks
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -87,13 +88,12 @@ func getGlibcVersion() (string, error) {
 		return "", fmt.Errorf("no output from ldd command")
 	}
 
-	// Extract the version number from the first line
-	var version string
-	_, err := fmt.Sscanf(lines, "ldd (GNU libc) %s", &version)
-	if err != nil {
-		logging.Error(fmt.Sprintf("failed to parse glibc version from output: %s", lines))
-		return "", fmt.Errorf("failed to parse glibc version: %w", err)
+	// Matches ldd (*) <version>
+	re := regexp.MustCompile(`ldd\s+\([^)]+\)\s+(\d+\.\d+)`)
+	matches := re.FindStringSubmatch(lines)
+	if len(matches) < 2 {
+		return "", fmt.Errorf("failed to parse glibc version from output: %s", lines)
 	}
 
-	return version, nil
+	return matches[1], nil
 }

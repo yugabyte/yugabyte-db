@@ -620,7 +620,7 @@ INSERT INTO c VALUES(1, 1, 1, 1, 1);
  Storage Read Requests: 1
  Storage Rows Scanned: 2
  Storage Write Requests: 1
- Storage Flush Requests: 1
+ Storage Flush Requests: 0
 (9 rows)
 
 CREATE TABLE parent(k INT PRIMARY KEY, v INT UNIQUE);

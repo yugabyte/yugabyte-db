@@ -32,6 +32,9 @@
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -106,6 +109,9 @@
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
+#ifndef HAVE_GETRUSAGE
+#include "rusagestub.h"
+#endif
 #include "storage/procarray.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -1206,8 +1212,8 @@ typedef struct
 	MemoryContext mem_context;
 	YbCatalogModificationAspects catalog_modification_aspects;
 	bool		is_global_ddl;
-	NodeTag		original_node_tag;
-	const char *original_ddl_command_tag;
+	NodeTag		current_stmt_node_tag;
+	CommandTag	current_stmt_ddl_command_tag;
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
@@ -2398,15 +2404,29 @@ YBGetDdlNestingLevel()
 }
 
 NodeTag
-YBGetDdlOriginalNodeTag()
+YBGetCurrentStmtDdlNodeTag()
 {
-	return ddl_transaction_state.original_node_tag;
+	return ddl_transaction_state.current_stmt_node_tag;
+}
+
+CommandTag
+YBGetCurrentStmtDdlCommandTag()
+{
+	return ddl_transaction_state.current_stmt_ddl_command_tag;
 }
 
 bool
 YBGetDdlUseRegularTransactionBlock()
 {
 	return ddl_transaction_state.use_regular_txn_block;
+}
+
+void
+YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
+								  CommandTag commandTag)
+{
+	ddl_transaction_state.current_stmt_node_tag = nodeTag;
+	ddl_transaction_state.current_stmt_ddl_command_tag = commandTag;
 }
 
 void
@@ -2418,10 +2438,11 @@ YbSetIsGlobalDDL()
 static bool
 CheckIsAnalyzeDDL()
 {
-	if (ddl_transaction_state.original_node_tag == T_VacuumStmt)
+	if (ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
 	{
-		Assert(ddl_transaction_state.original_ddl_command_tag);
-		return !strcmp(ddl_transaction_state.original_ddl_command_tag, "ANALYZE");
+		CommandTag cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
+		Assert(cmdtag);
+		return cmdtag == CMDTAG_ANALYZE;
 	}
 	return false;
 }
@@ -2474,7 +2495,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 }
 
 void
-YBSetDdlState(YbDdlMode mode)
+YBAddDdlTxnState(YbDdlMode mode)
 {
 	Assert(*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
 
@@ -2544,6 +2565,16 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 	}
 	Assert(false);
 	return YB_DDL_MODE_BREAKING_CHANGE;
+}
+
+YbDdlMode
+YBGetCurrentDdlMode()
+{
+	uint64_t combined_aspects =
+		ddl_transaction_state.catalog_modification_aspects.applied |
+		ddl_transaction_state.catalog_modification_aspects.pending;
+
+	return YbCatalogModificationAspectsToDdlMode(combined_aspects);
 }
 
 bool
@@ -2965,6 +2996,17 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
+		/*
+		 * Only log the command_tag_name if transactional DDL is disabled. When
+		 * transactional DDL is enabled, multiple DDLs could contribute to the
+		 * catalog version increment. Hence, it is misleading to only log the
+		 * last DDL as the contributing command.
+		 */
+		const char *command_tag_name =
+			(*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) ?
+				NULL :
+				GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
+
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 		/*
 		 * We can skip incrementing catalog version if nmsgs is 0.
@@ -2974,7 +3016,7 @@ YBCommitTransactionContainingDDL()
 			(!enable_inval_msgs || nmsgs > 0) &&
 			YbIncrementMasterCatalogVersionTableEntry(is_breaking_change,
 													  ddl_transaction_state.is_global_ddl,
-													  ddl_transaction_state.original_ddl_command_tag,
+													  command_tag_name,
 													  currentInvalMessages, nmsgs);
 
 		is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
@@ -3196,7 +3238,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	 */
 	if (context == PROCESS_UTILITY_TOPLEVEL ||
 		(context == PROCESS_UTILITY_QUERY &&
-		 ddl_transaction_state.original_node_tag != T_RefreshMatViewStmt))
+		 ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt))
 	{
 		/*
 		 * The node tag from the top-level or atomic process utility must
@@ -3204,16 +3246,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 		 * subcommands can determine whether catalog version should
 		 * be incremented.
 		 */
-		ddl_transaction_state.original_node_tag = node_tag;
-		ddl_transaction_state.original_ddl_command_tag =
-			GetCommandTagName(CreateCommandTag(parsetree));
+		ddl_transaction_state.current_stmt_node_tag = node_tag;
+		ddl_transaction_state.current_stmt_ddl_command_tag =
+			CreateCommandTag(parsetree);
 	}
 	else
 	{
 		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
 			   context == PROCESS_UTILITY_QUERY_NONATOMIC ||
 			   (context == PROCESS_UTILITY_QUERY &&
-				ddl_transaction_state.original_node_tag ==
+				ddl_transaction_state.current_stmt_node_tag ==
 				T_RefreshMatViewStmt));
 
 		is_version_increment = false;
@@ -3470,7 +3512,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
 				 * tables, and do not need to increment catalog version.
 				 */
-				if (ddl_transaction_state.original_node_tag == T_RefreshMatViewStmt)
+				if (ddl_transaction_state.current_stmt_node_tag == T_RefreshMatViewStmt)
 					is_version_increment = false;
 				else
 				{
@@ -3621,7 +3663,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 */
 				if ((context == PROCESS_UTILITY_SUBCOMMAND ||
 					 context == PROCESS_UTILITY_QUERY_NONATOMIC) &&
-					ddl_transaction_state.original_node_tag == T_CreateStmt &&
+					ddl_transaction_state.current_stmt_node_tag == T_CreateStmt &&
 					node_tag == T_AlterTableStmt)
 				{
 					ListCell   *lcmd;
@@ -3700,7 +3742,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			 * Increment catalog version for ANALYZE statement to force catalog cache refresh
 			 * to pick up latest table statistics.
 			 */
-			if (is_ddl && ddl_transaction_state.original_node_tag == T_VacuumStmt)
+			if (is_ddl && ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
 				is_version_increment = true;
 			break;
 
@@ -4006,7 +4048,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
 									 " React with thumbs up to raise its priority.")));
 
-				YBSetDdlState(ddl_mode.value);
+				YBAddDdlTxnState(ddl_mode.value);
 				YbMaybeLockMasterCatalogVersion(ddl_mode.value);
 			}
 
@@ -5322,8 +5364,10 @@ yb_cancel_transaction(PG_FUNCTION_ARGS)
 		ereport(NOTICE,
 				(errmsg("failed to cancel transaction"),
 				 errdetail("%s", YBCMessageAsCString(status))));
+		YBCFreeStatus(status);
 		PG_RETURN_BOOL(false);
 	}
+	YBCFreeStatus(status);
 	PG_RETURN_BOOL(true);
 }
 
@@ -7644,7 +7688,7 @@ static bool
 YbHasDdlMadeChanges()
 {
 	return YBCPgHasWriteOperationsInDdlTxnMode() ||
-		ddl_transaction_state.original_node_tag == T_TransactionStmt ||
+		ddl_transaction_state.current_stmt_node_tag == T_TransactionStmt ||
 		ddl_transaction_state.force_send_inval_messages;
 }
 
@@ -7652,4 +7696,27 @@ void
 YbForceSendInvalMessages()
 {
 	ddl_transaction_state.force_send_inval_messages = true;
+}
+
+/*
+ * Scale the ru_maxrss value according to the platform.
+ * On Linux, the maxrss is in kilobytes.
+ * On OSX, the maxrss is in bytes and scale it to kilobytes.
+ * https://www.manpagez.com/man/2/getrusage/osx-10.12.3.php
+ */
+static long
+scale_rss_to_kb(long maxrss)
+{
+#ifdef __APPLE__
+	maxrss = maxrss / 1024;
+#endif
+	return maxrss;
+}
+
+long
+YbGetPeakRssKb()
+{
+	struct rusage r;
+	getrusage(RUSAGE_SELF, &r);
+	return scale_rss_to_kb(r.ru_maxrss);
 }

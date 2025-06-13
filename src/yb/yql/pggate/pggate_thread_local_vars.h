@@ -77,19 +77,4 @@ void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
 int PgGetThreadLocalYbExpressionVersion();
 void PgSetThreadLocalYbExpressionVersion(int yb_expr_version);
 
-/*
- * CachedRegexpHolder (from regex/regex.c)
- * These are used to cache the compiled regexes
- */
-YbcPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache();
-YbcPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
-    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
-
-/*
- * Regular Expression Metadata (from regc_pg_locale.c)
- * These are used to cache the collation and locale information for regular
- * expression processing.
- */
-YbcPgThreadLocalRegexpMetadata* PgGetThreadLocalRegexpMetadata();
-
 } // namespace yb::pggate

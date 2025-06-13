@@ -276,3 +276,30 @@ ALTER TYPE underflow ADD VALUE 'F' BEFORE 'G';
 ALTER TYPE underflow ADD VALUE 'E' BEFORE 'F';
 ALTER TYPE underflow ADD VALUE 'D' BEFORE 'E';
 ALTER TYPE underflow ADD VALUE 'C' BEFORE 'D';
+
+-- Test inheritance with different col order in child
+CREATE TABLE par(parc1 INT, parc2 TEXT DEFAULT 'def', parc25 int, parc3 INT GENERATED ALWAYS AS (parc1 + 5) STORED, parc4 REAL NOT NULL, parc5 TEXT DEFAULT NULL);
+CREATE TABLE ch(chc1 TEXT, chc2 int, parc4 REAL, parc5 TEXT, PRIMARY KEY(chc1)) INHERITS (par);
+ALTER TABLE par ADD COLUMN parc9 REAL NOT NULL;
+ALTER TABLE par ADD COLUMN parc10 INT DEFAULT 5;
+ALTER TABLE par DROP COLUMN parc25;
+ALTER TABLE ch DROP COLUMN chc2;
+INSERT INTO ch VALUES (1, 'FOO', DEFAULT, 1.1, NULL, 'fooch', 2.2);
+
+-- Test inheritance with different col order and multiple parents
+CREATE TABLE inh2_par1(parc1 INT, parc2 TEXT, parc3 REAL);
+CREATE TABLE inh2_par2(parc3 REAL, parc1 INT, parc2 TEXT);
+-- Col order should be parent1, parent2, child
+CREATE TABLE inh2_ch(chc1 INT, chc2 TEXT, PRIMARY KEY(chc1)) INHERITS (inh2_par1, inh2_par2);
+INSERT INTO inh2_ch VALUES (1, '1_FOO', 1.1, 10, 'CH_1_FOO');
+
+-- Added col inherited from parent2
+ALTER TABLE inh2_par2 ADD COLUMN parc5 TEXT;
+
+-- Added col inherited from parent1
+ALTER TABLE inh2_par1 ADD COLUMN parc6 numeric(8,1);
+
+-- Added col inherited from parent2 and different default in child
+ALTER TABLE inh2_par2 ADD COLUMN parc7 TEXT DEFAULT 'PAR2_C7_DEF';
+ALTER TABLE inh2_ch ALTER COLUMN parc7 SET DEFAULT 'CH_C7_DEF';
+INSERT INTO inh2_ch values (2, '2_FOO', 2.2, 20, '2_CH_2', '2_CH_5', 2.2);

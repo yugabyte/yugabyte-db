@@ -65,9 +65,11 @@ class TableReader {
   //        all the states but those allocated in arena.
   // skip_filters: disables checking the bloom filters even if they exist. This
   //               option is effective only for block-based table format.
-  virtual InternalIterator* NewIterator(const ReadOptions&,
-                                        Arena* arena = nullptr,
-                                        bool skip_filters = false) = 0;
+  // skip_corrupt_data_blocks_unsafe: see CompactRangeOptions for more details.
+  virtual InternalIterator* NewIterator(
+      const ReadOptions&, Arena* arena = nullptr, bool skip_filters = false,
+      SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+          SkipCorruptDataBlocksUnsafe::kFalse) = 0;
 
   // TODO(index_iter): consider allocating index iterator on arena, try and measure potential
   // performance improvements.

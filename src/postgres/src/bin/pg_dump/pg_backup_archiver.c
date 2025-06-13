@@ -153,17 +153,39 @@ static void inhibit_data_for_failed_table(ArchiveHandle *AH, TocEntry *te);
 
 static void StrictNamesCheck(RestoreOptions *ropt);
 
+
 /*
- * Set the yb_disable_auto_analyze GUC on the database to disable auto analyze. For backwards
- * compatiblity, check for the presence of the GUC before setting it.
+ * Add the set GUC command to the archive handler in a backward compatible manner.
+ * Checks for the presence of the GUC before setting it.Example of usage:
+ * YbBackwardCompatibleSetGuc(AH, "yb_ignore_relfilenode_ids", "off", false);
  */
-static const char *yb_disable_auto_analyze_cmd =
-"DO $$\n"
-"BEGIN\n"
-"IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN\n"
-"EXECUTE format('ALTER DATABASE %%I SET yb_disable_auto_analyze TO %s', current_database());\n"
-"END IF;\n"
-"END $$;\n";
+void
+YbBackwardCompatibleSetGuc(ArchiveHandle *AH,
+						   const char *guc_name,
+						   const char *value,
+						   bool db_scoped)
+{
+	char *set_guc_command;
+	if (db_scoped)
+	{
+		set_guc_command = psprintf("format('ALTER DATABASE %%I SET %s TO %s', "
+								   "current_database())",
+								   guc_name, value);
+	}
+	else
+	{
+		set_guc_command = psprintf("'SET %s TO %s'", guc_name, value);
+	}
+	char *cmd =  psprintf("DO $$\n"
+		"BEGIN\n"
+		"  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = '%s') THEN\n"
+		"    EXECUTE %s;\n"
+		"  END IF;\n"
+		"END $$;\n", guc_name, set_guc_command);
+	ahprintf(AH, "%s", cmd);
+	free(set_guc_command);
+	free(cmd);
+}
 
 /*
  * Allocate a new DumpOptions block containing all default values.
@@ -756,7 +778,7 @@ RestoreArchive(Archive *AHX)
 	if (AH->public.dopt->include_yb_metadata && !AH->public.ropt->createDB)
 	{
 		ahprintf(AH, "-- YB: re-enable auto analyze after all catalog changes\n");
-		ahprintf(AH, yb_disable_auto_analyze_cmd, "off");
+		YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "off", true);
 		ahprintf(AH, "\n");
 	}
 
@@ -3267,7 +3289,7 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	{
 		ahprintf(AH, "SET yb_binary_restore = true;\n");
 		ahprintf(AH, "SET yb_ignore_pg_class_oids = false;\n");
-		ahprintf(AH, "SET yb_ignore_relfilenode_ids = false;\n");
+		YbBackwardCompatibleSetGuc(AH, "yb_ignore_relfilenode_ids", "false", false);
 		ahprintf(AH, "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n");
 	}
 	ahprintf(AH, "SET statement_timeout = 0;\n");
@@ -3337,7 +3359,7 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 		{
 			ahprintf(AH,
 					 "\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
-			ahprintf(AH, yb_disable_auto_analyze_cmd, "on");
+			YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "on", true);
 		}
 	}
 

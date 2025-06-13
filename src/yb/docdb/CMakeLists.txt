@@ -99,21 +99,23 @@ set(DOCDB_SRCS
         )
 
 set(DOCDB_DEPS
-        yb_dockv
-        rocksdb
-        yb_ash
-        yb_util
-        yb_rocksutil
-        yb_common
+        ann_methods
         docdb_proto
-        yb_docdb_shared
-        server_common
-        rpc_introspection_proto
-        yb_pggate_util
-        yb_pggate
+        hnsw
         ql_util
+        rocksdb
+        rpc_introspection_proto
+        server_common
         vector_index
+        yb_ash
+        yb_common
+        yb_docdb_shared
+        yb_dockv
         yb_pgbackend
+        yb_pggate
+        yb_pggate_util
+        yb_rocksutil
+        yb_util
         )
 
 ADD_YB_LIBRARY(yb_docdb
