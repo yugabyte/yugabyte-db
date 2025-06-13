@@ -7,8 +7,8 @@ headcontent: Tips and tricks for administering YSQL databases
 menu:
   stable:
     identifier: best-practices-ysql-administration
-    parent: best-practices-develop
-    weight: 30
+    parent: best-practices-operations
+    weight: 10
 type: docs
 ---
 
@@ -58,6 +58,10 @@ DDL statements that affect entities in different databases can be run concurrent
 
 DDL statements that relate to shared objects, such as roles or tablespaces, are considered as affecting all databases in the cluster, so they should also be run sequentially.
 
-## Preload postgres system catalog entries into the local catalog cache
+## Preload PostgreSQL system catalog entries into the local catalog cache
 
-Many common postgres operations, like parsing a query, planning etc require looking up entries in postgres system catalog tables like pg_class, pg_operator, pg_statistic, pg_attribute to for postgres metadata for the columns, operators etc. Each postgres backend (process) caches such metadata for performance reasons. In YugabyteDB, misses on these caches need to be loaded from the yb-master leader, so initial queries on that backend can be slow until these caches are warm, especially if the leader yb-master is in a different region. YugabyteDB has a set of knobs that allow customizing this tradeoff to control the preloading entries into postgres caches. Consult [this detailed guide](../ysql-catalog-cache-tuning-guide/) to make the right tradeoffs for your application.
+Many common PostgreSQL operations, such as parsing a query, planning, and so on, require looking up entries in PostgreSQL system catalog tables, including pg_class, pg_operator, pg_statistic, and pg_attribute, for PostgreSQL metadata for the columns, operators, and more.
+
+Each PostgreSQL backend (process) caches such metadata for performance reasons. In YugabyteDB, misses on these caches need to be loaded from the YB-Master leader. As a result, initial queries on that backend can be slow until these caches are warm, especially if the YB-Master leader is in a different region.
+
+You can customize this tradeoff to control the preloading entries into PostgreSQL caches. Refer to [Customize preloading of YSQL catalog caches](../ysql-catalog-cache-tuning-guide/) for information on how to make the right tradeoffs for your application.
