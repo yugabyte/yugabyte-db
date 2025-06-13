@@ -1503,7 +1503,12 @@
 ######### Menus for v2025.1
 
 [["v2025.1"]]
-  name = "YugabyteDB"
+  weight = 1
+  [stable.params]
+    productsDropdown = true
+
+[["v2025.1"]]
+  name = "Overview"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2025.1/"
