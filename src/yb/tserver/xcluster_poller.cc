@@ -116,7 +116,8 @@ XClusterPoller::XClusterPoller(
     rpc::Rpcs* rpcs, client::YBClient& local_client,
     const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
     XClusterConsumer* xcluster_consumer, int64_t leader_term,
-    std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode, bool is_paused)
+    std::function<int64_t(const TabletId&)> get_leader_term, bool is_automatic_mode,
+    bool is_stream_paused)
     : XClusterAsyncExecutor(thread_pool, local_client.messenger(), rpcs),
       producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
@@ -132,7 +133,7 @@ XClusterPoller::XClusterPoller(
       source_client_(source_client),
       xcluster_consumer_(xcluster_consumer),
       producer_safe_time_(HybridTime::kInvalid),
-      is_paused_(is_paused) {
+      is_stream_paused_(is_stream_paused) {
   DCHECK_NE(GetLeaderTerm(), yb::OpId::kUnknownTerm);
 }
 
@@ -276,7 +277,7 @@ void XClusterPoller::InvalidateSafeTime() {
 }
 
 void XClusterPoller::SchedulePoll() {
-  if (is_paused_) {
+  if (is_stream_paused_) {
     // Run immediately.
     ScheduleFunc(BIND_FUNCTION_AND_ARGS(XClusterPoller::DoPoll));
     return;
@@ -298,13 +299,21 @@ void XClusterPoller::SchedulePoll() {
 }
 
 void XClusterPoller::DoPoll() {
+  if (is_stream_paused_) {
+    auto status = DoPausePoller();
+    if (!status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Failed to pause poller: " << status.ToString();
+      SchedulePoll();
+    }
+    return;
+  }
+
   if (ddl_queue_handler_) {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     if (op_id_.index() == 0 && op_id_.term() == 0) {
       // This a new ddl_queue poller, so need to first process anything currently in the DDL queue.
       // This is needed to ensure that we don't miss any DDLs that were already in the queue when
       // the last poller was stopped.
-      // Perform this before pausing as well, this will ensure that we have a valid safe time.
       auto ddl_queue_status = ddl_queue_handler_->ProcessPendingBatchIfExists();
       if (!ddl_queue_status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Failed to process existing DDL queue: "
@@ -313,24 +322,6 @@ void XClusterPoller::DoPoll() {
       }
       // We can only send a new GetChanges request once we finish processing this batch.
     }
-  }
-
-  if (is_paused_) {
-    const auto safe_time = GetSafeTime();
-    if (!safe_time.is_special()) {
-      VLOG_WITH_PREFIX(1) << "Waiting for safe time to get published.";
-      xcluster_consumer_->AddSafeTimePublishCallback([weak_this = weak_from_this()]() {
-        auto shared_this = std::static_pointer_cast<XClusterPoller>(weak_this.lock());
-        if (shared_this) {
-          shared_this->MarkReplicationPaused();
-          VLOG(1) << shared_this->LogPrefix() << "Safe time has been published.";
-        }
-      });
-      return;
-    }
-
-    MarkReplicationPaused();
-    return;
   }
 
   if (FLAGS_enable_xcluster_stat_collection) {
@@ -419,6 +410,32 @@ void XClusterPoller::DoPoll() {
       });
 
   SetHandleAndSendRpc(handle);
+}
+
+Status XClusterPoller::DoPausePoller() {
+  DCHECK(is_stream_paused_);
+  if (ddl_queue_handler_) {
+    // Before pausing, ensure that we've updated the safe time to include the last executed DDL.
+    RETURN_NOT_OK_PREPEND(
+        ddl_queue_handler_->UpdateSafeTimeForPause(),
+        "Failed to update DDL queue safe time on poller pause");
+  }
+
+  const auto safe_time = GetSafeTime();
+  if (!safe_time.is_special()) {
+    VLOG_WITH_PREFIX(1) << "Waiting for safe time to get published.";
+    xcluster_consumer_->AddSafeTimePublishCallback([weak_this = weak_from_this()]() {
+      auto shared_this = std::static_pointer_cast<XClusterPoller>(weak_this.lock());
+      if (shared_this) {
+        shared_this->MarkReplicationPaused();
+        VLOG(1) << shared_this->LogPrefix() << "Safe time has been published.";
+      }
+    });
+  } else {
+    MarkReplicationPaused();
+  }
+
+  return Status::OK();
 }
 
 void XClusterPoller::UpdateSchemaVersionsForApply() {
@@ -521,7 +538,7 @@ void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse res
   // Verify if the ApplyChanges failed, in which case we need to reschedule it.
   if (!response.status.ok() ||
       RandomActWithProbability(FLAGS_TEST_xcluster_simulate_random_failure_after_apply)) {
-    if (is_paused_) {
+    if (is_stream_paused_) {
       // If replication is paused, skip the Apply and Poll again so that we enter the pausing
       // workflow.
       SchedulePoll();
@@ -557,11 +574,11 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
       if (s.IsTryAgain()) {
         // The handler will return try again when waiting for safe time to catch up, so can log
         // these errors less frequently.
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 300)
-            << "ExecuteCommittedDDLs Error: " << s << " " << THROTTLE_MSG;
+        YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 300, 1)
+            << LogPrefix() << "ExecuteCommittedDDLs Error: " << s << " " << THROTTLE_MSG;
       } else {
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 30)
-            << "ExecuteCommittedDDLs Error: " << s << " " << THROTTLE_MSG;
+        YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 30, 1)
+            << LogPrefix() << "ExecuteCommittedDDLs Error: " << s << " " << THROTTLE_MSG;
       }
       StoreNOKReplicationError();
       if (FLAGS_enable_xcluster_stat_collection) {
@@ -569,7 +586,7 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
       }
 
       // If we're paused or failed, then stop processing the DDL queue table.
-      if (is_paused_ || is_failed_) {
+      if (is_stream_paused_ || is_failed_) {
         SchedulePoll();
         return;
       }
@@ -662,7 +679,7 @@ bool XClusterPoller::IsLeaderTermValid() {
 }
 
 bool XClusterPoller::IsStuck() const {
-  if (is_paused_) {
+  if (is_stream_paused_) {
     return false;
   }
 
@@ -679,7 +696,7 @@ std::string XClusterPoller::State() const {
     return "Failed";
   }
 
-  if (is_paused_) {
+  if (is_stream_paused_) {
     return "Paused";
   }
 
@@ -746,7 +763,7 @@ void XClusterPoller::TEST_IncrementNumSuccessfulWriteRpcs() {
 }
 
 void XClusterPoller::MarkReplicationPaused() {
-  if (!is_paused_) {
+  if (!is_stream_paused_) {
     // We got unpaused before we could process the pause.
     return;
   }
@@ -759,7 +776,7 @@ void XClusterPoller::MarkReplicationPaused() {
 }
 
 void XClusterPoller::SetPaused(bool is_paused) {
-  if (is_paused_.exchange(is_paused) && !is_paused) {
+  if (is_stream_paused_.exchange(is_paused) && !is_paused) {
     // Resume of a paused poller.
     // Ideally would invoke SchedulePoll here, but this expects us to not be in the middle of a
     // Poll. To safely handle the cases where we were paused and unpaused all within the same poll,
