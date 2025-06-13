@@ -31,10 +31,10 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### Bug fixes
 
-- Fixed a bug where Oracle Normal Indexes were incorrectly reported as unsupported in the schema analysis report.
-- Fixed a bug in the `assess-migration` command which fails with an error in scenarios where the source database had a column of an array of any unsupported YugabyteDB datatype.
-- Fixed a bug in the `import-data` command for a live migration scenario where it was not possible to resume `import-data` if there was any failure after cutover was initiated.
-- Fixed a bug in yugabyted UI where data migration progress was not shown/updated for tables having large number of rows (> int32 range).
+- Fixed an issue where Oracle Normal Indexes were incorrectly reported as unsupported in the schema analysis report.
+- Fixed a bug in the `assess-migration` command that caused it to fail with an error in scenarios where the source database had a column of an array of any unsupported YugabyteDB datatype.
+- Fixed a bug in the `import-data` command for a live migration scenario that prevented resuming `import-data` if a failure occurred after cutover was initiated.
+- Fixed a bug in yugabyted UI where data migration progress was not shown/updated for tables with a large number of rows (exceeding `int32` range).
 
 ## v2025.6.1 - June 3, 2025
 
