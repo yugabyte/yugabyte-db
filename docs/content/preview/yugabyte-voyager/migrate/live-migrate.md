@@ -813,7 +813,7 @@ Perform the following steps as part of the cutover process:
     ```
 
     {{< note title ="Note" >}}
-The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+The `import schema --post-snapshot-import` command is deprecated. Use [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) instead.
     {{< /note >}}
 
 ### Verify migration

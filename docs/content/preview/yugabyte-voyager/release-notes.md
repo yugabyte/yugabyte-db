@@ -17,6 +17,25 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.6.2 - June 17, 2025
+
+### New feature
+
+- [Configuration files](../reference/configuration-file/) can now be used for all commands in live migration workflows.
+
+### Enhancements
+
+- The migration assessment report for the [performance optimization](../known-issues/postgresql/#performance-optimizations) "Hotspots with indexes on timestamp/date as first column" now includes reporting for primary keys and unique key indexes.
+- Improved the readability of the HTML assessment report by moving performance optimizations to a dedicated section.
+- Added a guardrail in export data live migration resumption scenarios for PostgreSQL source to prevent multiple export data streaming processes from running at the same time.
+
+### Bug fixes
+
+- Fixed an issue where Oracle Normal Indexes were incorrectly reported as unsupported in the schema analysis report.
+- Fixed a bug in the `assess-migration` command that caused it to fail with an error in scenarios where the source database had a column of an array of any unsupported YugabyteDB datatype.
+- Fixed a bug in the `import-data` command for a live migration scenario that prevented resuming `import-data` if a failure occurred after cutover was initiated.
+- Fixed a bug in yugabyted UI where data migration progress was not shown/updated for tables with a large number of rows (exceeding `int32` range).
+
 ## v2025.6.1 - June 3, 2025
 
 ### New feature
@@ -39,7 +58,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New features
 
-- Added support for using a config file to manage parameters in offline migration using `yb-voyager`.
+- Added support for using a [configuration file](../reference/configuration-file/) to manage parameters in offline migration using `yb-voyager`.
 
 ### Enhancements
 
