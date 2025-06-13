@@ -1596,9 +1596,11 @@ To minimize performance impact when enabling this flag, set it to 2KB or higher.
 
 These flags are used to determine how the RAM of a node is split between the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including the PostgreSQL processes and a [Master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
 
-{{< warning title="Warning" >}}
+{{< warning title="Do not oversubscribe memory" >}}
 
-Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and Master (if present) leaves enough memory on the node for PostgreSQL and any required other processes like monitoring agents, plus the memory needed by the kernel.
+Ensure you do not oversubscribe memory when changing these flags.
+
+When reserving memory for TServer and Master (if present), you must leave enough memory on the node for PostgreSQL, any required other processes like monitoring agents, and the memory needed by the kernel.
 
 {{< /warning >}}
 
@@ -1615,31 +1617,9 @@ Default: `false`
 
 When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
-If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
+If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL. If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
-
-If these defaults are used for both TServer and Master, then a node's available memory is partitioned as follows:
-
-| node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
-| :--- | ---: | ---: | ---: | ---: |
-| TServer %  | 45% | 48% | 57% | 60% |
-| Master %   | 20% | 15% | 10% | 10% |
-| PostgreSQL % | 25% | 27% | 28% | 27% |
-| other %    | 10% | 10% |  5% |  3% |
-
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
-
-For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
-
-The defaults for [flags controlling memory division in a TServer](#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
-
-| flag | default |
-| :--- | :--- |
-| --db_block_cache_size_percentage | 32 |
-| --tablet_overhead_size_percentage | 10 |
-
-The default value of [--db_block_cache_size_percentage](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
+For information on how defaults for other memory division flags are set, and how memory is divided among processes when this flag is set, refer to [Memory division defaults](../../configuration/smart-defaults/).
 
 #### Flags controlling the split of memory among processes
 
@@ -1666,6 +1646,8 @@ The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memo
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
 #### Flags controlling the split of memory within a TServer
+
+These settings control the division of memory available to the TServer process.
 
 ##### --db_block_cache_size_bytes
 

@@ -14,12 +14,19 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_int32(ysql_select_parallelism);
+
 namespace yb::pgwrapper {
 
 class PgDebugReadRestartsTest : public PgMiniTestBase {
  protected:
   size_t NumTabletServers() override {
     return 3;
+  }
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_select_parallelism) = 1;
+    PgMiniTestBase::SetUp();
   }
 };
 

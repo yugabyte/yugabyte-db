@@ -26,6 +26,7 @@
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
+#include "yb/vector_index/vector_index_if.h"
 
 using namespace std::chrono_literals;
 using namespace yb::size_literals;
@@ -54,7 +55,7 @@ struct AcceptAllVectors {
 
 class YbHnswTest : public YBTest {
  protected:
-  YbHnswTest() : yb_hnsw_(metric_) {}
+  YbHnswTest() {}
 
   void RandomVector(Vector& out) {
     out.clear();
@@ -79,7 +80,9 @@ class YbHnswTest : public YBTest {
   void InsertRandomVectors(size_t count) {
     metric_ = unum::usearch::metric_punned_t(
         dimensions_, unum::usearch::metric_kind_t::l2sq_k, unum::usearch::scalar_kind_t::f32_k);
-    index_ = IndexImpl::make( metric_, CreateIndexDenseConfig());
+    yb_hnsw_.emplace(metric_, block_cache_);
+
+    index_ = IndexImpl::make(metric_, CreateIndexDenseConfig());
     auto rounded_num_vectors = unum::usearch::ceil2(max_vectors_);
     index_.reserve(unum::usearch::index_limits_t(rounded_num_vectors * 2 / 3, 16));
 
@@ -94,15 +97,23 @@ class YbHnswTest : public YBTest {
     if (!context) {
       context = &context_;
     }
-    vector_index::VectorFilter filter = AcceptAllVectors();
-    auto usearch_results = index_.filtered_search(query_vector.data(), max_results, filter);
-    auto yb_hnsw_results = yb_hnsw_.Search(query_vector.data(), max_results, filter, *context);
+    auto options = MakeSearchOptions(max_results);
+    auto usearch_results = index_.filtered_search(query_vector.data(), max_results, options.filter);
+    auto yb_hnsw_results = yb_hnsw_->Search(query_vector.data(), options, *context);
     ASSERT_EQ(usearch_results.count, yb_hnsw_results.size());
     for (size_t j = 0; j != usearch_results.count; ++j) {
       std::decay_t<decltype(yb_hnsw_results.front())> expected(
           usearch_results[j].member.key, usearch_results[j].distance);
       ASSERT_EQ(AsString(expected), AsString(yb_hnsw_results[j]));
     }
+  }
+
+  vector_index::SearchOptions MakeSearchOptions(size_t max_results) const {
+    return vector_index::SearchOptions {
+      .max_num_results = max_results,
+      .ef = index_.config().expansion_search,
+      .filter = AcceptAllVectors(),
+    };
   }
 
   std::vector<Vector> PrepareRandom(bool load, size_t num_vectors, size_t num_searches);
@@ -118,14 +129,14 @@ class YbHnswTest : public YBTest {
   unum::usearch::metric_punned_t metric_;
   IndexImpl index_;
   std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
-  MetricEntityPtr metric_entity_ = METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test");
+  MetricEntityPtr metric_entity_ = METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "test");
   BlockCachePtr block_cache_ = std::make_shared<BlockCache>(
       *Env::Default(),
       MemTracker::GetRootTracker()->FindOrCreateTracker(1_GB, "block_cache"),
       metric_entity_,
       8_MB,
       4);
-  YbHnsw yb_hnsw_;
+  std::optional<YbHnsw> yb_hnsw_;
   YbHnswSearchContext context_;
 };
 
@@ -133,12 +144,12 @@ Status YbHnswTest::InitYbHnsw(bool load) {
   auto path = GetTestPath("0.yb_hnsw");
   if (load) {
     {
-      YbHnsw temp(metric_);
-      RETURN_NOT_OK(temp.Import(index_, path, block_cache_));
+      YbHnsw temp(metric_, block_cache_);
+      RETURN_NOT_OK(temp.Import(index_, path));
     }
-    RETURN_NOT_OK(yb_hnsw_.Init(path, block_cache_));
+    RETURN_NOT_OK(yb_hnsw_->Init(path));
   } else {
-    RETURN_NOT_OK(yb_hnsw_.Import(index_, path, block_cache_));
+    RETURN_NOT_OK(yb_hnsw_->Import(index_, path));
   }
   return Status::OK();
 }
@@ -234,14 +245,14 @@ void YbHnswTest::TestPerf() {
 
   auto query_vectors = PrepareRandom(false, num_vectors, num_searches);
   YbHnswSearchContext context;
-  vector_index::VectorFilter filter = AcceptAllVectors();
+  auto options = MakeSearchOptions(kMaxResults);
   MonoTime start = MonoTime::Now();
   for (const auto& query_vector : query_vectors) {
-    index_.filtered_search(query_vector.data(), kMaxResults, filter);
+    index_.filtered_search(query_vector.data(), kMaxResults, options.filter);
   }
   MonoTime mid = MonoTime::Now();
   for (const auto& query_vector : query_vectors) {
-    yb_hnsw_.Search(query_vector.data(), kMaxResults, filter, context);
+    yb_hnsw_->Search(query_vector.data(), options, context);
   }
   MonoTime finish = MonoTime::Now();
   auto usearch_time = mid - start;

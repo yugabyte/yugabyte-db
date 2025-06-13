@@ -34,11 +34,14 @@ import {
   XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
-import { DurationUnit, DURATION_UNIT_TO_SECONDS } from '../constants';
+import {
+  DurationUnit,
+  DURATION_UNIT_TO_SECONDS,
+  PITR_RETENTION_PERIOD_UNIT_OPTIONS
+} from '../constants';
 import { RuntimeConfigKey } from '../../../../redesign/helpers/constants';
 import { parseDurationToSeconds } from '../../../../utils/parsers';
 import { convertSecondsToLargestDurationUnit } from '../utils';
-import { PITR_RETENTION_PERIOD_UNIT_OPTIONS } from './ConfigurePitrStep';
 import { generateUniqueName } from '../../../../redesign/helpers/utils';
 
 import { RunTimeConfigEntry } from '../../../../redesign/features/universe/universe-form/utils/dto';
@@ -493,20 +496,21 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
 };
 
 const getDefaultValues = (runtimeConfigEntries: RunTimeConfigEntry[]) => {
-  const runtimeConfigDefaultPitrRetentionPeriod = parseDurationToSeconds(
+  const runtimeConfigDefaultPitrRetentionPeriodSeconds = parseDurationToSeconds(
     runtimeConfigEntries.find(
       (config: any) => config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD
     )?.value ?? '',
     { noThrow: true }
   );
-  const defaultPitrRetentionPeriod =
-    isNaN(runtimeConfigDefaultPitrRetentionPeriod) || runtimeConfigDefaultPitrRetentionPeriod < 0
+  const defaultPitrRetentionPeriodSeconds =
+    isNaN(runtimeConfigDefaultPitrRetentionPeriodSeconds) ||
+    runtimeConfigDefaultPitrRetentionPeriodSeconds < 0
       ? XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK
-      : runtimeConfigDefaultPitrRetentionPeriod;
+      : runtimeConfigDefaultPitrRetentionPeriodSeconds;
   const {
     value: pitrRetentionPeriodValue,
     unit: durationUnit
-  } = convertSecondsToLargestDurationUnit(defaultPitrRetentionPeriod, { noThrow: true });
+  } = convertSecondsToLargestDurationUnit(defaultPitrRetentionPeriodSeconds, { noThrow: true });
   const pitrRetentionPeriodUnit = PITR_RETENTION_PERIOD_UNIT_OPTIONS.find(
     (option) => option.value === durationUnit
   );
@@ -515,10 +519,10 @@ const getDefaultValues = (runtimeConfigEntries: RunTimeConfigEntry[]) => {
     configName: `dr-config-${generateUniqueName()}`,
     namespaceUuids: [],
     tableUuids: [],
-    // Fall back to seconds if we can find a matching duration unit.
+    // Fall back to seconds if we can't find a matching duration unit.
     pitrRetentionPeriodValue: pitrRetentionPeriodUnit
       ? pitrRetentionPeriodValue
-      : defaultPitrRetentionPeriod,
+      : defaultPitrRetentionPeriodSeconds,
     pitrRetentionPeriodUnit: pitrRetentionPeriodUnit
       ? pitrRetentionPeriodUnit
       : PITR_RETENTION_PERIOD_UNIT_OPTIONS.find((option) => option.value === DurationUnit.SECOND)

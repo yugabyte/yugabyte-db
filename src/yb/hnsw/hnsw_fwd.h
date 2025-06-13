@@ -22,6 +22,7 @@ namespace yb::hnsw {
 
 class BlockCache;
 class FileBlockCache;
+class YbHnsw;
 
 using BlockCachePtr = std::shared_ptr<BlockCache>;
 using DataBlock = std::vector<std::byte>;
