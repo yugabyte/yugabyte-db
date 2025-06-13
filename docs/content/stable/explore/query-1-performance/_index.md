@@ -1,6 +1,6 @@
 ---
 title: Query Tuning
-headerTitle: Query Tuning
+headerTitle: Query tuning
 linkTitle: Query tuning
 description: Tuning and optimizing query performance
 headcontent: Optimize query performance
