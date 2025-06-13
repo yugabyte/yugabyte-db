@@ -960,7 +960,17 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
                .set_max_threads(1)
                .Build(&leader_initialization_pool_));
   CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
+  // Temporarily allow unlimited threads on the async_task_pool_ to avoid the bug of #26617.
+  // Continue to allow only a limited number of threads (equal to the number of CPUs) in debug mode
+  // so we can find similar bugs.
+  //
+  // TODO(#27622): longer-term, fix our use of thread pools so we don't run into thread pool
+  // "deadlocks".
+#ifndef NDEBUG
   CHECK_OK(ThreadPoolBuilder("async-tasks").Build(&async_task_pool_));
+#else
+  CHECK_OK(ThreadPoolBuilder("async-tasks").unlimited_threads().Build(&async_task_pool_));
+#endif
   CHECK_OK(sys_catalog_->Start(Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
   xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_);
   ysql_manager_ = std::make_unique<YsqlManager>(*master_, *this, *sys_catalog_);
@@ -1766,7 +1776,7 @@ Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
   // Prepare sys catalog table info.
   auto sys_catalog_table = tables_->FindTableOrNull(kSysCatalogTableId);
   if (sys_catalog_table == nullptr) {
-    scoped_refptr<TableInfo> table = NewTableInfo(kSysCatalogTableId, false);
+    scoped_refptr<TableInfo> table = NewTableInfo(kSysCatalogTableId, /*colocated=*/false);
     table->mutable_metadata()->StartMutation();
     SysTablesEntryPB& metadata = table->mutable_metadata()->mutable_dirty()->pb;
     metadata.set_state(SysTablesEntryPB::RUNNING);
@@ -3167,7 +3177,7 @@ Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& t
   }
 
   if (!FLAGS_enable_tablet_split_of_replication_slot_streamed_tables &&
-      IsTablePartOfCDCSDK(table_id, true /* require_replication_slot */)) {
+      IsTablePartOfCDCSDK(table_id, /*require_replication_slot=*/true)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of a replication slot, "
@@ -6494,7 +6504,7 @@ Status CatalogManager::DeleteTable(
                              indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
     if (!is_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
       return MarkIndexInfoFromTableForDeletion(
-          indexed_table_id, table_id, /* multi_stage */ true, epoch, resp, nullptr,
+          indexed_table_id, table_id, /*multi_stage=*/true, epoch, resp, /*data_map_ptr=*/nullptr,
           ns_info);
     }
 
@@ -8467,7 +8477,7 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
         }
 
         if (!table->IsBeingDroppedDueToDdlTxn(req->transaction().transaction_id(),
-                                              true /* txn_success */)) {
+                                              /*txn_success=*/true)) {
           return SetupError(
               resp->mutable_error(),
               MasterErrorPB::INVALID_REQUEST,
@@ -9943,12 +9953,13 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
       for (int i = 0; i < ltm->field_types_size(); i++) {
         // Only need to check direct (non-transitive) type dependencies here.
         // This also means we report more precise errors for in-use types.
-        if (QLType::DoesUserDefinedTypeIdExist(ltm->field_types(i),
-                                      false /* transitive */,
-                                      tp->id())) {
-          Status s = STATUS(QLError,
-              Substitute("Cannot delete type '$0.$1'. It is used in field $2 of type '$3'",
-                  ns->name(), tp->name(), ltm->field_names(i), ltm->name()));
+        if (QLType::DoesUserDefinedTypeIdExist(
+                ltm->field_types(i),
+                /*transitive=*/false, tp->id())) {
+          Status s = STATUS(
+              QLError, Substitute(
+                           "Cannot delete type '$0.$1'. It is used in field $2 of type '$3'",
+                           ns->name(), tp->name(), ltm->field_names(i), ltm->name()));
           return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
         }
       }
@@ -12674,7 +12685,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
 Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   auto l = ClusterConfig()->LockForRead();
 
-  auto blacklist = ToBlacklistSet(GetBlacklist(l->pb, /*leader_blacklist=*/true));
+  auto blacklist = ToBlacklistSet(GetBlacklist(l->pb, /*blacklist_leader=*/true));
   bool i_am_blacklisted = IsBlacklisted(server_registration_, blacklist);
 
   vector<AffinitizedZonesSet> affinitized_zones;
