@@ -1596,7 +1596,7 @@ SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9
 
 **Workaround**:
 
-To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. A new column is to be added to the table that will act as the sharding key in the constraint, and the value of that will be in some fixed range, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
+To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. Add a new column to the table that acts as the sharding key in the constraint, and the value of that will be in some fixed range, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
 
 To fully implement this solution also requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, include the new sharding key values in the query filters to benefit from distributed execution.
 Ensure that the index on the timestamp column is configured to be range-sharded.
@@ -1620,7 +1620,7 @@ And a related read query might look like the following:
 SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
 ```
 
-Suggested change to the schema is to add a column `shard_id` in the table that will have a default value in a fixed range (for example, 0-15) and then use this column as the sharding key in the constraint. This can change depending on the use case. This key will be used to distribute the data among various tablets and hence help in distributing the data evenly.
+Suggested change to the schema is to add a column `shard_id` in the table that will have a default value in a fixed range (for example, 0-15) and then use this column as the sharding key in the constraint. This can change depending on the use case. This key will be used to distribute the data among various tablets and help in distributing the data evenly.
 
 In addition, modify range queries to include the `shard_id` value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
 
