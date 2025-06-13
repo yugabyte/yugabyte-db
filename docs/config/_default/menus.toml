@@ -1105,47 +1105,22 @@
     showSection = true
 
 [[stable]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  [stable.params]
+    showSection = true
+
+[[stable]]
   name = "Troubleshoot"
   parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [[stable]]
   name = "Benchmark"
-  weight = 10
+  weight = 11
   identifier = "benchmark"
   url = "/stable/benchmark/"
-  [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
-  [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "Misc"
-  identifier = "misc"
-  parent = "reference"
-
-[[stable]]
-  name = "YEDIS"
-  weight = 1
-  url = "/preview/yedis/"
-  parent = "misc"
-
-[[stable]]
-  name = "Legal"
-  weight = 2
-  url = "/preview/legal/"
-  parent = "misc"
-
-[[stable]]
-  name = "Contribute"
-  weight = 13
-  identifier = "contribute"
-  url = "/preview/contribute/"
   [stable.params]
     showSection = true
 
@@ -1292,22 +1267,22 @@
     showSection = true
 
 [["v2024.1"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2024.1".params]
+    showSection = true
+
+[["v2024.1"]]
   name = "Troubleshoot"
   parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [["v2024.1"]]
   name = "Benchmark"
-  weight = 10
+  weight = 11
   identifier = "benchmark"
   url = "/v2024.1/benchmark/"
-  ["v2024.1".params]
-    showSection = true
-
-[["v2024.1"]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
   ["v2024.1".params]
     showSection = true
 
@@ -1402,7 +1377,6 @@
   identifier = "yugabytedb"
   url = "/v2025.1/"
   ["v2025.1".params]
-    classes = "separator"
     showSection = true
 
 [["v2025.1"]]
@@ -1411,6 +1385,7 @@
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   ["v2025.1".params]
+    classes = "separator"
     showSection = true
     hideChildren = true
 
@@ -1447,47 +1422,22 @@
     showSection = true
 
 [["v2025.1"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
   name = "Troubleshoot"
   parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [["v2025.1"]]
   name = "Benchmark"
-  weight = 10
+  weight = 11
   identifier = "benchmark"
   url = "/v2025.1/benchmark/"
-  ["v2025.1".params]
-    showSection = true
-
-[["v2025.1"]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
-  ["v2025.1".params]
-    showSection = true
-
-[["v2025.1"]]
-  name = "Misc"
-  identifier = "misc"
-  parent = "reference"
-
-[["v2025.1"]]
-  name = "YEDIS"
-  weight = 1
-  url = "/preview/yedis/"
-  parent = "misc"
-
-[["v2025.1"]]
-  name = "Legal"
-  weight = 2
-  url = "/preview/legal/"
-  parent = "misc"
-
-[["v2025.1"]]
-  name = "Contribute"
-  weight = 13
-  identifier = "contribute"
-  url = "/preview/contribute/"
   ["v2025.1".params]
     showSection = true
 
@@ -1503,7 +1453,6 @@
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2025.1_yugabyte-platform".params]
-    classes = "separator"
     showSection = true
     hideLink = true
 
@@ -1593,15 +1542,6 @@
     showSection = true
     hideChildren = true
 
-#[["v2.20"]]
-#  name = "Key benefits"
-#  weight = 4
-#  identifier = "features"
-#  url = "/v2.20/features/"
-#  ["v2.20".params]
-#    showSection = true
-#    hideChildren = true
-
 [["v2.20"]]
   name = "Explore"
   weight = 5
@@ -1635,47 +1575,22 @@
     showSection = true
 
 [["v2.20"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
   name = "Troubleshoot"
   parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [["v2.20"]]
   name = "Benchmark"
-  weight = 10
+  weight = 11
   identifier = "benchmark"
   url = "/v2.20/benchmark/"
-  ["v2.20".params]
-    showSection = true
-
-[["v2.20"]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
-  ["v2.20".params]
-    showSection = true
-
-[["v2.20"]]
-  name = "Misc"
-  identifier = "misc"
-  parent = "reference"
-
-[["v2.20"]]
-  name = "YEDIS"
-  weight = 1
-  url = "/preview/yedis/"
-  parent = "misc"
-
-[["v2.20"]]
-  name = "Legal"
-  weight = 2
-  url = "/preview/legal/"
-  parent = "misc"
-
-[["v2.20"]]
-  name = "Contribute"
-  weight = 13
-  identifier = "contribute"
-  url = "/preview/contribute/"
   ["v2.20".params]
     showSection = true
 
