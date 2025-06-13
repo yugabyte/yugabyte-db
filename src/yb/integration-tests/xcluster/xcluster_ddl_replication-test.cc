@@ -1930,26 +1930,21 @@ TEST_F(XClusterDDLReplicationFailoverTest, FailoverWithPendingAlterDDLs) {
   LOG(INFO) << "===== Failover: Restoring B to xCluster safe time";
   ASSERT_OK(PerformPITROnConsumerCluster(safe_time));
 
-  // TODO: Enabling this is causing a DCHECK failure in pg_client_session.cc ReadPointHistory::Save
-  //  DCHECK(read_time.read >= ipair.first->second.read_time().read)
-  // LOG(INFO) << "===== Failover: Deleting replication from A to B";
-  // ASSERT_OK(DeleteUniverseReplication(
-  //     kReplicationGroupId, consumer_client(), consumer_cluster_.mini_cluster_.get()));
-  // auto namespace_id_B =
-  //     ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*cluster_B_->client_, namespace_name));
-  // ASSERT_OK(WaitForInValidSafeTimeOnAllTServers(namespace_id_B));
+  LOG(INFO) << "===== Failover: Deleting replication from A to B";
+  ASSERT_OK(DeleteUniverseReplication(
+      kReplicationGroupId, consumer_client(), consumer_cluster_.mini_cluster_.get()));
+  auto namespace_id_B =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*cluster_B_->client_, namespace_name));
+  ASSERT_OK(WaitForInValidSafeTimeOnAllTServers(namespace_id_B));
 
   LOG(INFO) << "===== Failover: Verifying table on B";
   auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
 
-  // TODO(#27595): PITR should skip sys_catalog in which case we will have the correct name for the
-  // table.
-  // ASSERT_NOK_STR_CONTAINS(
-  //     conn_B.FetchAllAsString("SELECT * FROM my_table ORDER BY key"), "does not exist");
+  ASSERT_NOK_STR_CONTAINS(
+      conn_B.FetchAllAsString("SELECT * FROM my_table ORDER BY key"), "does not exist");
 
-  // auto result = ASSERT_RESULT(conn_B.FetchAllAsString("SELECT * FROM my_table2 ORDER BY key"));
+  auto result = ASSERT_RESULT(conn_B.FetchAllAsString("SELECT * FROM my_table2 ORDER BY key"));
 
-  auto result = ASSERT_RESULT(conn_B.FetchAllAsString("SELECT * FROM my_table ORDER BY key"));
   ASSERT_EQ(initial_data, result);
 }
 
