@@ -1212,7 +1212,7 @@ Default: `4194304` (4MB)
 
 Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
 
-Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol.
 
 ##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
 
@@ -1865,7 +1865,7 @@ Window of time in seconds over which DocDB read statistics are analyzed for the 
 Default: `99`
 {{% /tags/wrap %}}
 
-The percentage of obsolete keys (over total keys) read over the [auto_compact_stat_window_seconds](#auto-compact-percent-obsolete) window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+The percentage of obsolete keys (over total keys) read over the [auto_compact_stat_window_seconds](#auto-compact-stat-window-seconds) window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
 
 For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
 
