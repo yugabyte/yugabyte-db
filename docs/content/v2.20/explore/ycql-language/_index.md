@@ -13,7 +13,7 @@ type: indexpage
 showRightNav: true
 ---
 
-YugabyteDB's [YCQL API](../../api/ycql/) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html) and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YCQL to support most Cassandra features, such as data types, queries, expressions, operators and so on and at the same providing seamless scalability and resilience.
+YugabyteDB's [YCQL API](../../api/ycql/) has its roots in the [Cassandra Query Language (CQL)](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/index.html) and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YCQL to support most Cassandra features, such as data types, queries, expressions, operators and so on and at the same providing seamless scalability and resilience.
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for Cassandra would work against YCQL.

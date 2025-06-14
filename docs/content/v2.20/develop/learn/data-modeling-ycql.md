@@ -37,11 +37,11 @@ Each row is composed of one or more columns. A column is a fundamental data elem
 
 As the example of a `users` table which holds information about users of a service.
 
-| user_id  | firstname | lastname | address
-| -------- | --------- | -------- | --------
-| 1001     | Sherlock  | Holmes   | 221b Baker St, London, UK
-| 1003     | Clark     | Kent     | 344 Clinton Street, Metropolis
-| 1007     | James     | Bond     |
+| user_id  | firstname | lastname | address |
+| -------- | --------- | -------- | -------- |
+| 1001     | Sherlock  | Holmes   | 221b Baker St, London, UK |
+| 1003     | Clark     | Kent     | 344 Clinton Street, Metropolis |
+| 1007     | James     | Bond     | |
 
 Note the following about the `users` table:
 
@@ -51,12 +51,12 @@ Note the following about the `users` table:
 
 Now consider another example of the `books` table that keeps track of authors and the books they have written.
 
-| author               | book_title           | price  | year | genre
-| -------------------- | -------------------- | ------ | ---- | -----
-| William Shakespeare  | Hamlet               | 6.75   | 1602 | tragedy
-| William Shakespeare  | Macbeth              | 7.50   | 1606 | tragedy
-| Charles Dickens      | Oliver Twist         | 9.25   | 1837 | serial novel
-| Charles Dickens      | A Tale of Two Cities | 11.40  | 1859 | historical novel
+| author               | book_title           | price  | year | genre |
+| -------------------- | -------------------- | ------ | ---- | ----- |
+| William Shakespeare  | Hamlet               | 6.75   | 1602 | tragedy |
+| William Shakespeare  | Macbeth              | 7.50   | 1606 | tragedy |
+| Charles Dickens      | Oliver Twist         | 9.25   | 1837 | serial novel |
+| Charles Dickens      | A Tale of Two Cities | 11.40  | 1859 | historical novel |
 
 Note the following about the `books` table:
 
@@ -80,11 +80,11 @@ One or more columns of a table are made the partition key columns. The values of
 
 In the case of the `users` table, you can make `user_id` column the only primary key column. This is a good choice for a partition key because our queries do not care about the order of the `user_id`s. If the table is split into a number of tablets (partitions), the data may be assigned as follows.
 
-| tablet    | user_id  | firstname | lastname | address
-| --------- | -------- | --------- | -------- | --------
-| tablet-22 | 1001     | Sherlock  | Holmes   | 221b Baker St, London, UK
-| tablet-4  | 1003     | Clark     | Kent     | 344 Clinton Street, Metropolis
-| tablet-17 | 1007     | James     | Bond     |
+| tablet    | user_id  | firstname | lastname | address |
+| :-------- | :------- | :-------- | :------- | :------ |
+| tablet-22 | 1001     | Sherlock  | Holmes   | 221b Baker St, London, UK |
+| tablet-4  | 1003     | Clark     | Kent     | 344 Clinton Street, Metropolis |
+| tablet-17 | 1007     | James     | Bond     | |
 
 ### Clustering key columns (optional)
 
@@ -94,12 +94,12 @@ In a table that has both partition keys and clustering keys, it is possible for 
 
 In the case of the `books` table, `author` is a good partition key and `book_title` is a good clustering key. Such a data model would allow easily listing all the books for a given author, as well as look up details of a specific book. This would cause the data to be stored as follows.
 
-| tablet    | author               | book_title           | price  | year | genre
-| --------- | -------------------- | -------------------- | ------ | ---- | -----
-| tablet-15 | William Shakespeare  | Hamlet               | 6.75   | 1602 | tragedy
-| tablet-15 | William Shakespeare  | Macbeth              | 7.50   | 1606 | tragedy
-| tablet-21 | Charles Dickens      | A Tale of Two Cities | 11.40  | 1859 | historical novel
-| tablet-21 | Charles Dickens      | Oliver Twist         | 9.25   | 1837 | serial novel
+| tablet    | author               | book_title           | price  | year | genre |
+| --------- | -------------------- | -------------------- | ------ | ---- | ----- |
+| tablet-15 | William Shakespeare  | Hamlet               | 6.75   | 1602 | tragedy |
+| tablet-15 | William Shakespeare  | Macbeth              | 7.50   | 1606 | tragedy |
+| tablet-21 | Charles Dickens      | A Tale of Two Cities | 11.40  | 1859 | historical novel |
+| tablet-21 | Charles Dickens      | Oliver Twist         | 9.25   | 1837 | serial novel |
 
 Note that if you had made both `author` and `book_title` partition key columns, you would not be able to list all the books for a given author efficiently.
 
@@ -111,7 +111,7 @@ Note that if you had made both `author` and `book_title` partition key columns, 
 
 ## Secondary indexes
 
-A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. YugabyteDB's secondary index support is documented in detail [here](../../../api/ycql/ddl_create_index/).
+A database index is a data structure that improves the speed of data retrieval operations on a database table. Typically, databases are very efficient at looking up data by the primary key. A secondary index can be created using one or more columns of a database table, and provides the basis for both rapid random lookups and efficient access of ordered records when querying by those columns. To achieve this, secondary indexes require additional writes and storage space to maintain the index data structure. YugabyteDB's secondary index support is documented in detail in [CREATE INDEX](../../../api/ycql/ddl_create_index/).
 
 ### Benefits of secondary indexes
 
@@ -199,15 +199,15 @@ ycqlsh> INSERT INTO example.users (user_id, firstname, lastname, email)
        VALUES (3, 'Fake', 'Bond', 'bond@example.com');
 ```
 
-```
+```output
 InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error: Execution Error. Duplicate value disallowed by unique index unique_emails
 ```
 
 ## Documents
 
-Documents are the most common way for storing, retrieving, and managing semi-structured data. Unlike the traditional relational data model, the document data model is not restricted to a rigid schema of rows and columns. The schema can be changed easily  thus helping application developers write business logic faster than ever before. Instead of columns with names and data types that are used in a relational model, a document contains a description of the data type and the value for that description. Each document can have the same or different structure. Even nested document structures are possible where one or more sub-documents are embedded inside a larger document.
+Documents are the most common way for storing, retrieving, and managing semi-structured data. Unlike the traditional relational data model, the document data model is not restricted to a rigid schema of rows and columns. The schema can be changed easily thus helping application developers write business logic faster than ever before. Instead of columns with names and data types that are used in a relational model, a document contains a description of the data type and the value for that description. Each document can have the same or different structure. Even nested document structures are possible where one or more sub-documents are embedded inside a larger document.
 
-Databases commonly support document data management through the use of a JSON data type. [JSON.org](http://www.json.org/) defines JSON (JavaScript Object Notation) to be a lightweight data-interchange format. It’s easy for humans to read and write. it’s easy for machines to parse and generate. JSON has four simple data types:
+Databases commonly support document data management through the use of a JSON data type. [JSON.org](http://www.json.org/) defines JSON (JavaScript Object Notation) to be a lightweight data-interchange format. It's easy for humans to read and write, and for machines to parse and generate. JSON has four simple data types:
 
 - string
 - number
@@ -217,12 +217,12 @@ Databases commonly support document data management through the use of a JSON da
 In addition, it has two core complex data types.
 
 - Collection of name-value pairs which is realized as an object, hash table, dictionary, or something similar depending on the language.
-- Ordered list of values which is realized as an array, vector, list or sequence depending on the language.
+- Ordered list of values which is realized as an array, vector, list, or sequence depending on the language.
 
 Document data models are best fit for applications requiring a flexible schema and fast data access. For example, nested documents enable applications to store related pieces of information in the same database record in a denormalized manner. As a result, applications can issue fewer queries and updates to complete common operations.
 
-### Comparison with Apache Cassandra’s JSON support
+### Comparison with Apache Cassandra JSON support
 
-[Apache Cassandra’s JSON](http://cassandra.apache.org/doc/latest/cql/json.html) support can be misleading for many developers. YCQL allows `SELECT` and `INSERT` statements to include the `JSON` keyword. The `SELECT` output will now be available in the JSON format and the `INSERT` inputs can now be specified in the JSON format. However, this “JSON” support is simply an ease-of-use abstraction in the CQL layer that the underlying database engine is unaware of. Since there is no native JSON data type in CQL, the schema doesn’t have any knowledge of the JSON provided by the user. This means the schema definition doesn’t change nor does the schema enforcement. Cassandra developers needing native JSON support previously had no choice but to add a new document database such as MongoDB or Couchbase into their data tier.
+[Apache Cassandra JSON](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/json.html) support can be misleading for many developers. YCQL allows `SELECT` and `INSERT` statements to include the `JSON` keyword. The `SELECT` output will now be available in the JSON format and the `INSERT` inputs can now be specified in the JSON format. However, this JSON support is simply an ease-of-use abstraction in the CQL layer that the underlying database engine is unaware of. Because there is no native JSON data type in CQL, the schema doesn't have any knowledge of the JSON provided by the user. This means the schema definition doesn't change nor does the schema enforcement. Cassandra developers needing native JSON support previously had no choice but to add a new document database such as MongoDB or Couchbase into their data tier.
 
-With YugabyteDB’s native JSON support using the [`JSONB`](../data-types-ycql/#jsonb) data type, application developers can now benefit from the structured query language of Cassandra and the document data modeling of MongoDB in a single database.
+With YugabyteDB native JSON support using the [JSONB](../data-types-ycql/#jsonb) data type, application developers can now benefit from the structured query language of Cassandra and the document data modeling of MongoDB in a single database.
