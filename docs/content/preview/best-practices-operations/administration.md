@@ -5,10 +5,10 @@ linkTitle: YSQL database administrators
 description: Tips and tricks to build YSQL applications
 headcontent: Tips and tricks for administering YSQL databases
 menu:
-  stable:
+  preview:
     identifier: best-practices-ysql-administration
-    parent: best-practices-develop
-    weight: 30
+    parent: best-practices-operations
+    weight: 10
 type: docs
 ---
 
@@ -57,3 +57,11 @@ Most DDL statements complete quickly, so this is typically not a significant iss
 DDL statements that affect entities in different databases can be run concurrently. However, for DDL statements that impact the same database, it is recommended to execute them sequentially.
 
 DDL statements that relate to shared objects, such as roles or tablespaces, are considered as affecting all databases in the cluster, so they should also be run sequentially.
+
+## Preload PostgreSQL system catalog entries into the local catalog cache
+
+Many common PostgreSQL operations, such as parsing a query, planning, and so on, require looking up entries in PostgreSQL system catalog tables, including pg_class, pg_operator, pg_statistic, and pg_attribute, for PostgreSQL metadata for the columns, operators, and more.
+
+Each PostgreSQL backend (process) caches such metadata for performance reasons. In YugabyteDB, misses on these caches need to be loaded from the YB-Master leader. As a result, initial queries on that backend can be slow until these caches are warm, especially if the YB-Master leader is in a different region.
+
+You can customize this tradeoff to control the preloading entries into PostgreSQL caches. Refer to [Customize preloading of YSQL catalog caches](../ysql-catalog-cache-tuning-guide/) for information on how to make the right tradeoffs for your application.
