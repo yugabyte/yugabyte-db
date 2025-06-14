@@ -1569,7 +1569,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
         else:
-            logging.warning("Local Directory Tarball Path not specified skipping")
+            logging.warning("Local Directory Tarball Path not specified; skipping")
             return
 
         if args.install_third_party_packages:
