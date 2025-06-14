@@ -270,7 +270,7 @@ class AwsCloud(AbstractCloud):
 
     def get_current_host_info(self, args):
         """This method would fetch current host information by calling AWS metadata api
-        to fetch requested metadata's.
+        to fetch requested metadata.
         """
         try:
             metadata = {}
