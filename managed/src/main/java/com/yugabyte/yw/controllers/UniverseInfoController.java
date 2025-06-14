@@ -293,7 +293,7 @@ public class UniverseInfoController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.DEBUG),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result resetSlowQueries(UUID customerUUID, UUID universeUUID, Http.Request request) {
