@@ -1509,19 +1509,19 @@ class PgClientSession::Impl {
       alterer->DropColumn(drop_column);
     }
 
-    if (!req.rename_table().table_name().empty()) {
-      client::YBTableName new_table_name(
-          YQL_DATABASE_PGSQL, req.rename_table().database_name(), req.rename_table().table_name());
+    if (!req.rename_table().table_name().empty() ||
+        !req.rename_table().schema_name().empty()) {
+      const auto ns_id = PgObjectId::GetYbNamespaceIdFromPB(req.table_id());
+      // Change table name and/or schema name. DB name cannot be changed.
+      client::YBTableName new_table_name(YQL_DATABASE_PGSQL);
+      new_table_name.set_table_id(table_id);
+      new_table_name.set_namespace_id(ns_id);
+      if (!req.rename_table().table_name().empty()) {
+        new_table_name.set_table_name(req.rename_table().table_name());
+      }
       if (!req.rename_table().schema_name().empty()) {
         new_table_name.set_pgschema_name(req.rename_table().schema_name());
       }
-      alterer->RenameTo(new_table_name);
-    } else if (!req.rename_table().schema_name().empty()) {
-      client::YBTableName new_table_name(YQL_DATABASE_PGSQL);
-      new_table_name.set_pgschema_name(req.rename_table().schema_name());
-      new_table_name.set_table_id(table_id);
-      const auto ns_id = PgObjectId::GetYbNamespaceIdFromPB(req.table_id());
-      new_table_name.set_namespace_id(ns_id);
       alterer->RenameTo(new_table_name);
     }
 
@@ -1842,7 +1842,6 @@ class PgClientSession::Impl {
   Status Perform(
       PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
       const PgTablesQueryResult& tables) {
-    VLOG(5) << "Perform rpc: " << req->ShortDebugString();
     auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache(), req, resp, context);
     auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context, tables);
     if (!status.ok()) {
@@ -2566,6 +2565,7 @@ class PgClientSession::Impl {
   Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context,
                    const PgTablesQueryResult& tables) {
     auto& options = *data->req.mutable_options();
+    VLOG(5) << "Perform request: " << data->req.ShortDebugString();
     TryUpdateAshWaitState(options);
     if (!(options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed()) &&
         xcluster_context() &&

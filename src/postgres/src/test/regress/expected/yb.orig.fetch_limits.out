@@ -17,7 +17,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_larg
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_large (actual rows=5000 loops=1)
-   Storage Table Read Requests: 6
+   Storage Table Read Requests: 2
    Storage Table Rows Scanned: 5000
 (3 rows)
 
@@ -25,7 +25,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medi
                    QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on t_medium (actual rows=5000 loops=1)
-   Storage Table Read Requests: 6
+   Storage Table Read Requests: 2
    Storage Table Rows Scanned: 5000
 (3 rows)
 
@@ -33,7 +33,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_smal
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_small (actual rows=5000 loops=1)
-   Storage Table Read Requests: 6
+   Storage Table Read Requests: 2
    Storage Table Rows Scanned: 5000
 (3 rows)
 
@@ -109,7 +109,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_larg
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_large (actual rows=5000 loops=1)
-   Storage Table Read Requests: 5000
+   Storage Table Read Requests: 1696
    Storage Table Rows Scanned: 5000
 (3 rows)
 
@@ -143,7 +143,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_larg
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_large (actual rows=5000 loops=1)
-   Storage Table Read Requests: 5000
+   Storage Table Read Requests: 1696
    Storage Table Rows Scanned: 9997
 (3 rows)
 
@@ -151,7 +151,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medi
                    QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on t_medium (actual rows=5000 loops=1)
-   Storage Table Read Requests: 626
+   Storage Table Read Requests: 212
    Storage Table Rows Scanned: 5623
 (3 rows)
 
@@ -159,7 +159,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_smal
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_small (actual rows=5000 loops=1)
-   Storage Table Read Requests: 201
+   Storage Table Read Requests: 68
    Storage Table Rows Scanned: 5198
 (3 rows)
 
@@ -235,7 +235,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_larg
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_large (actual rows=5000 loops=1)
-   Storage Table Read Requests: 6
+   Storage Table Read Requests: 2
    Storage Table Rows Scanned: 5003
 (3 rows)
 
@@ -243,7 +243,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medi
                    QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on t_medium (actual rows=5000 loops=1)
-   Storage Table Read Requests: 3
+   Storage Table Read Requests: 1
    Storage Table Rows Scanned: 5000
 (3 rows)
 
@@ -251,7 +251,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_smal
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_small (actual rows=5000 loops=1)
-   Storage Table Read Requests: 3
+   Storage Table Read Requests: 1
    Storage Table Rows Scanned: 5000
 (3 rows)
 
@@ -327,7 +327,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_larg
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_large (actual rows=5000 loops=1)
-   Storage Table Read Requests: 12
+   Storage Table Read Requests: 4
    Storage Table Rows Scanned: 5009
 (3 rows)
 
@@ -335,7 +335,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medi
                    QUERY PLAN                    
 -------------------------------------------------
  Seq Scan on t_medium (actual rows=5000 loops=1)
-   Storage Table Read Requests: 3
+   Storage Table Read Requests: 1
    Storage Table Rows Scanned: 5000
 (3 rows)
 
@@ -343,7 +343,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_smal
                    QUERY PLAN                   
 ------------------------------------------------
  Seq Scan on t_small (actual rows=5000 loops=1)
-   Storage Table Read Requests: 3
+   Storage Table Read Requests: 1
    Storage Table Rows Scanned: 5000
 (3 rows)
 

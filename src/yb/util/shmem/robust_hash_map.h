@@ -414,7 +414,7 @@ class RobustHashMap {
     SHARED_MEMORY_STORE(in_progress_node_, nullptr);
   }
 
-  void DoDelete(List::const_iterator prev_itr) {
+  void DoDelete(typename List::const_iterator prev_itr) {
     auto* prev = &*prev_itr.unconst();
     auto* node = &*std::next(prev_itr).unconst();
     SHARED_MEMORY_STORE(in_progress_num_elements_, SHARED_MEMORY_LOAD(num_elements_) - 1);

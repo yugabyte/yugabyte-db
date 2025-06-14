@@ -58,6 +58,10 @@ static void expand_dbname_patterns(PGconn *conn, SimpleStringList *patterns,
 								   SimpleStringList *names);
 
 static void ybProcessTablespaceSpcOptions(PGconn *conn, PQExpBuffer *buf, char *spcoptions);
+static void dropYbRoleProfiles(PGconn *conn);
+static void dropYbProfiles(PGconn *conn);
+static void dumpYbProfiles(PGconn *conn);
+static void dumpYbRoleProfiles(PGconn *conn);
 
 static char pg_dump_bin[MAXPGPATH];
 static const char *progname;
@@ -119,6 +123,7 @@ static int	dump_single_database = 0;	/* Dump only one DB specified by
 										 * '--database' argument. */
 
 static bool IsYugabyteEnabled = true;
+static int	yb_no_profiles = 0;
 
 int
 main(int argc, char *argv[])
@@ -160,6 +165,7 @@ main(int argc, char *argv[])
 		{"lock-wait-timeout", required_argument, NULL, 2},
 		{"no-table-access-method", no_argument, &no_table_access_method, 1},
 		{"no-tablespaces", no_argument, &no_tablespaces, 1},
+		{"no-yb-profiles", no_argument, &yb_no_profiles, 1},
 		{"quote-all-identifiers", no_argument, &quote_all_identifiers, 1},
 		{"load-via-partition-root", no_argument, &load_via_partition_root, 1},
 		{"role", required_argument, NULL, 3},
@@ -601,6 +607,9 @@ main(int argc, char *argv[])
 
 	if (!data_only)
 	{
+		bool yb_dump_profile = IsYugabyteEnabled && !roles_only &&
+							   !tablespaces_only && !yb_no_profiles;
+
 		/*
 		 * If asked to --clean, do that first.  We can avoid detailed
 		 * dependency analysis because databases never depend on each other,
@@ -614,6 +623,12 @@ main(int argc, char *argv[])
 
 			if (!roles_only && !no_tablespaces)
 				dropTablespaces(conn);
+
+			if (yb_dump_profile)
+			{
+				dropYbRoleProfiles(conn);
+				dropYbProfiles(conn);
+			}
 
 			if (!tablespaces_only)
 				dropRoles(conn);
@@ -634,6 +649,12 @@ main(int argc, char *argv[])
 			/* Dump role GUC privileges */
 			if (server_version >= 150000 && !skip_acls)
 				dumpRoleGUCPrivs(conn);
+
+			if (yb_dump_profile)
+			{
+				dumpYbProfiles(conn);
+				dumpYbRoleProfiles(conn);
+			}
 		}
 
 		/* Dump tablespaces */
@@ -719,6 +740,7 @@ help(void)
 	printf(_("  --no-tablespaces             do not dump tablespace assignments\n"));
 	printf(_("  --no-toast-compression       do not dump TOAST compression methods\n"));
 	printf(_("  --no-unlogged-table-data     do not dump unlogged table data\n"));
+	printf(_("  --no-yb-profiles             do not dump yb profile and role profile data\n"));
 	printf(_("  --on-conflict-do-nothing     add ON CONFLICT DO NOTHING to INSERT commands\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
@@ -1987,4 +2009,191 @@ dumpTimestamp(const char *msg)
 
 	if (strftime(buf, sizeof(buf), PGDUMP_STRFTIME_FMT, localtime(&now)) != 0)
 		fprintf(OPF, "-- %s %s\n\n", msg, buf);
+}
+
+/*
+ * Drop YB role profiles
+ */
+static void
+dropYbRoleProfiles(PGconn *conn)
+{
+	PQExpBuffer buf = createPQExpBuffer();
+	PGresult   *res;
+	int			i;
+	int			i_rolname;
+
+	printfPQExpBuffer(buf,
+					  "SELECT r.rolname "
+					  "FROM pg_yb_role_profile rp "
+					  "JOIN %s r ON r.oid = rp.rolprfrole",
+					  role_catalog);
+
+	res = executeQuery(conn, buf->data);
+	i_rolname = PQfnumber(res, "rolname");
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "--\n-- Drop YB role-profile mappings\n--\n\n");
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		const char *rolename = PQgetvalue(res, i, i_rolname);
+
+		fprintf(OPF, "ALTER ROLE %s NOPROFILE;\n", fmtId(rolename));
+	}
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "\n\n");
+
+	PQclear(res);
+	destroyPQExpBuffer(buf);
+}
+
+/*
+ * Drop YB profiles
+ */
+static void
+dropYbProfiles(PGconn *conn)
+{
+	PQExpBuffer buf = createPQExpBuffer();
+	PGresult   *res;
+	int i_prfname;
+	int i;
+
+	/* Select all profiles from pg_yb_profile table */
+	appendPQExpBuffer(buf, "SELECT prfname FROM pg_yb_profile");
+
+	res = executeQuery(conn, buf->data);
+
+	i_prfname = PQfnumber(res, "prfname");
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "--\n-- Drop YB profiles\n--\n\n");
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		const char *prfname;
+
+		prfname = PQgetvalue(res, i, i_prfname);
+
+		fprintf(OPF, "DROP PROFILE %s%s;\n",
+				if_exists ? "IF EXISTS " : "",
+				fmtId(prfname));
+	}
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "\n\n");
+
+	PQclear(res);
+	destroyPQExpBuffer(buf);
+}
+
+static void
+dumpYbProfiles(PGconn *conn)
+{
+	PQExpBuffer buf = createPQExpBuffer();
+	PGresult   *res;
+	int			i;
+
+	/* Get all rows from pg_yb_profile */
+	res = executeQuery(conn, "SELECT prfname, prfmaxfailedloginattempts "
+							 "FROM pg_yb_profile ORDER BY prfname");
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "--\n-- YB Profiles\n--\n\n");
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		char *prfname = PQgetvalue(res, i, 0);
+		char *max_failed_logins = PQgetvalue(res, i, 1);
+		char *fprfname = pg_strdup(fmtId(prfname));
+
+		PQExpBuffer stmt = createPQExpBuffer();
+
+		appendPQExpBuffer(stmt, "CREATE PROFILE %s", fprfname);
+		if (max_failed_logins && strlen(max_failed_logins) > 0)
+			appendPQExpBuffer(stmt, " LIMIT FAILED_LOGIN_ATTEMPTS %s", max_failed_logins);
+		appendPQExpBufferStr(stmt, ";\n");
+
+		fprintf(OPF, "%s", stmt->data);
+
+		free(fprfname);
+		destroyPQExpBuffer(stmt);
+	}
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "\n\n");
+
+	PQclear(res);
+	destroyPQExpBuffer(buf);
+}
+
+static void
+dumpYbRoleProfiles(PGconn *conn)
+{
+	PQExpBuffer buf = createPQExpBuffer();
+	PGresult   *res;
+	int			i;
+
+	printfPQExpBuffer(buf,
+					  "SELECT r.rolname AS role_name, "
+					  "p.prfname AS profile_name, "
+					  "rp.rolprfstatus, "
+					  "rp.rolprffailedloginattempts, "
+					  "rp.rolprflockeduntil "
+					  "FROM pg_yb_role_profile rp "
+					  "JOIN %s r ON r.oid = rp.rolprfrole "
+					  "JOIN pg_yb_profile p ON p.oid = rp.rolprfprofile "
+					  "ORDER BY role_name, profile_name",
+					  role_catalog);
+
+	res = executeQuery(conn, buf->data);
+	destroyPQExpBuffer(buf);
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "--\n-- YB Role-Profile Mappings\n--\n\n");
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		char *role_name = PQgetvalue(res, i, 0);
+		char *profile_name = PQgetvalue(res, i, 1);
+		char		status = *PQgetvalue(res, i, 2);
+		int			failed_login_attempts = atoi(PQgetvalue(res, i, 3));
+		const char *locked_until = PQgetvalue(res, i, 4);
+		bool		has_locked_until = !PQgetisnull(res, i, 4);
+
+		PQExpBuffer stmt = createPQExpBuffer();
+
+		appendPQExpBuffer(stmt, "ALTER ROLE %s PROFILE %s;\n",
+						  role_name, profile_name);
+
+		appendPQExpBuffer(stmt,
+						  "UPDATE pg_catalog.pg_yb_role_profile\n"
+						  "SET rolprfstatus = '%c',\n"
+						  "    rolprffailedloginattempts = %d",
+						  status, failed_login_attempts);
+
+		if (has_locked_until)
+		{
+			appendPQExpBuffer(stmt,
+							  ",\n    rolprflockeduntil = '%s'",
+							  locked_until);
+		}
+
+		appendPQExpBuffer(stmt,
+			"\nWHERE rolprfrole = (SELECT oid FROM %s WHERE rolname = ", role_catalog);
+		appendStringLiteralConn(stmt, role_name, conn);
+		appendPQExpBuffer(stmt,
+			")\n  AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = ");
+		appendStringLiteralConn(stmt, profile_name, conn);
+		appendPQExpBuffer(stmt,
+			");\n");
+
+		fprintf(OPF, "%s\n", stmt->data);
+		destroyPQExpBuffer(stmt);
+	}
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "\n");
+
+	PQclear(res);
 }

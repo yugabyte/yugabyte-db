@@ -112,6 +112,7 @@ int64 ComputeTabletOverheadLimit();
 
 // Evaluates the number of bits used to shard the block cache depending on the number of cores.
 int32_t GetDbBlockCacheNumShardBits();
+int64_t GetTargetBlockCacheSize(int32_t default_block_cache_size_percentage);
 
 }  // namespace tserver
 }  // namespace yb

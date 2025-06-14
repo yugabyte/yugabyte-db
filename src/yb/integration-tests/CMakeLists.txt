@@ -285,6 +285,7 @@ ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_expression_pushdown-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_role_profiles-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_stats_import-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade-test)
 

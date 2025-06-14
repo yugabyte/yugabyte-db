@@ -22,6 +22,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -46,6 +47,9 @@ DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
+DECLARE_int64(olm_poll_interval_ms);
 
 using namespace std::literals;
 
@@ -53,13 +57,25 @@ namespace yb::pgwrapper {
 
 constexpr uint64_t kDefaultMasterYSQLLeaseTTLMilli = 5 * 1000;
 constexpr uint64_t kDefaultYSQLLeaseRefreshIntervalMilli = 500;
+constexpr uint64_t kDefaultLockManagerPollIntervalMs = 100;
 
 class PgObjectLocksTestRF1 : public PgMiniTestBase {
  protected:
   void SetUp() override {
+    // Set reasonable high poll interavl to disable polling in tests., would help catch issues
+    // with signaling logic if any.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = 1000000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
+        kDefaultMasterYSQLLeaseTTLMilli;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) =
+        kDefaultYSQLLeaseRefreshIntervalMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     PgMiniTestBase::SetUp();
+    Init();
+  }
+
+  void Init() {
     ts_lock_manager_ = cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager();
     master_lock_manager_ = cluster_->mini_master()
                                ->master()
@@ -663,7 +679,14 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
   ASSERT_OK(ts1->Restart());
 }
 
+// This test relies on the OLM poller to run frequently and timedout waiters, in order to
+// check for deadlocks/transaction aborts and retry from pg_client_session if necessary.
 TEST_F(PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
+  // Restart the cluster_ with the poll interval set to default.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = kDefaultLockManagerPollIntervalMs;
+  ASSERT_OK(cluster_->RestartSync());
+  Init();
+
   auto conn1 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
@@ -745,6 +768,30 @@ TEST_F(PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
     ASSERT_OK(status_future.get());
   }
   ASSERT_STR_CONTAINS(s.ToString(), "aborted due to a deadlock");
+}
+
+TEST_F(PgObjectLocksTestRF1, TestShutdownWithWaiters) {
+  constexpr auto kNumWaiters = 3;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode"));
+
+  TestThreadHolder thread_holder;
+  for (int i = 0 ; i < kNumWaiters; i++) {
+    thread_holder.AddThreadFunctor([&]() {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.ExecuteFormat("SET statement_timeout=$0", 1000 * kTimeMultiplier));
+      ASSERT_NOK(conn.Execute("UPDATE test SET v=v+1 WHERE k=1"));
+    });
+  }
+  auto log_waiter = StringWaiterLogSink("has just lost its lease");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = false;
+  ASSERT_OK(log_waiter.WaitFor(
+      MonoDelta::FromMilliseconds(2 * kDefaultMasterYSQLLeaseTTLMilli * kTimeMultiplier)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) = true;
+  thread_holder.JoinAll();
 }
 
 TEST_F_EX(

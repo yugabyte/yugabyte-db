@@ -47,6 +47,7 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/snapshot_transfer_manager.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
@@ -725,7 +726,8 @@ Status CatalogManager::BackfillMetadataForXRepl(
       if (!IsColocationParentTableId(table_id) &&
           (backfill_required || table_lock->schema().deprecated_pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
-        string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table_id, table_lock.data()));
+        string pgschema_name =
+            VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(table_id, table_lock.data()));
         VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
         backfill_required = true;

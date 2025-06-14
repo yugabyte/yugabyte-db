@@ -65,6 +65,8 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -1216,7 +1218,9 @@ Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* pr
     RETURN_NOT_OK(state_->LockForReplicate(&lock));
     auto current_term = state_->GetCurrentTermUnlocked();
     if (current_term == delayed_step_down_.term) {
-      return STATUS(Aborted, "Rejecting because of planned step down");
+      return STATUS_EC_FORMAT(
+          Aborted, tserver::TabletServerError(TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE),
+          "Rejecting because of planned step down");
     }
 
     for (const auto& round : rounds) {
@@ -1269,8 +1273,9 @@ Status RaftConsensus::AppendNewRoundsToQueueUnlocked(
 
   auto role = state_->GetActiveRoleUnlocked();
   if (role != PeerRole::LEADER) {
-    return STATUS_FORMAT(IllegalState, "Appending new rounds while not the leader but $0",
-                         PeerRole_Name(role));
+    return STATUS_EC_FORMAT(
+        IllegalState, tserver::TabletServerError(TabletServerErrorPB::NOT_THE_LEADER),
+        "Appending new rounds while not the leader but $0", PeerRole_Name(role));
   }
 
   std::vector<ReplicateMsgPtr> replicate_msgs;

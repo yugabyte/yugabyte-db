@@ -1,0 +1,19 @@
+error[E0277]: the trait bound `Vec<Option<&str>>: ArgAbi<'_>` is not satisfied
+ --> tests/todo/random-vec-strs-arent-okay.rs:8:5
+  |
+5 | #[pg_extern]
+  | ------------ in this procedural macro expansion
+...
+8 |     args: default!(Vec<Option<&'a str>>, "ARRAY[]::text[]"),
+  |     ^^^^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<&str>>`
+  |
+  = help: the following other types implement trait `ArgAbi<'fcx>`:
+            Vec<Option<T>>
+            Vec<T>
+            Vec<u8>
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+ --> $WORKSPACE/pgrx/src/callconv.rs
+  |
+  |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+  |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+  = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

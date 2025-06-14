@@ -2384,7 +2384,17 @@ TEST_P(PgIndexBackfillReadCommittedBlockIndislive, PhantomIdxEntry) {
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "indisready"));
   ASSERT_OK(WaitForIndexStateFlags(index_live_flags, kIndexName));
   LOG(INFO) << "Update record by newer txn";
-  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET t = 'b' WHERE i = $1", kTableName, 2));
+  ASSERT_OK(LoggedWaitFor(
+      [this]() -> Result<bool> {
+        auto s = conn_->ExecuteFormat("UPDATE $0 SET t = 'b' WHERE i = $1", kTableName, 2);
+        if (s.ok()) {
+          return true;
+        }
+        SCHECK_STR_CONTAINS(s.message().ToBuffer(), "schema version mismatch");
+        return false;
+      },
+      RegularBuildVsSanitizers(10s, 30s),
+      "wait for DML to succeed, ignoring potential schema version mismatch"));
   LOG(INFO) << "Update record by older txn";
   ASSERT_OK(other_conn.ExecuteFormat("UPDATE $0 SET t = 'c' WHERE i = $1", kTableName, 2));
   ASSERT_OK(other_conn.Execute("COMMIT"));
