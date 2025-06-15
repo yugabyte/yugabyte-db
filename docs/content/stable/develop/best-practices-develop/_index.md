@@ -37,7 +37,7 @@ type: indexpage
   {{<index/item
     title="YCQL best practices"
     body="Tips and tricks for YCQL deployments."
-    href="data-modeling-perf/"
+    href="best-practices-ycql/"
     icon="fa-thin fa-clipboard">}}
 
 {{</index/block>}}
