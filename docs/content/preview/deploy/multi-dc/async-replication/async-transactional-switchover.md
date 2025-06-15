@@ -60,7 +60,7 @@ _Not applicable for Automatic mode_
 
 Because xCluster does not replicate sequence data, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
 
-Use the [nextval](../../../../api/ysql/exprs/func_nextval/) function to set the sequence next values appropriately.
+Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
 
 ### Delete the old replication group
 

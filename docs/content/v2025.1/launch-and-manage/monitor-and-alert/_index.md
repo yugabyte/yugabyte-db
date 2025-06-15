@@ -8,6 +8,7 @@ menu:
   v2025.1:
     identifier: monitor-and-alert
     parent: launch-and-manage
+    weight: 30
 type: indexpage
 ---
 

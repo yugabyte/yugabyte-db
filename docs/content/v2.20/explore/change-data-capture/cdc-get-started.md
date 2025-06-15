@@ -28,7 +28,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
 - Create a database stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the `create_change_data_stream` yb-admin CLI command. Refer to the [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference for more details.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the `create_change_data_stream` yb-admin CLI command. Refer to the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference for more details.
 
     Note that CDC currently only supports YSQL tables.
 

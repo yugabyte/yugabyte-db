@@ -5,7 +5,7 @@ linkTitle: YSQL data modeling
 description: Tips and tricks for building YSQL applications
 headcontent: Tips and tricks for building YSQL applications
 menu:
-  preview:
+  v2024.1:
     identifier: data-modeling-perf
     parent: best-practices-develop
     weight: 10
@@ -62,7 +62,7 @@ For more details, see [Unique indexes](../../../explore/ysql-language-features/i
 
 Sequences in databases automatically generate incrementing numbers, perfect for generating unique values like order numbers, user IDs, check numbers, and so on. They prevent multiple application instances from concurrently generating duplicate values. However, generating sequences on a database that is spread across regions could have a latency impact on your applications.
 
-Enable [server-level caching](../../../api/ysql/exprs/sequence_functions/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
+Enable [server-level caching](../../../api/ysql/exprs/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
 
 {{<lead link="https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76">}}
 For a demo, see the YugabyteDB Friday Tech Talk on [Scaling sequences with server-level caching](https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76).
@@ -192,7 +192,7 @@ For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroe
 
 Use BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE for batch or long-running jobs, which need a consistent snapshot of the database without interfering, or being interfered with by other transactions.
 
-{{<lead link="../../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs">}}
+{{<lead link="../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs">}}
 For more details, see [Large scans and batch jobs](../../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs).
 {{</lead>}}
 
@@ -221,7 +221,7 @@ YSQL also supports JSONB expression indexes, which can be used to speed up data 
 
 For large or batch SELECT or DELETE that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
 
-{{<lead link="../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries">}}
+{{<lead link="../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries">}}
 For more details, see [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
 {{</lead>}}
 

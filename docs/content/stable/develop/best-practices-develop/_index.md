@@ -28,12 +28,6 @@ type: indexpage
     href="clients/"
     icon="fa-thin fa-cloud-binary">}}
 
-  {{<index/item
-    title="Database administration"
-    body="Fine-tune YugabyteDB deployments for better reliability, performance, and operational efficiency."
-    href="administration/"
-    icon="fa-thin fa-user-tie-hair">}}
-
 {{</index/block>}}
 
 ## YCQL
@@ -43,7 +37,7 @@ type: indexpage
   {{<index/item
     title="YCQL best practices"
     body="Tips and tricks for YCQL deployments."
-    href="data-modeling-perf/"
+    href="best-practices-ycql/"
     icon="fa-thin fa-clipboard">}}
 
 {{</index/block>}}

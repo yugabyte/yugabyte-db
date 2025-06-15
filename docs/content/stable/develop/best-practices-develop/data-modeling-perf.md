@@ -18,7 +18,7 @@ Designing efficient, high-performance YSQL applications requires thoughtful data
 
 Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, choose a suitable design pattern for your application from a suite of battle-tested design paradigms, including [Global database](../../build-global-apps/global-database), [Multi-master](../../build-global-apps/active-active-multi-master), [Standby cluster](../../build-global-apps/active-active-single-master), [Duplicate indexes](../../build-global-apps/duplicate-indexes), [Follower reads](../../build-global-apps/follower-reads), and more. You can also combine these patterns as per your needs.
 
-{{<lead link="../build-global-apps">}}
+{{<lead link="../../build-global-apps">}}
 For more details, see [Build global applications](../../build-global-apps).
 {{</lead>}}
 
@@ -26,7 +26,7 @@ For more details, see [Build global applications](../../build-global-apps).
 
 Colocated tables optimize latency and performance for data access by reducing the need for additional trips across the network for small tables. Additionally, it reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and their storage per node.
 
-{{<lead link="../../explore/colocation/">}}
+{{<lead link="../../../explore/colocation/">}}
 For more details, see [Colocation](../../../explore/colocation/).
 {{</lead>}}
 
@@ -44,7 +44,7 @@ For more details, see [Avoid trips to the table with covering indexes](https://w
 
 A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the WHERE clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
 
-{{<lead link="../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/">}}
+{{<lead link="../../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/">}}
 For more details, see [Partial indexes](../../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/).
 {{</lead>}}
 
@@ -54,7 +54,7 @@ If you need values in some of the columns to be unique, you can specify your ind
 
 When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a NULL value is treated as a distinct value, you can have multiple NULL values in a column with a unique index.
 
-{{<lead link="../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/">}}
+{{<lead link="../../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/">}}
 For more details, see [Unique indexes](../../../explore/ysql-language-features/indexes-constraints/unique-index-ysql/).
 {{</lead>}}
 
@@ -84,7 +84,7 @@ can be re-written as follows:
 UPDATE txndemo SET v = v + 3 WHERE k=1 RETURNING v;
 ```
 
-{{<lead link="../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
+{{<lead link="../../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
 For more details, see [Fast single-row transactions](../../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions).
 {{</lead>}}
 
@@ -92,7 +92,7 @@ For more details, see [Fast single-row transactions](../../../develop/learn/tran
 
 Use [table partitioning](../../../explore/ysql-language-features/advanced-features/partitions/) to split your data into multiple partitions according to date so that you can quickly delete older data by dropping the partition.
 
-{{<lead link="../data-modeling/common-patterns/timeseries/partitioning-by-time/">}}
+{{<lead link="../../data-modeling/common-patterns/timeseries/partitioning-by-time/">}}
 For more details, see [Partition data by time](../../data-modeling/common-patterns/timeseries/partitioning-by-time/).
 {{</lead>}}
 
@@ -162,7 +162,7 @@ SELECT * FROM products;
 (2 rows)
 ```
 
-{{<lead link="../../explore/ysql-language-features/data-manipulation">}}
+{{<lead link="../../../explore/ysql-language-features/data-manipulation">}}
 For more information, see [Data manipulation](../../../explore/ysql-language-features/data-manipulation).
 {{</lead>}}
 
@@ -192,7 +192,7 @@ For more details, see [Prepared statements in PL/pgSQL](https://dev.to/aws-heroe
 
 Use BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE for batch or long-running jobs, which need a consistent snapshot of the database without interfering, or being interfered with by other transactions.
 
-{{<lead link="../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs">}}
+{{<lead link="../../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs">}}
 For more details, see [Large scans and batch jobs](../../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs).
 {{</lead>}}
 
@@ -221,7 +221,7 @@ YSQL also supports JSONB expression indexes, which can be used to speed up data 
 
 For large or batch SELECT or DELETE that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
 
-{{<lead link="../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries">}}
+{{<lead link="../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries">}}
 For more details, see [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
 {{</lead>}}
 
@@ -243,7 +243,7 @@ Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE 
 
 ## Minimize the number of tablets you need
 
-Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [Allow for tablet replica overheads](../administration/#allow-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
+Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [Allow for tablet replica overheads](../../../best-practices-operations/administration/#allow-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
 
 Each table and index consists of several tablets based on the [--ysql_num_shards_per_tserver](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 
