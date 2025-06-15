@@ -133,6 +133,10 @@ class ByteBufferBase {
     return size_;
   }
 
+  size_t capacity() const {
+    return capacity_;
+  }
+
   void Clear() {
     size_ = 0;
   }
