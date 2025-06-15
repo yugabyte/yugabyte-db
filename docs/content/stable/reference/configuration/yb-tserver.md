@@ -808,7 +808,7 @@ Valid values are `connection` and `server`.
 
 This flag requires the YB-TServer `yb_enable_sequence_pushdown` flag to be true (the default). Otherwise, the default behavior will occur regardless of this flag's value.
 
-For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/func_nextval/) page.
+For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/sequence_functions/func_nextval/) page.
 
 Default: `connection`
 
@@ -1483,7 +1483,7 @@ Default: `UINT32_MAX`
 
 ## Catalog cache flags
 
-Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../develop/best-practices-develop/ysql-catalog-cache-tuning-guide/).
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### ysql_catalog_preload_additional_table_list
 

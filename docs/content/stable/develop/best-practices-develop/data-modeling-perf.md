@@ -62,7 +62,7 @@ For more details, see [Unique indexes](../../../explore/ysql-language-features/i
 
 Sequences in databases automatically generate incrementing numbers, perfect for generating unique values like order numbers, user IDs, check numbers, and so on. They prevent multiple application instances from concurrently generating duplicate values. However, generating sequences on a database that is spread across regions could have a latency impact on your applications.
 
-Enable [server-level caching](../../../api/ysql/exprs/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
+Enable [server-level caching](../../../api/ysql/exprs/sequence_functions/func_nextval/#caching-values-on-the-yb-tserver) to improve the speed of sequences, and also avoid discarding many sequence values when an application disconnects.
 
 {{<lead link="https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76">}}
 For a demo, see the YugabyteDB Friday Tech Talk on [Scaling sequences with server-level caching](https://www.youtube.com/watch?v=hs-CU3vjMQY&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=76).
@@ -243,7 +243,7 @@ Currently, TRUNCATE is not transactional. Also, similar to PostgreSQL, TRUNCATE 
 
 ## Minimize the number of tablets you need
 
-Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [Allow for tablet replica overheads](../administration/#allow-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
+Each table and index is split into tablets and each tablet has overhead. The more tablets you need, the bigger your universe will need to be. See [Allow for tablet replica overheads](../../../best-practices-operations/administration/#allow-for-tablet-replica-overheads) for how the number of tablets affects how big your universe needs to be.
 
 Each table and index consists of several tablets based on the [--ysql_num_shards_per_tserver](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 

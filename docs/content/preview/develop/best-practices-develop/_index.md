@@ -30,12 +30,6 @@ type: indexpage
     href="clients/"
     icon="fa-thin fa-cloud-binary">}}
 
-  {{<index/item
-    title="Database administration"
-    body="Fine-tune YugabyteDB deployments for better reliability, performance, and operational efficiency."
-    href="administration/"
-    icon="fa-thin fa-user-tie-hair">}}
-
 {{</index/block>}}
 
 ## YCQL
