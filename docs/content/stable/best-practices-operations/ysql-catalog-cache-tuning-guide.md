@@ -58,8 +58,8 @@ To confirm that catalog caching is the cause of this, see [Confirm that catalog 
 **Possible solutions**
 
 - [Connection pooling](#connection-pooling)
-- [TServer response cache](#tserver-response-cache)
 - [Preload additional system tables](#preload-additional-system-tables)
+<!-- [TServer response cache](#tserver-response-cache)-->
 
 ### Memory spikes on PostgreSQL backends or out of memory (OOM) events
 
@@ -114,11 +114,13 @@ When enabled, only a small subset of the catalog cache entries is preloaded. Thi
 
 To enable minimal catalog cache preloading, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_minimal_catalog_caches_preload=true`.
 
+<!--
 ### TServer response cache (TODO: only publish in 2.20)
 
 When enabled, an intermediate cache on the YB-TServer is used to cache certain PostgreSQL catalog responses from the YB-Master leader. This reduces CPU load on YB-Master leader.
 
 To enable TServer response cache, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_enable_read_request_caching=true`.
+-->
 
 ## Details
 

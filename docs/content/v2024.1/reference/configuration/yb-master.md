@@ -312,7 +312,7 @@ The defaults for the master process partitioning flags when `--use_memory_defaul
 
 Currently these are the same as the defaults when `--use_memory_defaults_optimized_for_ysql` is `false`, but may change in future releases.
 
-Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [allowing for tablet replica overheads](../../../develop/best-practices-ysql#allowing-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
+Given the amount of RAM devoted to per tablet overhead, it is possible to compute the maximum number of tablet replicas (see [Allow for tablet replica overheads](../../../best-practices-operations/administration/#allow-for-tablet-replica-overheads)); following are some sample values for selected node sizes using `--use_memory_defaults_optimized_for_ysql`:
 
 | total node GiB | max number of tablet replicas | max number of Postgres connections |
 | ---: | ---: | ---: |
