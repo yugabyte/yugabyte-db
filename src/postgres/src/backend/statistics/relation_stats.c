@@ -133,7 +133,7 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
-			YBSetDdlState(YB_DDL_MODE_BREAKING_CHANGE);
+			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
 		else
 			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
 	}

@@ -23,28 +23,28 @@
 
 using namespace yb::size_literals;
 
-METRIC_DEFINE_counter(table, vector_index_cache_hit, "Vector index block cache hits",
+METRIC_DEFINE_counter(server, vector_index_cache_hit, "Vector index block cache hits",
                       yb::MetricUnit::kCacheHits,
                       "Number of hits of vector index block cache");
 
-METRIC_DEFINE_counter(table, vector_index_cache_query, "Vector index block cache query",
+METRIC_DEFINE_counter(server, vector_index_cache_query, "Vector index block cache query",
                       yb::MetricUnit::kCacheQueries,
                       "Number of queries of vector index block cache");
 
-METRIC_DEFINE_counter(table, vector_index_read, "Vector index block read bytes",
+METRIC_DEFINE_counter(server, vector_index_read, "Vector index block read bytes",
                       yb::MetricUnit::kBytes,
                       "Number of bytes read by vector index block cache");
 
-METRIC_DEFINE_counter(table, vector_index_cache_add, "Vector index block bytes added to cache",
+METRIC_DEFINE_counter(server, vector_index_cache_add, "Vector index block bytes added to cache",
                       yb::MetricUnit::kBytes,
                       "Number of bytes added to vector index block cache");
 
-METRIC_DEFINE_counter(table, vector_index_cache_evict,
+METRIC_DEFINE_counter(server, vector_index_cache_evict,
                       "Vector index block bytes evicted from cache",
                       yb::MetricUnit::kBytes,
                       "Number of bytes evicted from vector index block cache");
 
-METRIC_DEFINE_counter(table, vector_index_cache_remove,
+METRIC_DEFINE_counter(server, vector_index_cache_remove,
                       "Vector index block bytes removed from cache",
                       yb::MetricUnit::kBytes,
                       "Number of bytes removed from vector index block cache");
@@ -109,7 +109,6 @@ template <class Converter>
 void Convert(size_t version, RefForConverter<Converter, Config> config, Converter& serializer) {
   ConvertField<uint64_t>(config.connectivity, serializer);
   ConvertField<uint64_t>(config.connectivity_base, serializer);
-  ConvertField<uint64_t>(config.expansion_search, serializer);
 }
 
 template <class Converter>

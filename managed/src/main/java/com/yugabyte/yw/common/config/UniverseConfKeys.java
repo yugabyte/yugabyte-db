@@ -1678,4 +1678,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckTHPSettings =
+      new ConfKeyInfo<>(
+          "yb.health_checks.check_thp",
+          ScopeType.UNIVERSE,
+          "Whether to check if correct THP settings are applied",
+          "Whether to check if correct Transparent Huge Pages settings are applied",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

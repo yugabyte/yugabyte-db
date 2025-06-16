@@ -28,6 +28,10 @@ struct SearchOptions {
   size_t max_num_results;
   size_t ef;
   VectorFilter filter = [](const auto&) { return true; };
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(max_num_results, ef);
+  }
 };
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -75,6 +79,12 @@ class VectorIndexWriterIf {
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class VectorIndexIf;
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+using VectorIndexIfPtr = std::shared_ptr<VectorIndexIf<Vector, DistanceResult>>;
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
                       public VectorIndexWriterIf<Vector> {
  public:
@@ -86,7 +96,10 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
 
   // Saves index to the file, switching it to immutable state.
   // Implementation could partially unload index and load it on demand from this file.
-  virtual Status SaveToFile(const std::string& path) = 0;
+  //
+  // On success could return new vector index, that is attached to saved file.
+  // Otherwise, returns nullptr, to keep existing index.
+  virtual Result<VectorIndexIfPtr<Vector, DistanceResult>> SaveToFile(const std::string& path) = 0;
 
   // Loads index from the file in immutable state.
   // Implementation could load index partially, fetching data on demand and unload it if necessary.
@@ -101,17 +114,9 @@ class VectorIndexIf : public VectorIndexReaderIf<Vector, DistanceResult>,
   virtual ~VectorIndexIf() = default;
 };
 
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-using VectorIndexIfPtr = std::shared_ptr<VectorIndexIf<Vector, DistanceResult>>;
+YB_DEFINE_ENUM(FactoryMode, (kCreate)(kLoad));
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-using VectorIndexFactory = std::function<VectorIndexIfPtr<Vector, DistanceResult>()>;
-
-template<class Index>
-auto CreateIndexFactory(const HNSWOptions& options) {
-  return [options]() {
-    return std::make_shared<Index>(options);
-  };
-}
+using VectorIndexFactory = std::function<VectorIndexIfPtr<Vector, DistanceResult>(FactoryMode)>;
 
 }  // namespace yb::vector_index

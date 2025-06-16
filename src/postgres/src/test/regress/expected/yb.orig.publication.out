@@ -28,3 +28,40 @@ DROP TABLE testpub_tbl3_nopk;
 DROP TABLE testpub_tbl4_nopk;
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_publication_user;
+-- Test yb_db_admin role can create publications with ALL TABLES
+CREATE SCHEMA my_schema;
+CREATE ROLE regress_yb_db_admin_user LOGIN;
+SET SESSION AUTHORIZATION 'regress_yb_db_admin_user';
+--should fail
+CREATE PUBLICATION testpub_all_tables FOR ALL TABLES;
+ERROR:  permission denied for database yugabyte
+RESET SESSION AUTHORIZATION;
+GRANT CREATE ON DATABASE yugabyte TO regress_yb_db_admin_user;
+GRANT yb_db_admin TO regress_yb_db_admin_user WITH ADMIN OPTION;
+SET SESSION AUTHORIZATION 'regress_yb_db_admin_user';
+--should succeed
+CREATE PUBLICATION testpub_all_tables FOR ALL TABLES;
+RESET SESSION AUTHORIZATION;
+DROP PUBLICATION testpub_all_tables;
+RESET SESSION AUTHORIZATION;
+CREATE ROLE regress_publication_superuser1 LOGIN SUPERUSER;
+CREATE ROLE regress_yb_db_user1 LOGIN;
+CREATE ROLE regress_yb_db_user2 LOGIN;
+SET SESSION AUTHORIZATION 'regress_publication_superuser1';
+CREATE PUBLICATION pub_all_tables1 FOR ALL TABLES;
+--should succeed
+ALTER PUBLICATION pub_all_tables1 OWNER TO regress_yb_db_user1;
+SET SESSION AUTHORIZATION 'regress_yb_db_user1';
+--should fail
+ALTER PUBLICATION pub_all_tables1 OWNER TO regress_yb_db_user2;
+ERROR:  must be member of role "regress_yb_db_user2"
+RESET SESSION AUTHORIZATION;
+CREATE PUBLICATION pub_all_tables2 FOR ALL TABLES;
+CREATE ROLE regress_yb_db_admin_user2 LOGIN;
+GRANT CREATE ON DATABASE yugabyte TO regress_yb_db_admin_user2;
+GRANT yb_db_admin TO regress_yb_db_admin_user2 WITH ADMIN OPTION;
+SET SESSION AUTHORIZATION 'regress_yb_db_admin_user';
+--should succeed
+ALTER PUBLICATION pub_all_tables2 OWNER TO regress_yb_db_admin_user2;
+ALTER PUBLICATION pub_all_tables2 OWNER TO regress_yb_db_user1;
+RESET SESSION AUTHORIZATION;

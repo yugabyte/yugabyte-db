@@ -114,7 +114,7 @@ Backup storage costs are tied to the cost of storing the backup snapshots in the
 
 {{< tip title="Rate card" >}}
 
-Rate card:  $0.025/GB per month ($ 0.00003472222222/hr for 30-day month)
+$0.025/GB per month ($ 0.00003472222222/hr for 30-day month)
 
 {{< /tip >}}
 
@@ -148,7 +148,7 @@ Clusters deployed in a single availability zone (AZ) will have much lower usage 
 
 {{< tip title="Rate card" >}}
 
-$.01/GB
+$0.01/GB
 
 {{< /tip >}}
 
@@ -170,7 +170,7 @@ This accounts for all of the traffic coming out of the cluster to the internet. 
 
 {{< tip title="Rate card" >}}
 
-$.10/GB
+$0.10/GB
 
 {{< /tip >}}
 

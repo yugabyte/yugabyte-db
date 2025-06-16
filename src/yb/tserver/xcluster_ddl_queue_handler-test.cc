@@ -58,7 +58,7 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
 
   Status ExecuteCommittedDDLs(
       const std::optional<HybridTime>& apply_safe_time,
-      const std::set<uint64_t>& commit_times = {0}) {
+      const std::set<HybridTime>& commit_times = {}) {
     if (!safe_time_batch_) {
       safe_time_batch_ = xcluster::SafeTimeBatch();
     }
@@ -80,11 +80,15 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
 
   xcluster::SafeTimeBatch GetSafeTimeBatch() { return *safe_time_batch_; }
 
+  Status DoPersistAndUpdateSafeTimeBatch(xcluster::SafeTimeBatch new_safe_time_batch) override {
+    safe_time_batch_ = new_safe_time_batch;
+    return Status::OK();
+  }
+
   HybridTime safe_time_ht_;
   std::vector<std::tuple<int64, int64, std::string>> rows_;
   int get_rows_to_process_calls_ = 0;
   HybridTime last_updated_safe_time_ = HybridTime::kInvalid;
-  HybridTime last_commit_time_processed_ = HybridTime::kInvalid;
 
  private:
   Status InitPGConnection() override { return Status::OK(); }
@@ -92,28 +96,27 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
   Result<HybridTime> GetXClusterSafeTimeForNamespace() override { return safe_time_ht_; }
 
   Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
-      const HybridTime& apply_safe_time) override {
+      const HybridTime& commit_time) override {
     get_rows_to_process_calls_++;
-    return rows_;
+    auto rows = rows_;
+    int64_t commit_time_int64 = commit_time.ToUint64();
+    std::erase_if(rows, [commit_time_int64](const auto& row) {
+      auto ddl_end_time = std::get<0>(row);
+      LOG(INFO) << "Checking row with ddl_end_time: " << ddl_end_time
+                << ", against commit_time: " << commit_time_int64;
+
+      return ddl_end_time > commit_time_int64;
+    });
+    return rows;
   }
 
   Status CheckForFailedQuery() override { return Status::OK(); };
 
-  Status ProcessDDLQuery(const DDLQueryInfo& query_info) override { return Status::OK(); }
+  Status ProcessDDLQuery(const XClusterDDLQueryInfo& query_info) override { return Status::OK(); }
 
-  Result<bool> CheckIfAlreadyProcessed(const DDLQueryInfo& query_info) override { return false; };
-
-  Status UpdateSafeTimeBatchAfterProcessing(const HybridTime& last_commit_time_processed) override {
-    last_commit_time_processed_ = last_commit_time_processed;
-    return XClusterDDLQueueHandler::UpdateSafeTimeBatchAfterProcessing(last_commit_time_processed);
-  }
-
-  Status DoPersistAndUpdateSafeTimeBatch(
-      const std::set<HybridTime>& commit_times, const HybridTime& apply_safe_time) override {
-    safe_time_batch_->commit_times = commit_times;
-    safe_time_batch_->apply_safe_time = apply_safe_time;
-    return Status::OK();
-  }
+  Result<bool> IsAlreadyProcessed(const XClusterDDLQueryInfo& query_info) override {
+    return false;
+  };
 };
 
 class XClusterDDLQueueHandlerMockedTest : public YBTest {
@@ -127,9 +130,9 @@ class XClusterDDLQueueHandlerMockedTest : public YBTest {
 };
 
 TEST_F(XClusterDDLQueueHandlerMockedTest, VerifySafeTimes) {
-  const auto ht1 = HybridTime::FromMicrosecondsAndLogicalValue(1, 1);
-  const auto ht2 = HybridTime::FromMicrosecondsAndLogicalValue(2, 1);
-  const auto ht3 = HybridTime::FromMicrosecondsAndLogicalValue(3, 1);
+  const auto ht1 = HybridTime(1, 1);
+  const auto ht2 = HybridTime(2, 1);
+  const auto ht3 = HybridTime(3, 1);
   const auto ht_invalid = HybridTime::kInvalid;
 
   MockTserverXClusterContext xcluster_context;
@@ -168,7 +171,8 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifySafeTimes) {
 }
 
 TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
-  const auto ht1 = HybridTime::FromMicrosecondsAndLogicalValue(1, 1);
+  const auto ht1 = HybridTime(1, 1);
+  const auto ddl_end_time = HybridTime(1).ToUint64();
   int query_id = 1;
 
   MockTserverXClusterContext xcluster_context;
@@ -180,47 +184,48 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
   complete_json_str = static_cast<char>(kCompleteJsonb);
   {
     ddl_queue_handler.ClearState();
-    ddl_queue_handler.rows_.emplace_back(1, query_id, Format("$0{}", kCompleteJsonb));
+    ddl_queue_handler.rows_.emplace_back(ddl_end_time, query_id, Format("$0{}", kCompleteJsonb));
     // Should fail since its an empty json.
-    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1));
+    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
   }
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, query_id,
+        ddl_end_time, query_id,
         Format("$0{\"command_tag\":\"CREATE TABLE\", \"query\": \"n/a\"}", kCompleteJsonb));
     // Should fail since missing version field.
-    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1));
+    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
   }
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, query_id, Format("$0{\"version\":1, \"query\": \"n/a\"}", kCompleteJsonb));
+        ddl_end_time, query_id, Format("$0{\"version\":1, \"query\": \"n/a\"}", kCompleteJsonb));
     // Should fail since missing command_tag field.
-    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1));
+    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
   }
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, query_id, Format("$0{\"version\":1, \"command_tag\":\"CREATE TABLE\"}", kCompleteJsonb));
+        ddl_end_time, query_id,
+        Format("$0{\"version\":1, \"command_tag\":\"CREATE TABLE\"}", kCompleteJsonb));
     // Should fail since missing query field.
-    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1));
+    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
   }
 
   // Verify correct values for basic fields.
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, query_id, ConstructJson(/* version */ 999, kDDLCommandCreateTable));
+        ddl_end_time, query_id, ConstructJson(/* version */ 999, kDDLCommandCreateTable));
     // Should fail since version is unsupported.
-    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1));
+    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
   }
   {
     ddl_queue_handler.ClearState();
     ddl_queue_handler.rows_.emplace_back(
-        1, query_id, ConstructJson(/* version */ 1, "INVALID COMMAND TAG"));
+        ddl_end_time, query_id, ConstructJson(/* version */ 1, "INVALID COMMAND TAG"));
     // Should fail since command tag is unknown.
-    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1));
+    ASSERT_NOK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
   }
 
   // Verify that supported command tags are processed.
@@ -228,9 +233,9 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
     ddl_queue_handler.ClearState();
     for (const auto& command_tag : {kDDLCommandCreateTable, kDDLCommandCreateIndex}) {
       ddl_queue_handler.rows_.emplace_back(
-          1, query_id, ConstructJson(/* version */ 1, command_tag));
+          ddl_end_time, query_id, ConstructJson(/* version */ 1, command_tag));
     }
-    ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1));
+    ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {ht1}));
   }
 }
 
@@ -238,7 +243,7 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, SkipScanWhenNoNewRecords) {
   MockTserverXClusterContext xcluster_context;
   auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
 
-  const auto ht1 = HybridTime::FromMicrosecondsAndLogicalValue(1, 1);
+  const auto ht1 = HybridTime(1, 1);
   ddl_queue_handler.safe_time_ht_ = ht1;
 
   // If we haven't had new records, then don't process.
@@ -247,21 +252,21 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, SkipScanWhenNoNewRecords) {
   ASSERT_EQ(ddl_queue_handler.HasSafeTimeBatch(), false);  // Should be empty after succesful call.
 
   // If there are new records then process.
-  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {1}));
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {HybridTime(1)}));
   ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 1);
   ASSERT_EQ(ddl_queue_handler.HasSafeTimeBatch(), false);  // Should be empty after succesful call.
 
   // Verify calls without an apply_safe_time correctly update applied_new_records_.
   ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(
-      /* apply_safe_time */ std::nullopt, {1, 2}));
+      /* apply_safe_time */ std::nullopt, {HybridTime(1), HybridTime(2)}));
   ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 1);
 
   ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(
-      /* apply_safe_time */ std::nullopt, {}));
+      /* apply_safe_time */ std::nullopt));
   ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 1);
 
   // Next call with an apply_safe_time should process.
-  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1, {}));
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(ht1));
   ASSERT_EQ(ddl_queue_handler.get_rows_to_process_calls_, 3);
   ASSERT_EQ(ddl_queue_handler.HasSafeTimeBatch(), false);  // Should be empty after succesful call.
 }
@@ -272,13 +277,13 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, HandleCommitTimesLargerThanSafeTime) {
 
   // Create a batch with commit times larger than the safe time.
   // Ensure that we don't process these DDLs and don't bump up the safe time for them either.
-  auto apply_safe_time = HybridTime::FromMicrosecondsAndLogicalValue(2, 1);
-  auto commit_times = std::set<uint64_t>{
-      HybridTime::FromMicrosecondsAndLogicalValue(1, 1).ToUint64(),
-      HybridTime::FromMicrosecondsAndLogicalValue(2, 1).ToUint64(),
+  auto apply_safe_time = HybridTime(2, 1);
+  auto commit_times = std::set<HybridTime>{
+      HybridTime(1, 1),
+      HybridTime(2, 1),
       // These are larger and should not be processed.
-      HybridTime::FromMicrosecondsAndLogicalValue(3, 1).ToUint64(),
-      HybridTime::FromMicrosecondsAndLogicalValue(4, 1).ToUint64(),
+      HybridTime(3, 1),
+      HybridTime(4, 1),
   };
 
   ddl_queue_handler.safe_time_ht_ = apply_safe_time;
@@ -291,16 +296,14 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, HandleCommitTimesLargerThanSafeTime) {
   // Apply safe time should still get updated to the apply_safe_time.
   ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, apply_safe_time);
   // Check that the last commit time processed is the second one.
-  ASSERT_EQ(ddl_queue_handler.last_commit_time_processed_, apply_safe_time);
+  ASSERT_EQ(ddl_queue_handler.GetSafeTimeBatch().last_commit_time_processed, apply_safe_time);
   // Check the safe_time_batch_ afterwards still contains the larger times.
   ASSERT_EQ(ddl_queue_handler.GetSafeTimeBatch().commit_times.size(), 2);
-  ASSERT_TRUE(ddl_queue_handler.GetSafeTimeBatch().commit_times.contains(
-      HybridTime::FromMicrosecondsAndLogicalValue(3, 1)));
-  ASSERT_TRUE(ddl_queue_handler.GetSafeTimeBatch().commit_times.contains(
-      HybridTime::FromMicrosecondsAndLogicalValue(4, 1)));
+  ASSERT_TRUE(ddl_queue_handler.GetSafeTimeBatch().commit_times.contains(HybridTime(3, 1)));
+  ASSERT_TRUE(ddl_queue_handler.GetSafeTimeBatch().commit_times.contains(HybridTime(4, 1)));
 
   // Execute DDLs again with a higher apply_safe_time. This should process the remaining DDLs.
-  apply_safe_time = HybridTime::FromMicrosecondsAndLogicalValue(5, 1);
+  apply_safe_time = HybridTime(5, 1);
   ddl_queue_handler.safe_time_ht_ = apply_safe_time;
   // Don't pass in any new commit times, want to check that we process the current batch.
   ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(apply_safe_time, {}));
@@ -311,9 +314,58 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, HandleCommitTimesLargerThanSafeTime) {
   // the apply_safe_time).
   ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, HybridTime(*commit_times.rbegin()));
   // Check that the last commit time processed is the last one.
-  ASSERT_EQ(ddl_queue_handler.last_commit_time_processed_, HybridTime(*commit_times.rbegin()));
+  ASSERT_EQ(
+      ddl_queue_handler.GetSafeTimeBatch().last_commit_time_processed,
+      HybridTime(*commit_times.rbegin()));
   // Safe time batch should be empty now.
   ASSERT_EQ(ddl_queue_handler.GetSafeTimeBatch().commit_times.size(), 0);
+
+  ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, HybridTime(4, 1));
 }
 
+TEST_F(XClusterDDLQueueHandlerMockedTest, GetSafeTimeBetweenDDLProcessing) {
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
+
+  // Insert 2 DDLs and set the apply safe time.
+  const int query_id = 1;
+  ddl_queue_handler.rows_.emplace_back(
+      /*ddl_end_time=*/HybridTime(1, 0).ToUint64(), query_id,
+      ConstructJson(/*version=*/1, kDDLCommandCreateTable));
+  ddl_queue_handler.rows_.emplace_back(
+      /*ddl_end_time=*/HybridTime(2, 0).ToUint64(), query_id,
+      ConstructJson(/*version=*/1, kDDLCommandCreateTable));
+  ddl_queue_handler.safe_time_ht_ = HybridTime(4, 1);
+  const auto apply_safe_time = HybridTime(1, 1);
+  {
+    xcluster::SafeTimeBatch new_safe_time_batch;
+    new_safe_time_batch.apply_safe_time = apply_safe_time;
+    new_safe_time_batch.commit_times.insert({HybridTime(1, 1), HybridTime(2, 1)});
+    ASSERT_OK(ddl_queue_handler.DoPersistAndUpdateSafeTimeBatch(std::move(new_safe_time_batch)));
+  }
+
+  // Since none of the DDLs have been processed yet, the safe time should be invalid.
+  ASSERT_OK(ddl_queue_handler.UpdateSafeTimeForPause());
+  ASSERT_FALSE(ddl_queue_handler.last_updated_safe_time_.is_valid());
+
+  // Simulate processing the first DDL by removing it from the queue.
+  ddl_queue_handler.rows_.erase(ddl_queue_handler.rows_.begin());
+
+  // Safe time should now be the first DDL commit time.
+  ASSERT_OK(ddl_queue_handler.UpdateSafeTimeForPause());
+  ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, HybridTime(1, 1));
+
+  // Invoke ExecuteCommittedDDLs to update the safe time batch for the first DDL.
+  ASSERT_OK(ddl_queue_handler.ExecuteCommittedDDLs(apply_safe_time, {}));
+  ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, apply_safe_time);
+  ASSERT_EQ(ddl_queue_handler.GetSafeTimeBatch().last_commit_time_processed, apply_safe_time);
+  ASSERT_EQ(ddl_queue_handler.GetSafeTimeBatch().commit_times.size(), 1);
+
+  // Remove all DDLs from the queue.
+  ddl_queue_handler.rows_.clear();
+
+  // Safe time should now be the last DDL commit time.
+  ASSERT_OK(ddl_queue_handler.UpdateSafeTimeForPause());
+  ASSERT_EQ(ddl_queue_handler.last_updated_safe_time_, HybridTime(2, 1));
+}
 }  // namespace yb::tserver

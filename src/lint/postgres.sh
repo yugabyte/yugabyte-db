@@ -348,14 +348,15 @@ grep -nvE '^('$'\t''* {0,3}\S|$)' "$1" \
 # leading / trailing whitespace is not caught by that regex, so we can check it
 # explicitly.
 #
-# second grep removes lines that have continuous ---, *** characters
-# third grep removes lines that have /*#define or /*-, because PG uses those sometimes
+# second grep removes lines that have continuous ---, *** characters.
+# third grep removes /*#define or /*- lines because PG uses those sometimes.
+# third grep also removes /*+ lines because pg_hint_plan hints are like that.
 if ! [[ "$1" == src/postgres/src/backend/utils/activity/pgstat.c ||
         "$1" == src/postgres/contrib/pgcrypto/px-crypt.h ||
         "$1" == src/postgres/src/include/tsearch/dicts/regis.h ]]; then
   grep -nE '/\*(\S+(.*\S+)?|\s\S+(.*\S+)?|\S+(.*\S+)?\s)\*/' "$1" \
     | grep -vE '[\*\-]{3}' \
-    | grep -vE '/\*(#define|\-)' \
+    | grep -vE '/\*(#define|[+-])' \
     | sed 's,^,error:bad_comment_spacing:'\
 'Spacing should be like /* param */:,'
 fi
