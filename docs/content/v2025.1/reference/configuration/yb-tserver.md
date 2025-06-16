@@ -2050,6 +2050,8 @@ expensive when the number of YB-TServers, or the number of databases goes up.
 
 ### Auto Analyze service flags
 
+Auto analyze is {{<tags/feature/ea idea="590">}}.
+
 {{< note title="Note" >}}
 
 To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_analyze_service` on all YB-Masters and YB-TServers, and `ysql_enable_table_mutation_counter` on all YB-TServers.
@@ -2061,8 +2063,7 @@ See also [Auto Analyze Service Master flags](../yb-master#auto-analyze-service-f
 ##### ysql_enable_auto_analyze_service
 
 {{% tags/wrap %}}
-
-
+{{<tags/feature/ea idea="590">}}
 Default: `false`
 {{% /tags/wrap %}}
 

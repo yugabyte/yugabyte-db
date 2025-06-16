@@ -4,6 +4,8 @@ headerTitle: Auto Analyze service
 linkTitle: Auto Analyze
 description: Use the Auto Analyze service to keep table statistics up to date
 headcontent: Keep table statistics up to date automatically
+tags:
+  feature: early-access
 menu:
   v2025.1:
     identifier: auto-analyze
