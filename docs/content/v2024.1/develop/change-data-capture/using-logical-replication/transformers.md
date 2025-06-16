@@ -4,7 +4,7 @@ headerTitle: YugabyteDB connector transformers
 linkTitle: Connector transformers
 description: YugabyteDB connector transformers for Change Data Capture.
 menu:
-  stable:
+  v2024.1:
     parent: yugabytedb-connector
     identifier: yugabytedb-connector-transformers
     weight: 70

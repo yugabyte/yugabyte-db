@@ -59,7 +59,7 @@ By default, the YugabyteDB CDC service publishes events with a schema that only 
 
 **Transformer class:** `io.debezium.connector.postgresql.transforms.YBExtractNewRecordState`
 
-The SMT `YBExtractNewRecordState` is used to flatten the records published by the connector and just keep the payload field in a flattened format. The flattened format is then consumed by downstreams connectors which do not support consuming the complex record format published by the Debezium connector.
+The SMT `YBExtractNewRecordState` is used to flatten the records published by the connector and just keep the payload field in a flattened format. The flattened format can then be consumed by downstream connectors that do not support consuming the complex record format published by the Debezium connector.
 
 The following examples show what the payload would look like for each [replica identity](../key-concepts/#replica-identity). Note that in this example, we have set the property `delete.tombstone.handling.mode` to `none` for the transformer so it will not drop the delete records from the stream. `YBExtractNewRecordState` is applied to the after field of an event; because the after field for a `DELETE` event is `null`, the output after applying this transformer on a `DELETE` event is also `null`.
 
