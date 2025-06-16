@@ -59,13 +59,13 @@ By default, the YugabyteDB CDC service publishes events with a schema that only 
 
 **Transformer class:** `io.debezium.connector.postgresql.transforms.YBExtractNewRecordState`
 
-The SMT `YBExtractNewRecordState` is used to flatten the records published by the connector and just keep the payload field in a flattened format. The flattened format is then consumed by downstreams connectors which do not support consuming the complex record format published by the Debezium connector.
+The SMT `YBExtractNewRecordState` is used to flatten the records published by the connector and just keep the payload field in a flattened format. The flattened format can then be consumed by downstream connectors that do not support consuming the complex record format published by the Debezium connector.
 
 The following examples show what the payload would look like for each [replica identity](../key-concepts/#replica-identity). Note that in this example, we have set the property `delete.tombstone.handling.mode` to `none` for the transformer so it will not drop the delete records from the stream. `YBExtractNewRecordState` is applied to the after field of an event; because the after field for a `DELETE` event is `null`, the output after applying this transformer on a `DELETE` event is also `null`.
 
 ### CHANGE
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -84,7 +84,7 @@ null
 
 ### DEFAULT
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -103,7 +103,7 @@ null
 
 ### FULL
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -132,7 +132,7 @@ The following examples show what the payload would look like for each [replica i
 
 ### CHANGE
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 
@@ -149,11 +149,11 @@ The following examples show what the payload would look like for each [replica i
 "before":{"id":1,"name":null,"aura":null},"after":null
 ```
 
-Do note that for statement 2 and 4, the columns which were not updated as a part of the `UPDATE` statement, they're `null` in the output field.
+Note that for statement 2 and 4, the columns that were not updated as a part of the UPDATE statement are `null` in the output field.
 
 ### DEFAULT
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 
@@ -172,7 +172,7 @@ Do note that for statement 2 and 4, the columns which were not updated as a part
 
 ### FULL
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 

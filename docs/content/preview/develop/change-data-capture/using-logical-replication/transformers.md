@@ -65,7 +65,7 @@ The following examples show what the payload would look like for each [replica i
 
 ### CHANGE
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -84,7 +84,7 @@ null
 
 ### DEFAULT
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -103,7 +103,7 @@ null
 
 ### FULL
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -132,7 +132,7 @@ The following examples show what the payload would look like for each [replica i
 
 ### CHANGE
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 
@@ -153,7 +153,7 @@ Note that for statement 2 and 4, the columns that were not updated as a part of 
 
 ### DEFAULT
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 
@@ -172,7 +172,7 @@ Note that for statement 2 and 4, the columns that were not updated as a part of 
 
 ### FULL
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 

@@ -18,17 +18,13 @@ The following SMTs are bundled with the connector jar file available on [GitHub 
 * YBExtractNewRecordState
 * PGCompatible
 
-## Example
-
-For simplicity, only `before` and `after` fields of the `payload` of the message published by the connector are mentioned in the following examples. Any information pertaining to the record schema, if it is the same as the standard Debezium connector for PostgreSQL, is skipped.
-
-Consider a table created using the following statement:
+To provide examples of output from these transformers, consider a table created using the following statement:
 
 ```sql
 CREATE TABLE test (id INT PRIMARY KEY, name TEXT, aura INT);
 ```
 
-The following DML statements will be used to demonstrate payload in case of individual replica identities:
+The following DML statements are used to demonstrate the payload for each transformer in case of individual replica identities:
 
 ```sql
 -- statement 1
@@ -47,6 +43,8 @@ UPDATE test SET aura = NULL WHERE id = 1;
 DELETE FROM test WHERE id = 1;
 ```
 
+For simplicity, only `before` and `after` fields of the `payload` of the message published by the connector are mentioned in the following example output. Any information pertaining to the record schema, if it is the same as the standard Debezium connector for PostgreSQL, is skipped.
+
 By default, the YugabyteDB CDC service publishes events with a schema that only includes columns that have been modified. The source connector then sends the value as `null` for columns that are missing in the payload. Each column payload includes a `set` field that is used to signal if a column has been set to `null` because it wasn't present in the payload from YugabyteDB.
 
 ## YBExtractNewRecordState
@@ -59,7 +57,7 @@ The following examples show what the payload would look like for each [before im
 
 ### CHANGE
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -78,7 +76,7 @@ null
 
 ### FULL_ROW_NEW_IMAGE
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -97,7 +95,7 @@ null
 
 ### MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -116,7 +114,7 @@ null
 
 ### ALL
 
-```output
+```json{.nocopy}
 -- statement 1
 {"id":1,"name":"Vaibhav","aura":9876}
 
@@ -145,7 +143,7 @@ The following examples show what the payload would look like for each [before im
 
 ### CHANGE
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 
@@ -162,11 +160,11 @@ The following examples show what the payload would look like for each [before im
 "before":{"id":1,"name":null,"aura":null},"after":null
 ```
 
-Note that for statement 2 and 4, the columns that were not updated as a part of the UPDATE statement are `null` in the output field.
+Note that for statements 2 and 4, the columns that were not updated as a part of the UPDATE statement are `null` in the output field.
 
 ### FULL_ROW_NEW_IMAGE
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 
@@ -185,7 +183,7 @@ Note that for statement 2 and 4, the columns that were not updated as a part of 
 
 ### MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 
@@ -204,7 +202,7 @@ Note that for statement 2 and 4, the columns that were not updated as a part of 
 
 ### ALL
 
-```output
+```json{.nocopy}
 -- statement 1
 "before":null,"after":{"id":1,"name":"Vaibhav","aura":9876}
 
