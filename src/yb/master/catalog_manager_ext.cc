@@ -83,6 +83,7 @@
 #include "yb/master/restore_sys_catalog_state.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -505,7 +506,7 @@ Status CatalogManager::RepackSnapshotsForBackup(
         }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-          const auto res = GetPgSchemaName(table_info->id(), l.data());
+          const auto res = GetYsqlManager().GetPgSchemaName(table_info->id(), l.data());
           if (!res.ok()) {
             // Check for the scenario where the table is dropped by YSQL but not docdb - this can
             // happen due to a bug with the async nature of drops in PG with docdb.
@@ -1956,7 +1957,7 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
           << ", table type: " << TableType_Name(table->GetTableType());
       // If not a debug build, ignore pg_schema_name.
     } else {
-      const string internal_schema_name = VERIFY_RESULT(GetPgSchemaName(
+      const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
           table->id(), table_lock.data()));
       const string& external_schema_name = snapshot_data->pg_schema_name;
       if (internal_schema_name != external_schema_name) {

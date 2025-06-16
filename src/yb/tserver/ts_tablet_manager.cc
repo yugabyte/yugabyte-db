@@ -80,6 +80,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
@@ -812,6 +814,14 @@ Status TSTabletManager::Init() {
 
   waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::PollWaitingTxnRegistry, this));
+
+  vector_index_block_cache_ = std::make_shared<hnsw::BlockCache>(
+      *tablet_options_.env,
+      server_->mem_tracker(),
+      server_->metric_entity(),
+      GetTargetBlockCacheSize(kDefaultTserverBlockCacheSizePercentage),
+      GetDbBlockCacheNumShardBits()
+  );
 
   return Status::OK();
 }
@@ -2122,6 +2132,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .vector_index_priority_thread_pool_provider = [this](auto type) {
           return VectorIndexPriorityThreadPool(type);
         },
+        .vector_index_block_cache = vector_index_block_cache_,
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

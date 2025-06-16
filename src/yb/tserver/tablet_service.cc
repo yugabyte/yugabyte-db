@@ -2428,7 +2428,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): handle or create issue for catalog version being uint64 vs int64.
   const std::string num_lagging_backends_query = Format(
       "SELECT count(*) FROM pg_stat_activity WHERE"
-      " backend_type != 'walsender' AND catalog_version < $0 AND datid = $1$2",
+      " backend_type != 'walsender' AND backend_type != 'yb-conn-mgr walsender'"
+      " AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?
        Format(" AND pid != $0", req->requestor_pg_backend_pid()) :

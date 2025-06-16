@@ -732,7 +732,8 @@ Tablet::Tablet(const TabletInitData& data)
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
       this,
       data.vector_index_thread_pool_provider,
-      data.vector_index_priority_thread_pool_provider);
+      data.vector_index_priority_thread_pool_provider,
+      data.vector_index_block_cache);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 
@@ -1387,6 +1388,8 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
+  tablet::VectorIndexList{ vector_indexes().List() }.EnableAutoCompactions();
+
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
       { "level0_slowdown_writes_trigger"s,

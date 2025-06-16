@@ -22,7 +22,7 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 ----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
-         Storage Table Read Requests: 3
+         Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: (a = t2.x)
@@ -36,7 +36,7 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 ----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
-         Storage Table Read Requests: 3
+         Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: (a <= t2.x)
@@ -50,7 +50,7 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 ----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
-         Storage Table Read Requests: 3
+         Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: ((a >= t2.x) AND (a <= (t2.x + 2)))
@@ -64,7 +64,7 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 -----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
-         Storage Table Read Requests: 3
+         Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=0 loops=1)
          Index Cond: ((b = t2.y) AND (a = t2.x))
@@ -78,7 +78,7 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 ----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on nulltest2 t2 (actual rows=1 loops=1)
-         Storage Table Read Requests: 3
+         Storage Table Read Requests: 1
          Storage Table Rows Scanned: 1
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: (a <= t2.x)

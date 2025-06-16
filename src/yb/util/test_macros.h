@@ -42,12 +42,10 @@
 #include "yb/gutil/stl_util.h"  // For VectorToSet
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
-#include "yb/util/string_trim.h"
+#include "yb/util/string_trim.h"  // For ApplyEagerLineContinuation
 #include "yb/util/tostring.h"
 
-namespace yb {
-namespace util {
+namespace yb::util {
 
 template<typename T>
 std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>& actual) {
@@ -80,8 +78,7 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
   return result.str();
 }
 
-}  // namespace util
-}  // namespace yb
+} // namespace yb::util
 
 // ASSERT_NO_FATAL_FAILURE is just too long to type.
 #define NO_FATALS(expr) \
@@ -148,7 +145,7 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     if (!_ec) { \
       SUCCEED(); \
     } else { \
-      FAIL() << "Unexpected error: " << ec.message(); \
+      FAIL() << "Unexpected error: " << (ec).message(); \
     } \
   } while (false)
 
@@ -158,7 +155,7 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     if (!_ec) { \
       SUCCEED(); \
     } else { \
-      ADD_FAILURE() << "Unexpected error: " << ec.message(); \
+      ADD_FAILURE() << "Unexpected error: " << (ec).message(); \
     } \
   } while (false)
 
@@ -218,13 +215,13 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 
 #define ASSERT_FILE_EXISTS(env, path) do { \
   std::string _s = (path); \
-  ASSERT_TRUE(env->FileExists(_s)) \
+  ASSERT_TRUE((env)->FileExists(_s)) \
     << "Expected file to exist: " << _s; \
   } while (0)
 
 #define ASSERT_FILE_NOT_EXISTS(env, path) do { \
   std::string _s = (path); \
-  ASSERT_FALSE(env->FileExists(_s)) \
+  ASSERT_FALSE((env)->FileExists(_s)) \
     << "Expected file not to exist: " << _s; \
   } while (0)
 
@@ -433,6 +430,12 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DEBUG_ONLY_TEST(test_name) test_name
 #else
 #define YB_DEBUG_ONLY_TEST(test_name) YB_DISABLE_TEST(test_name)
+#endif
+
+#if defined(NDEBUG)
+#define YB_NEVER_DEBUG_TEST(test_name) test_name
+#else
+#define YB_NEVER_DEBUG_TEST(test_name) YB_DISABLE_TEST(test_name)
 #endif
 
 #if !defined(NDEBUG) && defined(__linux__)

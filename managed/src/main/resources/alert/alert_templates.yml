@@ -2121,3 +2121,27 @@ templates:
     annotations:
       summary: >-
         RSS statistic for tserver is more than 25% larger than what TCMalloc stats suggest for '{{ $labels.affected_node_names }}' in universe '{{ $labels.source_name }}'.
+
+  THP_INCORRECT_SETTINGS:
+    name: Incorrect THP settings
+    description: Found incorrect THP settings on universe nodes
+    queryTemplate: count by (universe_uuid) (yb_thp_settings_check{universe_uuid="__universeUuid__"} < 1)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name)
+        (yb_thp_settings_check{universe_uuid='{{ $labels.universe_uuid }}'} > 0)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Incorrect THP settings found for universe '{{ $labels.source_name }}'
+        on {{ $value | printf "%.0f" }} node(s).
+        Affected nodes: {{ $labels.affected_node_names }}
