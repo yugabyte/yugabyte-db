@@ -375,11 +375,10 @@ fi
 # fn(arg1 /* acceptable */ ,
 #    arg2 /* acceptable */ );
 # pg_dump has some comments in strings, hence the allowance of '"'.
-# TODO(jason): make this an error after running pgindent in the future.
 if ! [[ "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ]]; then
   grep -nE '\s\*/' "$1" \
     | grep -vE '\s\*/([\"[:space:]]|$)' \
-    | sed 's/^/warning:bad_spacing_after_comment:'\
+    | sed 's/^/error:bad_spacing_after_comment:'\
 'Comment should generally be followed by space or EOL:/'
 fi
 # fn(/* bad */ arg1,

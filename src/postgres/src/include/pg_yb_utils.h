@@ -153,11 +153,11 @@ extern int32_t yb_follower_read_staleness_ms;
 		HeapTuple   pg_db_tuple; \
 		SysScanDesc pg_db_scan = systable_beginscan( \
 			pg_db, \
-			InvalidOid /* indexId */, \
-			false /* indexOK */, \
-			NULL /* snapshot */, \
-			0 /* nkeys */, \
-			NULL /* key */); \
+			InvalidOid /* indexId */ , \
+			false /* indexOK */ , \
+			NULL /* snapshot */ , \
+			0 /* nkeys */ , \
+			NULL /* key */ ); \
 		while (HeapTupleIsValid(pg_db_tuple = systable_getnext(pg_db_scan))) \
 		{ \
 
