@@ -339,7 +339,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Add a Tablet Server to the leader blacklist.
   Status AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
-  // Empty blacklist.
+  // Empty leader and tablet server blacklists.
   Status ClearBlacklist(ExternalMaster* master);
 
   // Start a new master with `peer_addrs` as the master_addresses parameter.

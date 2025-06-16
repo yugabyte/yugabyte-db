@@ -109,6 +109,9 @@ struct CBTabletMetadata {
   // Leader stepdown failures. We use this to prevent retrying the same leader stepdown too soon.
   LeaderStepDownFailureTimes leader_stepdown_failures;
 
+  // The size of the tablet in bytes.
+  size_t size = 0;
+
   std::string ToString() const;
 };
 
@@ -474,7 +477,7 @@ class PerTableLoadState {
   // track of the placement block policies between cluster and table level.
   PlacementInfoPB placement_;
 
-  // Total number of running tablets in the clusters (including replicas).
+  // Total number of running tablet replicas in the cluster.
   int total_running_ = 0;
 
   // Total number of tablet replicas being started across the cluster.
@@ -552,6 +555,11 @@ class PerTableLoadState {
   // List of availability zones for affinitized leaders.
   std::vector<AffinitizedZonesSet> affinitized_zones_;
 
+  int num_running_tablets_ = 0;
+
+  // Average size of a running tablet in the table.
+  uint64_t average_tablet_size_ = 0;
+
  private:
   // Whether the fields above are all initialized correctly
   // State-modifying functions that expect to only be called before / after initialization
@@ -565,6 +573,14 @@ class PerTableLoadState {
 
   DISALLOW_COPY_AND_ASSIGN(PerTableLoadState);
 }; // PerTableLoadState
+
+// Valid tservers should not include blacklisted tservers.
+using TsTableLoadMap = std::unordered_map<TabletServerId, size_t>;
+Result<TsTableLoadMap> CalculateOptimalLoadDistribution(
+    const TSDescriptorVector& valid_tservers, const PlacementInfoPB& placement_info,
+    const TsTableLoadMap& current_loads, size_t num_tablets);
+size_t CalculateTableLoadDifference(
+    const TsTableLoadMap& current_loads, const TsTableLoadMap& goal_loads);
 
 } // namespace master
 } // namespace yb

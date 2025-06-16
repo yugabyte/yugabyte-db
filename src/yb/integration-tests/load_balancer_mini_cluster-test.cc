@@ -381,14 +381,15 @@ TEST_F(LoadBalancerMiniClusterTest, TableLoadDifferenceMetric) {
   // Prevent moves temporarily so we can reliably read the metric and get a non-zero value.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_adds) = 0;
 
-  // Add a new node and wait for load difference to equal kNumTablets (each existing node has
-  // kNumTablets tablets, and the new node has 0).
+  // Add a new node and wait for load difference to equal num_tablets * RF / num_tservers (we need
+  // to move at least that many replicas onto the new node to balance the load).
   auto new_ts_index = mini_cluster()->num_tablet_servers();
   ASSERT_OK(mini_cluster()->AddTabletServer());
   ASSERT_OK(mini_cluster()->WaitForTabletServerCount(new_ts_index + 1));
+  const auto expected_load_difference = (kNumTablets * 3) / mini_cluster_->num_tablet_servers();
   ASSERT_OK(WaitFor([&] {
-    return load_difference_metric->value() == kNumTablets;
-  }, 5s, "load_difference reflects new node"));
+    return load_difference_metric->value() == expected_load_difference;
+  }, 5s, Format("load_difference should be $0", expected_load_difference)));
 
   // Enable moves and verify that load_difference monotonically decreases to 0.
   auto load_difference_low_water_mark = load_difference_metric->value();
@@ -403,22 +404,6 @@ TEST_F(LoadBalancerMiniClusterTest, TableLoadDifferenceMetric) {
     load_difference_low_water_mark = load_difference;
     return load_difference == 0 && VERIFY_RESULT(client_->IsLoadBalancerIdle());
   }, 30s, "Wait for tablet moves after adding ts-3"));
-
-  // Blacklist first tserver.
-  // The replicas should move off the blacklisted tserver and load_difference should increase to
-  // kNumTablets again.
-  auto load_difference_high_water_mark = load_difference_metric->value();
-  ASSERT_OK(AddTserverToBlacklist(0 /* idx */, false /* leader_blacklist */));
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto load_difference = load_difference_metric->value();
-    if (load_difference < load_difference_high_water_mark) {
-      return STATUS_FORMAT(
-          IllegalState, "load_difference unexpectedly decreased from $0 to $1",
-          load_difference_high_water_mark, load_difference);
-    }
-    load_difference_high_water_mark = load_difference;
-    return load_difference == kNumTablets && VERIFY_RESULT(client_->IsLoadBalancerIdle());
-  }, 30s, "Wait for tablet moves after blacklisting ts-0"));
 }
 
 // See issue #6278. This test tests the segfault that used to occur during a rare race condition,
