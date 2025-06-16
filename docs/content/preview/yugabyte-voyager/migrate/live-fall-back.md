@@ -663,7 +663,7 @@ The export directory has the following sub-directories and files:
 
 ## Set up a configuration file
 
-You can use a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.5.2 or later).
+You can use a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.6.2 or later).
 
 To get started, copy the `live-migration-with-fall-back.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):
 
@@ -690,13 +690,25 @@ Set the export-dir, source, and target arguments in the configuration file:
 
 ```yaml
 # Replace the argument values with those applicable for your migration.
-source-replica:
-  db-host: <HOST>
+
+export-dir: <absolute-path-to-export-dir>
+
+source:
+  db-type: <source-db-type>
+  db-host: <source-db-host>
   db-port: <source-db-port>
   db-name: <source-db-name>
   db-schema: <source-db-schema> # Not applicable for MySQL
   db-user: <source-db-user>
   db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
+
+target:
+  db-host: <target-db-host>
+  db-port: <target-db-port>
+  db-name: <target-db-name>
+  db-schema: <target-db-schema> # MySQL and Oracle only
+  db-user: <target-db-username>
+  db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
 Refer to the [live-migration-with-fall-back.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-back.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.

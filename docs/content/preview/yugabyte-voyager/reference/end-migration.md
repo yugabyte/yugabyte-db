@@ -24,7 +24,7 @@ Usage: yb-voyager end migration [ <arguments> ... ]
 The valid *arguments* for end migration are described in the following table:
 
 {{<table>}}
-| <div style="width:120px">Flag</div> | Parameter | Description |
+| <div style="width:120px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
 | --backup-schema-files |
@@ -86,6 +86,14 @@ export-dir:
 {{</table>}}
 
 ### Example
+
+Configuration file:
+
+```sh
+yb-voyager end migration --config-file <path-to-config-file>
+```
+
+CLI:
 
 ```sh
 yb-voyager end migration --export-dir /dir/export-dir \

@@ -48,7 +48,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | --prepare-for-fall-back |
 
@@ -112,7 +112,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | -e, --export-dir |
 
@@ -157,7 +157,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | -e, --export-dir |
 
@@ -203,8 +203,9 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
-| :--- | :-------- | :---------- || -e, --export-dir |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
+| :--- | :-------- | :---------- |
+| -e, --export-dir |
 
 ```yaml{.nocopy}
 export-dir:

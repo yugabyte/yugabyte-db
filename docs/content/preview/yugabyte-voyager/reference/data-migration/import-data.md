@@ -52,7 +52,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| Flag | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
 | --run-guardrails-checks |
@@ -350,7 +350,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | -e, --export-dir |
 
@@ -396,10 +396,9 @@ The following table lists the valid CLI flags and parameters for `get data-migra
 
 When run at the same time, flags take precedence over configuration flag settings.
 
-
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | -e, --export-dir |
 
@@ -471,7 +470,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
 | --run-guardrails-checks |
@@ -551,8 +550,10 @@ Usage: yb-voyager import data to source-replica [ <arguments> ... ]
 The following table lists the valid CLI flags and parameters for `import data to source-replica` command.
 
 When run at the same time, flags take precedence over configuration flag settings.
+
 {{<table>}}
-| <div style="width:150px">Flag</div> | Parameter | Description |
+
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | --batch-size |
 

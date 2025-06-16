@@ -389,7 +389,7 @@ By default, yb-voyager captures a [diagnostics report](../reference/diagnostics-
 
 ## Use configuration files
 
-For convenience, you can define all the parameters required for running yb-voyager commands using a configuration file (v2025.5.2 or later). Configuration files are in YAML format, and templates are available. For more information, refer to [Configuration file](../reference/configuration-file).
+For convenience, you can define all the parameters required for running yb-voyager commands using a configuration file (v2025.6.2 or later). Configuration files are in YAML format, and templates are available. For more information, refer to [Configuration file](../reference/configuration-file).
 
 ## Next step
 

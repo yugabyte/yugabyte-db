@@ -33,7 +33,7 @@ Usage: yb-voyager assess-migration [ <arguments> ... ]
 The valid *arguments* for assess migration are described in the following table:
 
 {{<table>}}
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 
 | :--- | :-------- | :---------- |
 
@@ -218,6 +218,14 @@ export-dir:
 
 ### Example
 
+Configuration file:
+
+```sh
+yb-voyager assess-migration --config-file <path-to-config-file>
+```
+
+CLI:
+
 ```sh
 yb-voyager assess-migration --source-db-type postgresql \
         --source-db-host hostname --source-db-user username \
@@ -242,8 +250,7 @@ The valid *arguments* for assess migration bulk are described in the following t
 | <div style="width:150px">Argument</div> | Description/valid options |
 | :------- | :------------------------ |
 | --bulk-assessment-dir | Directory path where assessment data is output. |
-| --continue-on-error | Print the error message to the console and continue to next schema assessment.<br>Default: true.
-<br>Accepted parameters: true, false, yes, no, 0, 1. |
+| --continue-on-error | Print the error message to the console and continue to next schema assessment.<br>Default: true.<br>Accepted parameters: true, false, yes, no, 0, 1. |
 | --fleet-config-file | Path to the CSV file with connection parameters for schema(s) to be assessed. The first line must be a header row. <br>Fields (case-insensitive): 'source-db-type', 'source-db-host', 'source-db-port', 'source-db-name', 'oracle-db-sid', 'oracle-tns-alias', 'source-db-user', 'source-db-password', 'source-db-schema'.<br>Mandatory: 'source-db-type', 'source-db-user', 'source-db-schema', and one of ['source-db-name', 'oracle-db-sid', 'oracle-tns-alias']. |
 | -h, --help | Command line help. |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |

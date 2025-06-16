@@ -134,7 +134,7 @@ The export directory has the following sub-directories and files:
 
 ## Set up a configuration file
 
-You can use a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.5.2 or later).
+You can use a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.6.2 or later).
 
 To get started, copy the `offline-migration.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):
 

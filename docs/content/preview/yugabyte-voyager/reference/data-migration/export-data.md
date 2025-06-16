@@ -50,7 +50,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
 | --run-guardrails-checks |
@@ -350,7 +350,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | -e, --export-dir |
 
@@ -397,7 +397,7 @@ When run at the same time, flags take precedence over configuration flag setting
 
 {{<table>}}
 
-| <div style="width:150px">Flag</div> | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | -e, --export-dir |
 
@@ -466,7 +466,7 @@ The valid *arguments* for export data from target are described in the following
 
 {{<table>}}
 
-| Flag | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :------- | :-------- | :------------------------ |
 | --disable-pb |
 

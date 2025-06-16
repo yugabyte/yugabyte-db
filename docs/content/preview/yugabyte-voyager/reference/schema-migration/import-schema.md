@@ -38,7 +38,7 @@ The following table lists the valid CLI flags and parameters for `import schema`
 When run at the same time, flags take precedence over configuration flag settings.
 {{<table>}}
 
-| Flag | Parameter | Description |
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 | --continue-on-error |
 

@@ -15,7 +15,7 @@ rightNav:
 
 The YugabyteDB Voyager configuration file lets you define all the parameters required for a migration in one place, instead of passing flags through the command line repeatedly. You can use a **YAML**-based configuration file to simplify and standardize migrations across environments.
 
-This feature is available in YugabyteDB Voyager v2025.5.2 or later.
+This feature is available in YugabyteDB Voyager v2025.6.2 or later.
 
 You can pass the configuration file to any Voyager command using the `--config-file` flag. When this flag is used, Voyager reads parameters from the provided YAML file instead of the CLI flags and arguments.
 
