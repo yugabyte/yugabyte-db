@@ -512,7 +512,8 @@ class WaitStateInfo {
   static int GetCircularBufferSizeInKiBs();
 
   static uint32_t AshEncodeWaitStateCodeWithComponent(uint32_t component, uint32_t code);
-  static uint32_t AshRemoveComponentFromWaitStateCode(uint32_t code);
+  static uint32_t AshNormalizeComponentForTServerEvents(uint32_t code,
+    bool component_bits_set);
 
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);
