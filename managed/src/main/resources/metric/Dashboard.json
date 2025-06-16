@@ -13091,26 +13091,26 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Average Latency (YSQL + YCQL)",
+    "title" : "Average Latency",
     "id" : 158,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "DeleteStmt",
+      "legendFormat" : "Delete",
       "expr" : "(sum(rate(rpc_latency_sum{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"DeleteStmt\"}[300s])) by (service_method)) / (sum(rate(rpc_latency_count{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"DeleteStmt\"}[300s])) by (service_method))",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "UpdateStmt",
+      "legendFormat" : "Update",
       "expr" : "(sum(rate(rpc_latency_sum{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"UpdateStmt\"}[300s])) by (service_method)) / (sum(rate(rpc_latency_count{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"UpdateStmt\"}[300s])) by (service_method))",
       "refId" : "B"
     }, {
       "hide" : false,
-      "legendFormat" : "InsertStmt",
+      "legendFormat" : "Insert",
       "expr" : "(sum(rate(rpc_latency_sum{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"InsertStmt\"}[300s])) by (service_method)) / (sum(rate(rpc_latency_count{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"InsertStmt\"}[300s])) by (service_method))",
       "refId" : "C"
     }, {
       "hide" : false,
-      "legendFormat" : "SelectStmt",
+      "legendFormat" : "Select",
       "expr" : "(sum(rate(rpc_latency_sum{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"SelectStmt\"}[300s])) by (service_method)) / (sum(rate(rpc_latency_count{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"SelectStmt\"}[300s])) by (service_method))",
       "refId" : "D"
     } ],
@@ -13198,26 +13198,26 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Total Ops / Sec (YSQL + YCQL)",
+    "title" : "Total Ops / Sec",
     "id" : 159,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "InsertStmt",
+      "legendFormat" : "Insert",
       "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"InsertStmt\"}[300s])) by (service_method)",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "SelectStmt",
+      "legendFormat" : "Select",
       "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"SelectStmt\"}[300s])) by (service_method)",
       "refId" : "B"
     }, {
       "hide" : false,
-      "legendFormat" : "UpdateStmt",
+      "legendFormat" : "Update",
       "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"UpdateStmt\"}[300s])) by (service_method)",
       "refId" : "C"
     }, {
       "hide" : false,
-      "legendFormat" : "DeleteStmt",
+      "legendFormat" : "Delete",
       "expr" : "sum(avg_over_time(rpc_irate_rps{export_type=~\"ysql_export|cql_export\", service_type=\"SQLProcessor\", node_prefix=~\"$dbcluster\", server_type=~\"yb_ysqlserver|yb_cqlserver\", service_method=\"DeleteStmt\"}[300s])) by (service_method)",
       "refId" : "D"
     } ],

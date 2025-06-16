@@ -1160,9 +1160,15 @@ total_ysql_ycql_ops_per_sec:
   group_by: "service_method"
   panel_group: "Tablet Server"
   layout:
-    title: "Total Ops / Sec (YSQL + YCQL)"
+    title: "Total Ops / Sec"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
 
 total_ysql_ycql_ops_latency:
   metric: "rpc_latency.avg"
@@ -1176,11 +1182,17 @@ total_ysql_ycql_ops_latency:
   group_by: "service_method"
   panel_group: "Tablet Server"
   layout:
-    title: "Average Latency (YSQL + YCQL)"
+    title: "Average Latency"
     xaxis:
       type: "date"
     yaxis:
       ticksuffix: "&nbsp;\u00B5s"
+      yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
 
 tserver_rpcs_per_sec_per_node:
   metric: "rpc_irate_rps"
