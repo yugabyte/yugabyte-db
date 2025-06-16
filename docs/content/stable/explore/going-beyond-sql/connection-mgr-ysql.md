@@ -38,7 +38,7 @@ YSQL Connection Manager has the following key features:
 
 - No SQL limitations - Unlike other pooling solutions running in transaction mode, YSQL Connection Manager supports SQL features such as TEMP TABLE, WITH HOLD CURSORS, and more.
 
-- Per (user, database) pool with quota sharing – Like PgBouncer and Odyssey, the YSQL Connection Manager creates a pool for each unique combination of user and database. However, it introduces an optimization by allowing connection quotas to be shared across multiple such pools, enabling more efficient resource utilization and improved scalability.
+- Per user and database pool, with quota sharing – Like PgBouncer and Odyssey, YSQL Connection Manager creates a pool for each unique combination of user and database. However, it also allows connection quotas to be shared across multiple such pools, enabling more efficient use of resources and improved scalability.
 
 - Support for session parameters - YSQL Connection Manager supports SET statements, which are not supported by other connection poolers.
 
