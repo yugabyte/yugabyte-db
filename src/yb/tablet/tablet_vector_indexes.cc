@@ -38,6 +38,7 @@
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/operation_counter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 
 using namespace std::literals;
@@ -186,22 +187,32 @@ Status TabletVectorIndexes::DoCreateIndex(
           << "Failed to create operation for backfill: " << read_op.GetAbortedStatus();
     }
   }
-  auto it = vector_indexes_map_.emplace(index_table.table_id, std::move(vector_index)).first;
-  auto& indexes = vector_indexes_list_;
-  if (!indexes) {
-    indexes = std::make_shared<std::vector<docdb::DocVectorIndexPtr>>(1, it->second);
-    return Status::OK();
-  }
-  if (indexes.use_count() == 1) {
-    indexes->push_back(it->second);
-    return Status::OK();
-  }
 
-  auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
-  new_indexes->reserve(indexes->size() + 1);
-  *new_indexes = *indexes;
-  new_indexes->push_back(it->second);
-  indexes = std::move(new_indexes);
+  // Enable vector index compaction only when new vector index has been added to all collections.
+  {
+    auto it = vector_indexes_map_.emplace(index_table.table_id, std::move(vector_index)).first;
+    auto scope_exit = ScopeExit([&it, bootstrap] {
+      if (!bootstrap) {
+        it->second->EnableAutoCompactions();
+      }
+    });
+
+    auto& indexes = vector_indexes_list_;
+    if (!indexes) {
+      indexes = std::make_shared<std::vector<docdb::DocVectorIndexPtr>>(1, it->second);
+      return Status::OK();
+    }
+    if (indexes.use_count() == 1) {
+      indexes->push_back(it->second);
+      return Status::OK();
+    }
+
+    auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
+    new_indexes->reserve(indexes->size() + 1);
+    *new_indexes = *indexes;
+    new_indexes->push_back(it->second);
+    indexes = std::move(new_indexes);
+  }
 
   return Status::OK();
 }
@@ -589,6 +600,16 @@ void VectorIndexList::Flush() {
   // TODO(vector_index) Check flush order between vector indexes and intents db
   for (const auto& index : *list_) {
     WARN_NOT_OK(index->Flush(), "Flush vector index");
+  }
+}
+
+void VectorIndexList::EnableAutoCompactions() {
+  if (!list_) {
+    return;
+  }
+
+  for (const auto& index : *list_) {
+    index->EnableAutoCompactions();
   }
 }
 

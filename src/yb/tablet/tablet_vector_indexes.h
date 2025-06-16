@@ -35,6 +35,7 @@ class VectorIndexList {
   VectorIndexList() = default;
   explicit VectorIndexList(docdb::DocVectorIndexesPtr list) : list_(std::move(list)) {}
 
+  void EnableAutoCompactions();
   void Compact();
   void Flush();
   Status WaitForFlush();

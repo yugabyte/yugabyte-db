@@ -765,10 +765,11 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 					   get_database_name(MyDatabaseId));
 
 	/* FOR ALL TABLES requires superuser */
-	if (stmt->for_all_tables && !superuser())
+	/* YB: yb_db_admin is allowed to create FOR ALL TABLES */
+	if (stmt->for_all_tables && !superuser() && !IsYbDbAdminUser(GetUserId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create FOR ALL TABLES publication")));
+				 errmsg("must be superuser or member of the yb_db_admin role to create FOR ALL TABLES publication")));
 
 	rel = table_open(PublicationRelationId, RowExclusiveLock);
 
@@ -845,10 +846,10 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 								   &schemaidlist);
 
 		/* FOR TABLES IN SCHEMA requires superuser */
-		if (schemaidlist != NIL && !superuser())
+		if (schemaidlist != NIL && !superuser() && !IsYbDbAdminUser(GetUserId()))
 			ereport(ERROR,
 					errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					errmsg("must be superuser to create FOR TABLES IN SCHEMA publication"));
+					errmsg("must be superuser or member of the yb_db_admin role to create FOR TABLES IN SCHEMA publication"));
 
 		if (list_length(relations) > 0)
 		{
@@ -1375,10 +1376,10 @@ CheckAlterPublication(AlterPublicationStmt *stmt, HeapTuple tup,
 	Form_pg_publication pubform = (Form_pg_publication) GETSTRUCT(tup);
 
 	if ((stmt->action == AP_AddObjects || stmt->action == AP_SetObjects) &&
-		schemaidlist && !superuser())
+		schemaidlist && !superuser() && !IsYbDbAdminUser(GetUserId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to add or set schemas")));
+				 errmsg("must be superuser or member of the yb_db_admin role to add or set schemas")));
 
 	/*
 	 * Check that user is allowed to manipulate the publication tables in
@@ -1951,7 +1952,7 @@ AlterPublicationOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (form->pubowner == newOwnerId)
 		return;
 
-	if (!superuser())
+	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 	{
 		AclResult	aclresult;
 
@@ -1969,19 +1970,19 @@ AlterPublicationOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 			aclcheck_error(aclresult, OBJECT_DATABASE,
 						   get_database_name(MyDatabaseId));
 
-		if (form->puballtables && !superuser_arg(newOwnerId))
+		if (form->puballtables && !superuser_arg(newOwnerId) && !IsYbDbAdminUser(newOwnerId))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to change owner of publication \"%s\"",
 							NameStr(form->pubname)),
-					 errhint("The owner of a FOR ALL TABLES publication must be a superuser.")));
+					 errhint("The owner of a FOR ALL TABLES publication must be a superuser or member of the yb_db_admin role.")));
 
-		if (!superuser_arg(newOwnerId) && is_schema_publication(form->oid))
+		if (!superuser_arg(newOwnerId) && !IsYbDbAdminUser(newOwnerId) && is_schema_publication(form->oid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to change owner of publication \"%s\"",
 							NameStr(form->pubname)),
-					 errhint("The owner of a FOR TABLES IN SCHEMA publication must be a superuser.")));
+					 errhint("The owner of a FOR TABLES IN SCHEMA publication must be a superuser or member of the yb_db_admin role.")));
 	}
 
 	form->pubowner = newOwnerId;

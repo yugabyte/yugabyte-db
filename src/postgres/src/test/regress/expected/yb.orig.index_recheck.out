@@ -131,7 +131,7 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
    Rows Removed by Index Recheck: 90
    Storage Table Read Requests: 3
    Storage Table Rows Scanned: 100
-   Storage Index Read Requests: 3
+   Storage Index Read Requests: 1
    Storage Index Rows Scanned: 100
 (7 rows)
 
@@ -143,7 +143,7 @@ CREATE INDEX t_range_range ON t_incomplete_binds(r1 ASC, r2 ASC);
    Rows Removed by Index Recheck: 60
    Storage Table Read Requests: 3
    Storage Table Rows Scanned: 100
-   Storage Index Read Requests: 3
+   Storage Index Read Requests: 1
    Storage Index Rows Scanned: 100
 (7 rows)
 
