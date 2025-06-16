@@ -13564,7 +13564,8 @@
             "UPDATE_ROLE_BINDINGS",
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
-            "XCLUSTER"
+            "XCLUSTER",
+            "DEBUG"
           ],
           "type" : "string"
         },
@@ -13606,7 +13607,8 @@
             "UPDATE_ROLE_BINDINGS",
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
-            "XCLUSTER"
+            "XCLUSTER",
+            "DEBUG"
           ],
           "type" : "string"
         },
