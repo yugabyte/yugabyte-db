@@ -65,6 +65,8 @@ func NewPrometheus(version string) Prometheus {
 	}
 }
 
+func (Prometheus) IsReplicated() bool { return true }
+
 func (prom Prometheus) getSystemdFile() string {
 	return prom.SystemdFileLocation
 }
@@ -529,5 +531,17 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 		}
 	}
 
+	return nil
+}
+
+func (prom Prometheus) Reconfigure() error {
+	log.Info("Reconfiguring Prometheus")
+	if err := config.GenerateTemplate(prom); err != nil {
+		return fmt.Errorf("failed to generate prometheus config template: %w", err)
+	}
+	if err := prom.FixBasicAuth(); err != nil {
+		return fmt.Errorf("failed to fix prometheus basic auth: %w", err)
+	}
+	log.Info("Prometheus reconfigured")
 	return nil
 }

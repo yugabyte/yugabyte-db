@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -32,10 +33,6 @@ func cmdsRequireConfigInit() []string {
 		"yba-ctl preflight",
 	}
 }
-
-// List of services required for YBA installation.
-var services map[string]common.Component
-var serviceOrder []string
 
 var ybaCtl *ybactl.YbaCtlComponent
 
@@ -101,27 +98,14 @@ func ensureInstallerConfFile() {
 
 func initServices() {
 	// services is an ordered map so services that depend on others should go later in the chain.
-	services = make(map[string]common.Component)
-	installPostgres := viper.GetBool("postgres.install.enabled")
-	installYbdb := viper.GetBool("ybdb.install.enabled")
-	services[PostgresServiceName] = NewPostgres(PostgresVersion)
-	// services[YbdbServiceName] = NewYbdb("2.17.2.0")
-	services[PrometheusServiceName] = NewPrometheus(PrometheusVersion)
-	services[YbPlatformServiceName] = NewPlatform(ybactl.Version)
-	// serviceOrder = make([]string, len(services))
-	if installPostgres {
-		serviceOrder = []string{PostgresServiceName, PrometheusServiceName, YbPlatformServiceName}
-	} else if installYbdb {
-		serviceOrder = []string{YbdbServiceName, PrometheusServiceName, YbPlatformServiceName}
-	} else {
-		serviceOrder = []string{PrometheusServiceName, YbPlatformServiceName}
+	serviceManager.RegisterService(NewPostgres(PostgresVersion))
+	serviceManager.RegisterService(NewPrometheus(PrometheusVersion))
+	serviceManager.RegisterService(NewPlatform(ybactl.Version))
+	var services []components.Service
+	for s := range serviceManager.Services() {
+		services = append(services, s)
 	}
-	serviceList := []common.Component{}
-	for _, service := range services {
-		serviceList = append(serviceList, service)
-	}
-	checks.SetServicesRunningCheck(serviceList)
-	// populate names of services for valid args
+	checks.SetServicesRunningCheck(services)
 }
 
 func handleRootCheck(cmdName string) {

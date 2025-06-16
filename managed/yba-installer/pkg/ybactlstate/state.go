@@ -23,6 +23,7 @@ type State struct {
 	CurrentStatus   status                   `json:"current_status"`
 	Replicated      ReplicatedMigrationState `json:"replicated_migration"`
 	Config          Config                   `json:"config"`
+	Services        Services                 `json:"services"`
 	_internalFields internalFields
 }
 
@@ -44,6 +45,11 @@ type Config struct {
 	SelfSignedCert bool   `json:"self_signed_cert"`
 }
 
+type Services struct {
+	PerfAdvisor bool `json:"perf-advisor"`
+	Platform    bool `json:"yb-platform"`
+}
+
 func New() *State {
 	return &State{
 		Version:     ybactl.Version,
@@ -61,6 +67,11 @@ func New() *State {
 		CurrentStatus: UninstalledStatus,
 		Config: Config{
 			SelfSignedCert: false, // Default to false
+		},
+		// Initialize to false, inistall will set it to true
+		Services: Services{
+			PerfAdvisor: false,
+			Platform:    false,
 		},
 		_internalFields: internalFields{
 			ChangeID:      0,

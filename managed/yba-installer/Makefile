@@ -115,3 +115,7 @@ test: config
 .PHONY: config
 config:
 	cp ${CONFIG_INPUT_FILE_NAME} ${CONFIG_EMBEDED_NAME}
+
+.PHONY: integrationtest
+integrationtest: config
+	go test -tags integration ./integrationtests/...

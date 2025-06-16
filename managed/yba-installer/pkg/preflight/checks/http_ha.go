@@ -36,7 +36,7 @@ func (hhc httpHACheck) Execute() Result {
 	replCtl := replicatedctl.New(replicatedctl.Config{})
 	config, err := replCtl.AppConfigView()
 	if err != nil {
-		res.Error = fmt.Errorf("failed to export replicated app config: " + err.Error())
+		res.Error = fmt.Errorf("failed to export replicated app config: %w", err)
 		res.Status = StatusCritical
 		return res
 	}
