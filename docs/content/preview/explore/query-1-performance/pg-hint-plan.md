@@ -25,7 +25,7 @@ To use pg_hint_plan effectively, you need a thorough knowledge of how your appli
 
 {{% explore-setup-single-new %}}
 
-## Configure pg_hint_plan 
+## Configure pg_hint_plan
 
 pg_hint_plan is pre-configured, and enabled by default. The following YSQL configuration parameters control pg_hint_plan:
 
@@ -37,7 +37,7 @@ pg_hint_plan is pre-configured, and enabled by default. The following YSQL confi
 | `pg_hint_plan.yb_use_query_id_for_hinting` | Use query IDs for storing/retrieving hints instead of query text. | off |
 | `pg_hint_plan.hints_anywhere` | Allow the hint string to be placed anywhere in the query text. | off |
 | `pg_hint_plan.debug_print` | Controls debug output.<br/>Valid values are `off` (no debug output), `on`, `detailed`, and `verbose`. | off |
-| `pg_hint_plan.message_level` | Specifies the minimum message level for debug output.<br/>In _decreasing order of severity_, the levels are:<br/>`error`, `warning`, `notice`, `info`, `log`, and `debug`.<br/>Messages at the `fatal` and `panic` levels are always included in the output. | info |
+| `pg_hint_plan.message_level` | Specifies the minimum message level for debug output.<br/>In *decreasing order of severity*, the levels are:<br/>`error`, `warning`, `notice`, `info`, `log`, and `debug`.<br/>Messages at the `fatal` and `panic` levels are always included in the output. | info |
 
 ### Enable pg_hint_plan
 
@@ -48,7 +48,6 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
 For more information on setting configuration parameters, refer to [Configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters).
-
 
 ### Turn on debug output
 
@@ -66,10 +65,10 @@ yugabyte=# SET client_min_messages TO log;
 
 pg_hint_plan parses hinting phrases of a special form present in SQL statements. This special form begins with the character sequence `/*+` and ends with `*/`. Hint phrases consist of hint names followed by hint parameters enclosed in parentheses and delimited by spaces. If `pg_hint_plan.hints_anywhere` is ON, the hint string can appear anywhere in the query string. If the value is OFF, the hint string can appear anywhere before the command keyword (SELECT, INSERT-SELECT, DELETE, UPDATE), *or* immediately after the command keyword:
 
-* Valid : /*+ SeqScan(t1) */ EXPLAIN SELECT * FROM t1 WHERE id = 7;
-* Valid : EXPLAIN /*+ SeqScan(t1) */ SELECT * FROM t1 WHERE id = 7;
-* Valid : EXPLAIN SELECT /*+ SeqScan(t1) */ * FROM t1 WHERE id = 7;
-* Invalid : EXPLAIN SELECT * /*+ SeqScan(t1) */ FROM t1 WHERE id = 7;
+- Valid : /*+ SeqScan(t1) */ EXPLAIN SELECT * FROM t1 WHERE id = 7;
+- Valid : EXPLAIN /*+ SeqScan(t1) */ SELECT * FROM t1 WHERE id = 7;
+- Valid : EXPLAIN SELECT /*+ SeqScan(t1) */ * FROM t1 WHERE id = 7;
+- Invalid : EXPLAIN SELECT * /*+ SeqScan(t1) */ FROM t1 WHERE id = 7;
 
 If hints are placed in an invalid location (with `pg_hint_plan.hints_anywhere` = OFF), the hint string is treated as a comment.
 
@@ -101,9 +100,9 @@ yugabyte-#   ORDER BY a.aid;
 
 ### Table identifiers in hints
 
-Plan hints refer to FROM clause objects, tables (base or derived) in most cases. However, hints can also refer to table functions, common table expressions (CTEs), views (possibly nested), or VALUES clauses. If an alias is present for any of these entities, the alias should be used as the identifier. If no alias is present, the entity name (for example, a base table or view name) should be used in a hint. In the previous example, any hint would refer to 'a' or 'b', not 'pgbench_accounts' or 'pgbench_branches'. 
+Plan hints refer to FROM clause objects, tables (base or derived) in most cases. However, hints can also refer to table functions, common table expressions (CTEs), views (possibly nested), or VALUES clauses. If an alias is present for any of these entities, the alias should be used as the identifier. If no alias is present, the entity name (for example, a base table or view name) should be used in a hint. In the previous example, any hint would refer to 'a' or 'b', not 'pgbench_accounts' or 'pgbench_branches'.
 
-Hints can refer to multiple query blocks (see [Hinting multiple blocks](#hinting-multiple-blocks)). Since the same name/alias can be used in multiple blocks, some way to reference these homonymous objects used in hints is required. Consider this example:
+Hints can refer to multiple query blocks (see [Hinting multiple blocks](#hinting-multiple-blocks)). Because the same name/alias can be used in multiple blocks, some way to reference these homonymous objects used in hints is required. Consider this example:
 
 ```sql
 yugabyte=# EXPLAIN (COSTS off) SELECT COUNT(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.val + t2.val = (SELECT MAX(t3.val) FROM t3, t1 WHERE t3.id
@@ -135,18 +134,18 @@ An alternative approach is to rewrite the query and provide unique aliases. Howe
 
 ### Set "bad hint" mode (pg_hint_plan.yb_bad_hint_mode)
 
-Hints can be invalid (for example, trying to force use of an inapplicable or non-existent index), or can specify unsatisfiable conditions on the final plan (for example, trying to use hash join when there is no applicable equality condition). Historically, if invalid hints were given, a plan was still returned but it had a cost that has 'disable cost' (a very large value, 10e10) added to its final total cost. In many cases, it was difficult to ascertain what led to no satisfiable plan being found. 
+Hints can be invalid (for example, trying to force use of an inapplicable or non-existent index), or can specify unsatisfiable conditions on the final plan (for example, trying to use hash join when there is no applicable equality condition). Historically, if invalid hints were given, a plan was still returned but it had a cost that has 'disable cost' (a very large value, 10e10) added to its final total cost. In many cases, it was difficult to ascertain what led to no satisfiable plan being found.
 
 The settings to control what action to take in these situations are:
 
 | Value | Action |
 | :----- | :---- |
 | OFF | Allow queries with bad hints to be planned even if hints have errors, are unused, or lead to undesired plans. A plan with a disabled cost may be found. |
-| WARN | Issue a warning if any bad hints are found, and plan using hints where possible, i.e., some hints may get used and others ignored. A plan with a disabled cost may be found. |
+| WARN | Issue a warning if any bad hints are found, and plan using hints where possible, that is, some hints may get used and others ignored. A plan with a disabled cost may be found. |
 | REPLAN | Same warnings issued for bad hints as with WARN but drops hints and replans (with no hints). A plan with a disabled cost will cause replanning.|
 | ERROR | Same messages issued as WARN but raises an error and no plan is produced. Any bad hint, or plan with disabled cost, will cause an error. |
 
-Here is an example of a warning message (details on individual hint syntax is provided in later sections):
+The following is an example of a warning message (details on individual hint syntax is provided in later sections):
 
 ```sql
 set pg_hint_plan.yb_bad_hint_mode to warn;
@@ -166,9 +165,9 @@ WARNING:  unused hints, and/or hints causing errors, exist
 (5 rows)
 ```
 
-For this query, a hash join of t1 and t2 is not possible (since there is no equality join condition) so a warning is issued. Notice that the cost of the resulting plan is greater than 10e10, i.e., the disable cost was added to the join's cost since no plan satisfying the hints was found. Also note the use of the EXPLAIN option 'UIDS on', which displays a unique identifier for each node in the plan, and that the node with UID 5 is the problem.
+For this query, a hash join of t1 and t2 is not possible (because there is no equality join condition) so a warning is issued. Notice that the cost of the resulting plan is greater than 10e10, that is, the disable cost was added to the join's cost as no plan satisfying the hints was found. Also note the use of the EXPLAIN option 'UIDS on', which displays a unique identifier for each node in the plan, and that the node with UID 5 is the problem.
 
-Here is an example with a bad (non-existent) index hint:
+The following is an example with a bad (non-existent) index hint:
 
 ```sql
 set pg_hint_plan.yb_bad_hint_mode to warn;
@@ -438,7 +437,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 The required join methods are specified in their respective hint phrases. You can use multiple hint phrases to combine join methods and scan methods.
 
-The order of the tables in a join method hint is irrelevant. A join method hint with table aliases x, y, and z means 'If a (logical) join involving table aliases x, y, and z is found during the planner's join enumeration phase, use the specified join method.' So in the last example, nested loop will be tried for both logical joins 'Join(t1 t2)' and 'Join(t2 t1)'. Control of the join order is described in the [Hints for join order](#hints-for-join-order) section below.
+The order of the tables in a join method hint is irrelevant. A join method hint with table aliases x, y, and z means 'If a (logical) join involving table aliases x, y, and z is found during the planner's join enumeration phase, use the specified join method.' So in the previous example, nested loop will be tried for both logical joins 'Join(t1 t2)' and 'Join(t2 t1)'. Control of the join order is described in [Hints for join order](#hints-for-join-order).
 
 ```sql
 /*+ NestLoop(t2 t3 t1) SeqScan(t3) SeqScan(t2) */
@@ -464,9 +463,9 @@ In this example, the hint `/*+ NestLoop(t2 t3 t1) SeqScan(t3) SeqScan(t2) */` en
 
 For any set of hints specified for a query referencing table `t1`, there can be at most:
 
-* 1 join method hint referencing 't1'
-* 1 Leading hint referencing `t1` (see [Hints for join order](#hints-for-join-order))
-* 1 table access method hint referencing `t1` 
+- 1 join method hint referencing 't1'
+- 1 Leading hint referencing `t1` (see [Hints for join order](#hints-for-join-order))
+- 1 table access method hint referencing `t1`
 
 For example, the following is invalid:
 
@@ -492,14 +491,17 @@ DETAIL:  Conflict join method hint.
 
 ### Hints for join order
 
-The join ordering hint `Leading` forces execution of joins in a particular order, as enumerated in this hint's parameter list. The Leading hint has 2 forms:
+The join ordering hint `Leading` forces execution of joins in a particular order, as enumerated in this hint's parameter list. The Leading hint has two forms:
 
-1. Using nested parentheses, for example, Leading(((t1 t2) t3))
-2. Using no nested parentheses, for example, Leading(t1 t2 t3)
+1. Using nested parentheses. For example, `Leading(((t1 t2) t3))`.
 
-Form 1 forces a single logical join order to be considered. For the example in Form 1 above, t1-t2 must be the first join, with t1 as the left input. t1-t2 then must be joined to t3 with t3 as the right input. No join method was specified, so the planner is free to consider all join methods for the single logical join shape. If using this form, there must be a set of parentheses for each join, in addition to the closing parentheses. Here there are 2 joins, so 2 sets of parentheses are required, plus the closing set.
+    This form forces a single logical join order to be considered. In the example, t1-t2 must be the first join, with t1 as the left input. t1-t2 then must be joined to t3 with t3 as the right input. No join method was specified, so the planner is free to consider all join methods for the single logical join shape. If using this form, there must be a set of parentheses for each join, in addition to the closing parentheses. There are 2 joins in the example, so 2 sets of parentheses are required, plus the closing set.
 
-Form 2 constrains the logical joins considered to *left-deep* trees starting with a join of the first 2 tables (reading left to right), followed by a join to the 3rd table, etc. For the example in Form 2 above, t1 is first joined to t2 *in any order*, i.e., t1-t2 or t2-t1 is valid for each join method. Then t1-t2 must be joined to t3 in any order, i.e., t3 can be the left or right input for each join method considered.
+1. Using no nested parentheses. For example, `Leading(t1 t2 t3)`.
+
+    This form constrains the logical joins considered to *left-deep* trees starting with a join of the first 2 tables (reading left to right), followed by a join to the 3rd table, and so on. In the example, t1 is first joined to t2 *in any order*; that is, t1-t2 or t2-t1 is valid for each join method. Then t1-t2 must be joined to t3 in any order; that is, t3 can be the left or right input for each join method considered.
+
+In the following example, form 1 is used, so the planner can only consider the join order `((t1 t2) t3)` for each join method:
 
 ```sql
 /*+ Leading(((t1 t2) t3)) */
@@ -521,7 +523,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t
 (9 rows)
 ```
 
-Form 1 is used here so the planner can only consider the join order `((t1 t2) t3)` for each join method.
+The following example uses form 2, so t1 had to be joined to t2 first but the planner had the choice of t1 or t2 as the left (right) input for each join method considered. (Hash join was chosen because it is the join method with the lowest estimated cost.)
 
 ```sql
 /*+ Leading(t1 t2 t3) */
@@ -543,8 +545,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t
 (9 rows)
 ```
 
-Form 2 is used here, so t1 had to be joined to t2 first but the planner had the choice of t1 or t2 as the left (right) input for each join method considered. (Hash join was chosen because it is the join method with the lowest estimated cost.) 
-
 ### Configuring the planner method
 
 Planner method configuration parameters provide a crude method for influencing the query plans chosen by the query optimizer. If the default plan chosen by the optimizer for a particular query is not optimal, a temporary solution is to use one of these configuration parameters to force the optimizer to choose a different plan. YugabyteDB supports the following configuration parameters to allow:
@@ -562,7 +562,7 @@ Planner method configuration parameters provide a crude method for influencing t
 - enable_partitionwise_aggregate
 - enable_seqscan
 - enable_sort
-- yb_prefer_bnl 
+- yb_prefer_bnl
 - yb_enable_batchednl
 
 Using these parameters is a coarse method to control plan choice, as setting one of them affects *all* joins in a query. For example, `enable_hashjoin(off)` prevents hash join from being considered for *all* joins in the query. Plan hints are a fine-grained mechanism to control join method choices for a specific join.
@@ -793,7 +793,7 @@ yugabyte=# EXPLAIN (VERBOSE true, COSTS off) SELECT * FROM t1 WHERE t1.val = 9;
 (4 rows)
 ```
 
-To use the hint table to store a hint for this query, set `pg_hint_plan.yb_use_query_id_for_hinting` to ON and simply use the query id instead of query text when inserting into the hint plan table:
+To use the hint table to store a hint for this query, set `pg_hint_plan.yb_use_query_id_for_hinting` to ON and simply use the query ID instead of query text when inserting into the hint plan table:
 
 ```sql
 yugabyte=# SET pg_hint_plan.yb_use_query_id_for_hinting to ON;
@@ -1011,7 +1011,7 @@ yugabyte=# EXPLAIN (COSTS off, HINTS on, VERBOSE on) SELECT COUNT(*) FROM t1, t2
 (26 rows)
 ```
 
-The EXPLAIN output now contains a new line `Generated hints`. This is the set of hints, which if specified in conjunction with the query, will lead to the *exact same plan* in terms of join order, and join and table access methods. The SET options capture the relevant configuration options the planner used when searching for the best plan. To ensure the exact same plan is always given for this query, you can store the hints in the hint table using the query ID `-7881676297850663726`. 
+The EXPLAIN output now contains a new line `Generated hints`. This is the set of hints, which if specified in conjunction with the query, will lead to the *exact same plan* in terms of join order, and join and table access methods. The SET options capture the relevant configuration options the planner used when searching for the best plan. To ensure the exact same plan is always given for this query, you can store the hints in the hint table using the query ID `-7881676297850663726`.
 
 The generated hints also provide a useful template for devising a new set of hints to change the plan. Writing a new set of hints to constrain the plan for a complex query can be difficult. To see this, consider a query of the view 'information_schema.columns':
 
