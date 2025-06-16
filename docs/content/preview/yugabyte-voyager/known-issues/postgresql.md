@@ -1542,11 +1542,11 @@ CREATE INDEX idx_orders_created ON orders(created_at DESC);
 
 ### Hotspots with range-sharded timestamp/date indexes
 
-#### For secondary indexes
-
 **Description**: Range-sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, due to the way these values increment. For example, take a column of values `created_at timestamp`. As new values are inserted, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. Then, after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
 
 Note that if the table is colocated, this hotspot concern can safely be ignored, as all the data resides on a single tablet, and the distribution is no longer relevant.
+
+#### For secondary indexes
 
 **Workaround**:
 
@@ -1589,8 +1589,6 @@ CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) HASH,
 
 SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- fetch orders for the previous month
 ```
-
----
 
 #### For primary key or unique key constraints
 

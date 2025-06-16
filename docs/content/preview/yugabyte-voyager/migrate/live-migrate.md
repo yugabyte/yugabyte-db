@@ -175,6 +175,8 @@ Create a new database user, and assign the necessary user permissions.
 
   {{% tab header="RDS Oracle" %}}
 
+**Note** that the following steps assume you're using SQL*Plus or a compatible Oracle client that supports `EXEC`. If your client doesn't support `EXEC`, use the standard SQL CALL syntax instead.
+
 1. Ensure that your database log_mode is `archivelog` as follows:
 
     ```sql
