@@ -126,6 +126,7 @@ class SnapshotState : public StateWithTablets {
   bool ShouldUpdate(const SnapshotState& other) const;
   void DeleteAborted(const Status& status);
   bool HasExpired(HybridTime now) const;
+  Result<NamespaceId> GetNamespaceId() const;
 
   size_t ResetRunning() override;
 

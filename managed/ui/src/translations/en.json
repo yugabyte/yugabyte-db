@@ -116,9 +116,9 @@
       "precheckInitiatedMsg": "Running Prechecks...",
       "runPrecheckOnlyButton": "Run Pre-check Only",
       "lbState": {
-        "loadBalancerEnabled": "Tablet Load Balancer",
-        "loadIsBalanced": "Tablet load is balanced",
-        "loadBalanceInProgress": "Tablet load balancing in progress"
+        "loadBalancerEnabled": "Cluster Load Balancer",
+        "loadIsBalanced": "Cluster load is balanced",
+        "loadBalanceInProgress": "Cluster load balancing in progress"
       },
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
@@ -1078,7 +1078,7 @@
               "configurePitr": {
                 "instruction": "Configure point-in-time recovery (PITR) settings",
                 "submitButton": "Next: Confirm Alert Threshold",
-                "retentionPeriodSeconds": {
+                "retentionPeriod": {
                   "label": "Snapshot Retention Period",
                   "tooltip": "A longer snapshot retention period requires more disk space."
                 },
@@ -1124,13 +1124,23 @@
           },
           "editModal": {
             "title": "Edit DR Configuration",
-            "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
+            "backupStorageConfigInfoText": "Creating a full copy of the DR primary requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
             "backupStorageConfig": {
-              "label": "Backup Storage Config"
+              "label": "Backup Storage Config",
+              "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both {{sourceUniverseTerm}} and {{targetUniverseTerm}} universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+            },
+            "pitrInfoText": "Configure point-in-time recovery (PITR) settings",
+            "retentionPeriod": {
+              "label": "Snapshot Retention Period",
+              "tooltip": "A longer snapshot retention period requires more disk space."
             },
             "error": {
               "requestFailureLabel": "Edit DR configuration request failed",
-              "backupStorageConfigRequired": "Required."
+              "backupStorageConfigRequired": "Required.",
+              "pitrRetentionPeriodValueRequired": "Please enter a positive integer.",
+              "pitrRetentionPeriodValueMinimum": "Minimum 5 minutes.",
+              "pitrRetentionPeriodValueIntegerValidation": "Please enter a positive integer.",
+              "pitrRetentionPeriodUnitRequired": "Required."
             },
             "success": {
               "requestSuccess": "DR config updated."

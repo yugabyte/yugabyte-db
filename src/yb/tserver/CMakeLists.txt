@@ -290,30 +290,31 @@ set(TSERVER_SRCS
   ysql_lease_poller.cc)
 
 set(TSERVER_DEPS
-  protobuf
+  auto_flags_manager_common
   backup_proto
-  tserver_proto
-  tserver_admin_proto
-  tserver_service_proto
-  remote_bootstrap_proto
-  master_rpc
-  master_proto
-  consensus_proto
-  log_proto
-  log
+  cdc
+  cdc_consumer_proto
   consensus
-  yrpc
+  consensus_proto
+  hnsw
+  log
+  log_proto
+  master_proto
+  master_rpc
+  protobuf
+  remote_bootstrap_proto
   server_common
   server_process
   tablet
+  tserver_admin_proto
+  tserver_proto
+  tserver_service_proto
+  xcluster_producer_proto
   yb_ash
   yb_client
   yb_pggate_flags
+  yrpc
   ysql_upgrade
-  cdc
-  cdc_consumer_proto
-  xcluster_producer_proto
-  auto_flags_manager_common
 )
 
 ADD_YB_LIBRARY(tserver

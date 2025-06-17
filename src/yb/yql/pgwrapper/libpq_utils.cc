@@ -391,8 +391,10 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
     }
     if (status == CONNECTION_BAD) {
       auto msg = GetPQErrorMessage(result.get());
-      if (msg.ends_with("\" does not exist") &&
-          msg.find("FATAL:  database \"") != std::string::npos) {
+      if ((msg.ends_with("\" does not exist") &&
+          msg.find("FATAL:  database \"") != std::string::npos) ||
+          msg.find("authentication failed for user") != std::string::npos) {
+        // If the database does not exist or password authentication failed, we do not retry.
         break;
       }
     }

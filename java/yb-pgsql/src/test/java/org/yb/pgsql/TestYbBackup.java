@@ -161,6 +161,7 @@ public class TestYbBackup extends BasePgSQLTest {
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", TEST_PG_USER,
+      "-v", "ON_ERROR_STOP=1",
       "-f", inputFile.toString()
     ), "ysqlsh (" + testName + ")");
 
@@ -207,7 +208,8 @@ public class TestYbBackup extends BasePgSQLTest {
       "-U", DEFAULT_PG_USER,
       "-f", restoreDescFile.toString(),
       "-o", actualDesc.toString(),
-      "-d", restoreDbName
+      "-d", restoreDbName,
+      "-v", "ON_ERROR_STOP=1"
     ));
     ProcessUtil.executeSimple(ysqlsh_args, "ysqlsh (validate describes " + testName + ")");
     TestYsqlDump.assertOutputFile(expectedRestoreDesc, actualDesc);

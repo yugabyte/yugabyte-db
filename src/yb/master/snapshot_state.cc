@@ -281,6 +281,16 @@ bool SnapshotState::HasExpired(HybridTime now) const {
   return now > expiry_time;
 }
 
+Result<NamespaceId> SnapshotState::GetNamespaceId() const {
+  for (const auto& entry : entries_.entries()) {
+    if (entry.type() == SysRowEntryType::NAMESPACE) {
+      return entry.id();
+    }
+  }
+
+  return STATUS(NotFound, "Namespace entry not found in snapshot entries", id_.ToString());
+}
+
 size_t SnapshotState::ResetRunning() {
   auto result = StateWithTablets::ResetRunning();
   for (size_t i = 0; i != result; ++i) {

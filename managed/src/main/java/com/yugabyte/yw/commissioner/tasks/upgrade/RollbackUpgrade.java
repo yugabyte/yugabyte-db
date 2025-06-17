@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -19,7 +18,6 @@ import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeStat
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
 @Abortable
@@ -141,13 +139,7 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
             // none of the masters are upgraded.
             if (ysqlMajorVersionUpgrade
                 && nodes.mastersList.size() == universe.getMasters().size()) {
-              if (ImmutableList.of(
-                      YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK,
-                      YsqlMajorCatalogUpgradeState
-                          .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK)
-                  .contains(softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe))) {
-                createRollbackYsqlMajorVersionCatalogUpgradeTask();
-              }
+              createRollbackYsqlMajorVersionCatalogUpgradeTask();
             }
 
             createMasterUpgradeFlowTasks(

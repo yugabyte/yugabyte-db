@@ -66,7 +66,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       ADD_FOREIGN_KEY, DROP_FOREIGN_KEY,
       ADD_PRIMARY_KEY, DROP_PRIMARY_KEY,
       ADD_COLUMN_WITH_VOLATILE_DEFAULT, ALTER_TYPE,
-      VALIDATE_CONSTRAINT}
+      VALIDATE_CONSTRAINT, DROP_EXPRESSION}
 
   private void prepareAndPopulateTable(AlterCommand alterCommand, String tableName)
       throws Exception {
@@ -116,6 +116,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       }
       if (alterCommand == AlterCommand.VALIDATE_CONSTRAINT) {
         createTableQuery += ", e INT";
+      }
+      if (alterCommand == AlterCommand.DROP_EXPRESSION) {
+        createTableQuery += ", f INT GENERATED ALWAYS AS (a * 2) STORED";
       }
       createTableQuery += ")";
       if (alterCommand == AlterCommand.ATTACH_PARTITION ||
@@ -178,7 +181,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         case ADD_PRIMARY_KEY:
         case DROP_PRIMARY_KEY:
         case ADD_COLUMN_WITH_VOLATILE_DEFAULT:
-        case VALIDATE_CONSTRAINT: {
+        case VALIDATE_CONSTRAINT:
+        case DROP_EXPRESSION: {
           statement.execute("INSERT INTO " + tableName + " VALUES (1, 'foo')");
           break;
         }
@@ -294,6 +298,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       case VALIDATE_CONSTRAINT: {
         return "ALTER TABLE " + tableName + " VALIDATE CONSTRAINT check_valid";
       }
+      case DROP_EXPRESSION: {
+        return "ALTER TABLE " + tableName + " ALTER COLUMN f DROP EXPRESSION";
+      }
       default: {
         throw new Exception("Alter command type " + alterCommand + " not supported");
       }
@@ -333,7 +340,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           case ENABLE_ROW_SECURITY:
           case DISABLE_ROW_SECURITY:
           case ADD_PRIMARY_KEY:
-          case DROP_PRIMARY_KEY: {
+          case DROP_PRIMARY_KEY:
+          case DROP_EXPRESSION: {
             return "INSERT INTO " + tableName + " VALUES (2, 'foo')";
           }
           case ADD_FOREIGN_KEY:
@@ -422,6 +430,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           case ALTER_TYPE:
           case VALIDATE_CONSTRAINT:
           case ATTACH_PARTITION:
+          case DROP_EXPRESSION:
             return "SELECT a FROM " + tableName + " WHERE a = 1";
           case DETACH_PARTITION:
             return "SELECT a FROM " + tableName + " WHERE a = 2";

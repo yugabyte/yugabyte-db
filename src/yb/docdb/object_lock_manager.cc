@@ -729,8 +729,9 @@ void ObjectLockManagerImpl::Shutdown() {
   shutdown_in_progress_ = true;
   // Shutdown of thread pool token => no more tasks pending/scheduled for resumption.
   thread_pool_token_->Shutdown();
-  thread_pool_token_.reset();
+  // Wait for resumptions scheduled on the messenger as they might access thread_pool_token_.
   waiters_amidst_resumption_on_messenger_.Shutdown();
+  thread_pool_token_.reset();
   // Since TSLocalLockManager waits for running requests before processing shutdown, and no new
   // requests are sent post initiating shutdown, the OLM should be empty after resuming waiters.
   std::vector<WaiterEntryPtr> waiters;
@@ -761,7 +762,7 @@ void ObjectLockManagerImpl::Shutdown() {
 }
 
 void ObjectLockManagerImpl::DoSignal(ObjectLockedBatchEntry* entry) {
-  if (FLAGS_TEST_olm_skip_scheduling_waiter_resumption) {
+  if (shutdown_in_progress_ || FLAGS_TEST_olm_skip_scheduling_waiter_resumption) {
     return;
   }
   WARN_NOT_OK(

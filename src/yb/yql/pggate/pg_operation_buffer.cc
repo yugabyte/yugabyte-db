@@ -142,11 +142,6 @@ size_t hash_value(const RowIdentifier& key) {
   return hash;
 }
 
-inline bool IsTableUsedByRequest(const LWPgsqlReadRequestPB& request, const Slice& table_id) {
-  return request.table_id() == table_id ||
-      (request.has_index_request() && IsTableUsedByRequest(request.index_request(), table_id));
-}
-
 using RowKeys = std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>>;
 
 struct InFlightOperation {
@@ -208,6 +203,28 @@ void BufferableOperations::MoveTo(PgsqlOps& operations, PgObjectIds& relations) 
   relations = std::move(relations_);
 }
 
+std::pair<BufferableOperations, BufferableOperations> Split(
+    BufferableOperations&& ops, size_t index) {
+  if (index >= ops.Size()) {
+    return {std::move(ops), {}};
+  }
+  if (!index) {
+    return {{}, std::move(ops)};
+  }
+  BufferableOperations tail;
+  tail.Reserve(ops.Size() - index);
+  auto& operations = ops.operations_;
+  auto& relations = ops.relations_;
+  auto rel_it = relations.begin() + index;
+  for (auto op_it = operations.begin() + index; op_it != ops.operations_.end(); ++op_it, ++rel_it) {
+    tail.operations_.push_back(std::move(*op_it));
+    tail.relations_.push_back(*rel_it);
+  }
+  operations.resize(index);
+  relations.resize(index);
+  return {std::move(ops), std::move(tail)};
+}
+
 class PgOperationBuffer::Impl {
  public:
   Impl( Flusher&& flusher, const BufferingSettings& buffering_settings)
@@ -222,9 +239,8 @@ class PgOperationBuffer::Impl {
     return ClearOnError(DoFlush());
   }
 
-  Result<BufferableOperations> FlushTake(
-      const PgTableDesc& table, const PgsqlOp& op, bool transactional) {
-    return ClearOnError(DoFlushTake(table, op, transactional));
+  Result<BufferableOperations> Take(bool transactional) {
+    return ClearOnError(DoTake(transactional));
   }
 
   size_t Size() const {
@@ -363,22 +379,17 @@ class PgOperationBuffer::Impl {
     return EnsureAllCompleted();
   }
 
-  Result<BufferableOperations> DoFlushTake(
-      const PgTableDesc& table, const PgsqlOp& op, bool transactional) {
+  Result<BufferableOperations> DoTake(bool transactional) {
     BufferableOperations result;
-    if (IsFullFlushRequired(table, op)) {
-      RETURN_NOT_OK(Flush());
-    } else {
-      RETURN_NOT_OK(SendBuffer(make_lw_function(
-          [transactional, &result](BufferableOperations* ops, bool txn) {
-            if (txn == transactional) {
-              ops->Swap(&result);
-              return true;
-            }
-            return false;
-          })));
-      RETURN_NOT_OK(EnsureAllCompleted());
-    }
+    RETURN_NOT_OK(SendBuffer(make_lw_function(
+        [transactional, &result](BufferableOperations* ops, bool txn) {
+          if (txn == transactional) {
+            ops->Swap(&result);
+            return true;
+          }
+          return false;
+        })));
+    RETURN_NOT_OK(EnsureAllCompleted());
     return result;
   }
 
@@ -455,25 +466,8 @@ class PgOperationBuffer::Impl {
         RETURN_NOT_OK(EnsureCompleted(1));
       }
       in_flight_ops_.push_back(
-        InFlightOperation(VERIFY_RESULT(flusher_(std::move(ops), transactional))));
+          InFlightOperation(VERIFY_RESULT(flusher_(std::move(ops), transactional))));
       return true;
-    }
-    return false;
-  }
-
-  bool IsFullFlushRequired(const PgTableDesc& table, const PgsqlOp& op) const {
-    return op.is_read()
-        ? IsSameTableUsedByBufferedOperations(down_cast<const PgsqlReadOp&>(op).read_request())
-        : keys_.find(RowIdentifier(
-              table.relfilenode_id(), table.schema(),
-              down_cast<const PgsqlWriteOp&>(op).write_request())) != keys_.end();
-  }
-
-  bool IsSameTableUsedByBufferedOperations(const LWPgsqlReadRequestPB& request) const {
-    for (const auto& k : keys_) {
-      if (IsTableUsedByRequest(request, k.table_id().GetYbTableId())) {
-        return true;
-      }
     }
     return false;
   }
@@ -501,9 +495,8 @@ Status PgOperationBuffer::Flush() {
     return impl_->Flush();
 }
 
-Result<BufferableOperations> PgOperationBuffer::FlushTake(
-    const PgTableDesc& table, const PgsqlOp& op, bool transactional) {
-  return impl_->FlushTake(table, op, transactional);
+Result<BufferableOperations> PgOperationBuffer::Take(bool transactional) {
+  return impl_->Take(transactional);
 }
 
 size_t PgOperationBuffer::Size() const {

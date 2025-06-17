@@ -2243,7 +2243,7 @@ class index_gt {
 
     /// @brief  Controls access to `max_level_` and `entry_slot_`.
     ///         If any thread is updating those values, no other threads can `add()` or `search()`.
-    std::mutex global_mutex_{};
+    mutable std::mutex global_mutex_{};
 
     /// @brief  The level of the top-most graph in the index. Grows as the logarithm of size, starts from zero.
     level_t max_level_{};
@@ -4205,8 +4205,19 @@ class index_gt {
         top_candidates_t& top = context.top_candidates;
         top.clear();
         top.reserve(count);
-        for (std::size_t i = 0; i != size(); ++i) {
+
+        std::size_t size;
+        std::size_t entry_slot;
+        {
+          std::lock_guard lock(global_mutex_);
+          size = nodes_count_;
+          entry_slot = entry_slot_;
+        }
+        for (std::size_t i = 0; i != size; ++i) {
             auto slot = static_cast<compressed_slot_t>(i);
+            // Check that node was completely inserted, otherwise it could crash measuring distance.
+            if (slot != entry_slot && neighbors_base_(node_at_(i)).size() == 0)
+                continue;
             if (!is_dummy<predicate_at>())
                 if (!predicate(at(slot)))
                     continue;

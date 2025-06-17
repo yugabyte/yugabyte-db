@@ -14,7 +14,7 @@
  prfpasswordlocktime       | integer |           | not null | 
 Indexes:
     "pg_yb_profile_oid_index" PRIMARY KEY, lsm (oid ASC), tablespace "pg_global"
-    "pg_yb_profile_prfname_index" UNIQUE, lsm (prfname ASC), tablespace "pg_global"
+    "pg_yb_profile_prfname_index" UNIQUE CONSTRAINT, lsm (prfname ASC), tablespace "pg_global"
 Tablespace: "pg_global"
 
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_profile', 'pg_yb_profile_oid_index');

@@ -1339,6 +1339,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			case AT_AddConstraintRecurse:
 			case AT_DropConstraintRecurse:
 			case AT_ValidateConstraintRecurse:
+			case AT_DropExpression:
 				break;
 			default:
 				/*
@@ -1539,6 +1540,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 		case AT_SetTableSpace:
 		case AT_ValidateConstraint:
 		case AT_ValidateConstraintRecurse:
+		case AT_DropExpression:
 			{
 				Assert(cmd->subtype != AT_DropConstraint);
 				if (cmd->subtype == AT_AlterColumnType)
@@ -1712,6 +1714,34 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					dependent_rels = lappend(dependent_rels,
 											 table_openrv(index->relation, AccessExclusiveLock));
 				}
+
+				/*
+				 * During initdb, skip the schema version increment for ALTER
+				 * TABLE ... ADD PRIMARY KEY/UNIQUE USING INDEX.
+				 *
+				 * Currently, CatalogManager::AlterTable() does not support
+				 * altering catalog relations. During initdb there is a single
+				 * connection, so we can skip the schema version increment and
+				 * thus, avoid any YB metadata update. This allows us to
+				 * execute this command without handling catalog relations in
+				 * CatalogManager::AlterTable().
+				 *
+				 * This should be applicable to all ALTER TABLEs that reach this
+				 * switch block. But, for now, only apply it to ALTER TABLE ...
+				 * ADD PRIMARY KEY/UNIQUE USING INDEX.
+				 */
+				if (YBCIsInitDbModeEnvVarSet() &&
+					cmd->subtype == AT_AddConstraintRecurse &&
+					(((Constraint *) cmd->def)->contype == CONSTR_UNIQUE ||
+					 ((Constraint *) cmd->def)->contype ==
+					 CONSTR_PRIMARY) &&
+					((Constraint *) cmd->def)->indexname != NULL)
+				{
+					Assert(YbIsSysCatalogTabletRelation(rel));
+					Assert(dependent_rels == NIL);
+					return handles;
+				}
+
 				/*
 				 * If dependent relation exists, apply increment schema version
 				 * operation on the dependent relation.
@@ -1863,7 +1893,6 @@ YBCRename(Oid relationId, ObjectType renameType, const char *relname,
 {
 	YbcPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
-	char	   *db_name = get_database_name(databaseId);
 
 	switch (renameType)
 	{
@@ -1872,7 +1901,7 @@ YBCRename(Oid relationId, ObjectType renameType, const char *relname,
 		case OBJECT_INDEX:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
 											  YbGetRelfileNodeIdFromRelId(relationId), &handle));
-			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, relname));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, relname));
 			break;
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:

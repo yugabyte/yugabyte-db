@@ -54,6 +54,7 @@
 #include "yb/docdb/docdb_debug.h"
 
 #include "yb/util/format.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/status_log.h"
 
 using yb::docdb::StorageDbType;
@@ -337,6 +338,7 @@ Status SstFileReader::ReadSequential(bool print_kv,
     iter->SeekToFirst();
   }
   for (; iter->Valid(); iter->Next()) {
+    WARN_NOT_OK(iter->status(), "Iterator error: ");
     Slice key = iter->key();
     Slice value = iter->value();
     ++i;
@@ -386,10 +388,25 @@ Status SstFileReader::ReadSequential(bool print_kv,
 
 namespace {
 
-void PrintSaveBlockCommand(const std::string& data_file_path, const BlockHandle& block_handle) {
-  std::cout << "dd if=\"" << data_file_path << "\" bs=1 skip=" << block_handle.offset()
-            << " count=" << block_handle.size() << " of=\"" << data_file_path << ".offset_"
-            << block_handle.offset() << ".size_" << block_handle.size() << ".part\"" << std::endl;
+struct DataBlockInfo {
+  yb::KeyBuffer index_key;
+  BlockHandle handle;
+  size_t index_entry_pos = 0;
+  bool saved = false;
+};
+
+void PrintSaveBlockCommand(
+    const std::string& data_file_path, const std::string& ext, DataBlockInfo* info) {
+  if (info->saved) {
+    return;
+  }
+  std::cout << "dd if=\"" << data_file_path << "\" bs=1 skip=" << info->handle.offset()
+            << " count=" << info->handle.size() << " of=\"" << data_file_path << ".block_"
+            << info->index_entry_pos << ".offset_" << info->handle.offset() << ".size_"
+            << info->handle.size() << ".part" << ext << "\" # Data block #" << info->index_entry_pos
+            << " index_key: "
+            << info->index_key.AsSlice().PrefixNoLongerThan(256).ToDebugHexString() << std::endl;
+  info->saved = true;
 }
 
 } // namespace
@@ -411,43 +428,46 @@ Status SstFileReader::CheckDataBlocks(DoUncompress do_uncompress) {
   std::unique_ptr<RandomAccessFileReader> data_file_reader(
       new RandomAccessFileReader(std::move(data_file)));
 
-  size_t index_entry_pos = 0;
-  BlockHandle prev_block_handle;
-  BlockHandle block_handle;
+  DataBlockInfo prev_block_info;
+  DataBlockInfo block_info;
   bool save_block = false;
   for (index_iterator->SeekToFirst(); index_iterator->Valid();
-       index_iterator->Next(), ++index_entry_pos) {
-    prev_block_handle = block_handle;
+       index_iterator->Next(), prev_block_info = block_info, ++block_info.index_entry_pos) {
+    block_info.index_key = index_iterator->Entry().key;
+    block_info.saved = false;
     {
       auto index_value_slice = index_iterator->Entry().value;
-      auto status = block_handle.DecodeFrom(&index_value_slice);
+      auto status = block_info.handle.DecodeFrom(&index_value_slice);
       if (!status.ok()) {
-        LOG(WARNING) << "Failed to decode SST index entry #" << index_entry_pos << ": "
-                     << index_iterator->Entry().value.ToDebugHexString() << ". " << status;
+        LOG(WARNING) << "Failed to decode SST index entry #" << block_info.index_entry_pos
+                     << " (index_key: "
+                     << block_info.index_key.AsSlice().PrefixNoLongerThan(256).ToDebugHexString()
+                     << "): " << index_iterator->Entry().value.ToDebugHexString() << ". " << status;
         continue;
       }
       LOG_IF(WARNING, index_value_slice.size() > 0)
           << "Extra bytes (" << index_value_slice.size()
           << ") in index entry: " << index_iterator->Entry().value.ToDebugHexString();
     }
-    YB_LOG_EVERY_N_SECS(INFO, 30) << "Checking data block #" << index_entry_pos
-                                  << " handle: " << block_handle.ToDebugString();
+    YB_LOG_EVERY_N_SECS(INFO, 30) << "Checking data block #" << block_info.index_entry_pos
+                                  << " handle: " << block_info.handle.ToDebugString();
 
     BlockContents block_contents;
     auto status = ReadBlockContents(
-        data_file_reader.get(), footer_, read_options, block_handle, &block_contents, options_.env,
-        /* mem_tracker = */ nullptr, do_uncompress);
+        data_file_reader.get(), footer_, read_options, block_info.handle, &block_contents,
+        options_.env, /* mem_tracker = */ nullptr, do_uncompress);
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to read block with handle: " << block_handle.ToDebugString() << ". "
-                   << status;
-      if (prev_block_handle.IsSet()) {
-        PrintSaveBlockCommand(data_file_path, prev_block_handle);
+      LOG(WARNING) << "Failed to read data block #" << block_info.index_entry_pos << " (index_key: "
+                   << block_info.index_key.AsSlice().PrefixNoLongerThan(256).ToDebugHexString()
+                   << "), block handle: " << block_info.handle.ToDebugString() << ". " << status;
+      if (prev_block_info.handle.IsSet()) {
+        PrintSaveBlockCommand(data_file_path, ".prev", &prev_block_info);
       }
-      PrintSaveBlockCommand(data_file_path, block_handle);
+      PrintSaveBlockCommand(data_file_path, ".corrupt", &block_info);
       // Save next block as well.
       save_block = true;
     } else if (save_block) {
-      PrintSaveBlockCommand(data_file_path, block_handle);
+      PrintSaveBlockCommand(data_file_path, ".next", &block_info);
       save_block = false;
     }
   }

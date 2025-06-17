@@ -154,25 +154,6 @@ func Create(p string) (*os.File, error) {
 	return os.Create(p)
 }
 
-// CreateSymlink of binary from pkgDir to linkDir.
-/*
-	pkgDir - directory where the binary (file or directory) is located
-	linkDir - directory where you want the link to be created
-	binary - name of file or directory to link. should already exist in pkgDir and will be the same
-*/
-func CreateSymlink(pkgDir string, linkDir string, binary string) error {
-	binaryPath := fmt.Sprintf("%s/%s", pkgDir, binary)
-	linkPath := fmt.Sprintf("%s/%s", linkDir, binary)
-
-	args := []string{"-sf", binaryPath, linkPath}
-	log.Debug(fmt.Sprintf("Creating symlink at %s -> orig %s",
-		linkPath, binaryPath))
-
-	out := shell.Run("ln", args...)
-	out.SucceededOrLog()
-	return out.Error
-}
-
 // Symlink implements a more generic symlink utility.
 func Symlink(src string, dest string) error {
 	if stat, err := os.Lstat(dest); err == nil {

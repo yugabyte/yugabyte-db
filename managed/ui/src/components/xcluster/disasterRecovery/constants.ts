@@ -1,3 +1,5 @@
+import { ReactSelectOption } from '../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
+
 export const DrConfigAction = {
   CREATE: 'createDrConfig',
   DELETE: 'deleteDrConfig',
@@ -27,6 +29,23 @@ export const DURATION_UNIT_TO_SECONDS: { [key in DurationUnit]: number } = {
   [DurationUnit.HOUR]: 60 * 60,
   [DurationUnit.DAY]: 24 * 60 * 60
 } as const;
+
+// The expectation is that all `DurationUnit`s are presented as options here.
+export const PITR_RETENTION_PERIOD_UNIT_OPTIONS: ReactSelectOption[] = [
+  {
+    label: 'Seconds',
+    value: DurationUnit.SECOND
+  },
+  {
+    label: 'Minutes',
+    value: DurationUnit.MINUTE
+  },
+  {
+    label: 'Hours',
+    value: DurationUnit.HOUR
+  },
+  { label: 'Days', value: DurationUnit.DAY }
+];
 
 /**
  * Standard width for all dropdown select components in the DR workflow.

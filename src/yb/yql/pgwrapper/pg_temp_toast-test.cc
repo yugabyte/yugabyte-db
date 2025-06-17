@@ -581,4 +581,13 @@ TEST_F(PgToastTempTableTest, DeleteFromDataPk) {
   ASSERT_OK(VerifyData());
 }
 
+// Check that refreshing a materialized view (permanent table -> temp table -> permanent table)
+// works correctly.
+TEST_F(PgToastTempTableTest, RefreshMaterializedView) {
+  ASSERT_OK(conn_->ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMatViewName));
+
+  expected_table_rows_[kMatViewName] = expected_table_rows_[kPermanentTableName];
+  ASSERT_OK(VerifyData());
+}
+
 }  // namespace yb::pgwrapper

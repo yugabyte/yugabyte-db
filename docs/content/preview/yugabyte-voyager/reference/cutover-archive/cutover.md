@@ -42,16 +42,53 @@ Use the argument `--use-yb-grpc-connector` to select the YugabyteDB gRPC connect
 
 ### Arguments
 
-The valid *arguments* for initiate cutover to target are described in the following table:
+The following table lists the valid CLI flags and parameters for `cutover to target` command.
 
-| <div style="width:150px">Argument</div> | Description/valid options |
-| :------- | :------------------------ |
-| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| -h, --help | Command line help for initiate cutover to target. |
-| --prepare-for-fall-back | Prepare for fall-back by streaming changes from the target YugabyteDB database to the source database. Not applicable to the fall-forward workflow.<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --use-yb-grpc-connector | Applicable to fall-forward or fall-back workflows where you export changes from YugabyteDB during [export data from target](../../../reference/data-migration/export-data/#export-data-from-target). If set to true, [YugabyteDB gRPC Connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) is used. Otherwise, [YugabyteDB Connector](../../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) is used.<br> .<br>Accepted parameters: true, false, yes, no, 0, 1. |
+When run at the same time, flags take precedence over configuration flag settings.
+
+{{<table>}}
+
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
+| :--- | :-------- | :---------- |
+| --prepare-for-fall-back |
+
+```yaml{.nocopy}
+cutover-to-target:
+  prepare-for-fall-back:
+```
+
+|Prepare for fall-back by streaming changes from the target YugabyteDB database to the source database. Not applicable to the fall-forward workflow.<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --use-yb-grpc-connector |
+
+```yaml{.nocopy}
+cutover-to-target:
+  use-yb-grpc-connector:
+```
+
+|
+Applicable to fall-forward or fall-back workflows where you export changes from YugabyteDB during [export data from target](../../../reference/data-migration/export-data/#export-data-from-target). If set to true, [YugabyteDB gRPC Connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) is used. Otherwise, [YugabyteDB Connector](../../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) is used.<br> .<br>Accepted parameters: true, false, yes, no, 0, 1. |
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+|Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | — |Command line help for initiate cutover to target. |
+
+{{</table>}}
+
+<!--| --use-yb-grpc-connector | Use the [gRPC Replication Protocol](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/) for export. If set to false, [PostgreSQL Replication Protocol](../../../../develop/change-data-capture/using-logical-replication/) (supported in YugabyteDB v2024.1.1+) is used. For PostgreSQL Replication Protocol, ensure no ALTER TABLE commands causing table rewrites (for example, adding primary keys) are present in the schema during import.<br>Default: true<br>Accepted parameters: true, false, yes, no, 0, 1. | -->
 
 ### Example
+
+Configuration file:
+
+```sh
+yb-voyager initiate cutover to target --config-file <path-to-config-file>
+```
+
+CLI:
 
 ```sh
 yb-voyager initiate cutover to target --export-dir /dir/export-dir --prepare-for-fall-back false
@@ -69,14 +106,34 @@ Usage: yb-voyager initiate cutover to source [ <arguments> ... ]
 
 ### Arguments
 
-The valid *arguments* for initiate cutover to source are described in the following table:
+The following table lists the valid CLI flags and parameters for `cutover to source` command.
 
-| <div style="width:150px">Argument</div> | Description/valid options |
-| :------- | :------------------------ |
-| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| -h, --help | Command line help for cutover. |
+When run at the same time, flags take precedence over configuration flag settings.
+
+{{<table>}}
+
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
+| :--- | :-------- | :---------- |
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+|Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | — |Command line help for cutover. |
+
+{{</table>}}
 
 ### Example
+
+Configuration file:
+
+```sh
+yb-voyager initiate cutover to source --config-file <path-to-config-file>
+```
+
+CLI:
 
 ```sh
 yb-voyager initiate cutover to source --export-dir /path/to/yb/export/dir
@@ -94,14 +151,35 @@ Usage: yb-voyager initiate cutover to source-replica [ <arguments> ... ]
 
 ### Arguments
 
-The valid *arguments* for initiate cutover to source-replica are described in the following table:
+The following table lists the valid CLI flags and parameters for `cutover to source-replica` command.
 
-| <div style="width:150px">Argument</div> | Description/valid options |
-| :------- | :------------------------ |
-| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| -h, --help | Command line help for cutover. |
+When run at the same time, flags take precedence over configuration flag settings.
+
+{{<table>}}
+
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
+| :--- | :-------- | :---------- |
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+|
+Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | — | Command line help for cutover. |
+
+{{</table>}}
 
 ### Example
+
+Configuration file:
+
+```sh
+yb-voyager initiate cutover to source-replica --config-file <path-to-config-file>
+```
+
+CLI:
 
 ```sh
 yb-voyager initiate cutover to source-replica --export-dir /path/to/yb/export/dir
@@ -119,14 +197,34 @@ Usage: yb-voyager cutover status [ <arguments> ... ]
 
 ### Arguments
 
-The valid *arguments* for cutover status are described in the following table:
+The following table lists the valid CLI flags and parameters for `cutover status` command.
 
-| <div style="width:150px">Argument</div> | Description/valid options |
-| :------- | :------------------------ |
-| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| -h, --help | Command line help for cutover status. |
+When run at the same time, flags take precedence over configuration flag settings.
+
+{{<table>}}
+
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
+| :--- | :-------- | :---------- |
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+| Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | — | Command line help for cutover status. |
+
+{{</table>}}
 
 ### Example
+
+Configuration file:
+
+```sh
+yb-voyager cutover status --config-file <path-to-config-file>
+```
+
+CLI:
 
 ```sh
 yb-voyager cutover status --export-dir /dir/export-dir

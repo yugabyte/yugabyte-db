@@ -861,9 +861,9 @@ TEST_P(PgIndexBackfillTest, Nonconcurrent) {
       kIndexName,
       kTableName));
 
-  // If the index used backfill, it would have incremented the table schema version by two or three:
+  // If the index used backfill, it would have incremented the table schema version by three:
   // - add index info with INDEX_PERM_DELETE_ONLY
-  // - update to INDEX_PERM_DO_BACKFILL (as part of issue #6218)
+  // - update to INDEX_PERM_DO_BACKFILL
   // - update to INDEX_PERM_READ_WRITE_AND_DELETE
   // If the index did not use backfill, it would have incremented the table schema version by one:
   // - add index info with no DocDB permission (default INDEX_PERM_READ_WRITE_AND_DELETE)
@@ -928,12 +928,11 @@ TEST_P(PgIndexBackfillTestSimultaneously, CreateIndexSimultaneously) {
     if (status.ok()) {
       num_ok++;
       LOG(INFO) << "got ok status";
-      // Success index creations do two schema changes:
+      // Success index creations do three schema changes:
       // - add index with INDEX_PERM_WRITE_AND_DELETE
+      // - transition to INDEX_PERM_DO_BACKFILL, then
       // - transition to success INDEX_PERM_READ_WRITE_AND_DELETE
-      // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
-      // schema version.
-      expected_schema_version += 2;
+      expected_schema_version += 3;
     } else {
       ASSERT_TRUE(status.IsNetworkError()) << status;
       const std::string msg = status.message().ToBuffer();
@@ -1922,7 +1921,7 @@ class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillMultiMaster, ::testing::Bool());
 
-// Make sure that master leader change during backfill causes the index to not become public and
+// Make sure that master leader change during backfill causes the index backfill to continue and
 // doesn't cause any weird hangups or other issues.  Simulate the following:
 //   Session A                                    Session B
 //   --------------------------                   ----------------------
@@ -1932,7 +1931,6 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillMultiMaster, ::testing::Bool());
 //   - backfill
 //     - get safe time for read
 //                                                master leader stepdown
-// TODO(jason): update this test when handling master leader changes during backfill (issue #6218).
 TEST_P(PgIndexBackfillMultiMaster, MasterLeaderStepdown) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
 
@@ -1940,12 +1938,13 @@ TEST_P(PgIndexBackfillMultiMaster, MasterLeaderStepdown) {
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create thread";
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    // The CREATE INDEX should get master leader change during backfill so that its
-    // WaitUntilIndexPermissionsAtLeast call starts querying the new leader.  Since the new leader
-    // will be inactive at the WRITE_AND_DELETE docdb permission, it will wait until the deadline,
-    // which is set to 30s.
-    Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
-    ASSERT_TRUE(HasClientTimedOut(status)) << status;
+    // The CREATE INDEX should get master leader change during backfill. We expect
+    // that the new master will continue the backfill, and it should succeed.
+    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
+    ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(
+        kIndexName, IndexStateFlags{
+                        IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady,
+                        IndexStateFlag::kIndIsValid})));
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin master leader stepdown thread";
@@ -2385,7 +2384,17 @@ TEST_P(PgIndexBackfillReadCommittedBlockIndislive, PhantomIdxEntry) {
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "indisready"));
   ASSERT_OK(WaitForIndexStateFlags(index_live_flags, kIndexName));
   LOG(INFO) << "Update record by newer txn";
-  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET t = 'b' WHERE i = $1", kTableName, 2));
+  ASSERT_OK(LoggedWaitFor(
+      [this]() -> Result<bool> {
+        auto s = conn_->ExecuteFormat("UPDATE $0 SET t = 'b' WHERE i = $1", kTableName, 2);
+        if (s.ok()) {
+          return true;
+        }
+        SCHECK_STR_CONTAINS(s.message().ToBuffer(), "schema version mismatch");
+        return false;
+      },
+      RegularBuildVsSanitizers(10s, 30s),
+      "wait for DML to succeed, ignoring potential schema version mismatch"));
   LOG(INFO) << "Update record by older txn";
   ASSERT_OK(other_conn.ExecuteFormat("UPDATE $0 SET t = 'c' WHERE i = $1", kTableName, 2));
   ASSERT_OK(other_conn.Execute("COMMIT"));
@@ -2410,9 +2419,12 @@ class PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill :
   }
 };
 
+// TODO(bkolagani): The test relies on transparent query layer retries to succeed. Until
+// GHI#24877 is addressed, retries are disabled when table locking feature in on. Run the
+// test with table locking enabled after enabling back statement retries.
 INSTANTIATE_TEST_CASE_P(,
                         PgIndexBackfillReadCommittedBlockIndisliveBlockDoBackfill,
-                        ::testing::Bool());
+                        ::testing::Values(false));
 
 // Make sure backends wait for catalog version waits on the correct version and ignores the backend
 // running the CREATE INDEX.
