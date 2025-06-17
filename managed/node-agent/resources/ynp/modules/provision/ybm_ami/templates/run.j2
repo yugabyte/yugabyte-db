@@ -151,9 +151,9 @@ fi
 # Move the package to the home user directory
 rm -rf {{ yb_home_dir }}/$release_folder
 mkdir -p {{ yb_home_dir }}/$release_folder
-chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/$release_folder
 chmod 0755 {{ yb_home_dir }}/$release_folder
 cp "$temp_binary_path/$package_name" {{ yb_home_dir }}/$release_folder
+chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/$release_folder
 
 # Extract yugabyte binary to /home/yugabyte/yb-software/
 tar --strip-components=1 -xzf "$temp_binary_path/$package_name" -C "$yb_package_folder"
