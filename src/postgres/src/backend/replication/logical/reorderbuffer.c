@@ -2733,6 +2733,8 @@ ReorderBufferReplay(ReorderBufferTXN *txn,
 	/* Process and send the changes to output plugin. */
 	ReorderBufferProcessTXN(rb, txn, commit_lsn, snapshot_now,
 							command_id, false);
+
+	UpdateDecodingStats((LogicalDecodingContext *) rb->private_data);
 }
 
 /*
@@ -2752,6 +2754,7 @@ ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 
 	txn = ReorderBufferTXNByXid(rb, xid, false, NULL, InvalidXLogRecPtr,
 								false);
+
 
 	/* unknown transaction, nothing to replay */
 	if (txn == NULL)
@@ -3590,7 +3593,10 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	ReorderBufferTXN *txn;
 
 	/* bail out if we haven't exceeded the memory limit */
-	if (rb->size < logical_decoding_work_mem * 1024L)
+	if (rb->size < (IsYugaByteEnabled() ?
+						yb_reorderbuffer_max_changes_in_memory :
+						logical_decoding_work_mem) *
+					   1024L)
 		return;
 
 	/*
@@ -3602,7 +3608,10 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	 * logical_decoding_work_mem to a smaller value before the most recent
 	 * change.
 	 */
-	while (rb->size >= logical_decoding_work_mem * 1024L)
+	while (rb->size >= (IsYugaByteEnabled() ?
+							yb_reorderbuffer_max_changes_in_memory :
+							logical_decoding_work_mem) *
+						   1024L)
 	{
 		/*
 		 * Pick the largest transaction and evict it from memory by streaming,
@@ -3649,7 +3658,10 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 	}
 
 	/* We must be under the memory limit now. */
-	Assert(rb->size < logical_decoding_work_mem * 1024L);
+	Assert(rb->size < (IsYugaByteEnabled() ?
+						   yb_reorderbuffer_max_changes_in_memory :
+						   logical_decoding_work_mem) *
+						  1024L);
 }
 
 /*
