@@ -119,6 +119,7 @@ static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
 static void show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 						double estimated_num_nexts, double estimated_num_seeks,
+						bool yb_is_agg_pushdown,
 						ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
@@ -1837,6 +1838,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	int			save_indent = es->indent;
 	bool		haschildren;
 
+	bool		yb_is_agg_pushdown = false;
+
 	if (planstate->instrument)
 	{
 		YbAggregateExplainableRPCRequestStat(es,
@@ -2122,6 +2125,13 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		ExplainPropertyBool("Parallel Aware", plan->parallel_aware, es);
 	}
 
+	if (IsYugaByteEnabled())
+	{
+		List **aggrefs = YbPlanStateTryGetAggrefs(planstate);
+
+		yb_is_agg_pushdown = aggrefs && *aggrefs != NIL;
+	}
+
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
@@ -2153,6 +2163,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										indexscan->indexorderdir,
 										indexscan->estimated_num_nexts,
 										indexscan->estimated_num_seeks,
+										yb_is_agg_pushdown,
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -2165,6 +2176,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										indexonlyscan->indexorderdir,
 										indexonlyscan->estimated_num_nexts,
 										indexonlyscan->estimated_num_seeks,
+										yb_is_agg_pushdown,
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -2748,12 +2760,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	}
 
 	/* YB aggregate pushdown */
-	if (IsYugaByteEnabled())
-	{
-		List **aggrefs = YbPlanStateTryGetAggrefs(planstate);
-		if (aggrefs && *aggrefs != NIL)
-			ExplainPropertyBool("Partial Aggregate", true, es);
-	}
+	if (yb_is_agg_pushdown)
+		ExplainPropertyBool("Partial Aggregate", true, es);
 
 	/* Show buffer usage */
 	if (es->buffers && planstate->instrument)
@@ -3937,13 +3945,15 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 						double estimated_num_nexts, double estimated_num_seeks,
+						bool yb_is_agg_pushdown,
 						ExplainState *es)
 {
 	const char *indexname = explain_get_index_name(indexid);
 
 	if (es->format == EXPLAIN_FORMAT_TEXT)
 	{
-		if (ScanDirectionIsBackward(indexorderdir))
+		/* YB: index aggregate pushdown does not actually set any ordering. */
+		if (ScanDirectionIsBackward(indexorderdir) && !yb_is_agg_pushdown)
 			appendStringInfoString(es->str, " Backward");
 		appendStringInfo(es->str, " using %s", indexname);
 	}
