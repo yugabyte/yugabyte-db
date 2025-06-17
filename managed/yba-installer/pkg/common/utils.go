@@ -389,6 +389,10 @@ func InitViper() {
 	viper.SetDefault("service_username", DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 
+	viper.SetDefault("prometheus.remoteWrite.enabled", false)
+	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.yugabyte.scheme", "http")
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))
