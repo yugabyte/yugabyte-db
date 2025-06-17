@@ -56,7 +56,7 @@ pub fn current_context<'curr, F, T>(f: F) -> T
 where
     F: for<'clos> FnOnce(&'clos MemCx<'curr>) -> T,
 {
-    let memcx = unsafe { MemCx::from_ptr(pg_sys::CurrentMemoryContext) };
+    let memcx = unsafe { MemCx::from_ptr(pg_sys::YbCurrentMemoryContext) };
 
     f(&memcx)
 }

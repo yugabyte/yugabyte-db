@@ -11,6 +11,7 @@ DIRS = \
 	pg_partman \
 	wal2json \
 	pgtap \
+	pg_parquet \
 
 ifneq ($(findstring YB_ENABLE_YSQL_DOCUMENTDB_EXT, $(CXXFLAGS)),)
 	DIRS += documentdb

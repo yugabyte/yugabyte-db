@@ -210,6 +210,9 @@ mod internal {
                 build_callback,
                 build_callback_state as *mut std::os::raw::c_void,
                 std::ptr::null_mut(),
+                std::ptr::null_mut() /* bfinfo */,
+                std::ptr::null_mut() /* bfresult */,
+                None /* ybcallback */,
             );
         }
     }

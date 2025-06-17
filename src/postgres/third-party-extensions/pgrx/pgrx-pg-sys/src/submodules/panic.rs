@@ -399,7 +399,7 @@ where
                 fn pg_re_throw() -> !;
             }
             unsafe {
-                crate::CurrentMemoryContext = crate::ErrorContext;
+                crate::YbCurrentMemoryContext = crate::ErrorContext;
                 pg_re_throw()
             }
         }
