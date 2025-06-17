@@ -87,6 +87,8 @@ Create a role and a database user, and provide the user with READ access to all 
 
        **For Oracle RDS**
 
+       **Note** that the following step assumes you're using SQL*Plus or a compatible Oracle client that supports `EXEC`. If your client doesn't support `EXEC`, use the standard SQL CALL syntax instead.
+
        ```sql
        exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
        ```

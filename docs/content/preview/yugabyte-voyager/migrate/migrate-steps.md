@@ -582,8 +582,8 @@ yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
 
 Refer to [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) for more information.
 
-{{< note title ="Deprecated flags" >}}
-The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+{{< note title ="Note" >}}
+The `import schema --post-snapshot-import` command is deprecated. Use [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) instead.
 {{< /note >}}
 
 ### Verify migration

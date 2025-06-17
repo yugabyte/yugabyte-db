@@ -175,6 +175,8 @@ Create a new database user, and assign the necessary user permissions.
 
   {{% tab header="RDS Oracle" %}}
 
+**Note** that the following steps assume you're using SQL*Plus or a compatible Oracle client that supports `EXEC`. If your client doesn't support `EXEC`, use the standard SQL CALL syntax instead.
+
 1. Ensure that your database log_mode is `archivelog` as follows:
 
     ```sql
@@ -1094,8 +1096,8 @@ yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
     {{< /tabpane >}}
 
 
-    {{< note title ="Deprecated flags" >}}
-The `--post-snapshot-import` and `--refresh-mviews` flags of the `import schema` command are deprecated. If you prefer to continue using these flags instead of the `finalize-schema-post-data-import` command, refer to the `import schema` [example](../../reference/schema-migration/import-schema/#examples).
+     {{< note title ="Note" >}}
+The `import schema --post-snapshot-import` command is deprecated. Use [finalize-schema-post-data-import](../../reference/schema-migration/finalize-schema-post-data-import/) instead.
     {{< /note >}}
 
 ### Verify migration
