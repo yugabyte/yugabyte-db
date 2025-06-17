@@ -113,6 +113,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(
           Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
+      cluster_->tablet_server(i)->mutable_flags()->push_back("--log_ysql_catalog_versions=true");
       for (const auto& flag : extra_tserver_flags) {
         cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
       }
