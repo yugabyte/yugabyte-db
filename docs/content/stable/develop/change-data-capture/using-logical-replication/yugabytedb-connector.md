@@ -1093,19 +1093,15 @@ YugabyteDB connector events are designed to work with [Kafka log compaction](htt
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the YugabyteDB connector follows a _delete_ event with a special tombstone event that has the same key but a `null` value.
 
-{{< note title="Usage with YBExtractNewRecordState" >}}
+If the downstream consumer from the topic relies on tombstone events to process deletions and uses the [YBExtractNewRecordState transformer](../transformers/#ybextractnewrecordstate) (SMT), it is recommended to set the `delete.tombstone.handling.mode` SMT configuration property to `tombstone`. This ensures that the connector converts the delete records to tombstone events and drops the tombstone events.
 
-If the downstream consumer from the topic relies on tombstone events to process deletions and uses the SMT `YBExtractNewRecordState`, it is recommended to set the `delete.tombstone.handling.mode` SMT configuration property to `tombstone`. This ensures that the connector converts the delete records to tombstone events and drops the tombstone events.
-
-Note that to set the SMT property, you must follow the SMT configuration conventions and specify the property as per following example:
+To set the property, follow the SMT configuration conventions. For example:
 
 ```json
 "transforms": "flatten",
 "transforms.flatten.type": "io.debezium.connector.postgresql.transforms.yugabytedb.YBExtractNewRecordState",
 "transforms.flatten.delete.tombstone.handling.mode": "tombstone"
 ```
-
-{{< /note >}}
 
 ### Updating or deleting a row inserted in the same transaction
 
