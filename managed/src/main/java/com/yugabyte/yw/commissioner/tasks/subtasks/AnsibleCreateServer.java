@@ -147,6 +147,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
         destroyParams.deleteNode = false;
         destroyParams.deleteRootVolumes = true;
         destroyParams.instanceType = params.instanceType;
+        destroyParams.skipUpdateNodeState = true;
         AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
         task.initialize(destroyParams);
         task.setUserTaskUUID(getUserTaskUUID());
