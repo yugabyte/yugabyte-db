@@ -4421,9 +4421,10 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
 			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
-				 "updating local catalog version from %" PRIu64 " to %" PRIu64,
+				 "updating local catalog version from %" PRIu64 " to %" PRIu64
+				 " for database %u",
 				 message_lists.num_lists,
-				 local_catalog_version, shared_catalog_version);
+				 local_catalog_version, shared_catalog_version, MyDatabaseId);
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
@@ -4440,10 +4441,11 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		/* must have a reason for doing full catalog cache refresh. */
 		Assert(reason > 0);
 	ereport(enable_inval_messages ? LOG : DEBUG1,
-			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d",
+			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d"
+					" for database %u",
 					message_lists.num_lists, local_catalog_version,
 					shared_catalog_version, catalog_master_version,
-					num_catalog_versions, is_retry, reason)));
+					num_catalog_versions, is_retry, reason, MyDatabaseId)));
 	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
 	YBRefreshCache();
 }
