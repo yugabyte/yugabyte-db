@@ -1,6 +1,7 @@
 yb_bin_dir="{{ yb_home_dir }}/bin"
 yb_cores_dir="{{ yb_home_dir }}/cores"
 yb_software_dir="{{ yb_home_dir }}/yb-software"
+yb_releases_dir="{{ yb_home_dir }}/releases"
 
 # Create the bin directory inside the YB HOME directory.
 mkdir -p "$yb_bin_dir"
@@ -11,6 +12,11 @@ chmod 0755 "$yb_bin_dir"
 mkdir -p "$yb_software_dir"
 chown -R {{ yb_user }}:{{ yb_user }} "$yb_software_dir"
 chmod 0755 "$yb_software_dir"
+
+# Create the releases directory inside the YB HOME directory.
+mkdir -p "$yb_releases_dir"
+chown -R {{ yb_user }}:{{ yb_user }} "$yb_releases_dir"
+chmod 0755 "$yb_releases_dir"
 
 # Retrieve the mount_paths.
 mount_points={{ mount_paths }}
