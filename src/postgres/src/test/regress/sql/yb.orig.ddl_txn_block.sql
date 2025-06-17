@@ -205,6 +205,7 @@ SELECT * FROM temp_table_commit_drop;
 COMMIT;
 SELECT * FROM temp_table_commit_drop;
 ANALYZE test1, test2, test3;
+CREATE INDEX test1_idx ON test1(id);
 
 CREATE TABLE sales_data (
     sale_id INT,

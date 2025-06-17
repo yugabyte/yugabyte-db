@@ -535,14 +535,6 @@ Status PgTxnManager::FinishPlainTransaction(
   Status status = client_->FinishTransaction(commit, ddl_mode);
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
-  // GH #22353 - Ideally the reset of the ddl_state_ should happen without the if condition, but
-  // due to the linked bug GH #22353, we are resetting the DDL state only if DDL, DML transaction
-  // unification is enabled and we have a DDL statement within the transaction block. We can enter
-  // this function while executing the ANALYZE command with DDL state set despite of using separate
-  // DDL transactions. We don't want to clear out the DDL state in that case.
-  if (IsDdlModeWithRegularTransactionBlock()) {
-    ddl_state_.reset();
-  }
   return status;
 }
 
@@ -560,6 +552,16 @@ void PgTxnManager::ResetTxnAndSession() {
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
   need_defer_read_point_ = false;
+
+  // GH #22353 - Ideally the reset of the ddl_state_ should happen without the if condition, but
+  // due to the linked bug GH #22353, we are resetting the DDL state only if DDL, DML transaction
+  // unification is enabled and we have a DDL statement within the transaction block.
+  // With transactional DDL disabled, we can enter this function while executing the ANALYZE command
+  // with DDL state set. We don't want to clear out the DDL state in that case.
+  // TODO(#26298): Add unit test with RC isolation level once supported since it can retry DDLs.
+  if (IsDdlModeWithRegularTransactionBlock()) {
+    ddl_state_.reset();
+  }
 }
 
 Status PgTxnManager::SetDdlStateInPlainTransaction() {

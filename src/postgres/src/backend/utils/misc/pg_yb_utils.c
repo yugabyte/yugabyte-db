@@ -4113,7 +4113,7 @@ void
 YbInvalidateTableCacheForAlteredTables()
 {
 	if ((YbDdlRollbackEnabled() ||
-		 YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) &&
+		 *YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) &&
 		ddl_transaction_state.altered_table_ids)
 	{
 		/*
