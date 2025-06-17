@@ -1605,18 +1605,18 @@ Ensure that the index on the timestamp column is configured to be range-sharded.
 An example schema on the source database is as follows:
 
 ```sql
-CREATE TABLE orders (
-   order_id int,
+CREATE TABLE event_log (
+   event_type text,
    ...
-   created_at timestamp,
-   PRIMARY KEY (created_at DESC)
+   event_logged_at timestamp,
+   PRIMARY KEY (event_logged_at DESC)
 );
 ```
 
 And a related read query might look like the following:
 
 ```sql
-SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '1 month'; -- fetch orders going back one month
+SELECT * FROM event_log WHERE event_logged_at >= NOW() - INTERVAL '1 month'; -- fetch event activity of last one month
 ```
 
 Suggested change to the schema is to add a column `shard_id` to the table that will have a default value in a fixed range (for example, 0-15), and then use this column as the sharding key in the constraint. This can change depending on the use case. This key will be used to distribute the data evenly among various tablets.
@@ -1624,16 +1624,16 @@ Suggested change to the schema is to add a column `shard_id` to the table that w
 In addition, modify range queries to include the `shard_id` value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
 
 ```sql
-CREATE TABLE orders (
-   order_id int,
+CREATE TABLE event_log (
+   event_type text,
    shard_id int DEFAULT (floor(random() * 100)::int % 16),
    ...
-   created_at timestamp,
-   PRIMARY KEY (shard_id HASH, created_at DESC)
+   event_logged_at timestamp,
+   PRIMARY KEY (shard_id HASH, event_logged_at DESC)
 
 );
 
-SELECT * FROM orders WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- for fetching orders of last one month
+SELECT * FROM event_log WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND event_logged_at >= NOW() - INTERVAL '1 month'; -- fetch event activity of last one month
 ```
 
 ### Redundant indexes
