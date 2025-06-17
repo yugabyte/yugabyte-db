@@ -439,11 +439,11 @@ You can customize this tradeoff to control preloading of entries into PostgreSQL
 
 ### Default behavior
 
-By default, no preloading occurs, except right after a schema change.
+By default, YSQL backends do not preload any catalog entries, except right after a schema change (DDL).
 
-On most schema changes (DDLs), running backends discard their catalog cache , and are then refreshed from either the YB-Master leader or an intermediate response cache on the local YB-TServer. This refresh causes a latency hit on running queries while they wait for this process to complete. There is also a memory increase because the cache is now preloaded with all rows of these catalog tables (as opposed to just the actively used entries that it had before).
+On most schema changes, running backends discard their catalog cache, and are then refreshed from either the YB-Master leader or an intermediate response cache on the local YB-TServer. This refresh causes a latency hit on running queries while they wait for this process to complete. There is also a memory increase because the cache is now preloaded with all rows of these catalog tables (as opposed to just the actively used entries that it had before).
 
-## Problem scenarios and recommendations 
+## Problem scenarios and recommendations
 
 The following are some scenarios where you may want to tweak the catalog cache preloading behavior.
 
@@ -458,8 +458,8 @@ To confirm that catalog caching is the cause of this initial latency, see [Confi
 
 **Possible solutions**
 
-- Set up [Connection pooling](#connection-pooling) to reuse existing connections.
-- [Preload additional system tables](#preload-additional-system-tables)
+- [Use connection pooling](#connection-pooling) to reuse existing connections.
+- [Preload additional system tables](#preload-additional-system-tables).
 
 ### High CPU load on YB-Master leader
 
@@ -469,8 +469,8 @@ To confirm that catalog caching is the cause of this, see [Confirm that catalog 
 
 **Possible solutions**
 
-- [Connection pooling](#connection-pooling)
-- [Preload additional system tables](#preload-additional-system-tables)
+- [Use connection pooling](#connection-pooling) to reuse existing connections.
+- [Preload additional system tables](#preload-additional-system-tables).
 
 ### Memory spikes on PostgreSQL backends or out of memory (OOM) events
 
@@ -480,11 +480,11 @@ To confirm that catalog caching is the cause of this, correlate the time when DD
 
 **Possible solution**
 
-- [Minimal catalog cache preloading](#minimal-catalog-cache-preloading)
+- [Minimal catalog cache preloading](#minimal-catalog-cache-preloading).
 
-## Solutions
+## Solution details
 
-### Connection pooling {#connection-pooling}
+### Use connection pooling {#connection-pooling}
 
 When there is significant connection churn, the warm up of catalog caches on each new connection can cause high initial client latency and CPU load on the YB-Master leader process. Connection pooling allows better reuse of connections across different queries, so more queries should land on a backend with a warm cache.
 
@@ -525,9 +525,7 @@ When enabled, only a small subset of the catalog cache entries is preloaded. Thi
 
 To enable minimal catalog cache preloading, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_minimal_catalog_caches_preload=true`.
 
-## Details
-
-### Confirm catalog cache misses are a root cause of latency / load {#confirm-catalog-cache-misses-root-cause-of-latency}
+## Confirm catalog cache misses are a root cause of latency / load {#confirm-catalog-cache-misses-root-cause-of-latency}
 
 To confirm that catalog cache misses are a cause of latency or load, use the following techniques:
 
@@ -541,7 +539,7 @@ To confirm that catalog cache misses are a cause of latency or load, use the fol
 
 4. [Manually collect logs](#manually-collecting-logs-for-catalog-reads).
 
-### Identify specific tables to be preloaded {#identify-the-specific-tables-to-be-preloaded}
+## Identify specific tables to be preloaded {#identify-the-specific-tables-to-be-preloaded}
 
 From the [Catalog Cache Misses](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/#ysql-ops-and-latency:~:text=on%20other%20metrics.-,Catalog%20Cache%20Misses,-During%20YSQL%20query) metrics dashboard, identify the PostgreSQL catalog table names that are causing the highest misses.
 
@@ -549,7 +547,7 @@ You can do this manually or by using the Outlier Tables view on the dashboard. A
 
 If there are still a significant number of misses to these tables after preloading them, [manually collect logs](#manually-collecting-logs-for-catalog-reads) and share them with Yugabyte Support.
 
-### Manually collect logs for catalog reads {#manually-collecting-logs-for-catalog-reads}
+## Manually collect logs for catalog reads {#manually-collecting-logs-for-catalog-reads}
 
 If the catalog reads can be traced to a specific query, set the following configuration parameters and run [EXPLAIN (ANALYZE, DIST) \<query\>](../../explore/query-1-performance/explain-analyze/#:~:text=Distributed%20Storage%20Counters):
 
