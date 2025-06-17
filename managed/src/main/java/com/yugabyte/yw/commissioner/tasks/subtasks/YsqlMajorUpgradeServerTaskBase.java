@@ -5,6 +5,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.FinalizeYsqlMajorCatalogUpgradeResponse;
@@ -58,7 +60,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected void startYsqlMajorCatalogUpgrade() throws Exception {
-    try (YBClient client = getClient()) {
+    try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
       StartYsqlMajorCatalogUpgradeResponse resp = client.startYsqlMajorCatalogUpgrade();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();
@@ -79,7 +81,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
           attempts,
           maxAttempts);
       waitFor(Duration.ofSeconds(DELAY_BETWEEN_ATTEMPTS_SEC));
-      try (YBClient client = getClient()) {
+      try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
         IsYsqlMajorCatalogUpgradeDoneResponse resp = client.isYsqlMajorCatalogUpgradeDone();
         if (resp.hasError()) {
           MasterErrorPB errorPB = resp.getServerError();
@@ -98,7 +100,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState() throws Exception {
-    try (YBClient client = getClient()) {
+    try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
       GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();
@@ -111,7 +113,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected void rollbackYsqlMajorCatalogVersion() throws Exception {
-    try (YBClient client = getClient()) {
+    try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
       RollbackYsqlMajorCatalogVersionResponse resp = client.rollbackYsqlMajorCatalogVersion();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();
@@ -124,7 +126,7 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
   }
 
   protected void finalizeYsqlMajorCatalogUpgrade() throws Exception {
-    try (YBClient client = getClient()) {
+    try (YBClient client = getClient(getAdminOperationTimeoutMs())) {
       FinalizeYsqlMajorCatalogUpgradeResponse resp = client.finalizeYsqlMajorCatalogUpgrade();
       if (resp.hasError()) {
         MasterErrorPB errorPB = resp.getServerError();
@@ -137,5 +139,13 @@ public abstract class YsqlMajorUpgradeServerTaskBase extends ServerSubTaskBase {
       throw new RuntimeException(e);
     }
     log.debug("Successfully finalized YSQL major version catalog upgrade");
+  }
+
+  private long getAdminOperationTimeoutMs() {
+    long adminOperationTimeoutMs =
+        confGetter.getConfForScope(
+            Universe.getOrBadRequest(taskParams().getUniverseUUID()),
+            UniverseConfKeys.catalogUpgradeAdminOpsTimeoutMs);
+    return Math.max(60000L, adminOperationTimeoutMs);
   }
 }
