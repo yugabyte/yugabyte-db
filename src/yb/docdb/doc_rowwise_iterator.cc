@@ -153,6 +153,10 @@ void DocRowwiseIterator::InitResult() {
   }
 }
 
+void DocRowwiseIterator::Refresh() {
+  done_ = false;
+}
+
 inline void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
 

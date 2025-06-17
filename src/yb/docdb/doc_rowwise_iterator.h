@@ -79,6 +79,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   void Seek(Slice key) override;
 
+  void Refresh();
+
   HybridTime TEST_MaxSeenHt() override;
 
   // key slice should point to block of memory, that contains kHighest after the end.
