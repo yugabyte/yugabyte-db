@@ -1686,4 +1686,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Whether to check if correct Transparent Huge Pages settings are applied",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> catalogUpgradeAdminOpsTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.catalog_upgrade_admin_ops_timeout_ms",
+          ScopeType.UNIVERSE,
+          "Timeout for catalog upgrade admin operations",
+          "Timeout for catalog upgrade admin operations in milliseconds",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
