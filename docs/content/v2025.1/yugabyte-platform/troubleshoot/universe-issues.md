@@ -112,7 +112,7 @@ You can create a support bundle as follows:
 
 1. Select the date range and the types of files to be included in the bundle, as per the following illustration:
 
-    ![Create support bundle](/images/yp/support-bundle-2.png)
+    ![Create support bundle](/images/yp/support-bundle-4.png)
 
     For information about the components, see [Support bundle components](#support-bundle-components).
 
