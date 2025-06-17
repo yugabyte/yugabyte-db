@@ -116,4 +116,4 @@ The following libraries are officially supported by YugabyteDB.
 ## Read more
 
 - [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/)
-- [Cassandra Query Language (CQL)](https://cassandra.apache.org/doc/latest/cassandra/cql/index.html)
+- [Cassandra Query Language (CQL)](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/index.html)

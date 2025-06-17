@@ -30,7 +30,6 @@ If you want to set pgaudit.log_level to a [severity level](https://www.postgresq
 
 ## Limitations
 
-- Kubernetes universes are not supported.
 - Only YSQL database audit logs can be exported, not YCQL.
 
 ## Best practices

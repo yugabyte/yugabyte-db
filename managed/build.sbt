@@ -98,9 +98,9 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
 lazy val generateOssConfig = taskKey[Int]("Generating OSS class.")
-lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
+lazy val testDependentArtifacts = taskKey[Int]("Test dependent artifacts")
 lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
 lazy val devSpaceReload = taskKey[Int]("Do a build without UI for DevSpace and reload")
 
@@ -351,7 +351,7 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
-(Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
+(Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts, testDependentArtifacts).value
 
 (Compile / compilePlatform) := {
   Def.sequential(
@@ -416,8 +416,14 @@ buildVenv := {
   }
 }
 
+testDependentArtifacts := {
+  ybLog("Testing modules...")
+  val status = Process("mvn test", baseDirectory.value / "parent-module").!
+  status
+}
+
 releaseModulesLocally := {
-  ybLog("Building modules...")
+  ybLog("Releasing modules...")
   val status = Process("mvn install -DskipTests=true -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
