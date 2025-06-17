@@ -12,7 +12,419 @@ menu:
 type: docs
 ---
 
-Many common PostgreSQL operations, such as parsing a query, planning, and so on, require looking up entries in PostgreSQL system catalog tables, including pg_class, pg_operator, pg_statistic, and pg_attribute, for PostgreSQL metadata for the columns, operators, and more. (For example, see this [output](https://gist.githubusercontent.com/iSignal/5b6f8480d9d8900ec6ebb777b9111248/raw/8be2e81f20ba8c1eab020cb188720dea72ca6a77/96%2520catalog%2520cache%2520misses%2520for%2520a%2520query).)
+Many common PostgreSQL operations, such as parsing a query, planning, and so on, require looking up entries in PostgreSQL system catalog tables, including pg_class, pg_operator, pg_statistic, and pg_attribute, for PostgreSQL metadata for the columns, operators, and more.
+
+For example, the following shows the logging output for a SELECT statement with catalog caching output enabled.
+
+<details>
+  <summary>Catalog caching log output</summary>
+
+```sql
+SET yb_debug_log_catcache_events=1;
+SET client_min_messages=LOG;
+SELECT distinct key, count(*) FROM part_par GROUP BY KEY;
+```
+
+```output.yaml
+LOG:  catalog cache miss on cache with id 35:
+target rel: pg_namespace (oid : 2615), index oid 2684
+search keys: yugabyte
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                           ^
+LOG:  catalog cache miss on cache with id 35:
+target rel: pg_namespace (oid : 2615), index oid 2684
+search keys: public
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                           ^
+LOG:  catalog cache miss on cache with id 54:
+target rel: pg_class (oid : 1259), index oid 2663
+search keys: part_par, 11
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                           ^
+LOG:  catalog cache miss on cache with id 54:
+target rel: pg_class (oid : 1259), index oid 2663
+search keys: part_par, 2200
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                           ^
+LOG:  catalog cache miss on cache with id 2:
+target rel: pg_am (oid : 2601), index oid 2652
+search keys: 2
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                           ^
+LOG:  catalog cache miss on cache with id 45:
+target rel: pg_proc (oid : 1255), index oid 2690
+search keys: 2803
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 0:
+target rel: pg_aggregate (oid : 2600), index oid 2650
+search keys: pg_catalog.count
+LOG:  catalog cache miss on cache with id 80:
+target rel: pg_type (oid : 1247), index oid 2703
+search keys: 23
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 2277
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 1560
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 16
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 1042
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 17
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 18
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 1082
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 3500
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 700
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 701
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 869
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 21
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 14:
+target rel: pg_opclass (oid : 2616), index oid 2687
+search keys: 9942
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 1033
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 23, 29
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 14:
+target rel: pg_opclass (oid : 2616), index oid 2687
+search keys: 10020
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 9912, 23, 23, 3
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 9912, 23, 23, 1
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 9912, 23, 23, 5
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 1977, 23, 23, 1
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 5:
+target rel: pg_amproc (oid : 2603), index oid 2655
+search keys: 1977, 23, 23, 1
+LINE 1: select distinct key, count(*) from part_par group by key;
+                                                             ^
+LOG:  catalog cache miss on cache with id 80:
+target rel: pg_type (oid : 1247), index oid 2703
+search keys: 20
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 2277
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 1560
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 16
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 1042
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 17
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 18
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 1082
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 3500
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 700
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 701
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 869
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 21
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 23
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 14:
+target rel: pg_opclass (oid : 2616), index oid 2687
+search keys: 9943
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 1033
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 12:
+target rel: pg_cast (oid : 2605), index oid 2661
+search keys: 20, 29
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 14:
+target rel: pg_opclass (oid : 2616), index oid 2687
+search keys: 10021
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 9912, 20, 20, 3
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 9912, 20, 20, 1
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 9912, 20, 20, 5
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 1977, 20, 20, 1
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 5:
+target rel: pg_amproc (oid : 2603), index oid 2655
+search keys: 1977, 20, 20, 1
+LINE 1: select distinct key, count(*) from part_par group by key;
+                             ^
+LOG:  catalog cache miss on cache with id 55:
+target rel: pg_class (oid : 1259), index oid 2662
+search keys: 16907
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 3379
+LOG:  catalog cache miss on cache with id 2:
+target rel: pg_am (oid : 2601), index oid 2652
+search keys: 9900
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 3379, 1
+LOG:  catalog cache miss on cache with id 43:
+target rel: pg_partitioned_table (oid : 3350), index oid 3351
+search keys: 16907
+LOG:  catalog cache miss on cache with id 5:
+target rel: pg_amproc (oid : 2603), index oid 2655
+search keys: 9912, 23, 23, 1
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 2187
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 2187, 1
+LOG:  catalog cache miss on cache with id 55:
+target rel: pg_class (oid : 1259), index oid 2662
+search keys: 16912
+LOG:  catalog cache miss on cache with id 55:
+target rel: pg_class (oid : 1259), index oid 2662
+search keys: 16917
+LOG:  catalog cache miss on cache with id 55:
+target rel: pg_class (oid : 1259), index oid 2662
+search keys: 16922
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 1976, 23, 23, 3
+LOG:  catalog cache miss on cache with id 4:
+target rel: pg_amop (oid : 2602), index oid 2653
+search keys: 1976, 20, 20, 3
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 2678
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 2678, 1
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16915
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16915, 1
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16915, 2
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16916
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16916, 1
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16928
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16928, 1
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16928, 2
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16920
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16920, 1
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16920, 2
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16921
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16921, 1
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16929
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16929, 1
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16929, 2
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16925
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16925, 1
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16925, 2
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16926
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16926, 1
+LOG:  catalog cache miss on cache with id 32:
+target rel: pg_index (oid : 2610), index oid 2679
+search keys: 16930
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16930, 1
+LOG:  catalog cache miss on cache with id 7:
+target rel: pg_attribute (oid : 1249), index oid 2659
+search keys: 16930, 2
+LOG:  catalog cache miss on cache with id 67:
+target rel: pg_tablespace (oid : 1213), index oid 2697
+search keys: 1663
+LOG:  catalog cache miss on cache with id 45:
+target rel: pg_proc (oid : 1255), index oid 2690
+search keys: 1219
+LOG:  catalog cache miss on cache with id 63:
+target rel: pg_statistic (oid : 2619), index oid 2696
+search keys: 16907, 2, t
+LOG:  catalog cache miss on cache with id 38:
+target rel: pg_operator (oid : 2617), index oid 2688
+search keys: 96
+LOG:  catalog cache miss on cache with id 38:
+target rel: pg_operator (oid : 2617), index oid 2688
+search keys: 410
+ key | count
+-----+-------
+   1 |     1
+  11 |     1
+```
+
+</details>
+
+&nbsp;
 
 Each PostgreSQL backend (process) caches such metadata for performance reasons. In YugabyteDB, misses on these caches need to be loaded from the YB-Master leader. As a result, initial queries on that backend can be slow until these caches are warm, especially if the YB-Master leader is in a different region.
 
@@ -20,24 +432,24 @@ Each PostgreSQL backend (process) caches such metadata for performance reasons. 
 
 There is a tradeoff between:
 
-- Latency of loading these entries from a remote YB-Master; and
+- Latency of loading these catalog entries from a remote YB-Master; and
 - Memory cost of prepopulating entries ahead of time.
 
 You can customize this tradeoff to control preloading of entries into PostgreSQL caches.
 
 ### Default behavior
 
-By default, no preloading occurs, except right after a schema change.
+By default, YSQL backends do not preload any catalog entries, except right after a schema change (DDL).
 
-On most schema changes (DDLs), these caches are completely discarded on running backends, and are then refreshed from either the YB-Master leader or an intermediate response cache on the local YB-TServer. This refresh causes a latency hit on running queries while they wait for this process to complete. There is also a memory increase because the cache is now preloaded with all rows of these catalog tables (as opposed to just the actively used entries that it had before).
+On most schema changes, running backends discard their catalog cache, and are then refreshed from either the YB-Master leader or an intermediate response cache on the local YB-TServer. This refresh causes a latency hit on running queries while they wait for this process to complete. There is also a memory increase because the cache is now preloaded with all rows of these catalog tables (as opposed to just the actively used entries that it had before).
 
-## Problem scenarios
+## Problem scenarios and recommendations
 
 The following are some scenarios where you may want to tweak the catalog cache preloading behavior.
 
 ### Initial queries on a new connection are slow
 
-Initial queries on new connections may be slightly slower until the PostgreSQL catalog cache is warmed up. This effet may be particularly significant in two cases:
+Initial queries on new connections may be slightly slower until the PostgreSQL catalog cache is warmed up. This effect may be particularly significant in two cases:
 
 1. Multi-region clusters (where the master leader is far away from the PostgreSQL backend).
 1. High connection churn. That is, when the client does not use a steady pool of connections.
@@ -46,8 +458,8 @@ To confirm that catalog caching is the cause of this initial latency, see [Confi
 
 **Possible solutions**
 
-- [Connection pooling](#connection-pooling)
-- [Preload additional system tables](#preload-additional-system-tables)
+- [Use connection pooling](#connection-pooling) to reuse existing connections.
+- [Preload additional system tables](#preload-additional-system-tables).
 
 ### High CPU load on YB-Master leader
 
@@ -57,8 +469,8 @@ To confirm that catalog caching is the cause of this, see [Confirm that catalog 
 
 **Possible solutions**
 
-- [Connection pooling](#connection-pooling)
-- [Preload additional system tables](#preload-additional-system-tables)
+- [Use connection pooling](#connection-pooling) to reuse existing connections.
+- [Preload additional system tables](#preload-additional-system-tables).
 
 ### Memory spikes on PostgreSQL backends or out of memory (OOM) events
 
@@ -68,19 +480,19 @@ To confirm that catalog caching is the cause of this, correlate the time when DD
 
 **Possible solution**
 
-- [Minimal catalog cache preloading](#minimal-catalog-cache-preloading)
+- [Minimal catalog cache preloading](#minimal-catalog-cache-preloading).
 
-## Solutions
+## Solution details
 
-### Connection pooling {#connection-pooling}
+### Use connection pooling {#connection-pooling}
 
 When there is significant connection churn, the warm up of catalog caches on each new connection can cause high initial client latency and CPU load on the YB-Master leader process. Connection pooling allows better reuse of connections across different queries, so more queries should land on a backend with a warm cache.
 
 To set up connection pooling, explore the following approaches:
 
-1. [Server-side connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/) using YSQL Connection Manager (Early Access in v2024.2).
-2. [Client-side connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
-3. [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like PgBouncer and Odyssey.
+- [Server-side connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/) using YSQL Connection Manager ({{<tags/feature/ea idea="1368">}} in v2024.2).
+- [Client-side connection pooling](../../drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
+- [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like PgBouncer and Odyssey.
 
 ### Preload additional system tables {#preload-additional-system-tables}
 
@@ -113,9 +525,7 @@ When enabled, only a small subset of the catalog cache entries is preloaded. Thi
 
 To enable minimal catalog cache preloading, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_minimal_catalog_caches_preload=true`.
 
-## Details
-
-### Confirm catalog cache misses are a root cause of latency / load {#confirm-catalog-cache-misses-root-cause-of-latency}
+## Confirm catalog cache misses are a root cause of latency / load {#confirm-catalog-cache-misses-root-cause-of-latency}
 
 To confirm that catalog cache misses are a cause of latency or load, use the following techniques:
 
@@ -129,7 +539,7 @@ To confirm that catalog cache misses are a cause of latency or load, use the fol
 
 4. [Manually collect logs](#manually-collecting-logs-for-catalog-reads).
 
-### Identify specific tables to be preloaded {#identify-the-specific-tables-to-be-preloaded}
+## Identify specific tables to be preloaded {#identify-the-specific-tables-to-be-preloaded}
 
 From the [Catalog Cache Misses](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/#ysql-ops-and-latency:~:text=on%20other%20metrics.-,Catalog%20Cache%20Misses,-During%20YSQL%20query) metrics dashboard, identify the PostgreSQL catalog table names that are causing the highest misses.
 
@@ -137,7 +547,7 @@ You can do this manually or by using the Outlier Tables view on the dashboard. A
 
 If there are still a significant number of misses to these tables after preloading them, [manually collect logs](#manually-collecting-logs-for-catalog-reads) and share them with Yugabyte Support.
 
-### Manually collect logs for catalog reads {#manually-collecting-logs-for-catalog-reads}
+## Manually collect logs for catalog reads {#manually-collecting-logs-for-catalog-reads}
 
 If the catalog reads can be traced to a specific query, set the following configuration parameters and run [EXPLAIN (ANALYZE, DIST) \<query\>](../../explore/query-1-performance/explain-analyze/#:~:text=Distributed%20Storage%20Counters):
 
