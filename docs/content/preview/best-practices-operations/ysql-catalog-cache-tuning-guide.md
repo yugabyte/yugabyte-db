@@ -432,7 +432,7 @@ Each PostgreSQL backend (process) caches such metadata for performance reasons. 
 
 There is a tradeoff between:
 
-- Latency of loading these entries from a remote YB-Master; and
+- Latency of loading these catalog entries from a remote YB-Master; and
 - Memory cost of prepopulating entries ahead of time.
 
 You can customize this tradeoff to control preloading of entries into PostgreSQL caches.
@@ -441,15 +441,15 @@ You can customize this tradeoff to control preloading of entries into PostgreSQL
 
 By default, no preloading occurs, except right after a schema change.
 
-On most schema changes (DDLs), these caches are completely discarded on running backends, and are then refreshed from either the YB-Master leader or an intermediate response cache on the local YB-TServer. This refresh causes a latency hit on running queries while they wait for this process to complete. There is also a memory increase because the cache is now preloaded with all rows of these catalog tables (as opposed to just the actively used entries that it had before).
+On most schema changes (DDLs), running backends discard their catalog cache , and are then refreshed from either the YB-Master leader or an intermediate response cache on the local YB-TServer. This refresh causes a latency hit on running queries while they wait for this process to complete. There is also a memory increase because the cache is now preloaded with all rows of these catalog tables (as opposed to just the actively used entries that it had before).
 
-## Problem scenarios
+## Problem scenarios and recommendations 
 
 The following are some scenarios where you may want to tweak the catalog cache preloading behavior.
 
 ### Initial queries on a new connection are slow
 
-Initial queries on new connections may be slightly slower until the PostgreSQL catalog cache is warmed up. This effet may be particularly significant in two cases:
+Initial queries on new connections may be slightly slower until the PostgreSQL catalog cache is warmed up. This effect may be particularly significant in two cases:
 
 1. Multi-region clusters (where the master leader is far away from the PostgreSQL backend).
 1. High connection churn. That is, when the client does not use a steady pool of connections.
@@ -458,7 +458,7 @@ To confirm that catalog caching is the cause of this initial latency, see [Confi
 
 **Possible solutions**
 
-- [Connection pooling](#connection-pooling)
+- Set up [Connection pooling](#connection-pooling) to reuse existing connections.
 - [Preload additional system tables](#preload-additional-system-tables)
 
 ### High CPU load on YB-Master leader
@@ -490,9 +490,9 @@ When there is significant connection churn, the warm up of catalog caches on eac
 
 To set up connection pooling, explore the following approaches:
 
-1. [Server-side connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/) using YSQL Connection Manager (Early Access in v2024.2).
-2. [Client-side connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
-3. [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like PgBouncer and Odyssey.
+- [Server-side connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/) using YSQL Connection Manager (Early Access in `v2024.2`).
+- [Client-side connection pooling](../../drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
+- [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like PgBouncer and Odyssey.
 
 ### Preload additional system tables {#preload-additional-system-tables}
 
