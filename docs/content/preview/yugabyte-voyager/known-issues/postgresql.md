@@ -420,7 +420,7 @@ ERROR: Transaction for catalog table write operation 'pg_largeobject_metadata' n
 An example schema on the source database is as follows:
 
 ```sql
-CREATE TABLE image (id int, raster lo); 
+CREATE TABLE image (id int, raster lo);
 
 CREATE TRIGGER t_raster BEFORE UPDATE OR DELETE ON public.image
     FOR EACH ROW EXECUTE FUNCTION lo_manage(raster);
@@ -622,7 +622,7 @@ BEGIN
     INSERT INTO customer_account (customer_id, balance)
     SELECT customer_id, transaction_value
     FROM recent_transactions
-    ON CONFLICT (customer_id) 
+    ON CONFLICT (customer_id)
     DO UPDATE
     SET balance = customer_account.balance + EXCLUDED.balance;
 END;
@@ -909,18 +909,18 @@ yugabyte=*# CREATE TABLE test(id int, val text);
 CREATE TABLE
 yugabyte=*# \d test
                 Table "public.test"
- Column |  Type   | Collation | Nullable | Default 
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- id     | integer |           |          | 
- val    | text    |           |          | 
+ id     | integer |           |          |
+ val    | text    |           |          |
 yugabyte=*# ROLLBACK;
 ROLLBACK
 yugabyte=# \d test
                 Table "public.test"
- Column |  Type   | Collation | Nullable | Default 
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- id     | integer |           |          | 
- val    | text    |           |          | 
+ id     | integer |           |          |
+ val    | text    |           |          |
 ```
 
 ---
@@ -1511,7 +1511,7 @@ CREATE OR REPLACE VIEW public.v1 AS
 
 ### Hash-sharding with indexes on the timestamp/date columns
 
-**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)  
+**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
 **Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, indexes in YugabyteDB are hash-sharded by default, which is not optimal for range predicates, and can impact query performance.
 
 Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../develop/postgresql-compatibility/) in YugabyteDB.
@@ -1545,6 +1545,8 @@ CREATE INDEX idx_orders_created ON orders(created_at DESC);
 **Description**: Range-sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, due to the way these values increment. For example, take a column of values `created_at timestamp`. As new values are inserted, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. Then, after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
 
 Note that if the table is colocated, this hotspot concern can safely be ignored, as all the data resides on a single tablet, and the distribution is no longer relevant.
+
+#### For secondary indexes
 
 **Workaround**:
 
@@ -1588,7 +1590,51 @@ CREATE INDEX idx_orders_created ON orders( (yb_hash_code(created_at) % 16) HASH,
 SELECT * FROM orders WHERE yb_hash_code(created_at) % 16 IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND created_at >= NOW() - INTERVAL '1 month'; -- fetch orders for the previous month
 ```
 
----
+#### For primary key or unique key constraints
+
+**Workaround**:
+
+To address this issue and improve query performance, the recommendation is to change the sharding key to a value that is well distributed among all nodes while keeping the timestamp column as the clustering key. Add a new column to the table that acts as the sharding key; the column value will be in some fixed range, which is then used to distribute data using a hash-based strategy, effectively spreading the load across multiple nodes.
+
+To fully implement this solution also requires minor adjustments to queries. In addition to range conditions on the timestamp/date column, include the new sharding key values in the query filters to benefit from distributed execution.
+
+Ensure that the index on the timestamp column is configured to be range-sharded.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE event_log (
+   event_type text,
+   ...
+   event_logged_at timestamp,
+   PRIMARY KEY (event_logged_at DESC)
+);
+```
+
+And a related read query might look like the following:
+
+```sql
+SELECT * FROM event_log WHERE event_logged_at >= NOW() - INTERVAL '1 month'; -- fetch event activity of last one month
+```
+
+Suggested change to the schema is to add a column `shard_id` to the table that will have a default value in a fixed range (for example, 0-15), and then use this column as the sharding key in the constraint. This can change depending on the use case. This key will be used to distribute the data evenly among various tablets.
+
+In addition, modify range queries to include the `shard_id` value to be in the range in the filter to help the optimizer. In this example, you specify the modulo of the hash of the timestamp column value in the IN clause.
+
+```sql
+CREATE TABLE event_log (
+   event_type text,
+   shard_id int DEFAULT (floor(random() * 100)::int % 16),
+   ...
+   event_logged_at timestamp,
+   PRIMARY KEY (shard_id HASH, event_logged_at DESC)
+
+);
+
+SELECT * FROM event_log WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND event_logged_at >= NOW() - INTERVAL '1 month'; -- fetch event activity of last one month
+```
 
 ### Redundant indexes
 
@@ -1658,9 +1704,9 @@ CREATE TABLE orders (
     status order_statuses
 );
 
-CREATE INDEX idx_order_status on orders (status); --single column index on column having only 5 values 
+CREATE INDEX idx_order_status on orders (status); --single column index on column having only 5 values
 
-CREATE INDEX idx_order_status_order_id on orders (status, order_id); --multi column index on first column with only 5 values 
+CREATE INDEX idx_order_status_order_id on orders (status, order_id); --multi column index on first column with only 5 values
 ```
 
 Since the number of distinct values of the column `status` is 5, there will be a maximum of 5 tablets created, limiting the scalability.
@@ -1674,16 +1720,16 @@ Make it a multi-column range-index:
 
 CREATE INDEX idx_order_status on orders(status ASC, order_id); --adding order_id and making it a range-sharded index explictly
 
-CREATE INDEX idx_order_status_order_id on orders (status ASC, order_id); --making it a range-sharded index explictly 
+CREATE INDEX idx_order_status_order_id on orders (status ASC, order_id); --making it a range-sharded index explictly
 ```
 
 
 Make it multi-column with a sharding key on a high-cardinality column:
 
 ```sql
---these indexes will distribute the data on order_id first and then each shard is clustered on status  
+--these indexes will distribute the data on order_id first and then each shard is clustered on status
 
-CREATE INDEX idx_orders_status on orders(order_id, status); --making it multi column by adding order_id as first column 
+CREATE INDEX idx_orders_status on orders(order_id, status); --making it multi column by adding order_id as first column
 
 CREATE INDEX idx_order_status_order_id on orders (order_id, status); --reordering the columns to place the order_id first and then keeping status.
 ```
@@ -1737,7 +1783,7 @@ CREATE INDEX idx_users_middle_name_user_id on users (middle_name, user_id) where
 Making it a range-sharded index explicitly so that NULLs are evenly distributed across all nodes by using another column:
 
 ```sql
-CREATE INDEX idx_users_middle_name on users (middle_name ASC, user_id); --adding user_id 
+CREATE INDEX idx_users_middle_name on users (middle_name ASC, user_id); --adding user_id
 
 CREATE INDEX idx_users_middle_name_user_id on users (middle_name ASC, user_id);
 
@@ -1767,14 +1813,14 @@ An example schema on the source database is as follows:
 CREATE TABLE user_activity (
     user_id int PRIMARY,
     event_type text, --type of the activity 'login', 'logout', 'profile_update
-, 'email_verification', so on.. various events 
+, 'email_verification', so on.. various events
     event_timestamp timestampz,
     ...
 );
 
-CREATE INDEX idx_user_activity_event_type on user_activity (event_type); --this index is on the event_type which is having 80% data with 'login' type 
+CREATE INDEX idx_user_activity_event_type on user_activity (event_type); --this index is on the event_type which is having 80% data with 'login' type
 
-CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type, user_id); --this index is on the event_type which is having 80% data with 'login' type 
+CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type, user_id); --this index is on the event_type which is having 80% data with 'login' type
 
 ```
 

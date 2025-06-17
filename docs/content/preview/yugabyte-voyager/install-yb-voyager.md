@@ -387,6 +387,10 @@ You can download the oracle instant client RPM packages from the following links
 
 By default, yb-voyager captures a [diagnostics report](../reference/diagnostics-report/) using the YugabyteDB diagnostics service that runs each time you use the yb-voyager command. If you don't want to send diagnostics when you run yb-voyager, set the [--send-diagnostics flag](../reference/diagnostics-report/#configure-diagnostics-collection) to false.
 
+## Use configuration files
+
+For convenience, you can define all the parameters required for running yb-voyager commands using a configuration file (v2025.6.2 or later). Configuration files are in YAML format, and templates are available. For more information, refer to [Configuration file](../reference/configuration-file).
+
 ## Next step
 
 - [Migrate](../migrate/)
