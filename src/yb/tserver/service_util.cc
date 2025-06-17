@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/service_util.h"
+#include <utility>
 
 #include "yb/common/wire_protocol.h"
 
@@ -448,18 +449,16 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   return Status::OK();
 }
 
-uint64_t CatalogVersionChecker::GetLastBreakingVersion(DbOid db_oid) const {
-  uint64_t last_breaking_catalog_version;
-  // The cached breaking version may be slightly stale in rare cases but that is ok
+std::pair<uint64_t, uint64_t> CatalogVersionChecker::GetCatalogVersion(DbOid db_oid) const {
+  uint64_t last_breaking_catalog_version, catalog_version;
   if (db_oid) {
     tablet_server_.get_ysql_db_catalog_version(
-        *db_oid, nullptr /* current_version */, &last_breaking_catalog_version,
-        true /* use_cache */);
+        *db_oid, &catalog_version, &last_breaking_catalog_version, use_cache_);
   } else {
     tablet_server_.get_ysql_catalog_version(
-        nullptr /* current_version */, &last_breaking_catalog_version, true /* use_cache */);
+        &catalog_version, &last_breaking_catalog_version, use_cache_);
   }
-  return last_breaking_catalog_version;
+  return std::make_pair(catalog_version, last_breaking_catalog_version);
 }
 
 } // namespace tserver
