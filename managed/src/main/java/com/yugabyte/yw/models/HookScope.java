@@ -96,7 +96,19 @@ public class HookScope extends Model {
     PreThirdpartySoftwareUpgrade,
 
     @EnumValue("PostThirdpartySoftwareUpgrade")
-    PostThirdpartySoftwareUpgrade;
+    PostThirdpartySoftwareUpgrade,
+
+    @EnumValue("PreConfigureDBApisNodeUpgrade")
+    PreConfigureDBApisNodeUpgrade,
+
+    @EnumValue("PostConfigureDBApisNodeUpgrade")
+    PostConfigureDBApisNodeUpgrade,
+
+    @EnumValue("PreConfigureDBApis")
+    PreConfigureDBApis,
+
+    @EnumValue("PostConfigureDBApis")
+    PostConfigureDBApis;
 
     public static Optional<TriggerType> maybeResolve(String triggerName) {
       for (TriggerType triggerType : TriggerType.values()) {
