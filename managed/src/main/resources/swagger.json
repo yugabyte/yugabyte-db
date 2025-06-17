@@ -908,7 +908,8 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE"
           ],
           "type" : "string"
         },
@@ -1085,7 +1086,8 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE"
           ],
           "type" : "string"
         },
@@ -1358,7 +1360,8 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE"
           ],
           "type" : "string"
         },
@@ -3443,7 +3446,7 @@
           "type" : "boolean"
         },
         "dumpRoleChecks" : {
-          "description" : "WARNING: This is a preview API taht could change. Add role exists checks for roles metadata. All GRANT/REVOKE and ALTER sql commands will first check if the role exists",
+          "description" : "WARNING: This is a preview API that could change. Add role exists checks for roles metadata. All GRANT/REVOKE and ALTER sql commands will first check if the role exists",
           "type" : "boolean"
         },
         "enablePointInTimeRestore" : {
