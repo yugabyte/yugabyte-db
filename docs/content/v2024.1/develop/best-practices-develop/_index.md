@@ -5,7 +5,7 @@ linkTitle: Best practices
 description: Tips and tricks to build applications
 headcontent: Tips and tricks to build applications for high performance and availability
 menu:
-  v2025.1:
+  v2024.1:
     identifier: best-practices-develop
     parent: develop
     weight: 570

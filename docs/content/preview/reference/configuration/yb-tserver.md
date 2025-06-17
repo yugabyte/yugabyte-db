@@ -1412,7 +1412,7 @@ Packed row size limit for YCQL. The default value is 0 (use block size as limit)
 
 ### Catalog flags
 
-Catalog flags are {{<tags/feature/ea>}}.
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### --ysql_catalog_preload_additional_table_list
 
