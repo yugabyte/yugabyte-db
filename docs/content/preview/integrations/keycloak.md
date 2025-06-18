@@ -31,7 +31,7 @@ To configure Keycloak, do the following:
     CREATE DATABASE keycloak;
     ```
 
-- Add the followinf configurations in `keycloak/conf/keycloak.conf file`.
+- Add the following configurations in `keycloak/conf/keycloak.conf file`.
 
     ```sh
     # The database vendor.
@@ -188,7 +188,7 @@ keycloak=# \dt
 
 ## Test Keycloak
 
-Go to localhost:8080 and you will see the dashboard to create a user. Enter your desired username and the password. 
+Go to `localhost:8080` and you will see the dashboard to create a user. Enter your desired username and the password and click on `Create user`. 
 
 ![Keycloak Create User](/images/develop/ecosystem-integrations/keycloak/keycloak-create-user.png)
 
@@ -196,18 +196,19 @@ Once the user is created, you will see the following screen. Click on the `Open 
 
 ![Keycloak Open Admin Console](/images/develop/ecosystem-integrations/keycloak/keycloak-open-admin-console.png)
 
-You can also verify the user creation on your database:
+You can also verify the user creation on your database as well:
 
 ```sql
-keycloak=# select * from user_entity ;
-                  id                  | email |           email_constraint           | email_verified | enabled | federation_link | first_name | last_name |               realm_id               |   username    | created_timestamp | service_account_client_link | not_before 
---------------------------------------+-------+--------------------------------------+----------------+---------+-----------------+------------+-----------+--------------------------------------+---------------+-------------------+-----------------------------+------------
- 5fa4b561-66e1-49ab-9a85-bbb4d6088f15 |       | 6b1734a9-ff97-497e-9082-e8dd6698d4d8 | f              | t       |                 |            |           | 099df43b-6d65-471f-b699-9aa9450cd833 | keycloak_user |     1750230947560 |                             |          0
+yugabyte=# \c keycloak 
+You are now connected to database "keycloak" as user "yugabyte".
+keycloak=# select id,username from user_entity ;
+                  id                  |   username    
+--------------------------------------+---------------
+ 5fa4b561-66e1-49ab-9a85-bbb4d6088f15 | keycloak_user
 (1 row)
-
 ```
 
-On the sign in page, enter the username and password you just created.:
+On the sign in page, enter the username and password you just created and click on `Sign in`.:
 
 ![Keycloak Sign In](/images/develop/ecosystem-integrations/keycloak/keycloak-sign-in.png)
 
