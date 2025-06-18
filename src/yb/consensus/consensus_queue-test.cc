@@ -146,7 +146,7 @@ class ConsensusQueueTest : public YBTest {
                                const OpId& last_received,
                                const OpId& last_received_current_leader,
                                int64_t last_committed_idx) {
-    queue_->TrackPeer(kPeerUuid);
+    TrackPeer(*queue_, kPeerUuid);
     response->ref_responder_uuid(kPeerUuid);
 
     // Ask for a request. The queue assumes the peer is up-to-date so this should contain no
@@ -446,11 +446,11 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   queue_->Init(OpId::Min());
   queue_->SetLeaderMode(
       OpId::Min(), OpId::Min().term, OpId::Min(), BuildRaftConfigPBForTests(5));
-  // Track 4 additional peers (in addition to the local peer)
-  queue_->TrackPeer("peer-1");
-  queue_->TrackPeer("peer-2");
-  queue_->TrackPeer("peer-3");
-  queue_->TrackPeer("peer-4");
+  // Track 4 additional peers (in addition to the local peer).
+  TrackPeer(*queue_, "peer-1");
+  TrackPeer(*queue_, "peer-2");
+  TrackPeer(*queue_, "peer-3");
+  TrackPeer(*queue_, "peer-4");
 
   // Append 10 messages to the queue with a majority of 2 for a total of 3 peers.
   // This should add messages 0.1 -> 0.7, 1.8 -> 1.10 to the queue.
@@ -492,7 +492,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   queue_->TEST_WaitForNotificationToFinish();
   ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(5));
 
-  string up_to_date_peer = queue_->GetUpToDatePeer();
+  string up_to_date_peer = queue_->FindBestNewLeader();
   ASSERT_TRUE((up_to_date_peer == "peer-2") || (up_to_date_peer == "peer-1"));
 
   // Ack all operations for peer-3
@@ -505,7 +505,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   ASSERT_TRUE(queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response));
 
   up_to_date_peer.clear();
-  up_to_date_peer = queue_->GetUpToDatePeer();
+  up_to_date_peer = queue_->FindBestNewLeader();
   ASSERT_EQ(up_to_date_peer, "peer-3");
 
   // Majority replicated watermark should be the same
@@ -516,7 +516,7 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   ASSERT_TRUE(queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response));
 
   up_to_date_peer.clear();
-  up_to_date_peer = queue_->GetUpToDatePeer();
+  up_to_date_peer = queue_->FindBestNewLeader();
   ASSERT_TRUE((up_to_date_peer == "peer-3") || (up_to_date_peer == "peer-4"));
 
   // Now that a majority of peers have replicated an operation in the queue's
@@ -527,6 +527,32 @@ TEST_F(ConsensusQueueTest, TestQueueAdvancesCommittedIndex) {
   ASSERT_EQ(queue_->TEST_GetCommittedIndex(), expected_op_id);
   consensus_->WaitForMajorityReplicatedIndex(expected_op_id.index);
   ASSERT_EQ(queue_->TEST_GetLastAppliedOpId(), expected_op_id);
+}
+
+TEST_F(ConsensusQueueTest, FindBestNewLeaderExcludesNonvoters) {
+  std::vector<PeerMemberType> kNonVoterTypes = {
+      PeerMemberType::UNKNOWN_MEMBER_TYPE, PeerMemberType::PRE_VOTER, PeerMemberType::PRE_OBSERVER,
+      PeerMemberType::OBSERVER};
+  auto raft_config = BuildRaftConfigPBForTests(5);
+  for (int i = 1; i < 5; ++i) {
+    raft_config.mutable_peers(i)->set_member_type(kNonVoterTypes[i - 1]);
+  }
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), raft_config);
+
+  // Get a response from each peer to set the member type and verify that it is set correctly.
+  ThreadSafeArena arena;
+  LWConsensusResponsePB response(&arena);
+  for (int i = 1; i < 5; ++i) {
+    queue_->TrackPeer(raft_config.peers(i));
+    response.ref_responder_uuid(raft_config.peers(i).permanent_uuid());
+    queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+    ASSERT_EQ(queue_->GetTrackedPeerForTests(
+        raft_config.peers(i).permanent_uuid()).member_type, kNonVoterTypes[i - 1]);
+  }
+
+  // We should not be able to choose any of the peers for election because they are all non-voters.
+  ASSERT_TRUE(queue_->FindBestNewLeader().empty());
 }
 
 // In this test we append a sequence of operations to a log
@@ -627,7 +653,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   LWConsensusResponsePB response(&arena);
   response.ref_responder_uuid(kPeerUuid);
 
-  queue_->TrackPeer(kPeerUuid);
+  TrackPeer(*queue_, kPeerUuid);
 
   // Ask for a request. The queue assumes the peer is up-to-date so
   // this should contain no operations.
@@ -871,7 +897,7 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
   LWConsensusRequestPB request(&arena);
   LWConsensusResponsePB response(&arena);
   response.ref_responder_uuid(kPeerUuid);
-  queue_->TrackPeer(kPeerUuid);
+  TrackPeer(*queue_, kPeerUuid);
 
   // Create request for new peer.
   LWReplicateMsgsHolder refs;
@@ -909,7 +935,7 @@ TEST_F(ConsensusQueueTest, TestReadReplicatedMessagesForCDC) {
   queue_->Init(start_op_id);
   queue_->SetLeaderMode(
       start_op_id, start_op_id.term, start_op_id, BuildRaftConfigPBForTests(2));
-  queue_->TrackPeer(kPeerUuid);
+  TrackPeer(*queue_, kPeerUuid);
 
   AppendReplicateMessagesToQueue(queue_.get(), clock_, start_op_id.index, kNumMessages);
 
@@ -982,7 +1008,7 @@ TEST_F(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster) {
   const auto start_op_id = MakeOpIdForIndex(3);  // Starting after the normal first index.
   queue_->Init(start_op_id);
   queue_->SetLeaderMode(start_op_id, start_op_id.term, start_op_id, BuildRaftConfigPBForTests(2));
-  queue_->TrackPeer(kPeerUuid);
+  TrackPeer(*queue_, kPeerUuid);
 
   AppendReplicateMessagesToQueue(queue_.get(), clock_, start_op_id.index, kNumMessages);
 
