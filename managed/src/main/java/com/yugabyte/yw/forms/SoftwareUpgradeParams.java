@@ -105,14 +105,20 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     boolean isUniverseDowngradeAllowed =
         runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.allow_downgrades");
 
+    boolean skipVersionChecks =
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean(GlobalConfKeys.skipVersionChecks.getKey());
+
     String currentVersion = currentIntent.ybSoftwareVersion;
 
-    boolean isCurrentVersionStable = Util.isStableVersion(currentVersion, false);
-    boolean isYbSoftwareVersionStable = Util.isStableVersion(ybSoftwareVersion, false);
-    // Skip version checks if runtime flag enabled. User must take care of downgrades
-    if (!runtimeConfigFactory
-        .globalRuntimeConf()
-        .getBoolean(GlobalConfKeys.skipVersionChecks.getKey())) {
+    // Skip version checks if runtime flag enabled. User must take care of downgrades and cross
+    // track upgrades between stable and preview versions.
+    if (!skipVersionChecks) {
+      boolean isCurrentVersionStable = Util.isStableVersion(currentVersion, false);
+      boolean isYbSoftwareVersionStable = Util.isStableVersion(ybSoftwareVersion, false);
+
+      // Case when trying to upgrade from stable to preview or vice versa.
       if (isCurrentVersionStable ^ isYbSoftwareVersionStable) {
         String msg =
             String.format(
@@ -122,19 +128,21 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
                 currentVersion, ybSoftwareVersion);
         throw new PlatformServiceException(Status.BAD_REQUEST, msg);
       }
-    }
 
-    if (currentVersion != null
-        && !isUniverseDowngradeAllowed
-        && Util.compareYbVersions(currentVersion, ybSoftwareVersion, true) > 0) {
-      String msg =
-          String.format(
-              "DB version downgrades are not recommended, %s would downgrade from %s. Aborting "
-                  + "task. To override this check and force a downgrade, please set the runtime "
-                  + "config yb.upgrade.allow_downgrades to true "
-                  + "(using the script set-runtime-config.sh if necessary).",
-              ybSoftwareVersion, currentVersion);
-      throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+      // Case when "yb.skip_version_checks" is false and "yb.upgrade.allow_downgrades" is false.
+      // This means that downgrades are not allowed and we need to check the versions.
+      if (currentVersion != null
+          && !isUniverseDowngradeAllowed
+          && Util.compareYbVersions(currentVersion, ybSoftwareVersion, true) > 0) {
+        String msg =
+            String.format(
+                "DB version downgrades are not recommended, %s would downgrade from %s. Aborting "
+                    + "task. To override this check and force a downgrade, please set the runtime "
+                    + "config yb.upgrade.allow_downgrades to true "
+                    + "(using the script set-runtime-config.sh if necessary).",
+                ybSoftwareVersion, currentVersion);
+        throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+      }
     }
   }
 
