@@ -6,7 +6,7 @@ description: Multi-region deployment using asynchronous replication across multi
 headContent: Asynchronous replication between independent YugabyteDB universes
 menu:
   v2025.1:
-    identifier: explore-multi-region-deployments-async-replication-1-ysql
+    identifier: asynchronous-replication-ysql
     parent: going-beyond-sql
     weight: 350
 type: docs

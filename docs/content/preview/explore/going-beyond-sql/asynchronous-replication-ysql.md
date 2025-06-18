@@ -8,9 +8,11 @@ aliases:
   - /preview/explore/two-data-centers-linux/
   - /preview/explore/two-data-centers/macos/
   - /preview/explore/multi-region-deployments/asynchronous-replication-ysql/
+  - /preview/explore/going-beyond-sql/asynchronous-replication-ycql/
+  - /preview/explore/multi-region-deployments/asynchronous-replication-ycql/
 menu:
   preview:
-    identifier: explore-multi-region-deployments-async-replication-1-ysql
+    identifier: asynchronous-replication-ysql
     parent: going-beyond-sql
     weight: 350
 type: docs
