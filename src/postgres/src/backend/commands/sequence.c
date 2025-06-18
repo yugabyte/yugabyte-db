@@ -1252,11 +1252,33 @@ currval_oid(PG_FUNCTION_ARGS)
 				 errmsg("permission denied for sequence %s",
 						RelationGetRelationName(seqrel))));
 
+	/* YB: check connection manager sequence mode before reporting error */
 	if (!elm->last_valid)
-		ereport(ERROR,
+	{
+		if (!(YbIsClientYsqlConnMgr() &&
+			strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
+				 "pooled_with_currval_lastval") == 0))
+			ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("currval of sequence \"%s\" is not yet defined in this session",
 						RelationGetRelationName(seqrel))));
+		else
+		{
+			HeapTuple pgstuple = SearchSysCache1(SEQRELID, relid);
+			if (!HeapTupleIsValid(pgstuple))
+				elog(ERROR, "cache lookup failed for sequence %u", relid);
+			Form_pg_sequence pgsform = (Form_pg_sequence) GETSTRUCT(pgstuple);
+			/*
+			 * YB: When connection manager is enabled, return start of sequence if
+			 * not already defined when providing support for currval without
+			 * stickiness.
+			 */
+			result = pgsform->seqstart;
+			ReleaseSysCache(pgstuple);
+			relation_close(seqrel, NoLock);
+			PG_RETURN_INT64(result);
+		}
+	}
 
 	result = elm->last;
 
@@ -1278,10 +1300,26 @@ lastval(PG_FUNCTION_ARGS)
 	Relation	seqrel;
 	int64		result;
 
+	/* YB: check connection manager sequence mode before reporting error */
 	if (last_used_seq == NULL)
-		ereport(ERROR,
+	{
+		if (!(YbIsClientYsqlConnMgr() &&
+			strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
+				 "pooled_with_currval_lastval") == 0))
+			ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("lastval is not yet defined in this session")));
+		else
+		{
+			/*
+			 * YB: When connection manager is enabled, return a fixed value if
+			 * not already defined when providing support for lastval without
+			 * stickiness.
+			 */
+			result = 0;
+			PG_RETURN_INT64(result);
+		}
+	}
 
 	/* Someone may have dropped the sequence since the last nextval() */
 	if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(last_used_seq->relid)))
