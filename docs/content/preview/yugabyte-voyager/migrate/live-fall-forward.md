@@ -731,7 +731,7 @@ target:
 
 source-replica:
   db-type: <source-db-type>
-  db-host: <HOST>
+  db-host: <source-db-host>
   db-port: <source-db-port>
   db-name: <source-db-name>
   db-schema: <source-db-schema> # Not applicable for MySQL
