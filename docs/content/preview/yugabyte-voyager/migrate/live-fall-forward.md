@@ -705,16 +705,16 @@ Replace `<voyager-version>` with your installed Voyager version, for example, `2
   {{% /tab %}}
 {{< /tabpane >}}
 
-Set the export-dir, source, and target arguments in the configuration file:
+Set the export-dir, source, target, and source-replica arguments in the configuration file:
 
 ```yaml
 # Replace the argument values with those applicable for your migration.
 
 export-dir: <absolute-path-to-export-dir>
 
-source-replica:
+source:
   db-type: <source-db-type>
-  db-host: <HOST>
+  db-host: <source-db-host>
   db-port: <source-db-port>
   db-name: <source-db-name>
   db-schema: <source-db-schema> # Not applicable for MySQL
@@ -728,6 +728,15 @@ target:
   db-schema: <target-db-schema> # MySQL and Oracle only
   db-user: <target-db-username>
   db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
+
+source-replica:
+  db-type: <source-db-type>
+  db-host: <HOST>
+  db-port: <source-db-port>
+  db-name: <source-db-name>
+  db-schema: <source-db-schema> # Not applicable for MySQL
+  db-user: <source-db-user>
+  db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
 Refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
