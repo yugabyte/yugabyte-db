@@ -49,25 +49,22 @@
 #include "utils/typcache.h"
 
 
-typedef struct ExprSetupInfo
+typedef struct LastAttnumInfo
 {
-	/* Highest attribute numbers fetched from inner/outer/scan tuple slots: */
 	AttrNumber	last_inner;
 	AttrNumber	last_outer;
 	AttrNumber	last_scan;
-	/* MULTIEXPR SubPlan nodes appearing in the expression: */
-	List	   *multiexpr_subplans;
-} ExprSetupInfo;
+} LastAttnumInfo;
 
 static void ExecReadyExpr(ExprState *state);
 static void ExecInitExprRec(Expr *node, ExprState *state,
 				Datum *resv, bool *resnull);
 static void ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args,
-					Oid funcid, Oid inputcollid,
-					ExprState *state);
-static void ExecCreateExprSetupSteps(ExprState *state, Node *node);
-static void ExecPushExprSetupSteps(ExprState *state, ExprSetupInfo *info);
-static bool expr_setup_walker(Node *node, ExprSetupInfo *info);
+			 Oid funcid, Oid inputcollid,
+			 ExprState *state);
+static void ExecInitExprSlots(ExprState *state, Node *node);
+static void ExecPushExprSlots(ExprState *state, LastAttnumInfo *info);
+static bool get_last_attnums_walker(Node *node, LastAttnumInfo *info);
 static void ExecInitWholeRowVar(ExprEvalStep *scratch, Var *variable,
 					ExprState *state);
 static void ExecInitArrayRef(ExprEvalStep *scratch, ArrayRef *aref,
@@ -134,8 +131,8 @@ ExecInitExpr(Expr *node, PlanState *parent)
 	state->parent = parent;
 	state->ext_params = NULL;
 
-	/* Insert setup steps as needed */
-	ExecCreateExprSetupSteps(state, (Node *) node);
+	/* Insert EEOP_*_FETCHSOME steps as needed */
+	ExecInitExprSlots(state, (Node *) node);
 
 	/* Compile the expression proper */
 	ExecInitExprRec(node, state, &state->resvalue, &state->resnull);
@@ -171,8 +168,8 @@ ExecInitExprWithParams(Expr *node, ParamListInfo ext_params)
 	state->parent = NULL;
 	state->ext_params = ext_params;
 
-	/* Insert setup steps as needed */
-	ExecCreateExprSetupSteps(state, (Node *) node);
+	/* Insert EEOP_*_FETCHSOME steps as needed */
+	ExecInitExprSlots(state, (Node *) node);
 
 	/* Compile the expression proper */
 	ExecInitExprRec(node, state, &state->resvalue, &state->resnull);
@@ -226,8 +223,8 @@ ExecInitQual(List *qual, PlanState *parent)
 	/* mark expression as to be used with ExecQual() */
 	state->flags = EEO_FLAG_IS_QUAL;
 
-	/* Insert setup steps as needed */
-	ExecCreateExprSetupSteps(state, (Node *) qual);
+	/* Insert EEOP_*_FETCHSOME steps as needed */
+	ExecInitExprSlots(state, (Node *) qual);
 
 	/*
 	 * ExecQual() needs to return false for an expression returning NULL. That
@@ -396,8 +393,8 @@ ExecBuildProjectionInfoExt(List *targetList,
 
 	state->resultslot = slot;
 
-	/* Insert setup steps as needed */
-	ExecCreateExprSetupSteps(state, (Node *) targetList);
+	/* Insert EEOP_*_FETCHSOME steps as needed */
+	ExecInitExprSlots(state, (Node *) targetList);
 
 	/* Now compile each tlist column */
 	foreach(lc, targetList)
@@ -1118,21 +1115,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 			{
 				SubPlan    *subplan = (SubPlan *) node;
 				SubPlanState *sstate;
-
-				/*
-				 * Real execution of a MULTIEXPR SubPlan has already been
-				 * done. What we have to do here is return a dummy NULL record
-				 * value in case this targetlist element is assigned
-				 * someplace.
-				 */
-				if (subplan->subLinkType == MULTIEXPR_SUBLINK)
-				{
-					scratch.opcode = EEOP_CONST;
-					scratch.d.constval.value = (Datum) 0;
-					scratch.d.constval.isnull = true;
-					ExprEvalPushStep(state, &scratch);
-					break;
-				}
 
 				if (!state->parent)
 					elog(ERROR, "SubPlan found with no parent plan");
@@ -2310,38 +2292,36 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 }
 
 /*
- * Add expression steps performing setup that's needed before any of the
- * main execution of the expression.
+ * Add expression steps deforming the ExprState's inner/outer/scan slots
+ * as much as required by the expression.
  */
 static void
-ExecCreateExprSetupSteps(ExprState *state, Node *node)
+ExecInitExprSlots(ExprState *state, Node *node)
 {
-	ExprSetupInfo info = {0, 0, 0, NIL};
+	LastAttnumInfo info = {0, 0, 0};
 
-	/* Prescan to find out what we need. */
-	expr_setup_walker(node, &info);
+	/*
+	 * Figure out which attributes we're going to need.
+	 */
+	get_last_attnums_walker(node, &info);
 
-	/* And generate those steps. */
-	ExecPushExprSetupSteps(state, &info);
+	ExecPushExprSlots(state, &info);
 }
 
 /*
- * Add steps performing expression setup as indicated by "info".
- * This is useful when building an ExprState covering more than one expression.
+ * Add steps deforming the ExprState's inner/out/scan slots as much as
+ * indicated by info. This is useful when building an ExprState covering more
+ * than one expression.
  */
 static void
-ExecPushExprSetupSteps(ExprState *state, ExprSetupInfo *info)
+ExecPushExprSlots(ExprState *state, LastAttnumInfo *info)
 {
 	ExprEvalStep scratch = {0};
-	ListCell   *lc;
 
 	scratch.resvalue = NULL;
 	scratch.resnull = NULL;
 
-	/*
-	 * Add steps deforming the ExprState's inner/outer/scan slots as much as
-	 * required by any Vars appearing in the expression.
-	 */
+	/* Emit steps as needed */
 	if (info->last_inner > 0)
 	{
 		scratch.opcode = EEOP_INNER_FETCHSOME;
@@ -2363,48 +2343,13 @@ ExecPushExprSetupSteps(ExprState *state, ExprSetupInfo *info)
 		scratch.d.fetch.known_desc = NULL;
 		ExprEvalPushStep(state, &scratch);
 	}
-
-	/*
-	 * Add steps to execute any MULTIEXPR SubPlans appearing in the
-	 * expression.  We need to evaluate these before any of the Params
-	 * referencing their outputs are used, but after we've prepared for any
-	 * Var references they may contain.  (There cannot be cross-references
-	 * between MULTIEXPR SubPlans, so we needn't worry about their order.)
-	 */
-	foreach(lc, info->multiexpr_subplans)
-	{
-		SubPlan    *subplan = (SubPlan *) lfirst(lc);
-		SubPlanState *sstate;
-
-		Assert(subplan->subLinkType == MULTIEXPR_SUBLINK);
-
-		/* This should match what ExecInitExprRec does for other SubPlans: */
-
-		if (!state->parent)
-			elog(ERROR, "SubPlan found with no parent plan");
-
-		sstate = ExecInitSubPlan(subplan, state->parent);
-
-		/* add SubPlanState nodes to state->parent->subPlan */
-		state->parent->subPlan = lappend(state->parent->subPlan,
-										 sstate);
-
-		scratch.opcode = EEOP_SUBPLAN;
-		scratch.d.subplan.sstate = sstate;
-
-		/* The result can be ignored, but we better put it somewhere */
-		scratch.resvalue = &state->resvalue;
-		scratch.resnull = &state->resnull;
-
-		ExprEvalPushStep(state, &scratch);
-	}
 }
 
 /*
- * expr_setup_walker: expression walker for ExecCreateExprSetupSteps
+ * get_last_attnums_walker: expression walker for ExecInitExprSlots
  */
 static bool
-expr_setup_walker(Node *node, ExprSetupInfo *info)
+get_last_attnums_walker(Node *node, LastAttnumInfo *info)
 {
 	if (node == NULL)
 		return false;
@@ -2432,16 +2377,6 @@ expr_setup_walker(Node *node, ExprSetupInfo *info)
 		return false;
 	}
 
-	/* Collect all MULTIEXPR SubPlans, too */
-	if (IsA(node, SubPlan))
-	{
-		SubPlan    *subplan = (SubPlan *) node;
-
-		if (subplan->subLinkType == MULTIEXPR_SUBLINK)
-			info->multiexpr_subplans = lappend(info->multiexpr_subplans,
-											   subplan);
-	}
-
 	/*
 	 * Don't examine the arguments or filters of Aggrefs or WindowFuncs,
 	 * because those do not represent expressions to be evaluated within the
@@ -2454,7 +2389,7 @@ expr_setup_walker(Node *node, ExprSetupInfo *info)
 		return false;
 	if (IsA(node, GroupingFunc))
 		return false;
-	return expression_tree_walker(node, expr_setup_walker,
+	return expression_tree_walker(node, get_last_attnums_walker,
 								  (void *) info);
 }
 
@@ -2929,7 +2864,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 	int			transno = 0;
 	int			setoff = 0;
 	bool		isCombine = DO_AGGSPLIT_COMBINE(aggstate->aggsplit);
-	ExprSetupInfo deform = {0, 0, 0, NIL};
+	LastAttnumInfo deform = {0, 0, 0};
 
 	state->expr = (Expr *) aggstate;
 	state->parent = parent;
@@ -2945,18 +2880,18 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 	{
 		AggStatePerTrans pertrans = &aggstate->pertrans[transno];
 
-		expr_setup_walker((Node *) pertrans->aggref->aggdirectargs,
-						  &deform);
-		expr_setup_walker((Node *) pertrans->aggref->args,
-						  &deform);
-		expr_setup_walker((Node *) pertrans->aggref->aggorder,
-						  &deform);
-		expr_setup_walker((Node *) pertrans->aggref->aggdistinct,
-						  &deform);
-		expr_setup_walker((Node *) pertrans->aggref->aggfilter,
-						  &deform);
+		get_last_attnums_walker((Node *) pertrans->aggref->aggdirectargs,
+								&deform);
+		get_last_attnums_walker((Node *) pertrans->aggref->args,
+								&deform);
+		get_last_attnums_walker((Node *) pertrans->aggref->aggorder,
+								&deform);
+		get_last_attnums_walker((Node *) pertrans->aggref->aggdistinct,
+								&deform);
+		get_last_attnums_walker((Node *) pertrans->aggref->aggfilter,
+								&deform);
 	}
-	ExecPushExprSetupSteps(state, &deform);
+	ExecPushExprSlots(state, &deform);
 
 	/*
 	 * Emit instructions for each transition value / grouping set combination.
