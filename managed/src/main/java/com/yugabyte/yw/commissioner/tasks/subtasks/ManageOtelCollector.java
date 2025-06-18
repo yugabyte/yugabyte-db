@@ -70,10 +70,10 @@ public class ManageOtelCollector extends NodeTaskBase {
     }
     log.info("Managing OpenTelemetry collector on instance {}", taskParams().nodeName);
     Optional<NodeAgent> optional =
-        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)
-            ? nodeUniverseManager.maybeGetNodeAgent(
-                getUniverse(), node, true /*check feature flag*/)
-            : Optional.empty();
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
+            ? Optional.empty()
+            : nodeUniverseManager.maybeGetNodeAgent(
+                getUniverse(), node, true /*check feature flag*/);
 
     if (optional.isPresent()) {
       log.info("Configuring otel-collector using node-agent");

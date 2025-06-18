@@ -1660,13 +1660,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Duration to start notifying about expiry before node agent server cert actually expires",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> nodeAgentEnableConfigureServer =
+  public static final ConfKeyInfo<Boolean> nodeAgentDisableConfigureServer =
       new ConfKeyInfo<>(
-          "yb.node_agent.enable_configure_server",
+          "yb.node_agent.disable_configure_server",
           ScopeType.GLOBAL,
-          "Enable Node Agent Configure Server",
-          "Enable or disable server configuration RPCs in node agent. Defaults to ansible if it is"
-              + " disabled.",
+          "Disable Node Agent Configure Server",
+          "Disable server configuration RPCs in node agent. Defaults to ansible if it is"
+              + " enabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =

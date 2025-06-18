@@ -78,6 +78,8 @@ cat <<EOL > $file_path
 Description=node_exporter - Exporter for machine metrics.
 Documentation=https://github.com/William-Yeh/ansible-prometheus
 After=network.target
+StartLimitInterval=100
+StartLimitBurst=10
 
 [Install]
 WantedBy=multi-user.target
@@ -85,6 +87,7 @@ WantedBy=multi-user.target
 [Service]
 Type=simple
 Restart=on-failure
+RestartSec=5
 
 User=prometheus
 Group={{ yb_user }}
