@@ -68,6 +68,9 @@ pg_regerror(int errcode,		/* error code, or REG_ATOI or REG_ITOA */
 	size_t		len;
 	int			icode;
 
+	if (IsMultiThreadedMode())
+		yb_regex_recursion_depth = 0;
+
 	switch (errcode)
 	{
 		case REG_ATOI:			/* convert name to number */

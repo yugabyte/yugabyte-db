@@ -429,6 +429,7 @@ typedef struct {
   const bool*     enable_object_locking_for_table_locks;
   const uint32_t* ysql_max_invalidation_message_queue_size;
   const uint32_t* ysql_max_replication_slots;
+  const uint32_t* yb_max_recursion_depth;
 } YbcPgGFlagsAccessor;
 
 typedef struct {

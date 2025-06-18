@@ -36,9 +36,24 @@
  * the color chains.
  */
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 #define NISERR()	VISERR(nfa->v)
 #define NERR(e)		VERR(nfa->v, (e))
 
+YB_THREAD_LOCAL int yb_regex_recursion_depth = 0;
+
+#define YB_INCREMENT_RECURSION_DEPTH() \
+	do { \
+		if (IsMultiThreadedMode()) \
+			++yb_regex_recursion_depth; \
+	} while (0)
+#define YB_DECREMENT_RECURSION_DEPTH() \
+	do { \
+		if (IsMultiThreadedMode()) \
+			--yb_regex_recursion_depth; \
+	} while (0)
 
 /*
  * newnfa - set up an NFA
@@ -1427,6 +1442,8 @@ duptraverse(struct nfa *nfa,
 		return;
 	}
 
+	YB_INCREMENT_RECURSION_DEPTH();
+
 	for (a = s->outs; a != NULL && !NISERR(); a = a->outchain)
 	{
 		duptraverse(nfa, a->to, (struct state *) NULL);
@@ -1435,6 +1452,8 @@ duptraverse(struct nfa *nfa,
 		assert(a->to->tmp != NULL);
 		cparc(nfa, a, s->tmp, a->to->tmp);
 	}
+
+	YB_DECREMENT_RECURSION_DEPTH();
 }
 
 /*

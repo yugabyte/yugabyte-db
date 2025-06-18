@@ -2290,7 +2290,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_enable_object_locking_for_table_locks,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
-      .ysql_max_replication_slots                = &FLAGS_max_replication_slots
+      .ysql_max_replication_slots = &FLAGS_max_replication_slots,
+      .yb_max_recursion_depth = &FLAGS_yb_max_recursion_depth
   };
   // clang-format on
   return &accessor;
