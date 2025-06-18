@@ -42,7 +42,7 @@ var describeRoleBindingCmd = &cobra.Command{
 
 		rbacutil.CheckRBACEnablementOnYBA(authAPI, "RBAC: Role Binding", "Describe")
 
-		rList, err := authAPI.ListRoleBindingRest("", "Describe")
+		rList, err := authAPI.ListRoleBindingRest("", "RBAC: Role Bindings", "Describe")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
