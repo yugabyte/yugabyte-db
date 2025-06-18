@@ -320,6 +320,6 @@ GGSCI > start <repname>
 GGSCI > Start repr
 ```
 
-## Learn more
+### Learn more
 
 * [Seamless Data Replication from Oracle to YugabyteDB With GoldenGate](https://www.yugabyte.com/blog/data-replication-to-yugabytedb-with-goldengate/)
