@@ -2599,7 +2599,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const NamespaceMap& namespace_map, const UDTypeMap& type_map,
       const ExternalTableSnapshotDataMap& tables_data, const LeaderEpoch& epoch);
 
-  Status RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp);
+  Status RepackSnapshotsForBackup(
+      ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables);
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(

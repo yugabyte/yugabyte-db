@@ -12,7 +12,9 @@
 
 #include <gmock/gmock.h>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/pb_util.h"
@@ -52,6 +54,23 @@ class ClusterAdminClientTest : public pgwrapper::PgCommandTestBase {
       .port = ts->ysql_port(),
       .dbname = db_name
     }).Connect();
+  }
+
+  Status WaitForSnapshotComplete(const TxnSnapshotId& snapshot_id) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          master::ListSnapshotsResponsePB resp = VERIFY_RESULT(
+              cluster_admin_client_->ListSnapshots(EnumBitSet<ListSnapshotsFlag>(), snapshot_id));
+          if (resp.has_error()) {
+            return StatusFromPB(resp.error().status());
+          }
+          if (resp.snapshots_size() != 1) {
+            return STATUS(
+                IllegalState, Format("There should be exactly one snapshot of id $0", snapshot_id));
+          }
+          return resp.snapshots(0).entry().state() == master::SysSnapshotEntryPB::COMPLETE;
+        },
+        30s * kTimeMultiplier, "Waiting for snapshot to complete");
   }
 };
 
@@ -109,6 +128,76 @@ TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithou
   auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(EnumBitSet<ListSnapshotsFlag>()));
   EXPECT_EQ(resp.snapshots_size(), 1);
   EXPECT_EQ(resp.snapshots(0).entry().entries_size(), 0);
+}
+
+// Test the list snapshot parameter `include_ddl_in_progress_tables` which allows exporting a
+// snapshot even if one of its tables is undergoing DDL verification.
+TEST_F(ClusterAdminClientTest, ExportSnapshotWithDdlInProgressTables) {
+  const std::string db_name = "yugabyte";
+  const std::string table_name = "test_table";
+  CreateTable(Format("CREATE TABLE $0 (k INT, v TEXT)", table_name));
+  // Start a long-running table-rewrite DDL.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  auto conn = ASSERT_RESULT(PgConnect(db_name));
+  ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY (k)", table_name)));
+  // Create a snapshot.
+  const TypedNamespaceName database{.db_type = YQL_DATABASE_PGSQL, .name = db_name};
+  ASSERT_OK(
+      cluster_admin_client_->CreateNamespaceSnapshot(database, 0 /* retention_duration_hours */));
+  // Get the snapshot_id before trying to export the snapshot.
+  auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(EnumBitSet<ListSnapshotsFlag>()));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(resp.snapshots(0).id()));
+  ASSERT_OK(WaitForSnapshotComplete(snapshot_id));
+  LOG(INFO) << Format("Finished creating snapshot with id: $0", snapshot_id);
+  // Exporting a snapshot means listing the snapshot with prepare_for_backup = true.
+  // ListSnapshot should fail as one table is still undergoing DDL verification.
+  EnumBitSet<ListSnapshotsFlag> flags;
+  flags.Set(ListSnapshotsFlag::SHOW_DETAILS);
+  auto s = cluster_admin_client_->ListSnapshots(
+      flags, snapshot_id, /*prepare_for_backup*/ true,
+      /*include_ddl_in_progress_tables*/ false);
+  ASSERT_NOK_STR_CONTAINS(s, "undergoing DDL verification");
+  // Should be able to export the snapshot when include_ddl_in_progress_tables = true.
+  resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(
+      flags, snapshot_id, /*prepare_for_backup*/ true,
+      /*include_ddl_in_progress_tables*/ true));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+  // TODO(mhaddad): Uncomment this assert when fixing #27449
+  // Expect to have 3 backup_entries: 1 for namespace and 2 for the old and new DocDB tables.
+  // ASSERT_EQ(resp.snapshots(0).backup_entries_size(), 3);
+  // Re-enable DDL rolback so that the test exists gracefully.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
+}
+
+// Test that the option include_ddl_in_progress_tables bumps the format_version of the
+// SnapshotInfoPB to kUseRelfilenodeFormatVersion when set to true and
+// kUseBackupRowEntryFormatVersion otherwise.
+TEST_F(ClusterAdminClientTest, ExportSnapshotHasCorrectFormatVersion) {
+  const std::string db_name = "yugabyte";
+  const std::string table_name = "test_table";
+  CreateTable(Format("CREATE TABLE $0 (k INT, v TEXT)", table_name));
+  // Create a snapshot.
+  const TypedNamespaceName database{.db_type = YQL_DATABASE_PGSQL, .name = db_name};
+  ASSERT_OK(
+      cluster_admin_client_->CreateNamespaceSnapshot(database, 0 /* retention_duration_hours */));
+  // Get the snapshot_id before trying to export the snapshot.
+  EnumBitSet<ListSnapshotsFlag> flags;
+  flags.Set(ListSnapshotsFlag::SHOW_DETAILS);
+  auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(flags));
+  EXPECT_EQ(resp.snapshots_size(), 1);
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(resp.snapshots(0).id()));
+  ASSERT_OK(WaitForSnapshotComplete(snapshot_id));
+  // Check that format_version=2 when include_ddl_in_progress_tables = false.
+  resp = ASSERT_RESULT(
+      cluster_admin_client_->ListSnapshots(flags, snapshot_id, /*prepare_for_backup*/ true));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+  ASSERT_EQ(resp.snapshots(0).format_version(), master::kUseBackupRowEntryFormatVersion);
+  // Check that format_version=3 when include_ddl_in_progress_tables = true.
+  resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(
+      flags, snapshot_id, /*prepare_for_backup*/ true, /*include_ddl_in_progress_tables*/ true));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+  ASSERT_EQ(resp.snapshots(0).format_version(), master::kUseRelfilenodeFormatVersion);
 }
 
 TEST_F(
