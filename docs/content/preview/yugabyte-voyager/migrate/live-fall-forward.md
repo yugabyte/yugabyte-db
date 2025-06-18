@@ -730,13 +730,13 @@ target:
   db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
 
 source-replica:
-  db-type: <source-db-type>
-  db-host: <source-db-host>
-  db-port: <source-db-port>
-  db-name: <source-db-name>
-  db-schema: <source-db-schema> # Not applicable for MySQL
-  db-user: <source-db-user>
-  db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
+  db-type: <source-replica-db-type>
+  db-host: <source-replica-db-host>
+  db-port: <source-replica-db-port>
+  db-name: <source-replica-db-name>
+  db-schema: <source-replica-db-schema> # Not applicable for MySQL
+  db-user: <source-replica-db-user>
+  db-password: <source-replica-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
 
 Refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
