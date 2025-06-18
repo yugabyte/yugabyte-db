@@ -26311,17 +26311,6 @@
         "primary" : {
           "type" : "boolean"
         },
-        "role" : {
-          "description" : "User role",
-          "enum" : [
-            "ConnectOnly",
-            "ReadOnly",
-            "BackupAdmin",
-            "Admin",
-            "SuperAdmin"
-          ],
-          "type" : "string"
-        },
         "timezone" : {
           "description" : "User timezone",
           "type" : "string"
@@ -26395,17 +26384,6 @@
         },
         "primary" : {
           "type" : "boolean"
-        },
-        "role" : {
-          "description" : "User role",
-          "enum" : [
-            "ConnectOnly",
-            "ReadOnly",
-            "BackupAdmin",
-            "Admin",
-            "SuperAdmin"
-          ],
-          "type" : "string"
         },
         "timezone" : {
           "description" : "User timezone",
