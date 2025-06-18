@@ -1,5 +1,5 @@
 ---
-title: Capture and Replicate Data with Oracle GoldenGate in YugabyteDB
+title: Capture and replicate data with Oracle GoldenGate in YugabyteDB
 headerTitle: Oracle GoldenGate
 linkTitle: Oracle GoldenGate
 description: Oracle GoldenGate for Change Data Capture in YugabyteDB.
@@ -13,50 +13,50 @@ menu:
 type: docs
 ---
 
-YugabyteDB has a PostgreSQL-compatible query layer that enables connectivity to Oracle GoldenGate using PostgreSQL PostgreSQL-compatible ODBC driver.  This tutorial is specific to Oracle GoldenGate 21c classic version ,which is compatible with the PostgreSQL data store as a  source and target endpoint to capture and deliver.
+YugabyteDB has a PostgreSQL-compatible query layer that enables connectivity to Oracle GoldenGate using PostgreSQL PostgreSQL-compatible ODBC driver. This tutorial specifically covers Oracle GoldenGate 21c Classic, which is compatible with a PostgreSQL data store as both a source and target endpoint for data capture and delivery.
 
 ### Prerequisites
 
-The following packages should be installed on the target side YugabyteDB node :
+The following packages should be installed on the target YugabyteDB node where Oracle GoldenGate will run:
 
 * Oracle Client
 * unixODBC
 * psqlodbc
 * libnsl
 * Libaio
-* Postgresql14-contrib - For capture
+* Postgresql14-contrib (required for capture)
 
 ### Install Oracle GoldenGate for YugabyteDB
 
-Download the Oracle GoldenGate software for PostgreSQL from the Oracle website with a valid licensed account.
+1. Download the [Oracle GoldenGate software for PostgreSQL](https://www.oracle.com/in/middleware/technologies/goldengate-downloads.html) from the Oracle website with a valid licensed account.
 
-[https://www.oracle.com/in/middleware/technologies/goldengate-downloads.html](https://www.oracle.com/in/middleware/technologies/goldengate-downloads.html)
+1. Unzip the software to your chosen GoldenGate home directory on the YugabyteDB node.
 
-Unzip the software to the GoldenGate home directory on the YugabyteDB node.
+    {{<tip title="Single-node connectivity">}}
+As the ODBC driver supports only single-node connectivity, place the GoldenGate software on the YugabyteDB node intended for data capture and delivery.
+    {{</tip>}}
 
-Note ODBC supports only single-node connectivity. Therefore, place GoldenGate software on the Yugabyte node intended for data capture and delivery.,
+### Configure ODBC driver for YugabyteDB
 
-#### Configure ODBC for YugabyteDB
+Oracle GoldenGate supports connectivity via an ODBC driver. So, set up the ODBC configuration file `odbc.ini` by providing appropriate data source name [DSN] details as follows:
 
-Oracle GoldenGate supports connectivity via an ODBC driver. It is required to set up the ODBC configuration by providing appropriate data source name [DSN] details.
+* [DSN] - A user-defined Data Source Name (for example, YB_src, YB_tgt).
 
-Create `odbc.ini` file withthe  following parameters :
+* `InstallDir` - The absolute path to your Oracle GoldenGate home directory.
 
-[DSN] - Data Source Name
+* `Driver` - The Full path to the GoldenGate PostgreSQL wire protocol driver file.
 
-InstallDir - Oracle GoldenGate home directory
+* `Database` - The YugabyteDB namespace (database name) relevant to either your source or target connection.
 
-Driver - Full path of GoldenGate PostgreSQL wire protocol driver file
+* `HostName` - The IP address or hostname of the YugabyteDB node.
 
-Database - YugabyteDB Namespace for source or target database
+* `PortNumber` - The YSQL listening port to connect to the database (typically 5433).
 
-HostName - YugabyteDB node IP or hostname
-
-PortNumber - YSQL listening port to connect to the database
+For example,
 
 ```sh
 [yugabyte@ip-10-98-41-158 ~]$ cat /etc/odbc.ini
-#Sample DSN entries
+#Sample DSN entries DSN entries for Oracle GoldenGate connectivity
 [ODBC Data Sources]
 PostgreSQL Wire Protocol=DataDirect 7.1 PostgreSQL Wire Protocol
 YB_src=DataDirect 7.1 PostgreSQL Wire Protocol
@@ -65,6 +65,7 @@ YB_tgt=DataDirect 7.1 PostgreSQL Wire Protocol
 [ODBC]
 IANAAppCodePage=4
 InstallDir=/home/yugabyte/gg_yb_21c/
+
 [YB_src]
 Driver=/home/yugabyte/gg_yb_21c/lib/GGpsql25.so
 Description=DataDirect 7.1 PostgreSQL Wire Protocol
@@ -78,55 +79,52 @@ Description=DataDirect 7.1 PostgreSQL Wire Protocol
 Database=yugadb1
 HostName=10.98.41.158
 PortNumber=5433
-[yugabyte@ip-10-98-41-158 ~]$
 ```
 
-#### Connecting to YugabyteDB, a FIPS-enabled PostgreSQL compatible System with Version 14 or Lower
+#### Connecting to FIPS-enabled YugabyteDB (PostgreSQL compatible v14 or Lower)
 
-When the Oracle GoldenGate Extract is run from a Federal Information Processing Standards (FIPS) enabled system installed with a PostgreSQL compatible database lower than version 14, it generates the following error:
+When the Oracle GoldenGate Extract is run from a Federal Information Processing Standards (FIPS) enabled system installed with a PostgreSQL compatible database lower than version 14, you might encounter the following error:
 
 ```sh
 ERROR OGG-25359 Could not connect to the server with database 'postgres', host 'localhost', port '5432' and user name 'postgres'. Error Message: connection to server at "localhost" (::1), port 5432 failed: could not encrypt password: disabled for FIPSfe_sendauth: error sending password authentication.
 ```
 
-To run Extract on YugabyteDB, perform the following steps:
+To ensure the extract process runs correctly on YugabyteDB, perform the following configuration steps:
 
-1. Modify the yb_pg_hba.conf file to set the password_encryption option to scram-sha-256.
-2. Modify the ysql_hba_conf_csv G-Flag to set the Method option to scram-sha-256, as MD5 is not supported on a FIPS-enabled system.
+1. Modify the `yb_pg_hba.conf` file to set the `password_encryption` option to `scram-sha-256`.
+1. Modify the `ysql_hba_conf_csv` flag to set the `Method` option to `scram-sha-256`, as MD5 authentication is not supported on a FIPS-enabled system.
 
-```sh
-ysql_hba_conf_csv=host yugadb1 all all scram-sha-256z
-```
+    ```sh
+    ysql_hba_conf_csv=host yugadb1 all all scram-sha-256z
+    ```
 
-#### Set Environment Variables
+#### Set environment variables
 
-Variable Name - ODBCINI
-Value - path of odbc.ini file
-Variable Name  - LD_LIBRARY_PATH
-Value - Oracle client lib path and GoldenGate lib path
+Set the following critical environment variables to ensure Oracle GoldenGate and its components can locate necessary files and configurations:
+
+* `ODBCINI`: This variable must point to the absolute path of your `odbc.ini` file.
+* `LD_LIBRARY_PATH` : This variable must include both the Oracle client library path and the GoldenGate library path, separated by a colon (:).
+
+For example,
 
 ```sh
 export ODBCINI=/etc/odbc.ini
 export LD_LIBRARY_PATH=/opt/oracle/client/lib:/opt/goldengate/lib
 ```
 
-### Prepare the YugabyteDB for Capture and replicate
+### Prepare YugabyteDB for capture and replication
+
+This section outlines the necessary database-level preparations in YugabyteDB for Oracle GoldenGate operations.
 
 #### Create GoldenGate user and grant privileges
 
-1. Oracle GoldenGate processes require a database user to capture and deliver data to a database, and it is recommended to create a dedicated Yugabyte database user for Extract and Replicat.
+1. Create a GoldenGate user. Oracle GoldenGate processes require a dedicated database user to capture and deliver data. It is strongly recommended to create a dedicated YugabyteDB user for both capture and replication processes.
 
     ```sql
     create user <username> password '<password>';
     ```
 
-    Example :
-
-    ```sql
-    create user ggpguser password 'gguser';
-    ```
-
-2. Grant permissions to capture
+1. Grant permissions for Data Capture. These privileges enable the Oracle GoldenGate Extract process to read and capture changes from the specified database and schema.
 
     ```sql
     GRANT CONNECT ON DATABASE <dbname> TO <username>;
@@ -136,87 +134,61 @@ export LD_LIBRARY_PATH=/opt/oracle/client/lib:/opt/goldengate/lib
     GRANT SELECT ON ALL TABLES IN SCHEMA tableschema TO <username>;
     ```
 
-    Example :
-
-    ```sql
-    GRANT CONNECT ON DATABASE yugadb TO gguser;
-    ALTER USER gguser WITH SUPERUSER;
-    ALTER USER gguser WITH REPLICATION;
-    GRANT USAGE ON SCHEMA tableschema TO gguser;
-    GRANT SELECT ON ALL TABLES IN SCHEMA tableschema TO gguser;
-    ```
-
-3. Grant permissions to replicate
+1. Grant permissions for data replication. These privileges allow the Oracle GoldenGate Replicat process to apply captured data changes (inserts, updates, deletes, truncates) to target tables within the specified database and schema.
 
     ```sql
     GRANT CONNECT ON DATABASE <dbname> TO <username>;
-    GRANT USAGE ON SCHEMA tableschema TO <username>;
-    GRANT SELECT ON ALL TABLES IN SCHEMA tableschema TO <username>;
-    GRANT INSERT, UPDATE, DELETE, TRUNCATE ON TABLE tablename TO <username>;
+    GRANT USAGE ON SCHEMA <tableschema> TO <username>;
+    GRANT SELECT ON ALL TABLES IN SCHEMA <tableschema> TO <username>;
+    GRANT INSERT, UPDATE, DELETE, TRUNCATE ON TABLE <tablename> TO <username>;
     ```
 
-    Example :
+1. Heartbeat and checkpoint table privileges. Provide permissions for Oracle GoldenGate to manage its internal heartbeat and checkpoint tables, which are crucial to track replication progress and ensure recovery.
 
     ```sql
-    GRANT CONNECT ON DATABASE yugadb TO gguser;
-    GRANT USAGE ON SCHEMA tableschema TO gguser;
-    GRANT SELECT ON ALL TABLES IN SCHEMA tableschema TO gguser;
-    GRANT INSERT, UPDATE, DELETE, TRUNCATE ON TABLE tablename TO gguser;
-    ```
-
-4. Heartbeat and Checkpoint Table Privileges
-
-    ```sql
-    GRANT CREATE ON DATABASE dbname TO <username>;
-    GRANT CREATE, USAGE ON SCHEMA ggschema TO <username>;
-    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA ggschema TO <username>;
-    GRANT SELECT, INSERT, UPDATE, DELETE, ON ALL TABLES IN SCHEMA ggschema TO <username>;
-    ```
-
-    Example:
-
-    ```sql
-    GRANT CREATE ON DATABASE dbname TO gguser;
-    GRANT CREATE, USAGE ON SCHEMA ggschema TO gguser;
-    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA ggschema TO gguser;
-    GRANT SELECT, INSERT, UPDATE, DELETE, ON ALL TABLES IN SCHEMA ggschema TO gguser;
+    GRANT CREATE ON DATABASE <dbname> TO <username>;
+    GRANT CREATE, USAGE ON SCHEMA <tableschema> TO <username>;
+    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA <tableschema> TO <username>;
+    GRANT SELECT, INSERT, UPDATE, DELETE, ON ALL TABLES IN SCHEMA <tableschema> TO <username>;
     ```
 
 #### Enable Database Parameters
 
-In YugabyteDB below parameters are already enabled, These can be set as per requirement.
+The following PostgreSQL-compatible parameters in YugabyteDB are typically enabled by default for CDC scenarios. You can adjust their values as per your specific replication requirements.
 
 ```sh
-wal_level = logical                     # set to logical for Capture
-max_replication_slots = 1               # max number of replication slots,
-                                        # one slot per Extract/client
-max_wal_senders = 1                     # one sender per max repl slot
-track_commit_timestamp = on             # optional, correlates tx commit time
-                                        # with begin tx log record(useful for          ,timestamp-based positioning)                    
+wal_level = logical                     # Required to be set to 'logical' for Capture processes.
+max_replication_slots = 1               # Defines the maximum number of replication slots; one slot per Extract or client connection.
+max_wal_senders = 1                     # Specifies the maximum number of WAL sender processes; corresponds to 'max_replication_slots'.
+track_commit_timestamp = on             # Optional; used to correlate transaction commit time with begin transaction log records, which is useful for timestamp-based positioning.
 ```
 
 ### Configure GoldenGate processes
 
+Configure the core Oracle GoldenGate processes necessary for data capture and delivery using the following steps.
+
 #### Manager Process
 
-Connect to GoldenGate Software command interface (ggsci) and start the manager process, which is the parent process of Oracle GoldenGate and is responsible for the management of its processes and files, resources, user interface, and the reporting of thresholds and errors.
+The Manager process is the central controlling entity of Oracle GoldenGate. It is responsible for managing other GoldenGate processes and files, resource allocation, user interface interactions, and error reporting.
+
+To start the Manager process, connect to the GoldenGate Software Command Interface (`ggsci`) and execute the following commands:
 
 ```sh
 ./ggsci
 view param mgr
 ```
 
-Note: The Default port for the manager process is 7809.
+Note that the default listening port for the `Manager` process is 7809. Ensure this port is open and available.
 
-#### Enabling Table-Level Supplemental Logging
+#### Enabling Table-Level supplemental logging
 
-Table level logging needs to be enabled to support change data capture of source DML operations.
+Enable table-level logging to support change data capture of source DML operations.
 
 ```sh
 ADD trandata <schema>.<tablename> ALLCOLS
 ```
 
-Example:
+For example:
 
 ```sh
 ADD trandata public.regions ALLCOLS
@@ -225,18 +197,14 @@ Info trandata public.regions
 
 #### Extract Process (To capture changed data)
 
-Use the Extract commands to create and manage Extract groups. The Extract process
+The Extract process is responsible for capturing data changes. It can be configured to capture either full data records or transactional data changes. Once captured, the Extract process sends this data to a trail file, which is then processed by a downstream component like a data-pump Extract or the Replicat process.
 
-captures either full data records or transactional data changes, depending on configuration
-
-parameters, and then sends the data to a trail for further processing by a downstream
-
-process, such as a data-pump Extract or the Replicat process.
+Use the following commands to create and manage Extract groups:
 
 ```sql
 GGSCI> register <extname>
 
-Sample extract process :
+# Sample Extract process configuration:
 
 EXTRACT <extname>
 SOURCEDB YB_tgt USERIDALIAS <alias>
@@ -249,7 +217,7 @@ GGSCI> ADD EXTRACT <extname>, TRANLOG, BEGIN NOW
 GGSCI> ADD EXTTRAIL ./dirdat/ep, EXTRACT <extname>
 ```
 
-Example:
+Example configuration and commands are as follows:
 
 ```sql
 GGSCI> view param exte
@@ -266,7 +234,7 @@ GGSCI> ADD exttrail ./dirdat/yt, extract exte
 EXTTRAIL added.
 ```
 
-#### **Add CHECKPOINT Table at target side**
+#### Add CHECKPOINT table at target side
 
 A checkpoint table is used by a Replicat in the target database for recovery positioning when restarting a Replicat. A checkpoint table is optional (but recommended) for a Classic Replicat and required for Coordinated and Parallel Replicats.
 
@@ -280,16 +248,16 @@ Example:
 GGSCI> ADD CHECKPOINTTABLE ggpdbuser.ggorcheckpoint
 ```
 
-#### **Replicat Process (To deliver data)**
+#### Replicat Process (To deliver data)
 
-Use the Replicat commands to create and manage Replicat groups. The Replicat
-process reads data extracted by the Extract process and applies it to target tables
-or prepares it for use by another application, such as a load application.
+The Replicat process reads data extracted by the Extract process and applies it to target tables or prepares it for use by another application, such as a load application.
+
+Use the following Replicat commands to create and manage Replicat groups.
 
 ```sql
-Sample replication process :
- 
-REPLICAT <repname>  
+# Sample Replicat process configuration:
+
+REPLICAT <repname>
 SOURCEDEFS <dirdef/<deffilename.def>
 SETENV (ODBCINI="/etc/odbc.ini")
 SETENV (PGCLIENTENCODING="UTF8")
@@ -301,7 +269,7 @@ DISCARDFILE ./dirrpt/diskg.dsc, purge
 MAP <PDB>.<schema>.<tablename>, TARGET <schema>.<tablename>, COLMAP (COL1=col1, T1_NAME=t1_name);
 ```
 
-Example:
+Example configuration and commands:
 
 ```sql
 GGSCI> view param rep7tab
@@ -322,28 +290,36 @@ GGSCI> add replicat repil7tb, exttrail ./dirdat/il checkpointtable public.ggchec
 
 ### Start GoldenGate Processes
 
-All processes in GoldenGate are autonomous and can run independently once set up.
+All Oracle GoldenGate processes are autonomous and, once configured, can be started and run independently.
 
 #### Start Manager
 
-The manager process must be running on different ports on source and destination.
+The manager process must be running on different ports on source and destination if you are set up capture and replication between two distinct systems.
 
 ```sh
 GGSCI > start mgr
-GGSCI > info mgr 
+GGSCI > info mgr
 ```
 
 #### Start Extract
 
+To begin capturing changes, start the configured Extract process:
+
 ```sh
-GGSCI > Start <extname> 
+GGSCI > Start <extname>
 GGSCI > start exte
 ```
 
 #### Start Replicat
+
+To begin applying captured changes to the target, start the Replicat process:
 
 ```sql
 GGSCI > add replicat <repname>, NODBCHECKPOINT, exttrail ./dirdat/yb
 GGSCI > start <repname>
 GGSCI > Start repr
 ```
+
+## Learn more
+
+* [Seamless Data Replication from Oracle to YugabyteDB With GoldenGate](https://www.yugabyte.com/blog/data-replication-to-yugabytedb-with-goldengate/)
