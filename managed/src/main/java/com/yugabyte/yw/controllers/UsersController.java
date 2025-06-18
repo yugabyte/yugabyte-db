@@ -46,6 +46,7 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.Authorization;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -130,7 +131,8 @@ public class UsersController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT),
         checkOnlyPermission = true)
   })
-  public Result list(UUID customerUUID) {
+  public Result list(
+      UUID customerUUID, @ApiParam(value = "Optional email to filter user list") String email) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
     Set<UUID> resourceUUIDs =
@@ -138,6 +140,7 @@ public class UsersController extends AuthenticatedController {
     List<Users> users = Users.getAll(customerUUID);
     List<UserWithFeatures> userWithFeaturesList =
         users.stream()
+            .filter(user -> StringUtils.isBlank(email) || user.getEmail().equals(email))
             .filter(user -> resourceUUIDs.contains(user.getUuid()))
             .map(user -> userService.getUserWithFeatures(customer, user))
             .collect(Collectors.toList());

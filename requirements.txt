@@ -19,5 +19,6 @@ semantic-version
 six
 sys-detection
 types-psutil
+types-requests
 wheel
 yugabyte_pycommon

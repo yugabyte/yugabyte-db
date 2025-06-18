@@ -697,8 +697,30 @@ templates:
         (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
-        Encryption At Rest config for universe '{{ $labels.source_name }}'
+        Encryption At Rest config for universe '{{ $labels.source_name }}' with KMS config '{{ $labels.kms_config_name }}'
         will expire in {{ $value | printf "%.0f" }} days.
+
+  UNIVERSE_KMS_KEY_STATUS:
+    name: Universe KMS Key Failed Validation
+    description: Validation failed for the last active KMS Key on a universe
+    queryTemplate: last_over_time(ybp_universe_kms_key_status{universe_uuid = "__universeUuid__"}[1d])
+      {{ query_condition }} 1
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 1.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Validation of KMS Config '{{ $labels.kms_config_name }}' failed for universe '{{ $labels.source_name }}'
 
   HEALTH_CHECK_ERROR:
     name: Health Check Error
@@ -2064,3 +2086,62 @@ templates:
     annotations:
       summary: >-
         Continuous backups to {{ $labels.affected_backup_locations }} are failing.
+
+  THP_RSS_ISSUE:
+    name: THP Issue Threshold Reached
+    description: Node memory is high AND RSS exceeds 25% of total memory allocated on a universe
+    queryTemplate: count by (universe_uuid) (
+      (avg_over_time(yb_process_memory_kb{type="resident", process="yb-tserver", universe_uuid="__universeUuid__"}[5m]) * 1024
+      - on (universe_uuid, node_name)
+      avg_over_time(generic_current_allocated_bytes{export_type="tserver_export", universe_uuid="__universeUuid__"}[5m])
+      - on (universe_uuid, node_name)
+      avg_over_time(tcmalloc_pageheap_free_bytes{export_type="tserver_export", universe_uuid="__universeUuid__"}[5m])
+      ) / on (universe_uuid, node_name)(node_memory_MemTotal_bytes{universe_uuid="__universeUuid__"}) {{ query_condition }} {{ query_threshold }}
+      and on (universe_uuid, node_name)
+      ((node_memory_MemTotal_bytes{universe_uuid="__universeUuid__"} - on (universe_uuid, node_name) node_memory_MemAvailable_bytes {universe_uuid="__universeUuid__"})
+      / on (universe_uuid, node_name) node_memory_MemTotal_bytes {universe_uuid="__universeUuid__"}) > 0.6
+      ) > 0
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.25
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    thresholdConditionReadOnly: true
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid) ((avg_over_time(yb_process_memory_kb{type='resident', process='yb-tserver', universe_uuid='{{$labels.universe_uuid }}'}[5m]) * 1024 
+        - on (universe_uuid, node_name) avg_over_time(generic_current_allocated_bytes{export_type='tserver_export', universe_uuid='{{$labels.universe_uuid }}'}[5m]) 
+        - on (universe_uuid, node_name) avg_over_time(tcmalloc_pageheap_free_bytes{export_type='tserver_export', universe_uuid='{{$labels.universe_uuid }}'}[5m])) 
+        / on (universe_uuid, node_name) (node_memory_MemTotal_bytes{universe_uuid='{{$labels.universe_uuid }}'}) {{ query_condition }} {{ query_threshold }} 
+        and on (universe_uuid, node_name) ((node_memory_MemTotal_bytes{universe_uuid='{{$labels.universe_uuid }}'} - on (universe_uuid, node_name) node_memory_MemAvailable_bytes {universe_uuid='{{$labels.universe_uuid }}'}) 
+        / on (universe_uuid, node_name) node_memory_MemTotal_bytes {universe_uuid='{{$labels.universe_uuid }}'}) > 0.6) > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        RSS statistic for tserver is more than 25% larger than what TCMalloc stats suggest for '{{ $labels.affected_node_names }}' in universe '{{ $labels.source_name }}'.
+
+  THP_INCORRECT_SETTINGS:
+    name: Incorrect THP settings
+    description: Found incorrect THP settings on universe nodes
+    queryTemplate: count by (universe_uuid) (yb_thp_settings_check{universe_uuid="__universeUuid__"} < 1)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by (universe_uuid, node_name)
+        (yb_thp_settings_check{universe_uuid='{{ $labels.universe_uuid }}'} > 0)
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Incorrect THP settings found for universe '{{ $labels.source_name }}'
+        on {{ $value | printf "%.0f" }} node(s).
+        Affected nodes: {{ $labels.affected_node_names }}

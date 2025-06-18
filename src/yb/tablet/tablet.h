@@ -80,6 +80,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
@@ -121,8 +122,10 @@ YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
 struct AdminCompactionOptions {
-  std::function<void()> compaction_completion_callback;
+  StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
+  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+      rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
 };
 
 struct TabletScopedRWOperationPauses {
@@ -524,6 +527,7 @@ class Tablet : public AbstractTablet,
   const scoped_refptr<MetricEntity>& GetTableMetricsEntity() const {
     return table_metrics_entity_;
   }
+
   const scoped_refptr<MetricEntity>& GetTabletMetricsEntity() const {
     return tablet_metrics_entity_;
   }
@@ -610,7 +614,9 @@ class Tablet : public AbstractTablet,
 
   Status ForceRocksDBCompact(
       rocksdb::CompactionReason compaction_reason,
-      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+      docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
+          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
 
   rocksdb::DB* regular_db() const {
     return regular_db_.get();
@@ -993,6 +999,8 @@ class Tablet : public AbstractTablet,
   void RefreshCompactFlushRateLimitBytesPerSec();
   void SetCompactFlushRateLimitBytesPerSec(int64_t bytes_per_sec);
 
+  void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1047,7 +1055,14 @@ class Tablet : public AbstractTablet,
       const std::string& partition_key,
       size_t row_count) const;
 
-  void TriggerManualCompactionSync(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionSyncUnsafe(
+      rocksdb::CompactionReason reason,
+      rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
+
+  Status TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
+    return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
+  }
+
   void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
@@ -1152,6 +1167,9 @@ class Tablet : public AbstractTablet,
 
   // For the block cache and memory manager shared across tablets
   const TabletOptions tablet_options_;
+
+  mutable std::shared_mutex mutable_tablet_options_mutex_;
+  MutableTabletOptions mutable_tablet_options_ GUARDED_BY (mutable_tablet_options_mutex_);
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destructing the RocksDB in-memory instance and read/write

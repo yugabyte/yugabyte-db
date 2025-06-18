@@ -3,7 +3,7 @@ if id "{{ yb_user }}" &>/dev/null; then
     echo "User {{ yb_user }} already exists"
 else
     # Creating the yb_user
-    useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_home_dir }} {{ yb_user }}
+    useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_home_dir }} -U {{ yb_user }}
     chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}
     chmod -R 711 {{ yb_home_dir }}
     echo "User {{ yb_user }} created"

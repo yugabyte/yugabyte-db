@@ -1,3 +1,4 @@
 # src/test/regress/yb_types_datetime_schedule
 # NON-PORTED TESTS ONLY
 test: yb.orig.time
+test: yb.orig.interval

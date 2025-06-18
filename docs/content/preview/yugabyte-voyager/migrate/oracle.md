@@ -87,14 +87,20 @@ Create a role and a database user, and provide the user with READ access to all 
 
        **For Oracle RDS**
 
+       **Note** that the following step assumes you're using SQL*Plus or a compatible Oracle client that supports `EXEC`. If your client doesn't support `EXEC`, use the standard SQL CALL syntax instead.
+
        ```sql
        exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
        ```
 
     1. Verify using `archive log list`.
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity). Note that you can use only one of the following arguments to connect to your Oracle instance:
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity). Note that you can use only one of the following arguments when connecting to your Oracle instance:
 
-- --source-db-schema (Schema name of the source database.)
-- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
+
+| [Configuration file](#set-up-a-configuration-file) source parameter | CLI Flag                | Description                                                                 |
+|--------------------------------------------------|-------------------------|-----------------------------------------------------------------------------|
+| db-schema                                        | --source-db-schema      | Schema name of the source database.                                        |
+| oracle-db-sid                                    | --oracle-db-sid         | Oracle System Identifier you can use while exporting data from Oracle instances. |
+| oracle-tns-alias                                 | --oracle-tns-alias      | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. |
+

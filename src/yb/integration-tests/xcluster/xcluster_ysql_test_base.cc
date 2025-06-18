@@ -24,20 +24,24 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/server/server_base.h"
+
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/thread.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
+
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
@@ -268,17 +272,7 @@ std::string XClusterYsqlTestBase::GetCompleteTableName(const YBTableName& table)
 }
 
 Result<NamespaceId> XClusterYsqlTestBase::GetNamespaceId(YBClient* client) {
-  return GetNamespaceId(client, namespace_name);
-}
-
-Result<NamespaceId> XClusterYsqlTestBase::GetNamespaceId(
-    YBClient* client, const NamespaceName& ns_name) {
-  master::GetNamespaceInfoResponsePB resp;
-
-  RETURN_NOT_OK(
-      client->GetNamespaceInfo({} /* namespace_id */, ns_name, YQL_DATABASE_PGSQL, &resp));
-
-  return resp.namespace_().id();
+  return XClusterTestUtils::GetNamespaceId(*client, namespace_name);
 }
 
 Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
@@ -339,7 +333,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
   bool verify_schema_name =
       !schema_name.empty() && !FLAGS_TEST_create_table_with_empty_pgschema_name;
   return GetYsqlTable(
-      cluster, namespace_name, schema_name, table_name, true /* verify_table_name */,
+      cluster, namespace_name, schema_name, table_name, /*verify_table_name=*/true,
       verify_schema_name);
 }
 
@@ -389,8 +383,8 @@ Result<std::pair<NamespaceId, NamespaceId>> XClusterYsqlTestBase::CreateDatabase
     return Status::OK();
   }));
   return std::make_pair(
-      VERIFY_RESULT(GetNamespaceId(producer_client(), db_name)),
-      VERIFY_RESULT(GetNamespaceId(consumer_client(), db_name)));
+      VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), db_name)),
+      VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), db_name)));
 }
 
 Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
@@ -508,31 +502,6 @@ Status XClusterYsqlTestBase::DropYsqlTable(Cluster& cluster, const client::YBTab
   return DropYsqlTable(
       &cluster, table_name.namespace_name(), table_name.pgschema_name(), table_name.table_name(),
       table_name.relation_type() == master::INDEX_TABLE_RELATION);
-}
-
-Status XClusterYsqlTestBase::WriteWorkload(
-    const YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
-  std::string table_name_str = GetCompleteTableName(table);
-
-  LOG(INFO) << "Writing " << end - start << " inserts";
-
-  // Use a transaction if more than 1 row is to be inserted.
-  const bool use_tran = end - start > 1;
-  if (use_tran) {
-    RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
-  }
-
-  for (uint32_t i = start; i < end; i++) {
-    RETURN_NOT_OK(
-        conn.ExecuteFormat("INSERT INTO $0($1) VALUES ($2)", table_name_str, kKeyColumnName, i));
-  }
-
-  if (use_tran) {
-    RETURN_NOT_OK(conn.ExecuteFormat("COMMIT"));
-  }
-
-  return Status::OK();
 }
 
 Result<pgwrapper::PGResultPtr> XClusterYsqlTestBase::ScanToStrings(
@@ -713,7 +682,7 @@ void XClusterYsqlTestBase::BumpUpSchemaVersionsWithAlters(
 
 Status XClusterYsqlTestBase::InsertRowsInProducer(
     uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table,
-    bool use_transaction) {
+    std::optional<bool> use_transaction) {
   if (!producer_table) {
     producer_table = producer_table_;
   }
@@ -724,7 +693,7 @@ Status XClusterYsqlTestBase::InsertRowsInProducer(
 
 Status XClusterYsqlTestBase::DeleteRowsInProducer(
     uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table,
-    bool use_transaction) {
+    std::optional<bool> use_transaction) {
   if (!producer_table) {
     producer_table = producer_table_;
   }
@@ -780,12 +749,13 @@ Status XClusterYsqlTestBase::WriteTransactionalWorkload(
 
 Status XClusterYsqlTestBase::WriteWorkload(
     uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table, bool delete_op,
-    bool use_transaction) {
+    std::optional<bool> use_transaction_opt) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
   std::string table_name_str = GetCompleteTableName(table);
 
+  bool use_transaction = use_transaction_opt.value_or(end != start);
   LOG(INFO) << "Writing " << end - start << (delete_op ? " deletes" : " inserts")
-            << " using transaction " << use_transaction;
+            << " use_transaction: " << use_transaction;
   if (use_transaction) {
     RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
   }
@@ -1008,9 +978,9 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 
   if (params.use_different_database_oids) {
     SCHECK_NE(
-        VERIFY_RESULT(GetNamespaceId(producer_client(), namespace_name)),
-        VERIFY_RESULT(GetNamespaceId(consumer_client(), namespace_name)), InternalError,
-        "Unable to use different OIDs for the source and target databases");
+        VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name)),
+        VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace_name)),
+        InternalError, "Unable to use different OIDs for the source and target databases");
   }
 
   return PostSetUp();
@@ -1018,13 +988,9 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 
 Status XClusterYsqlTestBase::CheckpointReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, bool require_no_bootstrap_needed) {
-  auto producer_namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
-  RETURN_NOT_OK(client::XClusterClient(*producer_client())
-                    .CreateOutboundReplicationGroup(
-                        replication_group_id, {producer_namespace_id}, UseAutomaticMode()));
-
-  auto bootstrap_required =
-      VERIFY_RESULT(IsXClusterBootstrapRequired(replication_group_id, producer_namespace_id));
+  auto bootstrap_required = VERIFY_RESULT(XClusterTestUtils::CheckpointReplicationGroup(
+      *producer_client(), replication_group_id, namespace_name, MonoDelta::FromSeconds(kRpcTimeout),
+      UseAutomaticMode()));
   SCHECK(
       !require_no_bootstrap_needed || !bootstrap_required, IllegalState,
       "Bootstrap should not be required");
@@ -1067,25 +1033,6 @@ Status XClusterYsqlTestBase::AddNamespaceToXClusterReplication(
   return WaitForValidSafeTimeOnAllTServers(target_namespace_id);
 }
 
-Status XClusterYsqlTestBase::WaitForCreateReplicationToFinish(
-    const std::string& target_master_addresses, std::vector<NamespaceName> namespace_names,
-    xcluster::ReplicationGroupId replication_group_id) {
-  RETURN_NOT_OK(LoggedWaitFor(
-      [this, &target_master_addresses, replication_group_id]() -> Result<bool> {
-        auto result = VERIFY_RESULT(
-            client::XClusterClient(*producer_client())
-                .IsCreateXClusterReplicationDone(replication_group_id, target_master_addresses));
-        if (!result.status().ok()) {
-          return result.status();
-        }
-        return result.done();
-      },
-      MonoDelta::FromSeconds(kRpcTimeout), __func__));
-
-  // Wait for the xcluster safe time to propagate to the tserver nodes.
-  return WaitForSafeTimeToAdvanceToNow(namespace_names);
-}
-
 Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
     const std::string& target_master_addresses,
     const xcluster::ReplicationGroupId& replication_group_id,
@@ -1100,10 +1047,10 @@ Status XClusterYsqlTestBase::CreateReplicationFromCheckpoint(
     namespace_names = {namespace_name};
   }
 
-  RETURN_NOT_OK(client::XClusterClient(*producer_client())
-                    .CreateXClusterReplicationFromCheckpoint(replication_group_id, master_addr));
+  RETURN_NOT_OK(XClusterTestUtils::CreateReplicationFromCheckpoint(
+      *producer_client(), replication_group_id, master_addr, MonoDelta::FromSeconds(kRpcTimeout)));
 
-  return WaitForCreateReplicationToFinish(master_addr, namespace_names, replication_group_id);
+  return WaitForSafeTimeToAdvanceToNow(namespace_names);
 }
 
 Status XClusterYsqlTestBase::DeleteOutboundReplicationGroup(
@@ -1163,5 +1110,19 @@ Status XClusterYsqlTestBase::EnablePITROnClusters() {
         2s * kTimeMultiplier, 20h));
     return Status::OK();
   });
+}
+
+Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
+  auto yb_admin_client = std::make_unique<tools::ClusterAdminClient>(
+      consumer_cluster_.mini_cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  RETURN_NOT_OK(yb_admin_client->Init());
+  auto j = VERIFY_RESULT(yb_admin_client->ListSnapshotSchedules(SnapshotScheduleId::Nil()));
+  auto snapshot_schedule_id =
+      VERIFY_RESULT(SnapshotScheduleIdFromString(j["schedules"].GetArray()[0]["id"].GetString()));
+  auto sink = RegexWaiterLogSink(".*Marking restoration.*as complete in sys catalog");
+  RETURN_NOT_OK(yb_admin_client->RestoreSnapshotSchedule(snapshot_schedule_id, time));
+  RETURN_NOT_OK(sink.WaitFor(300s));
+  LOG(INFO) << "PITR has been completed";
+  return Status::OK();
 }
 }  // namespace yb

@@ -16,16 +16,16 @@ This page explores keyspaces and tables in YCQL using the command line shell `yc
 
 ## YCQL shell
 
-Use the [ycqlsh shell](../../../api/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because `ycqlsh` is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/tools/cqlsh.html), most `cqlsh` commands work as is in `ycqlsh`. Unsupported commands are [listed](#unsupported-cqlsh-commands) at the end of this page.
+Use the YCQL shell [ycqlsh](../../../api/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because ycqlsh is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/managing/tools/cqlsh.html), most cqlsh commands work as is in ycqlsh. Unsupported commands are [listed](#unsupported-cqlsh-commands) at the end of this page.
 
-Using `ycqlsh`, you can:
+Using ycqlsh, you can:
 
 - interactively enter YCQL DDL and DML and see the query results
 - input from a file or the command line
 - use tab completion to automatically complete commands
 - use a minimal command name as long as it can be distinguished from other commands (for example, `desc` instead of `DESCRIBE`)
 
-`ycqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
+ycqlsh is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 
 ### Connect to a node
 
@@ -35,7 +35,7 @@ From your YugabyteDB home directory, connect to any node of the database cluster
 $ ./bin/ycqlsh 127.0.0.1
 ```
 
-This should bring up the following prompt, which prints the version of `ycqlsh` being used.
+This should bring up the following prompt, which prints the version of ycqlsh being used.
 
 ```output
 Connected to local cluster at 127.0.0.1:9042.
@@ -169,13 +169,13 @@ To quit the shell, enter the following command:
 ycqlsh> quit;
 ```
 
-## Unsupported `cqlsh` commands
+## Unsupported cqlsh commands
 
 |   Command         |                      Alternative                          |
 | :---------------- | :-------------------------------------------------------- |
 | LIST ROLES        | select * from system_auth.roles                           |
-| SHOW SESSION      | Tracing from `ycqlsh` is not supported.                   |
-| TRACING           | Tracing from `ycqlsh` is not supported.                   |
+| SHOW SESSION      | Tracing from ycqlsh is not supported.                   |
+| TRACING           | Tracing from ycqlsh is not supported.                   |
 
 ## Learn more
 

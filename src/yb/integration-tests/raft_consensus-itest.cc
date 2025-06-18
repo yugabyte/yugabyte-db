@@ -3826,5 +3826,47 @@ TEST_F(RaftConsensusITest, LeaderChangeWithConsensusMetadaFlushFailed) {
                                   tablet_id_, 2));
 }
 
+TEST_F(RaftConsensusITest, UpdateConsensusFollowerFailedAfterStartReplicaOperation) {
+  MonoDelta kTimeout = MonoDelta::FromSeconds(30);
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(WaitForServersToAgree(kTimeout, tablet_servers_,
+                                  tablet_id_, 1));
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto follower_idx = (leader_idx + 1) % FLAGS_num_replicas;
+  const auto follower = cluster_->tablet_server(follower_idx);
+
+  TServerDetails* leader_tserver = nullptr;
+  ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader_tserver));
+
+  // assume the write sends the request with {ht, propagated_safe_time} = {2, 1} to all followers.
+  // 'follower_idx' should have propagated_safe_time_=1 after the write.
+  ASSERT_OK(WriteSimpleTestRow(leader_tserver, tablet_id_,
+                               0 /* key */, 0 /* int_val */, "" /* string_val */, kTimeout));
+  SleepFor(2s);
+
+  // enable the flag so the new write request will be rejected but update propagated_safe_time of
+  // the follower.
+  ASSERT_OK(cluster_->SetFlag(follower, "TEST_follower_fail_retryable_register", "true"));
+
+  // assume the write sends the request with {ht, propagated_safe_time} = {4, 3} to the followers.
+  // At 'follower_idx': the request will be rejected and the propagated_safe_time_ should not be
+  // changed.
+  ASSERT_OK(WriteSimpleTestRow(leader_tserver, tablet_id_,
+                               1 /* key */, 0 /* int_val */, "" /* string_val */, kTimeout));
+  SleepFor(2s);
+
+  // assume the write sends the request with {ht, propagated_safe_time} = {6, 5} to the followers.
+  // For 'follower_idx', the leader will send both writes (ht=4 and 6) with propagated_safe_time=5.
+  // In 'follower_idx', the propagated_safe_time_ is still 1 which is less than 4 and 6, so it will
+  // not trigger the fatal "New operation's hybrid time too low".
+  ASSERT_OK(WriteSimpleTestRow(leader_tserver, tablet_id_,
+                                2 /* key */, 0 /* int_val */, "" /* string_val */, kTimeout));
+  SleepFor(2s);
+
+  // assert the follower should not crash.
+  ASSERT_TRUE(follower->IsProcessAlive()) << "Tablet server " << follower_idx << " crashed";
+}
+
 }  // namespace tserver
 }  // namespace yb

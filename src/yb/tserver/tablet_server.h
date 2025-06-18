@@ -548,7 +548,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // a SQL null value, but treats an empty string as a noop because an empty string represents
   // that there is no invalidation message. There is nothing in the PG catalog cache that can
   // be invalidated by an empty string.
-  using InvalidationMessagesQueue = std::deque<std::pair<uint64_t, std::optional<std::string>>>;
+  using InvalidationMessagesQueue =
+      std::deque<std::tuple<uint64_t, std::optional<std::string>, CoarseTimePoint>>;
   // If cutoff_catalog_version > 0, we can garbage collect any slots that have catalog version
   // <= cutoff_catalog_version because no backends on this node will ever need those invalidation
   // messages in order to support incremental catalog cache refresh. A backend will need at least
@@ -607,8 +608,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       const std::map<uint32_t, std::vector<uint64_t>>& db_local_catalog_versions_map,
       std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions,
       std::map<uint32_t, uint64_t> *db_cutoff_catalog_versions);
-  void ClearInvalidationMessageQueueUnlocked(
+  void MaybeClearInvalidationMessageQueueUnlocked(
+      uint32_t db_oid,
       const std::vector<uint64_t>& local_catalog_versions,
+      std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions,
       InvalidationMessagesInfo *info) REQUIRES(lock_);
   void MergeInvalMessagesIntoQueueUnlocked(
       uint32_t db_oid,
@@ -616,6 +619,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       int start_index,
       int end_index) REQUIRES(lock_);
   void DoMergeInvalMessagesIntoQueueUnlocked(
+      uint32_t db_oid,
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       int start_index,
       int end_index,

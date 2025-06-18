@@ -91,15 +91,15 @@ set(INTEGRATION_TESTS_SRCS
   ts_itest-base.cc
   yb_mini_cluster_test_base.cc
   yb_table_test_base.cc
-  xcluster/xcluster_external_mini_cluster_base.cc
   xcluster/xcluster_test_base.cc
   cdcsdk_test_base.cc
   cdcsdk_ysql_test_base.cc
-  xcluster/xcluster_ysql_test_base.cc
-  xcluster/xcluster_ycql_test_base.cc
-  xcluster/xcluster_ddl_replication_test_base.cc
-  upgrade-tests/ysql_major_upgrade_test_base.cc
   upgrade-tests/upgrade_test_base.cc
+  upgrade-tests/ysql_major_upgrade_test_base.cc
+  xcluster/xcluster_ddl_replication_test_base.cc
+  xcluster/xcluster_test_utils.cc
+  xcluster/xcluster_ycql_test_base.cc
+  xcluster/xcluster_ysql_test_base.cc
 )
 
 ADD_YB_TEST_LIBRARY(integration-tests SRCS ${INTEGRATION_TESTS_SRCS})
@@ -272,11 +272,12 @@ ADD_YB_TEST(xcluster/xcluster_secondary_oid_space-test)
 YB_TEST_TARGET_LINK_LIBRARIES(xcluster_secondary_oid_space-test pg_wrapper_test_base)
 ADD_YB_TEST(retryable_request-test)
 ADD_YB_TEST(upgrade-tests/auto_flag_upgrade-test)
+ADD_YB_TEST(upgrade-tests/backup_upgrade-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 ADD_YB_TEST(upgrade-tests/replication_info_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg_locks_v76_upgrade-test)
+ADD_YB_TEST(upgrade-tests/xcluster_upgrade-itest)
 ADD_YB_TEST(upgrade-tests/ycql_only_upgrade-test)
-
 ADD_YB_TEST(upgrade-tests/ysql_major_extension_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_check-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_conn_mgr-test)
@@ -284,6 +285,7 @@ ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_ddl_blocking-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_expression_pushdown-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
+ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_role_profiles-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_stats_import-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade-test)
 

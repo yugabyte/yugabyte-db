@@ -224,6 +224,9 @@ public class Audit extends Model {
     @EnumValue("Import")
     Import,
 
+    @EnumValue("Attach")
+    Attach,
+
     @EnumValue("Pause")
     Pause,
 
@@ -596,11 +599,11 @@ public class Audit extends Model {
     @EnumValue("Edit Image Bundle")
     EditImageBundle,
 
-    @EnumValue("Export")
-    Export,
+    @EnumValue("Detach")
+    Detach,
 
-    @EnumValue("Delete Universe Metadata")
-    DeleteMetadata,
+    @EnumValue("Delete Attach/Detach Metadata")
+    DeleteAttachDetachMetadata,
 
     @EnumValue("Unlock Universe")
     Unlock,

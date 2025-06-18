@@ -71,10 +71,11 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_max_num_invalidation_messages, 4096,
                        "caused by this DDL statement. This effetively turns off incremental "
                        "catalog cache refresh for this new catalog version.");
 
+DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
+                      "Maximum number of invalidation messages we keep for a given database.");
+
 namespace yb::pggate {
 namespace {
-
-YB_STRONGLY_TYPED_BOOL(ForceFlushBeforeNonBufferableOp);
 
 template<class Container, class Key>
 void Erase(Container* container, const Key& key) {
@@ -302,6 +303,29 @@ YbcTxnPriorityRequirement GetTxnPriorityRequirement(
   return txn_priority_requirement;
 }
 
+bool IsTableAffectedByOperations(
+  const PgObjectId& table_id, const PgsqlOp& op, std::span<const PgObjectId> buffered_rels) {
+
+  PgObjectId index_id;
+  if (op.is_read()) {
+    const auto& req = down_cast<const PgsqlReadOp&>(op).read_request();
+    if (req.has_index_request()) {
+      index_id = PgObjectId{req.index_request().table_id()};
+    }
+  }
+  return std::ranges::any_of(
+      buffered_rels,
+      [&table_id, &index_id] (const auto& rel) { return table_id == rel || index_id == rel; });
+}
+
+std::optional<ReadTimeAction> MakeReadTimeActionForFlush(const PgTxnManager& txn_manager) {
+  if (txn_manager.IsDdlMode()) {
+    return std::nullopt;
+  }
+  return txn_manager.GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL
+      ? ReadTimeAction::RESET : ReadTimeAction::ENSURE_IS_SET;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -310,20 +334,16 @@ YbcTxnPriorityRequirement GetTxnPriorityRequirement(
 
 class PgSession::RunHelper {
  public:
-  RunHelper(PgSession* pg_session,
-            SessionType session_type,
-            HybridTime in_txn_limit,
-            ForceNonBufferable force_non_bufferable,
-            ForceFlushBeforeNonBufferableOp force_flush_before_non_bufferable_op)
+  RunHelper(
+      PgSession* pg_session, SessionType session_type, HybridTime in_txn_limit,
+      ForceNonBufferable force_non_bufferable)
       : pg_session_(*pg_session),
         session_type_(session_type),
         in_txn_limit_(in_txn_limit),
-        force_non_bufferable_(force_non_bufferable),
-        force_flush_before_non_bufferable_op_(force_flush_before_non_bufferable_op) {
+        force_non_bufferable_(force_non_bufferable) {
     VLOG(2) << "RunHelper session_type: " << ToString(session_type_)
             << ", in_txn_limit: " << ToString(in_txn_limit_)
-            << ", force_non_bufferable: " << force_non_bufferable_
-            << ", force_flush_before_non_bufferable_op: " << force_flush_before_non_bufferable_op_;
+            << ", force_non_bufferable: " << force_non_bufferable_;
   }
 
   Status Apply(const PgTableDesc& table, PgsqlOpPtr op) {
@@ -355,7 +375,7 @@ class PgSession::RunHelper {
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
     // operations have been already applied to current session (yb session does not exist).
-    if (operations_.Empty() && pg_session_.buffering_enabled_ &&
+    if (ops_info_.ops.Empty() && pg_session_.buffering_enabled_ &&
         !force_non_bufferable_ && op->is_write()) {
         if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
           LOG_WITH_PREFIX(INFO) << "Buffering operation on table "
@@ -369,7 +389,7 @@ class PgSession::RunHelper {
     bool read_only = op->is_read();
     // Flush all buffered operations (if any) before performing non-bufferable operation
     if (!Empty(buffer)) {
-      SCHECK(operations_.Empty(),
+      SCHECK(ops_info_.ops.Empty(),
             IllegalState,
             "Buffered operations must be flushed before applying first non-bufferable operation");
       // Buffered write operations can't be combined within a single RPC with non-bufferable read
@@ -386,25 +406,24 @@ class PgSession::RunHelper {
       // write operations. Since the writes and catalog reads belong to different session types (as
       // per PgClientSession), we can't send them to the local tserver proxy in 1 rpc, so we flush
       // the buffer before performing catalog reads.
-      if ((IsTransactional() && in_txn_limit_) ||
-           IsCatalog() ||
-           force_flush_before_non_bufferable_op_) {
-        RETURN_NOT_OK(buffer.Flush());
+      if ((IsTransactional() && in_txn_limit_) || IsCatalog()) {
+          RETURN_NOT_OK(buffer.Flush());
       } else {
-        operations_ = VERIFY_RESULT(buffer.FlushTake(table, *op, IsTransactional()));
-        read_only = read_only && operations_.Empty();
+        ops_info_.ops = VERIFY_RESULT(buffer.Take(IsTransactional()));
+        ops_info_.num_ops_taken_from_buffer = ops_info_.ops.Size();
+        read_only = read_only && ops_info_.ops.Empty();
       }
     }
 
     if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
       LOG_WITH_PREFIX(INFO) << "Applying operation on table "
-      << table.table_name().table_name()
-      << ": " << op->ToString();
+                            << table.table_name().table_name()
+                            << ": " << op->ToString();
     }
 
     const auto row_mark_type = GetRowMarkType(*op);
 
-    operations_.Add(std::move(op), table);
+    RETURN_NOT_OK(Add(table, std::move(op)));
 
     if (!IsTransactional()) {
       return Status::OK();
@@ -420,18 +439,18 @@ class PgSession::RunHelper {
   }
 
   Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
-    if (operations_.Empty()) {
+    if (ops_info_.ops.Empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
     }
 
     if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
       LOG_WITH_PREFIX(INFO) << "Flushing collected operations, using session type: "
-                            << ToString(session_type_) << " num ops: " << operations_.Size();
+                            << ToString(session_type_) << " num ops: " << ops_info_.ops.Size();
     }
 
     return pg_session_.Perform(
-        std::move(operations_),
+        std::move(ops_info_.ops),
         {.use_catalog_session = IsCatalog(),
          .cache_options = std::move(cache_options),
          .in_txn_limit = in_txn_limit_
@@ -455,12 +474,32 @@ class PgSession::RunHelper {
     return pg_session_.LogPrefix();
   }
 
-  BufferableOperations operations_;
+  Status Add(const PgTableDesc& table, PgsqlOpPtr&& op) {
+    if (IsTableAffectedByOperations(
+        table.pg_table_id(), *op,
+        {ops_info_.ops.relations().data(), ops_info_.num_ops_taken_from_buffer})) {
+      auto [buffered_ops, ops] =
+          Split(std::move(ops_info_.ops), ops_info_.num_ops_taken_from_buffer);
+      DCHECK_EQ(ops_info_.num_ops_taken_from_buffer, buffered_ops.Size());
+      ops_info_.ops = std::move(ops);
+      ops_info_.num_ops_taken_from_buffer = 0;
+      RETURN_NOT_OK(VERIFY_RESULT(pg_session_.FlushOperations(
+        std::move(buffered_ops), IsTransactional())).Get());
+    }
+    ops_info_.ops.Add(std::move(op), table);
+    return Status::OK();
+  }
+
+  struct OperationsInfo {
+    BufferableOperations ops;
+    size_t num_ops_taken_from_buffer{0};
+  };
+
+  OperationsInfo ops_info_;
   PgSession& pg_session_;
   const SessionType session_type_;
   const HybridTime in_txn_limit_;
   const ForceNonBufferable force_non_bufferable_;
-  const ForceFlushBeforeNonBufferableOp force_flush_before_non_bufferable_op_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -481,12 +520,10 @@ PgSession::PgSession(
       pg_callbacks_(pg_callbacks),
       buffering_settings_(buffering_settings),
       buffer_(
-          [this](BufferableOperations&& ops, bool transactional)
-              -> Result<PgOperationBuffer::PerformFutureEx> {
-            return PgOperationBuffer::PerformFutureEx{
-                VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
+          [this](BufferableOperations&& ops, bool transactional) {
+            return FlushOperations(std::move(ops), transactional);
           },
-          metrics_, buffering_settings_),
+          buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
       wait_event_watcher_(wait_event_watcher) {
   Update(&buffering_settings_);
@@ -757,7 +794,7 @@ Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
 
-Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool transactional) {
+Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool transactional) {
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
     LOG_WITH_PREFIX(INFO) << "Flushing buffered operations, using "
                           << (transactional ? "transactional" : "non-transactional")
@@ -781,15 +818,13 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations&& ops, boo
   // for the safe time on docdb to catch up with an already chosen read time, and allowing docdb to
   // internally retry the request in case of read restart/ conflict errors.
   //
-  // EnsureReadTimeIsSet helps PgClientService to determine whether it can safely use the
-  // optimization of allowing docdb (which serves the operation) to pick the read time.
-  auto ensure_read_time = pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL
-      ? EnsureReadTimeIsSet::kFalse : EnsureReadTimeIsSet::kTrue;
-  auto non_transactional_buffered_write =
-      pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL;
-  return Perform(std::move(ops),
-      {.ensure_read_time_is_set = ensure_read_time,
-       .non_transactional_buffered_write = non_transactional_buffered_write});
+  // ReadTimeAction helps to determine whether it can safely use the optimization of allowing
+  // docdb (which serves the operation) to pick the read time.
+
+  return FlushFuture{
+      VERIFY_RESULT(Perform(
+          std::move(ops), { .read_time_action = MakeReadTimeActionForFlush(*pg_txn_manager_) })),
+      *this, metrics_};
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
@@ -801,9 +836,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(
-        &options, ops_options.ensure_read_time_is_set,
-        ops_options.non_transactional_buffered_write));
+    RETURN_NOT_OK(pg_txn_manager_->SetupPerformOptions(&options, ops_options.read_time_action));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -1068,10 +1101,8 @@ Result<PerformFuture> PgSession::DoRunAsync(
       *pg_txn_manager_, *first_table_op.table, **first_table_op.operation,
       non_ddl_txn_for_sys_tables_allowed));
   auto table_op = generator();
-  const auto multiple_ops_for_processing = !table_op.IsEmpty();
   RunHelper runner(
-      this, group_session_type, in_txn_limit, force_non_bufferable,
-      ForceFlushBeforeNonBufferableOp{multiple_ops_for_processing});
+      this, group_session_type, in_txn_limit, force_non_bufferable);
   const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
   auto processor =
       [this,

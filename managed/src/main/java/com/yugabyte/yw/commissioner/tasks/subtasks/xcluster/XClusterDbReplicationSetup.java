@@ -46,9 +46,7 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     Duration xClusterWaitTimeout =
         this.confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
-    try (YBClient client =
-        ybService.getClient(
-            sourceUniverse.getMasterAddresses(), sourceUniverse.getCertificateNodetoNode())) {
+    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
       Set<CommonNet.HostPortPB> targetMasterAddresses =
           new HashSet<>(
               NetUtil.parseStringsAsPB(

@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import org.apache.commons.collections4.MapUtils;
@@ -179,5 +181,21 @@ public interface CloudUtil extends StorageUtil {
       return org.yb.ybc.ProxyConfig.newBuilder().setDefaultProxy(pSpec).build();
     }
     return null;
+  }
+
+  public default String extractBackupDirFromKey(String key, String cloudPath) {
+    if (StringUtils.isBlank(key)) {
+      return null;
+    }
+    // Match only directories that are exactly one level after cloudPath
+    String pattern =
+        String.format(
+            "^(?:%s/)?([^/]+)/%s$",
+            StringUtils.isNotBlank(cloudPath) ? cloudPath : "", Pattern.quote(YBA_BACKUP_MARKER));
+
+    Pattern regex = Pattern.compile(pattern);
+    Matcher matcher = regex.matcher(key);
+
+    return matcher.find() ? matcher.group(1) : null;
   }
 }

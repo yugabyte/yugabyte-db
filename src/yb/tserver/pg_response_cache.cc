@@ -172,6 +172,23 @@ class MetricUpdater {
   DISALLOW_COPY_AND_ASSIGN(MetricUpdater);
 };
 
+void Respond(const PgResponseCacheWaiterPtr& waiter,
+             const PgResponseCache::Response& value) {
+  auto [response, sidecars] = waiter->ResponseAndSidecars();
+  response = value.response;
+  auto rows_data_it = value.rows_data.begin();
+  for (auto& op : *response.mutable_responses()) {
+    if (op.has_rows_data_sidecar()) {
+      sidecars.Start().Append(rows_data_it->AsSlice());
+      op.set_rows_data_sidecar(narrow_cast<int>(sidecars.Complete()));
+    } else {
+      DCHECK(!*rows_data_it);
+    }
+    ++rows_data_it;
+  }
+  waiter->SendResponse();
+}
+
 class Data {
  public:
   Data(uint64_t version,
@@ -181,16 +198,7 @@ class Data {
       : metric_updater_(std::move(metric_updater)),
         version_(version),
         creation_time_(creation_time),
-        readiness_deadline_(readiness_deadline),
-        future_(promise_.get_future()) {}
-
-  Result<const PgResponseCache::Response&> Get(CoarseTimePoint deadline) const {
-    const auto& actual_deadline = std::min(deadline, readiness_deadline_);
-    if (future_.wait_until(actual_deadline) != std::future_status::timeout) {
-      return future_.get();
-    }
-    return STATUS(TimedOut, "Timeout on getting response from the cache");
-  }
+        readiness_deadline_(readiness_deadline) {}
 
   void Set(PgResponseCache::Response&& value) {
     if (PREDICT_FALSE(FLAGS_TEST_pg_response_cache_catalog_read_time_usec > 0) &&
@@ -200,13 +208,27 @@ class Data {
           ReadHybridTime::SingleTime(HybridTime::FromMicros(
               FLAGS_TEST_pg_response_cache_catalog_read_time_usec)));
     }
+    auto failed = !IsOk(value);
     size_t sz = 0;
-    if (IsOk(value)) {
+    if (!failed) {
       for (const auto& data : value.rows_data) {
         sz += data.size();
       }
     }
-    promise_.set_value(std::move(value));
+    decltype(waiters_) waiters;
+    // Since response_ is not changed after assignment, we could store pointer to it to make
+    // thread safety analysis happy, and then use it.
+    const PgResponseCache::Response* response;
+    {
+      std::lock_guard lock(mutex_);
+      response_ = std::move(value);
+      waiters.swap(waiters_);
+      response = &*response_;
+      failed_ = failed;
+    }
+    for (auto waiter : waiters) {
+      Respond(waiter, *response);
+    }
     if (sz) {
       auto updater = metric_updater_.lock();
       if (updater) {
@@ -215,9 +237,22 @@ class Data {
     }
   }
 
-  [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) const {
-    return version == version_ &&
-           (IsReady(future_) ? IsOk(future_.get()) : now < readiness_deadline_);
+  [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) {
+    return version == version_ && now < readiness_deadline_ && !failed_;
+  }
+
+  [[nodiscard]] std::optional<const PgResponseCache::Response*> RegisterWaiter(
+      const PgResponseCacheWaiterPtr& waiter) {
+    std::lock_guard lock(mutex_);
+    if (!response_) {
+      if (!running_) {
+        running_ = true;
+        return std::nullopt;
+      }
+      waiters_.push_back(waiter);
+      return nullptr;
+    }
+    return &*response_;
   }
 
   [[nodiscard]] CoarseTimePoint creation_time() const {
@@ -229,8 +264,11 @@ class Data {
   const uint64_t version_;
   const CoarseTimePoint creation_time_;
   const CoarseTimePoint readiness_deadline_;
-  std::promise<PgResponseCache::Response> promise_;
-  std::shared_future<PgResponseCache::Response> future_;
+  std::mutex mutex_;
+  std::atomic<bool> failed_{false};
+  bool running_ GUARDED_BY(mutex_) = false;
+  std::optional<PgResponseCache::Response> response_ GUARDED_BY(mutex_);
+  std::vector<PgResponseCacheWaiterPtr> waiters_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
@@ -282,22 +320,6 @@ struct Entry {
   Value value;
 };
 
-void FillResponse(PgPerformResponsePB* response,
-                  rpc::Sidecars* sidecars,
-                  const PgResponseCache::Response& value) {
-  *response = value.response;
-  auto rows_data_it = value.rows_data.begin();
-  for (auto& op : *response->mutable_responses()) {
-    if (op.has_rows_data_sidecar()) {
-      sidecars->Start().Append(rows_data_it->AsSlice());
-      op.set_rows_data_sidecar(narrow_cast<int>(sidecars->Complete()));
-    } else {
-      DCHECK(!*rows_data_it);
-    }
-    ++rows_data_it;
-  }
-}
-
 [[nodiscard]] uint64_t GetCacheSizeLimitInBytes() {
   uint64_t result = 0;
   if (FLAGS_pg_response_cache_size_bytes) {
@@ -347,7 +369,7 @@ class PgResponseCache::Impl : private GarbageCollector {
     return key_group_buckets_[group % sz];
   }
 
-  [[nodiscard]] auto GetEntryData(
+  [[nodiscard]] std::shared_ptr<Data> GetEntryData(
       PgPerformOptionsPB::CachingInfoPB* cache_info, CoarseTimePoint deadline) EXCLUDES(mutex_) {
     auto now = CoarseMonoClock::Now();
     Counter* renew_metric = nullptr;
@@ -357,42 +379,45 @@ class PgResponseCache::Impl : private GarbageCollector {
       }
     });
     std::lock_guard lock(mutex_);
-    std::shared_ptr<Data> data;
-    auto loading_required = false;
     const auto group = cache_info->key_group();
     const auto& bucket = GetKeyGroupBucket(group);
-    if (!bucket.disabler.lock()) {
-      auto actual_version = bucket.version;
-      const auto& value = entries_.emplace(
-          group, std::move(*cache_info->mutable_key_value()))->value;
-      data = value.data();
-      if (!data ||
-          !data->IsValid(now, actual_version) ||
-          IsRenewRequired(data->creation_time(), now, *cache_info, &renew_metric)) {
-        VLOG(5) << "(Re)Building element group=" << group << " actual_version=" << actual_version;
-        const_cast<Value&>(value) = Value(actual_version, &metric_context_, now, deadline);
-        loading_required = true;
-        data = value.data();
-      }
-    } else {
-      loading_required = true;
+    if (bucket.disabler.lock()) {
+      return nullptr;
     }
-    return std::make_pair(std::move(data), loading_required);
+    auto actual_version = bucket.version;
+    const auto& value = entries_.emplace(
+        group, std::move(*cache_info->mutable_key_value()))->value;
+    auto data = value.data();
+    if (data && !IsRenewRequired(data->creation_time(), now, *cache_info, &renew_metric) &&
+        data->IsValid(now, actual_version)) {
+      return data;
+    }
+    VLOG(5) << "(Re)Building element group=" << group << " actual_version=" << actual_version;
+    const_cast<Value&>(value) = Value(actual_version, &metric_context_, now, deadline);
+    return value.data();
   }
 
  public:
   Result<Setter> Get(
-      PgPerformOptionsPB::CachingInfoPB* cache_info, PgPerformResponsePB* response,
-      rpc::Sidecars* sidecars, CoarseTimePoint deadline) EXCLUDES(mutex_) {
-    auto [data, loading_required] = GetEntryData(cache_info, deadline);
+      PgPerformOptionsPB::CachingInfoPB* cache_info, CoarseTimePoint deadline,
+      const PgResponseCacheWaiterPtr& waiter) EXCLUDES(mutex_) {
+    auto data = GetEntryData(cache_info, deadline);
     queries_->Increment();
-    if (!loading_required) {
-      hits_->Increment();
-      FillResponse(response, sidecars, VERIFY_RESULT_REF(data->Get(deadline)));
-      return Setter();
-    }
     if (!data) {
       return [](Response&& response) {};
+    }
+    auto response_opt = data->RegisterWaiter(waiter);
+    // There are 3 outcomes here:
+    // 1) !response_opt means that it is the first query to this data and it should be performed.
+    // 2) *response_opt == nullptr means that query is running and waiter will be notified when
+    //    response is ready.
+    // 3) *response_opt != nullptr means that response is ready and we could send it.
+    if (response_opt) {
+      hits_->Increment();
+      if (*response_opt) {
+        Respond(waiter, **response_opt);
+      }
+      return Setter();
     }
     return [empty_data = std::move(data)](Response&& response) {
       empty_data->Set(std::move(response));
@@ -512,9 +537,9 @@ PgResponseCache::~PgResponseCache() = default;
 
 Result<PgResponseCache::Setter> PgResponseCache::Get(
     PgPerformOptionsPB::CachingInfoPB* cache_info,
-    PgPerformResponsePB* response, rpc::Sidecars* sidecars,
-    CoarseTimePoint deadline) {
-  return impl_->Get(cache_info, response, sidecars, deadline);
+    CoarseTimePoint deadline,
+    const PgResponseCacheWaiterPtr& waiter) {
+  return impl_->Get(cache_info, deadline, waiter);
 }
 
 PgResponseCache::Disabler PgResponseCache::Disable(KeyGroup key_group) {

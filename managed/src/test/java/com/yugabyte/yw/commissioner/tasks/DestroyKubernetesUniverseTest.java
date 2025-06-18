@@ -16,8 +16,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -253,9 +252,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   public void testDestroyKubernetesUniverseSuccessAndPromoteAutoFlagsOnOthers() {
     setupUniverse(false);
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(
-            defaultUniverse.getMasterAddresses(), defaultUniverse.getCertificateNodetoNode()))
-        .thenReturn(mockClient);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
           new GFlagsValidation.AutoFlagsPerServer();

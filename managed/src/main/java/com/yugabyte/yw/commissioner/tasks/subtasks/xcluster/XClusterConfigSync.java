@@ -45,10 +45,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     Universe targetUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
-    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    try (YBClient client =
-        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
           getClusterConfig(client, targetUniverse.getUniverseUUID());
       XClusterConfigSyncFormData syncFormData = taskParams().getSyncFormData();

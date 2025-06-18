@@ -181,24 +181,7 @@ AsyncRpc::AsyncRpc(
 }
 
 AsyncRpc::~AsyncRpc() {
-  if (trace_) {
-    if (trace_->must_print()) {
-      LOG(INFO)
-          << ToString() << " took " << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString()
-          << ". Trace:";
-      trace_->DumpToLogInfo(true);
-    } else {
-      const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
-      if (print_trace_every_n > 0) {
-        bool was_printed = false;
-        YB_LOG_EVERY_N(INFO, print_trace_every_n)
-            << ToString() << " took " << MonoDelta(CoarseMonoClock::Now() - start_).ToPrettyString()
-            << ". Trace:" << Trace::SetTrue(&was_printed);
-        if (was_printed)
-          trace_->DumpToLogInfo(true);
-      }
-    }
-  }
+  Trace::DumpTraceIfNecessary(trace_.get(), FLAGS_ybclient_print_trace_every_n);
 }
 
 void AsyncRpc::SendRpc() {
@@ -387,6 +370,16 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
     // session level transactions aren't aborted on a deadlock and hence we need the write rpc to
     // keep track of the request version which it was launched with.
     req->mutable_write_batch()->set_pg_session_req_version(*metadata.pg_session_req_version);
+  }
+}
+
+void SetFastPathObjectLockingTxnMetadata(
+    const InFlightOpsTransactionMetadata& metadata, tserver::WriteRequestPB* req) {
+  if (metadata.object_locking_txn_meta) {
+    auto* txn_meta_pb = req->mutable_write_batch()->mutable_object_locking_txn_meta();
+    metadata.object_locking_txn_meta->TransactionIdToPB(txn_meta_pb);
+    txn_meta_pb->set_status_tablet(metadata.object_locking_txn_meta->status_tablet);
+    txn_meta_pb->set_pg_txn_start_us(MonoTime::Now().ToUint64());
   }
 }
 
@@ -679,6 +672,10 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
       batcher_->RegisterRequest(request_pair.first, request_pair.second);
     }
     FillRequestIds(req_.request_id(), &ops_);
+  }
+
+  if (batcher_->in_flight_ops().metadata.object_locking_txn_meta) {
+    SetFastPathObjectLockingTxnMetadata(batcher_->in_flight_ops().metadata, &req_);
   }
 }
 

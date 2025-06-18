@@ -67,6 +67,7 @@ using std::vector;
 
 using strings::Substitute;
 DECLARE_bool(enable_tracing);
+DECLARE_bool(threadpool_use_current_trace_for_tasks);
 
 using std::shared_ptr;
 
@@ -144,6 +145,7 @@ static void IssueTraceStatement() {
 TEST_F(TestThreadPool, TestTracePropagation) {
   std::unique_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(1, 1, &thread_pool));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_threadpool_use_current_trace_for_tasks) = true;
 
   scoped_refptr<Trace> t(new Trace);
   {

@@ -125,7 +125,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
-    when(mockService.getClient(any(), any())).thenReturn(mockClient);
+    when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -427,11 +427,11 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     QueryHelper queryHelper = new QueryHelper(mockConfGetter, executor, mockWsClient);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false, false);
     assertEquals(
-        "/*+ Leading((d pg_stat_statements))  */ SELECT s.userid::regrole as rolname, d.datname,"
-            + " s.queryid, LEFT(s.query, 1024) as query, s.calls, s.rows, s.local_blks_hit,"
-            + " s.local_blks_written, s.total_time, s.min_time, s.max_time, s.mean_time,"
-            + " s.stddev_time FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid ORDER"
-            + " BY s.total_time DESC LIMIT 200",
+        "/*+ Leading((d pg_stat_statements))  */ SELECT s.dbid, s.userid, s.userid::regrole as"
+            + " rolname, d.datname, s.queryid, LEFT(s.query, 1024) as query, s.calls, s.rows,"
+            + " s.local_blks_hit, s.local_blks_written, s.total_time, s.min_time, s.max_time,"
+            + " s.mean_time, s.stddev_time FROM pg_stat_statements s JOIN pg_database d ON d.oid ="
+            + " s.dbid ORDER BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 
@@ -458,11 +458,11 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     QueryHelper queryHelper = new QueryHelper(mockConfGetter, executor, mockWsClient);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false, false);
     assertEquals(
-        "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ SELECT s.userid::regrole"
-            + " as rolname, d.datname, s.queryid, LEFT(s.query, 1024) as query, s.calls, s.rows,"
-            + " s.local_blks_hit, s.local_blks_written, s.total_time, s.min_time, s.max_time,"
-            + " s.mean_time, s.stddev_time FROM pg_stat_statements s JOIN pg_database d ON d.oid ="
-            + " s.dbid ORDER BY s.total_time DESC LIMIT 200",
+        "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ SELECT s.dbid, s.userid,"
+            + " s.userid::regrole as rolname, d.datname, s.queryid, LEFT(s.query, 1024) as query,"
+            + " s.calls, s.rows, s.local_blks_hit, s.local_blks_written, s.total_time, s.min_time,"
+            + " s.max_time, s.mean_time, s.stddev_time FROM pg_stat_statements s JOIN pg_database d"
+            + " ON d.oid = s.dbid ORDER BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 

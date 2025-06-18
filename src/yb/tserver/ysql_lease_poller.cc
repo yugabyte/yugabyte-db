@@ -45,7 +45,7 @@ DEFINE_test_flag(bool, tserver_enable_ysql_lease_refresh, true,
 DEFINE_test_flag(double, tserver_ysql_lease_refresh_failure_prob, 0.0,
     "Probablity to pretend we got a failure in response to a lease refresh RPC.");
 
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
 namespace tserver {
@@ -118,6 +118,7 @@ Status YsqlLeasePoller::Poll() {
       MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms));
   if (!proxy_) {
     auto hostport = VERIFY_RESULT(finder_.UpdateMasterLeaderHostPort(timeout));
+    VLOG_WITH_PREFIX(1) << "Connected to leader master server at " << hostport;
     proxy_ = master::MasterDdlProxy(&finder_.get_proxy_cache(), hostport);
   }
 

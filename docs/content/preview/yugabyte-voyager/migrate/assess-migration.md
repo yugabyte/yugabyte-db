@@ -28,6 +28,7 @@ Voyager then generates a report that includes:
 - **Recommended cluster sizing:** Estimates the resources needed for the target environment based on table sizes, number of tables, and throughput requirements.
 - **Recommended data distribution:** Suggests effective sharding strategies for tables and indexes.
 - **Performance metrics:** Analyzes workload characteristics to recommend optimizations in YugabyteDB.
+- **Performance optimizations:** Identifies schema DDLs that may impact application performance after migrating to YugabyteDB. It highlights potentially inefficient DDLs and provides recommendations to optimize them for better performance.
 - **Migration time estimate:** Provides an estimated time for data import into YugabyteDB based on experimental data.
 - **Unsupported query constructs:** Identifies SQL features and constructs not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, and provides a list of queries containing these constructs.
 - **Unsupported PL/pgSQL objects:** Identifies SQL features and constructs that are not supported by YugabyteDB, such as advisory locks, system columns, and XML functions, within PL/pgSQL objects in the source schema. It reports the individual queries within these objects that are not supported, such as queries in the PL/pgSQL block for functions and procedures, or the select statements in views and materialized views that contain unsupported constructs.
@@ -41,6 +42,8 @@ When running migration assessment, keep in mind the following:
 - To disable unsupported query construct detection, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
 
 - To disable unsupported PL/pgSQL object detection, set the environment variable `REPORT_UNSUPPORTED_PLPGSQL_OBJECTS=false`.
+
+- To detect certain performance optimizations, ensure that [ANALYZE](https://www.postgresql.org/docs/current/sql-analyze.html) (PostgreSQL) is run on the source database.
 
 The following table describes the type of data that is collected during a migration assessment.
 
@@ -74,7 +77,9 @@ To get started with migration assessment, do the following:
 Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
         {{< /note >}}
 
-1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
+1. Assess your migration.
+
+    Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
     {{< tabpane text=true >}}
 
@@ -89,6 +94,12 @@ yb-voyager assess-migration --source-db-type postgresql \
     --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
 ```
 
+If you are using a [configuration file](../../reference/configuration-file/), use the following:
+
+```sh
+yb-voyager assess-migration --config-file <path-to-config-file>
+```
+
     {{% /tab %}}
 
     {{% tab header="Without source database connectivity" %}}
@@ -99,7 +110,7 @@ You can perform the following steps with these scripts:
 
 1. On a machine which has access to the source database, copy the scripts and install dependencies psql and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
 
-1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example,
+1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example:
 
     ```sh
     /path/to/yb-voyager-pg-gather-assessment-metadata.sh 'postgresql://ybvoyager@host:port/dbname' 'schema1|schema2' '/path/to/assessment_metadata_dir' '60'
@@ -112,11 +123,17 @@ You can perform the following steps with these scripts:
         --assessment-metadata-dir /path/to/assessment_metadata_dir --export-dir /path/to/export/dir
     ```
 
+    If you are using a [configuration file](../../reference/configuration-file/), use the following:
+
+    ```sh
+    yb-voyager assess-migration --config-file <path-to-config-file>
+    ```
+
     {{% /tab %}}
 
     {{< /tabpane >}}
 
-    The output of both the methods is a migration assessment report, and its path is printed on the console.
+    The output is a migration assessment report, and its path is printed on the console.
 
     {{< warning title="Important" >}}
 For the most accurate migration assessment, the source database must be actively handling its typical workloads at the time the metadata is gathered. This ensures that the recommendations for sharding strategies and cluster sizing are well-aligned with the database's real-world performance and operational needs.

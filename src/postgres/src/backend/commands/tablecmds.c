@@ -6096,14 +6096,6 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		}
 
 		/*
-		 * YB: When rewriting a temp relation, we need to execute the PG
-		 * transaction handling code-paths, as PG uses the transaction ID to
-		 * determine what rows are visible to a specific transaction.
-		 */
-		if (!IsYBRelationById(tab->relid) && tab->rewrite > 0)
-			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
-
-		/*
 		 * If we change column data types, the operation has to be propagated
 		 * to tables that use this table's rowtype as a column type.
 		 * tab->newvals will also be non-NULL in the case where we're adding a
@@ -9642,11 +9634,26 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 		elog(ERROR, "index \"%s\" is not unique", indexName);
 
 	/*
+	 * YB note: initdb adds unique/primary key constraint on catalog relations
+	 * using ALTER TABLE ... ADD PRIMARY KEY/UNIQUE USING INDEX.
+	 *
+	 * The index referenced by ADD PRIMARY KEY USING INDEX is already primary
+	 * index in YB due to YB-specific customization (see yb_genbki.pl). But
+	 * since initdb doesn't create the corresponding constraint objects, we
+	 * still want to execute this ALTER TABLE. However, a table
+	 * rewrite/index_check_primary_key() is not required.
+	 */
+	bool		yb_skip_pk_rewrite = stmt->primary && YBCIsInitDbModeEnvVarSet() &&
+		indexRel->rd_index->indisprimary;
+
+	/* yb_skip_pk_rewrite can only be true for catalog relations. */
+	Assert(!yb_skip_pk_rewrite || YbIsSysCatalogTabletRelation(rel));
+	/*
 	 * YB: Adding a primary key requires table rewrite.
 	 * We do not need to rewrite any children as this operation is not supported
 	 * on partitioned tables (checked above).
 	 */
-	if (IsYBRelation(rel) && stmt->primary)
+	if (IsYBRelation(rel) && stmt->primary && !yb_skip_pk_rewrite)
 	{
 		YbGetTableProperties(rel);
 		/* Don't copy split options if we are creating a range key. */
@@ -9687,7 +9694,7 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 	}
 
 	/* Extra checks needed if making primary key */
-	if (stmt->primary)
+	if (stmt->primary && !yb_skip_pk_rewrite)
 		index_check_primary_key(rel, indexInfo, true, stmt);
 
 	/* Note we currently don't support EXCLUSION constraints here */
@@ -20106,11 +20113,17 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		table_close(rel, NoLock);
 		tab->rel = NULL;
 
-		/* Make updated catalog entry visible */
-		PopActiveSnapshot();
-		CommitTransactionCommand();
+		/* commit the transaction and start new txn with the same ddl state. */
+		if (IsYugaByteEnabled())
+			YbCommitTransactionCommandIntermediate();
+		else
+		{
+			/* Make updated catalog entry visible */
+			PopActiveSnapshot();
+			CommitTransactionCommand();
 
-		StartTransactionCommand();
+			StartTransactionCommand();
+		}
 
 		/*
 		 * Now wait.  This ensures that all queries that were planned

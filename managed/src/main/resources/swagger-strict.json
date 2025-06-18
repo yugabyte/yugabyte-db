@@ -854,6 +854,7 @@
             "CLIENT_TO_NODE_CA_CERT_EXPIRY",
             "CLIENT_TO_NODE_CERT_EXPIRY",
             "ENCRYPTION_AT_REST_CONFIG_EXPIRY",
+            "UNIVERSE_KMS_KEY_STATUS",
             "SSH_KEY_EXPIRY",
             "SSH_KEY_ROTATION_FAILURE",
             "PITR_CONFIG_FAILURE",
@@ -892,7 +893,9 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },
@@ -1030,6 +1033,7 @@
             "CLIENT_TO_NODE_CA_CERT_EXPIRY",
             "CLIENT_TO_NODE_CERT_EXPIRY",
             "ENCRYPTION_AT_REST_CONFIG_EXPIRY",
+            "UNIVERSE_KMS_KEY_STATUS",
             "SSH_KEY_EXPIRY",
             "SSH_KEY_ROTATION_FAILURE",
             "PITR_CONFIG_FAILURE",
@@ -1068,7 +1072,9 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },
@@ -1302,6 +1308,7 @@
             "CLIENT_TO_NODE_CA_CERT_EXPIRY",
             "CLIENT_TO_NODE_CERT_EXPIRY",
             "ENCRYPTION_AT_REST_CONFIG_EXPIRY",
+            "UNIVERSE_KMS_KEY_STATUS",
             "SSH_KEY_EXPIRY",
             "SSH_KEY_ROTATION_FAILURE",
             "PITR_CONFIG_FAILURE",
@@ -1340,7 +1347,9 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },
@@ -1899,6 +1908,7 @@
             "Upload",
             "Upgrade",
             "Import",
+            "Attach",
             "Pause",
             "Resume",
             "Restart",
@@ -2023,8 +2033,8 @@
             "CreateImageBundle",
             "DeleteImageBundle",
             "EditImageBundle",
-            "Export",
-            "DeleteMetadata",
+            "Detach",
+            "DeleteAttachDetachMetadata",
             "Unlock",
             "LdapUniverseSync",
             "UpdateProxyConfig",
@@ -2558,8 +2568,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2772,7 +2785,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -5202,8 +5216,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5416,7 +5433,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -8191,8 +8209,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8405,7 +8426,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -8963,8 +8985,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9177,7 +9202,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -10353,8 +10379,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -10567,7 +10596,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -13558,7 +13588,8 @@
             "UPDATE_ROLE_BINDINGS",
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
-            "XCLUSTER"
+            "XCLUSTER",
+            "DEBUG"
           ],
           "type" : "string"
         },
@@ -13600,7 +13631,8 @@
             "UPDATE_ROLE_BINDINGS",
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
-            "XCLUSTER"
+            "XCLUSTER",
+            "DEBUG"
           ],
           "type" : "string"
         },
@@ -14503,8 +14535,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -14717,7 +14752,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -15482,8 +15518,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -15696,7 +15735,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -16285,8 +16325,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -16499,7 +16542,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -17769,8 +17813,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17983,7 +18030,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -18304,8 +18352,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18518,7 +18569,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -18681,8 +18733,11 @@
               "EnableNodeAgentInUniverse",
               "DecommissionNode",
               "CloneNamespace",
+              "TlsToggleKubernetes",
               "UpdateOOMServiceState",
               "SendUserNotification",
+              "ImportUniverse",
+              "MigrateUniverse",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -18895,7 +18950,8 @@
               "SetupYNP",
               "YNPProvisioning",
               "ConfigureOOMServiceOnNode",
-              "CheckSshConnection"
+              "CheckSshConnection",
+              "FetchServerConf"
             ],
             "type" : "string"
           },
@@ -19479,8 +19535,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19693,7 +19752,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -20547,8 +20607,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20761,7 +20824,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -21291,7 +21355,9 @@
               "Decommission",
               "CloneNamespace",
               "UpdateOOMServiceState",
-              "SendUserNotification"
+              "SendUserNotification",
+              "ImportUniverse",
+              "MigrateUniverse"
             ],
             "type" : "string"
           },
@@ -21817,8 +21883,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22031,7 +22100,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -22463,8 +22533,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22677,7 +22750,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -23364,8 +23438,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23578,7 +23655,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -23974,8 +24052,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24188,7 +24269,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -24584,8 +24666,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24798,7 +24883,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -25596,8 +25682,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25810,7 +25899,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -26714,8 +26804,11 @@
             "EnableNodeAgentInUniverse",
             "DecommissionNode",
             "CloneNamespace",
+            "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26928,7 +27021,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -36701,7 +36795,7 @@
     },
     "/api/v1/customers/{cUUID}/restore" : {
       "post" : {
-        "description" : "",
+        "description" : "Restore from a backup V2. Running restore preflight before calling actual restore is recommended.",
         "operationId" : "restoreBackupV2",
         "parameters" : [
           {
@@ -36755,7 +36849,7 @@
     },
     "/api/v1/customers/{cUUID}/restore/advanced_restore_preflight" : {
       "post" : {
-        "description" : "WARNING: This is a preview API that could change. Advanced Restore Preflight checks.",
+        "description" : "WARNING: This is a preview API that could change. Advanced restore preflight checks. Recommended to run before actual restore to retrieve the metadata associated with the backup, as well as check for conflicts with existing keyspaces. Additionally, this checks for unsupported tablespaces. In case of restore to PIT this checks whether backup can restore to the timestamp provided, fails otherwise.",
         "operationId" : "advancedRestorePreflight",
         "parameters" : [
           {
@@ -36862,7 +36956,7 @@
     },
     "/api/v1/customers/{cUUID}/restore/preflight" : {
       "post" : {
-        "description" : "Restore preflight checks.",
+        "description" : "Restore preflight checks. Recommended to run before actual restore to retrieve the metadata associated with the backup, as well as check for conflicts with existing keyspaces. Additionally, this checks for unsupported tablespaces. In case of restore to PIT this returns the backup from the backup chain which can be restored to the timestamp provided, fails otherwise.",
         "operationId" : "restorePreflight",
         "parameters" : [
           {
@@ -42243,6 +42337,14 @@
             "in" : "path",
             "name" : "cUUID",
             "required" : true,
+            "type" : "string"
+          },
+          {
+            "default" : "null",
+            "description" : "Optional email to filter user list",
+            "in" : "query",
+            "name" : "email",
+            "required" : false,
             "type" : "string"
           }
         ],

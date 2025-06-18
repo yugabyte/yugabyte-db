@@ -44,6 +44,9 @@
 
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
+DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(vector_index_use_yb_hnsw);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_uint32(vector_index_concurrent_reads);
@@ -78,17 +81,37 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
 }
 
-class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterface<bool> {
+using PgVectorIndexTestParams = std::tuple<bool, bool>;
+
+bool IsColocated(const PgVectorIndexTestParams& params) {
+  return std::get<0>(params);
+}
+
+bool UseYbHnsw(const PgVectorIndexTestParams& params) {
+  return std::get<1>(params);
+}
+
+class PgVectorIndexTest :
+    public PgMiniTestBase, public testing::WithParamInterface<PgVectorIndexTestParams> {
  protected:
   void SetUp() override {
     FLAGS_TEST_use_custom_varz = true;
+    FLAGS_TEST_usearch_exact = true;
+    FLAGS_vector_index_disable_compactions = false;
+    FLAGS_vector_index_use_yb_hnsw = UseYbHnsw();
     itest::SetupQuickSplit(1_KB);
+
     PgMiniTestBase::SetUp();
+
     tablet::TEST_fail_on_seq_scan_with_vector_indexes = true;
   }
 
   bool IsColocated() const {
-    return GetParam();
+    return pgwrapper::IsColocated(GetParam());
+  }
+
+  bool UseYbHnsw() const {
+    return pgwrapper::UseYbHnsw(GetParam());
   }
 
   std::string DbName() {
@@ -143,6 +166,9 @@ class PgVectorIndexTest : public PgMiniTestBase, public testing::WithParamInterf
       PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected,
       int64_t limit = -1);
   void VerifyRows(
+      PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+      int64_t limit = -1);
+  [[nodiscard]] bool RowsMatch(
       PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
       int64_t limit = -1);
 
@@ -276,10 +302,15 @@ void PgVectorIndexTest::TestSimple(bool table_exists) {
       }
       ++num_found_peers;
       if (num_indexes != 1) {
+        LOG(INFO) << "Wrong number of indexes " << num_indexes << " at " << tablet->LogPrefix();
         return false;
       }
       auto vector_indexes = tablet->vector_indexes().List();
-      if (!vector_indexes || vector_indexes->size() != 1) {
+      auto num_vector_indexes = vector_indexes ? vector_indexes->size() : 0;
+      if (num_vector_indexes != 1) {
+        LOG(INFO)
+            << "Wrong number of vector indexes " << num_vector_indexes << " at "
+            << tablet->LogPrefix();
         return false;
       }
       SCHECK_EQ(
@@ -342,6 +373,14 @@ std::string ExpectedRow(int64_t id) {
   return BuildRow(id, VectorAsString(id));
 }
 
+std::vector<std::string> ExpectedRows(size_t limit) {
+  std::vector<std::string> expected;
+  for (size_t i = 1; i <= limit; ++i) {
+    expected.push_back(ExpectedRow(i));
+  }
+  return expected;
+}
+
 Status PgVectorIndexTest::InsertRows(PGConn& conn, size_t start_row, size_t end_row) {
   RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   for (auto i = start_row; i <= end_row; ++i) {
@@ -395,38 +434,50 @@ Result<PGConn> PgVectorIndexTest::MakeIndexAndFillRandom(size_t num_rows) {
   return conn;
 }
 
-void PgVectorIndexTest::VerifyRows(
-    PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected, int64_t limit) {
-  VerifyRows(conn, add_filter ? "WHERE id + 3 <= 5" : "", expected, limit);
-}
-
-void PgVectorIndexTest::VerifyRows(
+bool PgVectorIndexTest::RowsMatch(
     PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
     int64_t limit) {
   if (limit >= 0 && make_unsigned(limit) < expected.size()) {
     std::vector<std::string> new_expected(expected.begin(), expected.begin() + limit);
-    return VerifyRows(conn, filter, new_expected, limit);
+    return RowsMatch(conn, filter, new_expected, limit);
   }
   auto query = Format(
       "SELECT * FROM test AS t $0$1", filter,
       IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit)));
   LOG_WITH_FUNC(INFO) << "   Query: " << AsString(query);
-  auto result = ASSERT_RESULT((conn.FetchRows<RowAsString>(query)));
+  auto result = CHECK_RESULT((conn.FetchRows<RowAsString>(query)));
   LOG_WITH_FUNC(INFO) << "  Result: " << AsString(result);
   LOG_WITH_FUNC(INFO) << "Expected: " << AsString(expected);
-  ASSERT_EQ(result.size(), expected.size());
-  for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
-    SCOPED_TRACE(Format("Row $0", i));
-    ASSERT_EQ(result[i], expected[i]);
+  bool ok = true;
+  if (result.size() != expected.size()) {
+    LOG_WITH_FUNC(INFO)
+        << "Wrong number of results: " << result.size() << ", while " << expected.size()
+        << " expected";
+    ok = false;
   }
+  for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
+    if (result[i] != expected[i]) {
+      LOG_WITH_FUNC(INFO)
+          << "Wrong row " << i << ": " << result[i] << " instead of " << expected[i];
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+void PgVectorIndexTest::VerifyRows(
+    PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+    int64_t limit) {
+  ASSERT_TRUE(RowsMatch(conn, filter, expected, limit));
+}
+
+void PgVectorIndexTest::VerifyRows(
+    PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected, int64_t limit) {
+  VerifyRows(conn, add_filter ? "WHERE id + 3 <= 5" : "", expected, limit);
 }
 
 void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter) {
-  std::vector<std::string> expected;
-  for (size_t i = 1; i <= limit; ++i) {
-    expected.push_back(ExpectedRow(i));
-  }
-  VerifyRows(conn, add_filter, expected);
+  VerifyRows(conn, add_filter, ExpectedRows(limit));
 }
 
 void PgVectorIndexTest::TestManyRows(AddFilter add_filter, Backfill backfill) {
@@ -464,6 +515,21 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
   num_tablets_ = 1;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  size_t tablet_entries = 0;
+  for (const auto& peer : peers) {
+    auto list = peer->tablet()->vector_indexes().List();
+    if (!list) {
+      continue;
+    }
+    auto current_entries = ASSERT_RESULT((*list)[0]->TotalEntries());
+    LOG(INFO) << "P " << peer->permanent_uuid() << ": Total entries: " << current_entries;
+    if (tablet_entries) {
+      ASSERT_EQ(tablet_entries, current_entries);
+    } else {
+      tablet_entries = current_entries;
+    }
+  }
 }
 
 TEST_P(PgVectorIndexTest, ManyRowsWithFilter) {
@@ -767,6 +833,8 @@ TEST_P(PgVectorIndexTest, EfSearch) {
   constexpr int kSmallEf = 1;
   constexpr int kBigEf = 1000;
 
+  FLAGS_TEST_usearch_exact = false;
+
   num_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
@@ -776,9 +844,10 @@ TEST_P(PgVectorIndexTest, EfSearch) {
     for (int ef : {kSmallEf, kBigEf}) {
       ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
       auto start = MonoTime::Now();
-      ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
+      auto valid = RowsMatch(conn, "", ExpectedRows(1));
       auto passed = MonoTime::Now() - start;
       times[ef].push_back(passed);
+      ASSERT_TRUE(valid || ef == kSmallEf);
     }
   }
   std::ranges::sort(times[kSmallEf]);
@@ -859,6 +928,9 @@ TEST_P(PgVectorIndexTest, Options) {
         expected_options += Format("$0: $1", option_names[j], value);
         prev_value = value;
       }
+      if (UseYbHnsw()) {
+        expected_options += " backend: YB_HNSW";
+      }
       if (!options.empty()) {
         options = " WITH (" + options + ")";
       }
@@ -916,10 +988,16 @@ TEST_P(PgVectorIndexTest, Backup) {
   VerifyRead(restore_conn, 10, AddFilter::kFalse);
 }
 
-std::string ColocatedToString(const testing::TestParamInfo<bool>& param_info) {
-  return param_info.param ? "Colocated" : "Distributed";
+std::string TestParamToString(const testing::TestParamInfo<PgVectorIndexTestParams>& param_info) {
+  return Format(
+      "$0$1",
+      IsColocated(param_info.param) ? "Colocated" : "Distributed",
+      UseYbHnsw(param_info.param) ? "YbHnsw" : "");
 }
 
-INSTANTIATE_TEST_SUITE_P(, PgVectorIndexTest, ::testing::Bool(), ColocatedToString);
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorIndexTest,
+    testing::Combine(testing::Bool(), testing::Bool()),
+    TestParamToString);
 
 }  // namespace yb::pgwrapper

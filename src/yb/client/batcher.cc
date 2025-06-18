@@ -73,6 +73,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
 // When this flag is set to false and we have separate errors for operation, then batcher would
@@ -83,6 +84,7 @@ DEFINE_test_flag(bool, combine_batcher_errors, false,
 DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_probability, 0.0,
                  "Probability for simulating the error that happens when a key is not in the key "
                  "range of the resolved tablet's partition.");
+DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing purposes.");
 
 using std::pair;
 using std::shared_ptr;
@@ -527,6 +529,7 @@ void Batcher::ExecuteOperations(Initial initial) {
   auto transaction = this->transaction();
   ADOPT_TRACE(transaction ? transaction->trace() : Trace::CurrentTrace());
   ops_info_.metadata.background_transaction_meta = background_transaction_meta_;
+  ops_info_.metadata.object_locking_txn_meta = object_locking_txn_meta_;
   if (transaction) {
     // If this Batcher is executed in context of transaction,
     // then this transaction should initialize metadata used by RPC calls.
@@ -721,10 +724,20 @@ void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
     return;
   }
 
-  if (PREDICT_FALSE(!s.ok())) {
+  TEST_SYNC_POINT("Batcher::ProcessRpcStatus1");
+  TEST_SYNC_POINT("Batcher::ProcessRpcStatus2");
+
+  auto status = s;
+  if (FLAGS_TEST_fail_batcher_rpc) {
+    status = STATUS(
+        TryAgain, "FLAGS_TEST_fail_batcher_rpc",
+        ClientError(ClientErrorCode::kTabletNotYetRunning));
+  }
+
+  if (PREDICT_FALSE(!status.ok())) {
     // Mark each of the ops as failed, since the whole RPC failed.
     for (auto& in_flight_op : rpc.ops()) {
-      in_flight_op.error = s;
+      in_flight_op.error = status;
     }
   }
 }

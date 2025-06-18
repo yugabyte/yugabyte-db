@@ -158,7 +158,7 @@ def remove_internal_request_bodies():
 
     # remove internal request bodies
     for request_body_name in request_bodies_to_remove:
-        global_component_list["responses"].pop(request_body_name)
+        global_component_list["requestBodies"].pop(request_body_name)
         logger.debug("Removed internal response " + request_body_name)
     # Update the global_openapi_dict with the removed components
     global_openapi_dict["components"] = global_component_list

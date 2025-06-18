@@ -44,22 +44,17 @@ public class WaitForLeaderBlacklistCompletion extends AbstractTaskBase {
   @Override
   public void run() {
     String errorMsg = null;
-    YBClient client = null;
     int numErrors = 0;
     double percent = 0;
     int numIters = 0;
     double epsilon = 0.00001d;
     // Get the master addresses and certificate info.
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
+    log.info("Running {} on masterAddress = {}.", getName(), universe.getMasterAddresses());
     long startTime = System.currentTimeMillis();
     boolean failOnTimeout =
         confGetter.getConfForScope(universe, UniverseConfKeys.leaderBlacklistFailOnTimeout);
-    try {
-
-      client = ybService.getClient(masterAddresses, certificate);
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       log.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
 
       while (((double) 100 - percent) > epsilon) {
@@ -115,8 +110,6 @@ public class WaitForLeaderBlacklistCompletion extends AbstractTaskBase {
     } catch (Exception e) {
       log.error("{} hit error {}.", getName(), e.getMessage(), e);
       Throwables.propagate(e);
-    } finally {
-      ybService.closeClient(client, masterAddresses);
     }
 
     if (errorMsg != null) {

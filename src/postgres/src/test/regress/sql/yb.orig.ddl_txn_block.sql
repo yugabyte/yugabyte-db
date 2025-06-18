@@ -184,3 +184,40 @@ BEGIN ISOLATION LEVEL REPEATABLE READ;
 CREATE TABLE test13 (a int primary key, b int);
 SAVEPOINT test13_sp;
 ROLLBACK;
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TEMPORARY TABLE temp_table (
+    a INT PRIMARY KEY
+) ON COMMIT DELETE ROWS;
+INSERT INTO temp_table VALUES (1);
+INSERT INTO temp_table VALUES (2);
+SELECT * FROM temp_table;
+COMMIT;
+SELECT * FROM temp_table;
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE TEMP TABLE temp_table_commit_drop (
+    id INT PRIMARY KEY
+)
+ON COMMIT DROP;
+INSERT INTO temp_table_commit_drop VALUES (1);
+SELECT * FROM temp_table_commit_drop;
+COMMIT;
+SELECT * FROM temp_table_commit_drop;
+ANALYZE test1, test2, test3;
+
+CREATE TABLE sales_data (
+    sale_id INT,
+    sale_date DATE,
+    amount DECIMAL(10, 2)
+) PARTITION BY RANGE (sale_date);
+CREATE TABLE sales_data_202401 PARTITION OF sales_data
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+INSERT INTO sales_data (sale_id, sale_date, amount) VALUES
+    (1, '2024-01-10', 100.50),
+    (2, '2024-01-25', 75.20);
+CREATE TABLE sales_data_202402 PARTITION OF sales_data
+    FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');
+INSERT INTO sales_data (sale_id, sale_date, amount) VALUES
+    (3, '2024-02-05', 120.00);
+ALTER TABLE sales_data DETACH PARTITION sales_data_202401 CONCURRENTLY;

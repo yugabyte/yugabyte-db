@@ -219,9 +219,8 @@ typedef struct TransactionStateData
 	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to
 										 * frontend as part of current query's
 										 * execution */
-	uint8		ybPostgresOpsInTxn; /* An OR'ed list of operations performed
-									 * on postgres (temp) tables by current
-									 * txn. */
+	bool		ybTxnUsesTempRel; /* True if the transaction operates on a
+								   * temporary table */
 	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
 									 * DocDB operations (e.g. drop
 									 * table/index) until the rest of the txn
@@ -265,7 +264,7 @@ static TransactionStateData TopTransactionStateData = {
 	.topXidLogged = false,
 	.ybDataSent = false,
 	.ybDataSentForCurrQuery = false,
-	.ybPostgresOpsInTxn = 0,
+	.ybTxnUsesTempRel = false,
 	.YBPostponedDdlOps = NULL,
 };
 
@@ -1386,22 +1385,8 @@ RecordTransactionCommit(void)
 	bool		RelcacheInitFileInval = false;
 	bool		wrote_xlog;
 
-	if (IsYugaByteEnabled() && !YbGetPgOpsInCurrentTxn())
+	if (IsYugaByteEnabled() && !YbCurrentTxnUsesTempRel())
 		return InvalidTransactionId;
-
-	/*
-	 * TODO(kramanathan): The bitwise flags returned by
-	 * YbGetPgOpsInCurrentTxn() are not independent of each other. The flag
-	 * YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY only requires a subset of
-	 * YB_TXN_USES_TEMPORARY_RELATIONS's operations at commit. Logical
-	 * equality is used intentionally here to exit early.
-	 */
-	else if (IsYugaByteEnabled() &&
-			 YbGetPgOpsInCurrentTxn() == YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY)
-	{
-		nchildren = xactGetCommittedChildren(&children);
-		return TransactionIdLatest(xid, nchildren, children);
-	}
 
 	/*
 	 * Log pending invalidations for logical decoding of in-progress
@@ -2100,7 +2085,7 @@ static void
 YBStartTransaction(TransactionState s)
 {
 	elog(DEBUG2, "YBStartTransaction");
-	s->ybPostgresOpsInTxn = 0;
+	s->ybTxnUsesTempRel = false;
 	s->ybDataSent = false;
 	s->ybDataSentForCurrQuery = false;
 	s->YBPostponedDdlOps = NULL;
@@ -2396,24 +2381,6 @@ CommitTransaction(void)
 			break;
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		bool		increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
-
-		/*
-		 * Firing the triggers may abort current transaction.
-		 * At this point all the them has been fired already.
-		 * It is time to commit YB transaction.
-		 * Postgres transaction can be aborted at this point without an issue
-		 * in case of YBCCommitTransaction failure.
-		 */
-		YBCCommitTransaction();
-		if (increment_pg_txns)
-			YbIncrementPgTxnsCommitted();
-	}
-
-
-
 	/*
 	 * The remaining actions cannot call any user-defined code, so it's safe
 	 * to start shutting down within-transaction services.  But note that most
@@ -2470,6 +2437,23 @@ CommitTransaction(void)
 
 	/* Commit updates to the relation map --- do this as late as possible */
 	AtEOXact_RelationMap(true, is_parallel_worker);
+
+	if (IsYugaByteEnabled())
+	{
+		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+		/*
+		 * Firing the triggers may abort current transaction.
+		 * At this point all the them has been fired already.
+		 * Also, we have executed the ON COMMIT actions which may include
+		 * truncating temp tables.
+		 * It is time to commit YB transaction.
+		 * Postgres transaction can be aborted at this point without an issue
+		 * in case of YBCCommitTransaction failure.
+		 */
+		YBCCommitTransaction();
+		if (increment_pg_txns)
+			YbIncrementPgTxnsCommitted();
+	}
 
 	/*
 	 * set the current transaction state information appropriately during
@@ -3283,6 +3267,42 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 	MemoryContextSwitchTo(CurTransactionContext);
 }
 
+void
+YbCommitTransactionCommandIntermediate(void)
+{
+	NodeTag yb_node_tag;
+	CommandTag yb_command_tag;
+	bool is_ddl_mode = YBCPgIsDdlMode();
+	YbDdlMode ddl_mode;
+
+	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
+
+	/*
+	 * Remember the NodeTag and the CommandTag of the DDL currently being
+	 * executed so that we can set it into the next transaction.
+	 */
+	if (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+		is_ddl_mode)
+	{
+		yb_node_tag = YBGetCurrentStmtDdlNodeTag();
+		yb_command_tag = YBGetCurrentStmtDdlCommandTag();
+		ddl_mode = YBGetCurrentDdlMode();
+	}
+
+	if (ActiveSnapshotSet())
+		PopActiveSnapshot();
+
+	CommitTransactionCommand();
+	StartTransactionCommand();
+
+	if (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+		is_ddl_mode)
+	{
+		YBAddDdlTxnState(ddl_mode);
+		YBSetDdlOriginalNodeAndCommandTag(yb_node_tag, yb_command_tag);
+	}
+}
+
 /*
  *	StartTransactionCommand
  */
@@ -3318,7 +3338,7 @@ RestoreTransactionCharacteristics(const SavedTransactionCharacteristics *s)
 }
 
 void
-YbSetTxnWithPgOps(uint8 pg_op_type)
+YbSetTxnUsesTempRel()
 {
 	TransactionState s = CurrentTransactionState;
 
@@ -3330,15 +3350,26 @@ YbSetTxnWithPgOps(uint8 pg_op_type)
 	 */
 	while (s != NULL)
 	{
-		s->ybPostgresOpsInTxn |= pg_op_type;
+		s->ybTxnUsesTempRel = true;
 		s = s->parent;
 	}
 }
 
-uint8
-YbGetPgOpsInCurrentTxn(void)
+void
+YBMarkTxnUsesTempRelAndSetTxnId()
 {
-	return CurrentTransactionState->ybPostgresOpsInTxn;
+	YbSetTxnUsesTempRel();
+	/*
+	 * Invoke GetCurrentTransactionId() to assign a txn id
+	 * as we we want to use PG txn code paths for txns that use temp relations.
+	 */
+	GetCurrentTransactionId();
+}
+
+bool
+YbCurrentTxnUsesTempRel(void)
+{
+	return CurrentTransactionState->ybTxnUsesTempRel;
 }
 
 /*

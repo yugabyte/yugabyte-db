@@ -190,7 +190,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Before
   public void setUp() {
-    when(mockYBClientService.getClient(any(), any())).thenReturn(mockYBClient);
+    when(mockYBClientService.getUniverseClient(any())).thenReturn(mockYBClient);
     when(mockCustomerConfigService.getOrBadRequest(any(), any())).thenCallRealMethod();
     settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.xcluster.dr.enabled", "true");

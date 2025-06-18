@@ -358,7 +358,9 @@ class ClusterAdminClient {
   Status ListAllNamespaces(bool include_nonrunning = false);
 
   // Snapshot operations.
-  Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
+  Result<master::ListSnapshotsResponsePB> ListSnapshots(
+      const ListSnapshotsFlags& flags, const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(),
+      bool prepare_for_backup = false, bool include_ddl_in_progress_tables = false);
   Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
                         std::optional<int32_t> retention_duration_hours,
                         const bool add_indexes = true,

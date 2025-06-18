@@ -52,6 +52,9 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
+DEFINE_RUNTIME_bool(threadpool_use_current_trace_for_tasks, false,
+    "If true, the thread pool will use the current trace for tasks submitted to it.");
+
 namespace yb {
 
 using strings::Substitute;
@@ -491,7 +494,9 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
 
   Task e;
   e.runnable = task;
-  e.trace = Trace::CurrentTrace();
+  if (FLAGS_threadpool_use_current_trace_for_tasks) {
+    e.trace = Trace::CurrentTrace();
+  }
   // Need to AddRef, since the thread which submitted the task may go away,
   // and we don't want the trace to be destructed while waiting in the queue.
   if (e.trace) {

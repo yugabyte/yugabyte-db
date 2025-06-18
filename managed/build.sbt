@@ -98,9 +98,9 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
 lazy val generateOssConfig = taskKey[Int]("Generating OSS class.")
-lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
+lazy val testDependentArtifacts = taskKey[Int]("Test dependent artifacts")
 lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
 lazy val devSpaceReload = taskKey[Int]("Do a build without UI for DevSpace and reload")
 
@@ -351,7 +351,7 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
-(Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
+(Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts, testDependentArtifacts).value
 
 (Compile / compilePlatform) := {
   Def.sequential(
@@ -389,7 +389,7 @@ versionGenerate := {
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
-  var downloadYbcCmd = "./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -i"
+  var downloadYbcCmd = "./download_ybc.sh -c " + (Compile / resourceDirectory).value / "ybc_version.conf" + " -i"
   if (moveYbcPackage) {
     downloadYbcCmd = downloadYbcCmd + " -s"
   }
@@ -416,8 +416,14 @@ buildVenv := {
   }
 }
 
+testDependentArtifacts := {
+  ybLog("Testing modules...")
+  val status = Process("mvn test", baseDirectory.value / "parent-module").!
+  status
+}
+
 releaseModulesLocally := {
-  ybLog("Building modules...")
+  ybLog("Releasing modules...")
   val status = Process("mvn install -DskipTests=true -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
@@ -645,6 +651,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
     target := file("client/java/target/v2"),
   )
 
@@ -714,6 +721,7 @@ lazy val goGenV2Client = project.in(file("client/go"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config-v2.json",
     target := file("client/go/target/v2"),
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
   )
 
 // Compile generated go v1 and v2 clients
@@ -853,6 +861,7 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     // style plugin configurations
     openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
     openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),
+    openApiGlobalProperties += ("skipFormModel" -> "false"),
   )
 
 // copy over the ignore file manually since openApiIgnoreFileOverride does not work
@@ -929,7 +938,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.104-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b4"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b5"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

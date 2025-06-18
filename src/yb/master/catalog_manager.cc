@@ -585,17 +585,19 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
+DEFINE_RUNTIME_bool(vector_index_use_yb_hnsw, false,
+    "Whether to use YbHnsw for stored vector index");
+
 DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
     "If -1, the number of tablets will follow the value provided in the CreateTable request.");
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using std::shared_ptr;
 using std::string;
@@ -978,7 +980,17 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
                .set_max_threads(1)
                .Build(&leader_initialization_pool_));
   CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
+  // Temporarily allow unlimited threads on the async_task_pool_ to avoid the bug of #26617.
+  // Continue to allow only a limited number of threads (equal to the number of CPUs) in debug mode
+  // so we can find similar bugs.
+  //
+  // TODO(#27622): longer-term, fix our use of thread pools so we don't run into thread pool
+  // "deadlocks".
+#ifndef NDEBUG
   CHECK_OK(ThreadPoolBuilder("async-tasks").Build(&async_task_pool_));
+#else
+  CHECK_OK(ThreadPoolBuilder("async-tasks").unlimited_threads().Build(&async_task_pool_));
+#endif
   CHECK_OK(sys_catalog_->Start(Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
   xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_);
   ysql_manager_ = std::make_unique<YsqlManager>(*master_, *this, *sys_catalog_);
@@ -1784,7 +1796,7 @@ Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
   // Prepare sys catalog table info.
   auto sys_catalog_table = tables_->FindTableOrNull(kSysCatalogTableId);
   if (sys_catalog_table == nullptr) {
-    scoped_refptr<TableInfo> table = NewTableInfo(kSysCatalogTableId, false);
+    scoped_refptr<TableInfo> table = NewTableInfo(kSysCatalogTableId, /*colocated=*/false);
     table->mutable_metadata()->StartMutation();
     SysTablesEntryPB& metadata = table->mutable_metadata()->mutable_dirty()->pb;
     metadata.set_state(SysTablesEntryPB::RUNNING);
@@ -3185,7 +3197,7 @@ Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& t
   }
 
   if (!FLAGS_enable_tablet_split_of_replication_slot_streamed_tables &&
-      IsTablePartOfCDCSDK(table_id, true /* require_replication_slot */)) {
+      IsTablePartOfCDCSDK(table_id, /*require_replication_slot=*/true)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of a replication slot, "
@@ -4084,8 +4096,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
     // Assign column-ids that have just been computed and assigned to "index_info".
     if (is_vector_index) {
-      index_info.mutable_vector_idx_options()->set_id(
-          AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
+      auto& vector_index_options = *index_info.mutable_vector_idx_options();
+      vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
+      if (FLAGS_vector_index_use_yb_hnsw) {
+        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW);
+      }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
@@ -4769,7 +4784,7 @@ Status CatalogManager::CreateTransactionStatusTable(
     rpc::RpcContext *rpc, const LeaderEpoch& epoch) {
   const string& table_name = req->table_name();
   Status s = CreateTransactionStatusTableInternal(
-      rpc, table_name, nullptr /* tablespace_id */, epoch,
+      rpc, table_name, /*tablespace_id=*/nullptr, epoch,
       req->has_replication_info() ? &req->replication_info() : nullptr);
   if (s.IsAlreadyPresent()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
@@ -4914,7 +4929,7 @@ Status CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
   }
 
   return CreateTransactionStatusTableInternal(
-      rpc, table_name, &tablespace_id, epoch, nullptr /* replication_info */);
+      rpc, table_name, &tablespace_id, epoch, /*replication_info=*/nullptr);
 }
 
 Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
@@ -4941,8 +4956,8 @@ Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
 Status CatalogManager::CreateGlobalTransactionStatusTableIfNotPresent(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   Status s = CreateTransactionStatusTableInternal(
-      rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */, epoch,
-      nullptr /* replication_info */);
+      rpc, kGlobalTransactionsTableName, /*tablespace_id=*/nullptr, epoch,
+      /*replication_info=*/nullptr);
   if (s.IsAlreadyPresent()) {
     VLOG(1) << "Transaction status table already exists, not creating.";
     return Status::OK();
@@ -5768,41 +5783,6 @@ Result<TableDescription> CatalogManager::DescribeTable(
   return result;
 }
 
-Result<string> CatalogManager::GetPgSchemaName(
-    const TableId& table_id, const PersistentTableInfo& table_info) {
-  RSTATUS_DCHECK_EQ(table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
-                    Format("Expected YSQL table, got: $0", table_info.GetTableType()));
-
-  uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
-  uint32_t relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-  uint32_t pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
-
-  // If this is a rewritten table, confirm that the relfilenode oid of pg_class entry with
-  // OID pg_table_oid is table_oid.
-  if (pg_table_oid != relfilenode_oid) {
-    uint32_t pg_class_relfilenode_oid = VERIFY_RESULT(
-        sys_catalog_->ReadPgClassColumnWithOidValue(
-            database_oid,
-            pg_table_oid,
-            "relfilenode"));
-    if (pg_class_relfilenode_oid != relfilenode_oid) {
-      // This must be an orphaned table from a failed rewrite.
-      return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
-          std::to_string(pg_table_oid));
-    }
-  }
-
-  const uint32_t relnamespace_oid = VERIFY_RESULT(
-      sys_catalog_->ReadPgClassColumnWithOidValue(database_oid, pg_table_oid, "relnamespace"));
-
-  if (relnamespace_oid == kPgInvalidOid) {
-    return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
-        std::to_string(pg_table_oid));
-  }
-
-  return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
-}
-
 Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
     const TableId& table_id, const PersistentTableInfo& table_info) {
   RSTATUS_DCHECK_EQ(
@@ -5997,6 +5977,7 @@ Status CatalogManager::BackfillIndex(
       !ysql_manager_->IsMajorUpgradeInProgress(), InternalError,
       "Attempting to backfill index during a major YSQL upgrade");
   const TableIdentifierPB& index_table_identifier = req->index_identifier();
+  VLOG(1) << __func__ << " for " << yb::ToString(index_table_identifier);
 
   scoped_refptr<TableInfo> index_table = VERIFY_RESULT(FindTable(index_table_identifier));
 
@@ -6021,10 +6002,13 @@ Status CatalogManager::BackfillIndex(
                   index_table_identifier.ShortDebugString());
   }
 
-  // TODO(jason): when ready to use INDEX_PERM_DO_BACKFILL for resuming backfill across master
-  // leader changes, replace the following (issue #6218).
+  uint32_t current_version;
+  {
+    auto l = indexed_table->LockForRead();
+    current_version = l->pb.version();
+  }
 
-  // Collect index_info_pb.
+  // Validate that the index is at the correct permission.
   IndexInfoPB index_info_pb;
   indexed_table->GetIndexInfo(index_table->id()).ToPB(&index_info_pb);
   if (index_info_pb.index_permissions() != INDEX_PERM_WRITE_AND_DELETE) {
@@ -6037,8 +6021,9 @@ Status CatalogManager::BackfillIndex(
             IndexPermissions_Name(index_info_pb.index_permissions())));
   }
 
-  return MultiStageAlterTable::StartBackfillingData(
-      this, indexed_table, {index_info_pb}, boost::none, epoch);
+  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+      this, indexed_table, current_version, epoch, /* respect deferrals for backfill */ false,
+      /* update ysql to backfill */ true);
 }
 
 Status CatalogManager::GetBackfillJobs(
@@ -6355,7 +6340,7 @@ Status CatalogManager::GetObjectLockStatus(
 void CatalogManager::AcquireObjectLocksGlobal(
     const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+  if (!FLAGS_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
@@ -6367,7 +6352,7 @@ void CatalogManager::AcquireObjectLocksGlobal(
 void CatalogManager::ReleaseObjectLocksGlobal(
     const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+  if (!FLAGS_enable_object_locking_for_table_locks) {
     rpc.RespondRpcFailure(
         rpc::ErrorStatusPB::ERROR_APPLICATION,
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
@@ -6512,7 +6497,7 @@ Status CatalogManager::DeleteTable(
                              indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
     if (!is_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
       return MarkIndexInfoFromTableForDeletion(
-          indexed_table_id, table_id, /* multi_stage */ true, epoch, resp, nullptr,
+          indexed_table_id, table_id, /*multi_stage=*/true, epoch, resp, /*data_map_ptr=*/nullptr,
           ns_info);
     }
 
@@ -7402,34 +7387,32 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   if (table->GetTableType() == PGSQL_TABLE_TYPE) {
     LOG_WITH_PREFIX(INFO) << "PG table OID for AlterTable request: " << table->GetPgTableOid();
   }
-  NamespaceId new_namespace_id;
 
-  if (req->has_new_namespace()) {
-    // Lookup the new namespace and verify if it exists.
-    TRACE("Looking up new namespace");
-    scoped_refptr<NamespaceInfo> ns;
-    NamespaceIdentifierPB namespace_identifier = req->new_namespace();
-    // Use original namespace_id as new_namespace_id for YSQL tables.
-    if (table->GetTableType() == PGSQL_TABLE_TYPE && !namespace_identifier.has_id()) {
-      namespace_identifier.set_id(table->namespace_id());
-    }
-    ns = VERIFY_NAMESPACE_FOUND(FindNamespace(namespace_identifier), resp);
+  // Lookup the namespace and verify if it exists.
+  TRACE("Looking up namespace");
+  auto namespace_identifier = req->table().namespace_();
+  // Use original namespace_id if it's not provided in the request.
+  if (!namespace_identifier.has_id()) {
+    namespace_identifier.set_id(table->namespace_id());
+  }
 
+  const auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(namespace_identifier), resp);
+  NamespaceId namespace_id;
+  {
     auto ns_lock = ns->LockForRead();
-    new_namespace_id = ns->id();
+    namespace_id = ns->id();
     // Don't use Namespaces that aren't running.
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
       Status s = STATUS_SUBSTITUTE(TryAgain,
-          "Namespace not running (State=$0). Cannot create $1.$2",
-          SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name() );
+          "Namespace not running (State=$0). Cannot alter table $1.$2",
+          SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), table->name());
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
   }
-  if (req->has_new_namespace() || req->has_new_table_name()) {
-    if (new_namespace_id.empty()) {
-      const Status s = STATUS(InvalidArgument, "No namespace used");
-      return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED, s);
-    }
+
+  if (namespace_id.empty()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::NO_NAMESPACE_USED,
+        STATUS(InvalidArgument, "No namespace used"));
   }
 
   if (!FLAGS_ysql_yb_enable_replica_identity &&
@@ -7450,6 +7433,14 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     constexpr auto kSleepFor = 100ms;
     LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
     SleepFor(kSleepFor);
+  }
+
+  // IsNamespaceInAutomaticDDLMode can't be called once we have the
+  // catalog manager lock in exclusive mode, so check for automatic mode now.
+  bool is_automatic_mode = false;
+  if (table->GetTableType() == PGSQL_TABLE_TYPE) {
+    is_automatic_mode =
+        xcluster_manager_.get()->IsNamespaceInAutomaticDDLMode(table->namespace_id());
   }
 
   UniqueLock lock(mutex_);
@@ -7479,10 +7470,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
   }
 
+  DCHECK_EQ(namespace_id, l->namespace_id());
+
   bool has_changes = false;
   auto& table_pb = l.mutable_data()->pb;
   const TableName table_name = l->name();
-  const NamespaceId namespace_id = l->namespace_id();
   const TableName new_table_name = req->has_new_table_name() ? req->new_table_name() : table_name;
 
   // Calculate new schema for the on-disk state, not persisted yet.
@@ -7490,7 +7482,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   Schema previous_schema;
   RETURN_NOT_OK(SchemaFromPB(l->pb.schema(), &previous_schema));
   string previous_table_name = l->pb.name();
-  ColumnId next_col_id = ColumnId(l->pb.next_column_id());
+  auto next_col_id = ColumnId(l->pb.next_column_id());
+  ColumnId initial_next_col_id = next_col_id;
   if (req->alter_schema_steps_size() || req->has_alter_properties() || req->has_pgschema_name()) {
     TRACE("Apply alter schema");
     Status s = ApplyAlterSteps(
@@ -7513,17 +7506,17 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   }
 
   // Try to acquire the new table name.
-  if (req->has_new_namespace() || req->has_new_table_name()) {
+  if (req->has_new_table_name()) {
 
     // Postgres handles name uniqueness constraints in it's own layer.
     if (l->table_type() != PGSQL_TABLE_TYPE) {
       // Verify that the table does not exist.
       scoped_refptr<TableInfo> other_table = FindPtrOrNull(
-          table_names_map_, {new_namespace_id, new_table_name});
+          table_names_map_, {namespace_id, new_table_name});
       if (other_table != nullptr) {
         Status s = STATUS_SUBSTITUTE(AlreadyPresent,
             "Object '$0.$1' already exists",
-            GetNamespaceNameUnlocked(new_namespace_id), other_table->name());
+            GetNamespaceNameUnlocked(namespace_id), other_table->name());
         LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
                      << ". Failed alterring table with error: "
                      << s.ToString() << " Request:\n" << req->DebugString();
@@ -7531,12 +7524,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       }
 
       // Acquire the new table name (now we have 2 name for the same table).
-      table_names_map_[{new_namespace_id, new_table_name}] = table;
+      table_names_map_[{namespace_id, new_table_name}] = table;
     }
 
-    table_pb.set_namespace_id(new_namespace_id);
     table_pb.set_name(new_table_name);
-
     has_changes = true;
   }
 
@@ -7602,11 +7593,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
   RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
-      table, ddl_log_entries, new_namespace_id, new_table_name, epoch, resp));
+      table, ddl_log_entries, namespace_id, new_table_name, epoch, resp));
 
   // Remove the old name. Not present if PGSQL.
-  if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-      (req->has_new_namespace() || req->has_new_table_name())) {
+  if (table->GetTableType() != PGSQL_TABLE_TYPE && req->has_new_table_name()) {
     TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
           namespace_id, table_name);
     table_names_map_.erase({namespace_id, table_name});
@@ -7636,6 +7626,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
         SchemaToPB(previous_schema, ddl_state->mutable_previous_schema());
         ddl_state->set_previous_table_name(previous_table_name);
+        if (is_automatic_mode) {
+          ddl_state->set_previous_next_column_id(initial_next_col_id);
+        }
         schedule_ysql_txn_verifier = true;
       }
       txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
@@ -7843,18 +7836,15 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
       resp->mutable_schema()->CopyFrom(l->pb.schema());
     }
 
-    // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
-    // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
-    if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-        resp->schema().deprecated_pgschema_name().empty() && !table->is_system() &&
+    // Get pgschema_name for YSQL tables from PG Catalog. Skip for some special cases.
+    if (l->table_type() == TableType::PGSQL_TABLE_TYPE && !table->is_system() &&
         !table->IsSequencesSystemTable() && !table->IsColocationParentTable()) {
       TRACE("Acquired catalog manager lock for schema name lookup");
 
-      auto pgschema_name = GetPgSchemaName(table->id(), l.data());
+      auto pgschema_name = ysql_manager_->GetPgSchemaName(table->id(), l.data());
       if (!pgschema_name.ok() || pgschema_name->empty()) {
-        LOG(WARNING) << Format(
-            "Unable to find schema name for YSQL table $0.$1 due to error: $2",
-            table->namespace_name(), table->name(), pgschema_name.ToString());
+        LOG(WARNING) << "Unable to find schema name for YSQL table " << table->namespace_name()
+                     << "." << table->name() << " due to error: " << pgschema_name;
       } else {
         resp->mutable_schema()->set_deprecated_pgschema_name(*pgschema_name);
       }
@@ -8073,6 +8063,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     include_type[relation] = true;
   }
 
+  PgDbRelNamespaceMap pg_rel_nsp_cache;
   SharedLock lock(mutex_);
   for (const auto& table_info : tables_->GetAllTables()) {
     auto ltm = table_info->LockForRead();
@@ -8150,7 +8141,18 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       table->set_indexed_table_id(table_info->indexed_table_id());
     }
     table->set_state(ltm->pb.state());
-    table->set_pgschema_name(ltm->schema().deprecated_pgschema_name());
+
+    if (ltm->table_type() == PGSQL_TABLE_TYPE) {
+      const auto pgschema_name =
+          ysql_manager_->GetCachedPgSchemaName(table_info->id(), ltm.data(), pg_rel_nsp_cache);
+      if (!pgschema_name.ok() || pgschema_name->empty()) {
+        LOG(WARNING) << "Unable to find schema name for YSQL table " << ltm->namespace_name()
+                     << "." << ltm->name() << " due to error: " << pgschema_name;
+      } else {
+        table->set_pgschema_name(*pgschema_name);
+      }
+    }
+
     if (table_info->colocated()) {
       table->mutable_colocated_info()->set_colocated(true);
       if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
@@ -8194,19 +8196,23 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
     return FindPtrOrNull(table_names_map_, {ns->id(), table_name});
   }
 
-  // YQL_DATABASE_PGSQL
+  // db_type == YQL_DATABASE_PGSQL
   if (pg_schema_name.empty()) {
     return nullptr;
   }
 
   for (const auto& table : tables_->GetAllTables()) {
-    auto l = table->LockForRead();
-    auto& table_pb = l->pb;
+    auto ltm = table->LockForRead();
 
-    if (!l->started_deleting() && table_pb.namespace_id() == ns->id() &&
-        boost::iequals(table_pb.schema().deprecated_pgschema_name(), pg_schema_name) &&
-        boost::iequals(table_pb.name(), table_name)) {
-      return table;
+    if (!ltm->started_deleting() && ltm->namespace_id() == ns->id() &&
+        boost::iequals(ltm->name(), table_name)) {
+      auto tbl_pg_schema_name = ysql_manager_->GetPgSchemaName(table->id(), ltm.data());
+      if (!tbl_pg_schema_name.ok() || tbl_pg_schema_name->empty()) {
+        LOG(WARNING) << "Unable to find schema name for YSQL table " << ltm->namespace_name()
+                     << "." << ltm->name() << " due to error: " << tbl_pg_schema_name;
+      } else if (boost::iequals(*tbl_pg_schema_name, pg_schema_name)) {
+        return table;
+      }
     }
   }
   return nullptr;
@@ -8473,7 +8479,7 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
         }
 
         if (!table->IsBeingDroppedDueToDdlTxn(req->transaction().transaction_id(),
-                                              true /* txn_success */)) {
+                                              /*txn_success=*/true)) {
           return SetupError(
               resp->mutable_error(),
               MasterErrorPB::INVALID_REQUEST,
@@ -9235,7 +9241,10 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   // Only allow YSQL database deletion if it does not contain any replicated tables. No need to
   // check this for YCQL keyspaces, as YCQL does not allow drops of non-empty keyspaces, regardless
   // of their replication status.
-  RETURN_NOT_OK(CheckIfDatabaseHasReplication(database));
+  // Skip this check during major YSQL upgrade since we are not actually dropping the database.
+  if (!ysql_manager_->IsMajorUpgradeInProgress()) {
+    RETURN_NOT_OK(CheckIfDatabaseHasReplication(database));
+  }
 
   // Set the Namespace to DELETING.
   TRACE("Locking database");
@@ -9946,12 +9955,13 @@ Status CatalogManager::DeleteUDType(const DeleteUDTypeRequestPB* req,
       for (int i = 0; i < ltm->field_types_size(); i++) {
         // Only need to check direct (non-transitive) type dependencies here.
         // This also means we report more precise errors for in-use types.
-        if (QLType::DoesUserDefinedTypeIdExist(ltm->field_types(i),
-                                      false /* transitive */,
-                                      tp->id())) {
-          Status s = STATUS(QLError,
-              Substitute("Cannot delete type '$0.$1'. It is used in field $2 of type '$3'",
-                  ns->name(), tp->name(), ltm->field_names(i), ltm->name()));
+        if (QLType::DoesUserDefinedTypeIdExist(
+                ltm->field_types(i),
+                /*transitive=*/false, tp->id())) {
+          Status s = STATUS(
+              QLError, Substitute(
+                           "Cannot delete type '$0.$1'. It is used in field $2 of type '$3'",
+                           ns->name(), tp->name(), ltm->field_names(i), ltm->name()));
           return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
         }
       }
@@ -10620,20 +10630,19 @@ Status CatalogManager::SendAlterTableRequestInternal(
     const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
     const AlterTableRequestPB* req) {
   for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
-     std::shared_ptr<AsyncAlterTable> call;
+    std::shared_ptr<AsyncAlterTable> call;
 
     // CDC SDK Create Stream context
     if (req && req->has_cdc_sdk_stream_id()) {
       LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
       xrepl::StreamId stream_id =
-        VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
-      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
-                                               txn_id, epoch,
-                                               stream_id,
-                                               req->cdc_sdk_require_history_cutoff());
+          VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
+      call = std::make_shared<AsyncAlterTable>(
+          master_, AsyncTaskPool(), tablet, table, txn_id, epoch, stream_id,
+          req->cdc_sdk_require_history_cutoff());
     } else {
-      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
-                                               txn_id, epoch);
+      call =
+          std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id, epoch);
     }
     table->AddTask(call);
     if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
@@ -12676,7 +12685,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
 Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   auto l = ClusterConfig()->LockForRead();
 
-  auto blacklist = ToBlacklistSet(GetBlacklist(l->pb, /*leader_blacklist=*/true));
+  auto blacklist = ToBlacklistSet(GetBlacklist(l->pb, /*blacklist_leader=*/true));
   bool i_am_blacklisted = IsBlacklisted(server_registration_, blacklist);
 
   vector<AffinitizedZonesSet> affinitized_zones;
@@ -13712,5 +13721,4 @@ void CatalogManager::RemoveNamespaceFromMaps(
   }
 }
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

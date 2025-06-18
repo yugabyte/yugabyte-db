@@ -281,20 +281,64 @@ if [[ "$1" == src/postgres/third-party-extensions/* ]]; then
   exit
 fi
 
+# Naming
+if [[ "$1" =~ /[^/]+yb[^/]+\.[ch]$ &&
+      ! "$1" =~ /pg_yb[^/]+\.[ch]$ &&
+      "$1" != */pg_verifybackup.c ]]; then
+  echo 'error:bad_yb_nonprefix_filename:'\
+'Filenames with "yb" should generally start with "yb":1:'"$(head -1 "$1")"
+fi
+if [[ "$1" =~ /ybc[^/]+\.[ch]$ &&
+      "$1" != */ybctid.h ]]; then
+  echo 'error:bad_ybc_prefix_filename:'\
+'Filenames with "ybc" prefix do not belong in src/postgres:1:'"$(head -1 "$1")"
+fi
+if [[ "$1" =~ /[^/]*Yb[^/]+\.[ch]$ &&
+      ! "$1" =~ /nodeYb[^/]+\.[ch]$ ]]; then
+  echo 'error:bad_Yb_filename:'\
+'Filenames with "Yb" should only be the case for nodeYb* files:1:'"$(head -1 "$1")"
+fi
+check_ctags
+echo "$1" \
+  | ctags -n -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout \
+  | while read -r line; do
+      symbol=$(echo "$line" | cut -f1)
+      lineno=$(echo "$line" | cut -f3 | grep -Eo '^[0-9]+')
+
+      if [[ "$symbol" == YBC* ||
+            "$symbol" == Ybc* ||
+            "$symbol" == ybc* ]]; then
+        echo 'error:bad_ybc_prefix:This type should not have "ybc" prefix:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
+      fi
+
+      # Ideally, we want to catch all YB-added types to make sure they have
+      # "yb", but it is not possible to determine which are YB-added or not.
+      # So as a best effort, at least we know YB files contain only YB code, so
+      # whatever types they produce should have "yb".
+      if is_yb_file "$1" &&
+         [[ "$symbol" != *YB* &&
+            "$symbol" != *Yb* &&
+            "$symbol" != *yb* ]]; then
+        echo 'error:missing_yb_prefix:This type should have "yb" prefix:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
+      fi
+    done
+
+while read -r exclude_re; do
+  if [[ "$1" =~ $exclude_re ]]; then
+    # Remaining rules do not apply to this file since it is pgindent exempt.
+    exit
+  fi
+done < <(grep -v --no-filename \
+           '^#' src/postgres/src/tools/pgindent/*exclude_file_patterns)
+
 # Whitespace
-if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
-        "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ]]; then
-  grep -nE '\s+$' "$1" \
-    | sed 's/^/error:trailing_whitespace:Remove trailing whitespace:/'
-fi
-if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
-        "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ||
-        "$1" == src/postgres/src/include/snowball/libstemmer/* ||
-        "$1" == src/postgres/src/pl/plperl/ppport.h ]]; then
-  grep -nvE '^('$'\t''* {0,3}\S|$)' "$1" \
-    | sed 's/^/error:leading_whitespace:'\
+grep -nE '\s+$' "$1" \
+  | sed 's/^/error:trailing_whitespace:Remove trailing whitespace:/'
+grep -nvE '^('$'\t''* {0,3}\S|$)' "$1" \
+  | sed 's/^/error:leading_whitespace:'\
 'Use tabs followed by 0-3 spaces for leading whitespace:/'
-fi
 
 # there are three cases to catch:
 # 1. /*no whitespace before/after*/
@@ -304,27 +348,21 @@ fi
 # leading / trailing whitespace is not caught by that regex, so we can check it
 # explicitly.
 #
-# second grep removes lines that have continuous ---, *** characters
-# third grep removes lines that have /*#define or /*-, because PG uses those sometimes
-if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
-        "$1" == src/postgres/src/backend/utils/activity/pgstat.c ||
-        "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ||
+# second grep removes lines that have continuous ---, *** characters.
+# third grep removes /*#define or /*- lines because PG uses those sometimes.
+# third grep also removes /*+ lines because pg_hint_plan hints are like that.
+if ! [[ "$1" == src/postgres/src/backend/utils/activity/pgstat.c ||
         "$1" == src/postgres/contrib/pgcrypto/px-crypt.h ||
-        "$1" == src/postgres/src/include/tsearch/dicts/regis.h ||
-        "$1" == src/postgres/src/pl/plperl/ppport.h ]]; then
+        "$1" == src/postgres/src/include/tsearch/dicts/regis.h ]]; then
   grep -nE '/\*(\S+(.*\S+)?|\s\S+(.*\S+)?|\S+(.*\S+)?\s)\*/' "$1" \
     | grep -vE '[\*\-]{3}' \
-    | grep -vE '/\*(#define|\-)' \
+    | grep -vE '/\*(#define|[+-])' \
     | sed 's,^,error:bad_comment_spacing:'\
 'Spacing should be like /* param */:,'
 fi
 
 if ! [[ "$1" == src/postgres/contrib/ltree/* ||
-        "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
-        "$1" == src/postgres/src/backend/utils/adt/tsquery.c ||
-        "$1" == src/postgres/src/interfaces/ecpg/test/expected/* ||
-        "$1" == src/postgres/src/interfaces/ecpg/test/thread/* ||
-        "$1" == src/postgres/src/pl/plperl/ppport.h ]]; then
+        "$1" == src/postgres/src/backend/utils/adt/tsquery.c ]]; then
   grep -nE '^\s*(if|else if|for|while)\(' "$1" \
     | grep -vE 'while\((0|1)\)' \
     | sed 's,^,error:bad_spacing_after_if_else_for_while:'\
@@ -346,10 +384,7 @@ if ! [[ "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ]]; then
 fi
 # fn(/* bad */ arg1,
 #    arg2);
-if ! [[ "$1" == src/postgres/src/include/snowball/libstemmer/header.h ||
-        "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ||
-        "$1" == src/postgres/src/interfaces/ecpg/preproc/preproc.c ||
-        "$1" == src/postgres/src/interfaces/ecpg/test/* ]]; then
+if ! [[ "$1" == src/postgres/src/interfaces/ecpg/preproc/output.c ]]; then
   grep -nE '/\*\s' "$1" \
     | grep -vE '([\"[:space:]]|^[0-9]+:)/\*\s' \
     | sed 's/^/error:bad_spacing_before_comment:'\
@@ -357,8 +392,14 @@ if ! [[ "$1" == src/postgres/src/include/snowball/libstemmer/header.h ||
 fi
 
 # Comments
-grep -nE '//\s' "$1" \
-  | sed 's|^|error:bad_comment_style:Use /* comment */, not // comment:|'
+# The second grep excludes // comments if the first non-space character of the
+# line is a '*', to allow most cases where // comments are inside a /* */ block
+if ! [[ "$1" == src/postgres/src/common/d2s.c ||
+        "$1" == src/postgres/src/common/d2s_intrinsics.h ]]; then
+  grep -nE '//\s' "$1" \
+    | grep -vE '^[0-9]+:\s+\*\s' \
+    | sed 's|^|error:bad_comment_style:Use /* comment */, not // comment:|'
+fi
 # /* this is a bad
 #  * multiline comment */
 # TupleTableSlot slot /* this is a good
@@ -418,9 +459,13 @@ grep -nE '^\w+(\s+\w+)+\(' "$1" \
 # alignment.  '(' is needed for cases such as
 #
 #     void\t\t(*startup_fn) (Node *clause, PredIterInfo info);
-if ! [[ "$1" == src/postgres/src/backend/utils/error/elog.c ]]; then
-  grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
-    | perl -ne 'print unless /^\d+:\s+'\
+#
+# Note that this excludes macros and assembly code (identified by lines ending
+# with '\') because pgindent doesn't appear to properly format those and
+# upstream postgres code has no consistent style (see
+# src/postgres/src/include/access/valid.h, for example).
+grep -nE '^\s+\w+(\s\s+|'$'\t'')[_[:alpha:]*(]' "$1" \
+  | perl -ne 'print unless /\\$/ || /^\d+:\s+'\
 '(\w{1}(\t\t| {7})'\
 '|\w{2}(\t\t| {6})'\
 '|\w{3}(\t\t| {5})'\
@@ -437,9 +482,8 @@ if ! [[ "$1" == src/postgres/src/backend/utils/error/elog.c ]]; then
 '|\w{2}(\t| {2})'\
 '|\w{3}\t))'\
 '[\w(]/' \
-    | sed 's/^/error:bad_variable_declaration_spacing:'\
+  | sed 's/^/error:bad_variable_declaration_spacing:'\
 'Variable declarations should align variable names to the 12 column mark:/'
-fi
 
 # Braces
 grep -nE '(\)|else)\s+{$' "$1" \
@@ -450,7 +494,6 @@ grep -nE '}\s+else' "$1" \
 'Brace should not be on the same line as else:/'
 if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
         "$1" == src/postgres/src/include/replication/reorderbuffer.h ||
-        "$1" == src/postgres/src/pl/plperl/ppport.h ||
         "$1" == src/postgres/src/timezone/zic.c ]]; then
   # - Exclude cases where ( is followed by a line starting with '#' (for #ifdef,
   #   #ifndef, etc.)
@@ -462,12 +505,9 @@ if ! [[ "$1" == src/postgres/contrib/bloom/bloom.h ||
     | grep -Ev '__asm__\s__volatile__\(' \
     | sed 's/^/error:bad_opening_paren:There should be no linebreak after (:/'
 fi
-if ! [[ "$1" == src/postgres/src/backend/snowball/libstemmer/* ||
-        "$1" == src/postgres/src/include/snowball/libstemmer/* ]]; then
-  grep -nE '^extern "C" {' "$1" \
-    | sed 's/^/error:bad_opening_brace_extern:'\
+grep -nE '^extern "C" {' "$1" \
+  | sed 's/^/error:bad_opening_brace_extern:'\
 'Brace should not be on the same line as extern "C":/'
-fi
 
 # Logging
 if ! [[ "$1" == src/postgres/src/backend/utils/activity/pgstat_function.c ||
@@ -499,47 +539,3 @@ grep -nE '[([:space:]]errdetail(_plural)?\("[-'"'"'a-z]+[:[:space:]]' "$1" \
 grep -nE '[([:space:]]errhint(_plural)?\("[-'"'"'a-z]+[:[:space:]]' "$1" \
   | sed 's/^/warning:likely_bad_lowercase_in_errhint:'\
 'errhint should generally capitalize the first word:/'
-
-# Naming
-if [[ "$1" =~ /[^/]+yb[^/]+\.[ch]$ &&
-      ! "$1" =~ /pg_yb[^/]+\.[ch]$ &&
-      "$1" != */pg_verifybackup.c ]]; then
-  echo 'error:bad_yb_nonprefix_filename:'\
-'Filenames with "yb" should generally start with "yb":1:'"$(head -1 "$1")"
-fi
-if [[ "$1" =~ /ybc[^/]+\.[ch]$ &&
-      "$1" != */ybctid.h ]]; then
-  echo 'error:bad_ybc_prefix_filename:'\
-'Filenames with "ybc" prefix do not belong in src/postgres:1:'"$(head -1 "$1")"
-fi
-if [[ "$1" =~ /[^/]*Yb[^/]+\.[ch]$ &&
-      ! "$1" =~ /nodeYb[^/]+\.[ch]$ ]]; then
-  echo 'error:bad_Yb_filename:'\
-'Filenames with "Yb" should only be the case for nodeYb* files:1:'"$(head -1 "$1")"
-fi
-check_ctags
-echo "$1" \
-  | ctags -n -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout \
-  | while read -r line; do
-      symbol=$(echo "$line" | cut -f1)
-      lineno=$(echo "$line" | cut -f3 | grep -Eo '^[0-9]+')
-
-      if [[ "$symbol" == YBC* ||
-            "$symbol" == Ybc* ||
-            "$symbol" == ybc* ]]; then
-        echo 'error:bad_ybc_prefix:This type should not have "ybc" prefix:'\
-"$lineno:$(sed -n "$lineno"p "$1")"
-      fi
-
-      # Ideally, we want to catch all YB-added types to make sure they have
-      # "yb", but it is not possible to determine which are YB-added or not.
-      # So as a best effort, at least we know YB files contain only YB code, so
-      # whatever types they produce should have "yb".
-      if is_yb_file "$1" &&
-         [[ "$symbol" != *YB* &&
-            "$symbol" != *Yb* &&
-            "$symbol" != *yb* ]]; then
-        echo 'error:missing_yb_prefix:This type should have "yb" prefix:'\
-"$lineno:$(sed -n "$lineno"p "$1")"
-      fi
-    done

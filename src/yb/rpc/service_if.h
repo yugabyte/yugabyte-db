@@ -80,6 +80,7 @@ class ServiceIf {
 
   virtual void Shutdown();
   virtual std::string service_name() const = 0;
+  virtual std::string metric_name() const = 0;
 };
 
 }  // namespace rpc

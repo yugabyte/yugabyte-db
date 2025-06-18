@@ -741,7 +741,7 @@ public class MiniYugabytedCluster implements AutoCloseable {
         String filename;
         switch (ver) {
             case PG15_12:
-                filename = filenamePrefix + "2025.1.0.0-pg15-12-3";
+                filename = filenamePrefix + "2025.1.0.0-pg15-12-5";
                 break;
             case LATEST:
                 throw new IllegalArgumentException("LATEST snapshot does not need a custom path");

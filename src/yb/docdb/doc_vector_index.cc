@@ -14,6 +14,10 @@
 
 #include "yb/docdb/doc_vector_index.h"
 
+#include <boost/algorithm/string.hpp>
+
+#include "yb/ann_methods/usearch_wrapper.h"
+
 #include "yb/dockv/doc_vector_id.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -29,15 +33,11 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 
-#include "yb/vector_index/usearch_wrapper.h"
 #include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
 
 DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
     "Number of vector in initial vector index chunk");
-
-DEFINE_RUNTIME_PREVIEW_uint32(vector_index_ef, 128,
-    "The \"expansion\" parameter for search");
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(vector_index_skip_filter_check);
@@ -68,27 +68,28 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
     .num_neighbors_per_vertex = options.hnsw().m(),
     .num_neighbors_per_vertex_base = options.hnsw().m0(),
     .ef_construction = options.hnsw().ef_construction(),
-    .ef = FLAGS_vector_index_ef,
     .distance_kind = ConvertDistanceKind(options.dist_type()),
   };
 }
 
 template <template<class, class> class Factory, class LSM>
-auto VectorLSMFactory(const PgVectorIdxOptionsPB& options) {
+auto VectorLSMFactory(const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options) {
   using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
-  return [hnsw_options = ConvertToHnswOptions(options)] {
-    return FactoryImpl::Create(hnsw_options);
+  return [block_cache, hnsw_options = ConvertToHnswOptions(options),
+          backend = options.hnsw().backend()](vector_index::FactoryMode mode) {
+    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend);
   };
 }
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
-auto GetVectorLSMFactory(const PgVectorIdxOptionsPB& options)
+auto GetVectorLSMFactory(
+    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options)
     -> Result<vector_index::VectorIndexFactory<Vector, DistanceResult>> {
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<vector_index::UsearchIndexFactory, LSM>(options);
+      return VectorLSMFactory<ann_methods::UsearchIndexFactory, LSM>(block_cache, options);
     case PgVectorIndexType::DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -97,6 +98,18 @@ auto GetVectorLSMFactory(const PgVectorIdxOptionsPB& options)
   return STATUS_FORMAT(
         NotSupported, "Vector index $0 is not supported",
         PgVectorIndexType_Name(options.idx_type()));
+}
+
+std::string GetFileExtension(const PgVectorIdxOptionsPB& options) {
+  switch (options.idx_type()) {
+    case PgVectorIndexType::HNSW:
+      return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
+    case PgVectorIndexType::DUMMY: [[fallthrough]];
+    case PgVectorIndexType::IVFFLAT: [[fallthrough]];
+    case PgVectorIndexType::UNKNOWN_IDX:
+      break;
+  }
+  FATAL_INVALID_PB_ENUM_VALUE(PgVectorIndexType, options.idx_type());
 }
 
 template<vector_index::IndexableVectorType Vector>
@@ -186,9 +199,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
  public:
   DocVectorIndexImpl(
       const TableId& table_id, Slice indexed_table_key_prefix, ColumnId column_id,
-      HybridTime hybrid_time, const DocDB& doc_db)
+      HybridTime hybrid_time, const DocDB& doc_db, const hnsw::BlockCachePtr& block_cache)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
-        column_id_(column_id), hybrid_time_(hybrid_time), doc_db_(doc_db) {
+        column_id_(column_id), hybrid_time_(hybrid_time), doc_db_(doc_db),
+        block_cache_(block_cache) {
   }
 
   const TableId& table_id() const override {
@@ -200,7 +214,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   const std::string& path() const override {
-    return lsm_.options().storage_dir;
+    return lsm_.StorageDir();
   }
 
   ColumnId column_id() const override {
@@ -222,7 +236,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
-          idx_options))),
+          block_cache_, idx_options))),
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,
       .insert_thread_pool = thread_pools.insert_thread_pool,
@@ -230,8 +244,9 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
       .vector_merge_filter_factory = [this]() {
         return std::make_unique<VectorMergeFilter>(
-            std::cref(lsm_.options().log_prefix), std::cref(doc_db_));
+            std::cref(lsm_.LogPrefix()), std::cref(doc_db_));
       },
+      .file_extension = GetFileExtension(idx_options),
     };
     return lsm_.Open(std::move(lsm_options));
   }
@@ -299,6 +314,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return EncodeDistance(lsm_.Distance(lhs_vec, rhs_vec));
   }
 
+  void EnableAutoCompactions() override {
+    lsm_.EnableAutoCompactions();
+  }
+
   Status Compact() override {
     return lsm_.Compact(/* wait = */ true);
   }
@@ -331,6 +350,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.HasVectorId(vector_id);
   }
 
+  Result<size_t> TotalEntries() const override {
+    return lsm_.TotalEntries();
+  }
+
  private:
   std::string DirName() const {
     return kVectorIndexDirPrefix + index_id_;
@@ -341,6 +364,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const ColumnId column_id_;
   const HybridTime hybrid_time_;
   const DocDB doc_db_;
+  const hnsw::BlockCachePtr block_cache_;
   std::string index_id_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
@@ -378,11 +402,12 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
-    const DocDB& doc_db) {
+    const DocDB& doc_db,
+    const hnsw::BlockCachePtr& block_cache) {
   auto& options = index_info.vector_idx_options();
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), hybrid_time,
-      doc_db);
+      doc_db, block_cache);
   RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool_provider, options));
   return result;
 }

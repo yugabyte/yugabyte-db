@@ -90,7 +90,8 @@ public class PermissionInfo {
     UPDATE_ROLE_BINDINGS,
     UPDATE_PROFILE,
     SUPER_ADMIN_ACTIONS,
-    XCLUSTER
+    XCLUSTER,
+    DEBUG
   }
 
   @JsonProperty("resourceType")

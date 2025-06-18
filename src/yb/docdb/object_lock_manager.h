@@ -33,6 +33,10 @@ struct LockData {
   TabletId status_tablet;
   MonoTime start_time;
   StdStatusCallback callback;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(key_to_lock, deadline, object_lock_owner, status_tablet, start_time);
+  }
 };
 
 // Helper struct used for keying table/object locks of a transaction.
@@ -67,7 +71,7 @@ class ObjectLockManager {
   void Lock(LockData&& data);
 
   // Release all locks held against the given object_lock_owner.
-  void Unlock(const ObjectLockOwner& object_lock_owner, Status resume_with_status);
+  void Unlock(const ObjectLockOwner& object_lock_owner);
 
   void Poll();
 

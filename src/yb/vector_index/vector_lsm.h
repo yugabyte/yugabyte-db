@@ -76,6 +76,7 @@ struct VectorLSMOptions {
   PriorityThreadPool* compaction_thread_pool;
   FrontiersFactory frontiers_factory;
   MergeFilterFactory vector_merge_filter_factory;
+  std::string file_extension;
 };
 
 template<IndexableVectorType VectorType,
@@ -112,9 +113,14 @@ class VectorLSM {
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
 
   Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const;
+  Result<size_t> TotalEntries() const;
 
   Status Flush(bool wait);
   Status WaitForFlush();
+
+  // Vector LSM starts with background compactions disabled, they must be enabled explicitly
+  // to prevent running compactions too early when some infrastructure is still initializing.
+  void EnableAutoCompactions();
 
   // Force chunks compaction. Flush does not happen.
   Status Compact(bool wait = false);
@@ -123,16 +129,24 @@ class VectorLSM {
   void CompleteShutdown();
   bool IsShuttingDown() const;
 
-  size_t num_immutable_chunks() const;
+  size_t NumImmutableChunks() const EXCLUDES(mutex_);
+  size_t NumSavedImmutableChunks() const EXCLUDES(mutex_);
 
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
+  bool TEST_HasCompactions() const EXCLUDES(mutex_);
   bool TEST_ObsoleteFilesCleanupInProgress() const;
-  size_t TEST_NextManifestFileNo() const;
+  size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
 
-  const Options& options() const;
+  const std::string& LogPrefix() const {
+    return options_.log_prefix;
+  }
+
+  const std::string& StorageDir() const {
+    return options_.storage_dir;
+  }
 
   struct MutableChunk;
   using  MutableChunkPtr = std::shared_ptr<MutableChunk>;
@@ -150,10 +164,6 @@ class VectorLSM {
   friend class  VectorLSMInsertTask<Vector, DistanceResult>;
   friend struct MutableChunk;
 
-  const std::string& LogPrefix() const {
-    return options_.log_prefix;
-  }
-
   // Utility method to correctly prepare Status instance in case of shutting down.
   Status DoCheckRunning(const char* file_name, int line_number) const EXCLUDES(mutex_);
 
@@ -168,13 +178,20 @@ class VectorLSM {
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
 
-  // The argument `chunk` must be the very first chunk from `updates_queue_`.
-  Status UpdateManifest(WritableFile* manifest_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
+  Result<std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>> SaveIndexToFile(
+      VectorIndex& index, uint64_t serial_no);
 
+  // The argument `chunk` must be the very first chunk from `updates_queue_`.
+  Status UpdateManifest(WritableFile& manifest_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
+  Status AddChunkToManifest(WritableFile& manifest_file, ImmutableChunk& chunk);
+
+  bool ManifestAcquired() EXCLUDES(mutex_);
   void AcquireManifest() EXCLUDES(mutex_);
   void ReleaseManifest() EXCLUDES(mutex_);
   void ReleaseManifestUnlocked() REQUIRES(mutex_);
   Result<WritableFile*> RollManifest() REQUIRES(mutex_);
+
+  Result<uint64_t> GetChunkFileSize(uint64_t serial_no) const;
 
   // Creates vector index and reserve at least for `min_vectors` entries.
   Result<VectorIndexPtr> CreateVectorIndex(size_t min_vectors) const;
@@ -184,9 +201,11 @@ class VectorLSM {
   Result<std::vector<VectorIndexPtr>> AllIndexes() const EXCLUDES(mutex_);
 
   // Creates new file metadata for the vector index file and attaches to the one.
-  VectorLSMFileMetaDataPtr CreateVectorLSMFileMetaData(VectorIndex& index, size_t serial_no);
+  VectorLSMFileMetaDataPtr CreateVectorLSMFileMetaData(
+      VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk);
 
-  size_t NextSerialNo() EXCLUDES(mutex_);
+  uint64_t NextSerialNo() EXCLUDES(mutex_);
+  uint64_t LastSerialNo() const EXCLUDES(mutex_);
 
   void DoDeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
   void DeleteObsoleteChunks() EXCLUDES(cleanup_mutex_);
@@ -194,14 +213,26 @@ class VectorLSM {
   void ObsoleteFile(std::unique_ptr<VectorLSMFileMetaData>&& file) EXCLUDES(cleanup_mutex_);
   void TriggerObsoleteChunksCleanup(bool async);
 
-  // Updates compaction scope with a continuos subset of immutable chunks, which consists of
+  // Returns compaction scope with a continuous subset of immutable chunks, which consists of
   // first N manifested chunks starting from the very first one (chunk N+1 is not manifested).
   // The flushes and the current manifest updates are not stopped, which means other newer chunks
   // could become manifested while the full compaction is happening, which means it is not allowed
   // to keep iterators to the selected range as they could become invalidated.
   CompactionScope PickChunksForFullCompaction() const EXCLUDES(mutex_);
 
-  // TODO(vector_index): update description (covered by #27089).
+  // Return the scope for [begin_idx, end_idx), the chunks must be ready for the compaction.
+  CompactionScope PickChunksReadyForCompaction(
+      size_t begin_idx, size_t end_idx, const std::string& reason) const REQUIRES_SHARED(mutex_);
+
+  // Looks at overall size amplification. If size amplification exceeds the configured value, then
+  // does a compaction on the longest span of candidate chunks ending at the earliest chunk.
+  CompactionScope PickChunksBySizeAmplification() const REQUIRES_SHARED(mutex_);
+
+  // Considers compaction files based on their size differences with the next file in time order.
+  CompactionScope PickChunksBySizeRatio() const REQUIRES_SHARED(mutex_);
+
+  // Returns compaction scope with a continuos subset of immutable chunks picked for a compaction
+  // based either on size amplification or size ratio approaches.
   CompactionScope PickChunksForCompaction() const EXCLUDES(mutex_);
 
   // Returns new chunk - a product of input chunks compaction; the new chunk is saved to a disk.
@@ -211,8 +242,8 @@ class VectorLSM {
 
   void ScheduleBackgroundCompaction() EXCLUDES(mutex_);
 
-  // Creates compaction task and tries to submit it to the thread pool. Triggres callback only if
-  // compation task has been successfully submitted.
+  // Creates compaction task and tries to submit it to the thread pool. Triggers callback only if
+  // compaction task has been successfully submitted.
   Status ScheduleManualCompaction(StdStatusCallback callback) EXCLUDES(mutex_);
 
   Result<CompactionTaskPtr> RegisterManualCompaction(StdStatusCallback callback) EXCLUDES(mutex_);
@@ -221,7 +252,7 @@ class VectorLSM {
   void Register(CompactionTask& task) EXCLUDES(compaction_tasks_mutex_);
   void RegisterUnlocked(CompactionTask& task) REQUIRES(compaction_tasks_mutex_);
 
-  // Requirement: taks must be registered.
+  // Requirement: tasks must be registered.
   Status SubmitTask(CompactionTaskPtr task);
 
   template<typename Lock>
@@ -233,10 +264,10 @@ class VectorLSM {
   Env* const env_;
 
   mutable rw_spinlock mutex_;
-  size_t last_serial_no_ GUARDED_BY(mutex_) = 0;
+  uint64_t last_serial_no_ GUARDED_BY(mutex_) = 0;
   std::shared_ptr<MutableChunk> mutable_chunk_ GUARDED_BY(mutex_);
 
-  // Immutable chunks are soreted by order_no and this order must be kept in case of collection
+  // Immutable chunks are sorted by order_no and this order must be kept in case of collection
   // modifications (e.g. due to merging of chunks).
   ImmutableChunkPtrs immutable_chunks_ GUARDED_BY(mutex_);
 
@@ -256,9 +287,10 @@ class VectorLSM {
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
   std::condition_variable_any updates_queue_empty_cv_;
 
-  rw_spinlock compaction_tasks_mutex_;
+  mutable rw_spinlock compaction_tasks_mutex_;
   std::condition_variable_any compaction_tasks_cv_;
   std::unordered_set<CompactionTask*> compaction_tasks_ GUARDED_BY(compaction_tasks_mutex_);
+  std::atomic<bool> auto_compactions_enabled_ = false;
 
   // Used to inform background compactions that there's a manual compaction task which is
   // waiting for background

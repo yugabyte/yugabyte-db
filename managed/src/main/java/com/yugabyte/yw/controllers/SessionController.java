@@ -413,6 +413,8 @@ public class SessionController extends AbstractPlatformController {
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @Secure(clients = "OidcClient")
   public Result thirdPartyLogin(Http.Request request) {
+    Optional<Boolean> showAPITokenOpt =
+        request.queryString("show_api_token").map(Boolean::parseBoolean);
     String email = thirdPartyLoginHandler.getEmailFromCtx(request);
     Users user = Users.getByEmail(email);
     if (user != null && user.getRole().equals(Users.Role.SuperAdmin)) {
@@ -452,6 +454,22 @@ public class SessionController extends AbstractPlatformController {
       if (profile.containsAttribute("id_token")) {
         user.setOidcJwtAuthToken((String) profile.getAttribute("id_token"));
         user.save();
+      }
+      if (showAPITokenOpt.orElse(false)) {
+        String apiToken = user.upsertApiToken();
+        return Results.ok(
+                "<!DOCTYPE html><html lang=\"en\"><head> "
+                    + " <title>CLI Token</title> <script>    "
+                    + "  setTimeout(() => { window.close(); }, 120000); "
+                    + " </script></head><body>  <h2>YBA API Token</h2> "
+                    + " <p><strong>Token:</strong></p>  <p><code>"
+                    + apiToken
+                    + "</code></p>"
+                    + "  <p>Copy this token and paste it into your CLI.</p>"
+                    + "  <p><em>This tab will automatically close in 120 seconds.</em></p>"
+                    + "</body>"
+                    + "</html>")
+            .as("text/html");
       }
     } catch (Exception e) {
       // Pass

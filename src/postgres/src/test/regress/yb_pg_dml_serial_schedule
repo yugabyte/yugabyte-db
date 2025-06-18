@@ -1,2 +1,7 @@
 # src/test/regress/yb_pg_dml_serial_schedule
+
+# Dependency for yb.port.incremental_sort.
+test: yb.depd.tenk1
+
 test: yb.port.insert_conflict
+test: yb.port.incremental_sort

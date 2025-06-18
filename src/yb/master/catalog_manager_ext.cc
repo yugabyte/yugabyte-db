@@ -83,6 +83,7 @@
 #include "yb/master/restore_sys_catalog_state.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -159,7 +160,7 @@ DEFINE_RUNTIME_bool(
     "safety button in case restore using relfilenode fails.");
 
 DEFINE_RUNTIME_AUTO_bool(
-    enable_export_snapshot_using_relfilenode, kLocalVolatile, false, true,
+    enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
 namespace yb {
 
@@ -448,20 +449,24 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
   }
   RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshots(
       txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
+  bool include_ddl_in_progress_tables =
+      req->has_include_ddl_in_progress_tables() ? req->include_ddl_in_progress_tables() : false;
   if (req->prepare_for_backup()) {
-    RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
+    RETURN_NOT_OK(RepackSnapshotsForBackup(resp, include_ddl_in_progress_tables));
   }
 
   return Status::OK();
 }
 
-Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
+Status CatalogManager::RepackSnapshotsForBackup(
+    ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
 
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode)
+    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode) &&
+                                  include_ddl_in_progress_tables
                               ? kUseRelfilenodeFormatVersion
                               : kUseBackupRowEntryFormatVersion;
     snapshot.set_format_version(format_version);
@@ -495,13 +500,13 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
         TRACE("Locking table");
         auto l = table_info->LockForRead();
-        if (l->has_ysql_ddl_txn_verifier_state()) {
+        if (!include_ddl_in_progress_tables && l->has_ysql_ddl_txn_verifier_state()) {
           return STATUS_FORMAT(IllegalState, "Table $0 is undergoing DDL verification, retry later",
                                table_info->id());
         }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-          const auto res = GetPgSchemaName(table_info->id(), l.data());
+          const auto res = GetYsqlManager().GetPgSchemaName(table_info->id(), l.data());
           if (!res.ok()) {
             // Check for the scenario where the table is dropped by YSQL but not docdb - this can
             // happen due to a bug with the async nature of drops in PG with docdb.
@@ -1952,7 +1957,7 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
           << ", table type: " << TableType_Name(table->GetTableType());
       // If not a debug build, ignore pg_schema_name.
     } else {
-      const string internal_schema_name = VERIFY_RESULT(GetPgSchemaName(
+      const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
           table->id(), table_lock.data()));
       const string& external_schema_name = snapshot_data->pg_schema_name;
       if (internal_schema_name != external_schema_name) {
@@ -2168,7 +2173,6 @@ Status CatalogManager::ImportTableEntry(
         column.set_id(column_ids[col_idx++]);
       }
 
-      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2179,6 +2183,8 @@ Status CatalogManager::ImportTableEntry(
     // Set missing values for tables that were created with a default value. ysql_dump will not
     // properly set that value because it is only set on ADD COLUMN, and it creates the column
     // directly in CREATE TABLE.
+    // Also set the next_column_id at target restore side to be equal to next_column_id from backup
+    // side.
     {
       auto l = table->LockForWrite();
       for (auto i = 0; i < l.mutable_data()->pb.schema().columns_size(); ++i) {
@@ -2187,6 +2193,9 @@ Status CatalogManager::ImportTableEntry(
         if (column.has_missing_value() && !persisted_column.has_missing_value()) {
           *persisted_column.mutable_missing_value() = column.missing_value();
         }
+      }
+      if (l.data().pb.next_column_id() < meta.next_column_id()) {
+        l.mutable_data()->pb.set_next_column_id(meta.next_column_id());
       }
       if (l.is_dirty()) {
         RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
@@ -2202,7 +2211,6 @@ Status CatalogManager::ImportTableEntry(
       auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
       table_props->set_partitioning_version(schema.table_properties().partitioning_version());
 
-      l.mutable_data()->pb.set_next_column_id(schema.max_col_id() + 1);
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
       // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));

@@ -539,8 +539,9 @@ extern void YBInitializeTransaction(void);
 extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);
 extern void YBCRestartWriteTransaction(void);
-extern void YbSetTxnWithPgOps(uint8 pg_op_type);
-extern uint8 YbGetPgOpsInCurrentTxn(void);
+extern void YbSetTxnUsesTempRel(void);
+extern void YBMarkTxnUsesTempRelAndSetTxnId();
+extern bool YbCurrentTxnUsesTempRel(void);
 extern void YbBeginInternalSubTransactionForReadCommittedStatement();
 
 /*
@@ -549,6 +550,7 @@ extern void YbBeginInternalSubTransactionForReadCommittedStatement();
  */
 extern bool YBTransactionContainsNonReadCommittedSavepoint(void);
 extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
+extern void YbCommitTransactionCommandIntermediate(void);
 extern void YBMarkDataSent(void);
 extern void YBMarkDataNotSent(void);
 extern void YBMarkDataNotSentForCurrQuery(void);
@@ -577,8 +579,4 @@ extern void YBClearDdlHandles(void);
  * YB: Utility for clearing transaction ID.
 */
 extern void YbClearParallelContexts(void);
-
-#define YB_TXN_USES_REFRESH_MAT_VIEW_CONCURRENTLY	0x0001
-#define YB_TXN_USES_TEMPORARY_RELATIONS				0x0002
-
 #endif							/* XACT_H */

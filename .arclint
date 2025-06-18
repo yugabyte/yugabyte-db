@@ -91,6 +91,7 @@
         "(^yugabyted-ui/ui/src/api/)",
         "(^yugabyted-ui/ui/src/assets/)",
         "(^yugabyted-ui/ui/src/translations/)",
+        "(^yugabyted-ui/ui/.*[.]json)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",

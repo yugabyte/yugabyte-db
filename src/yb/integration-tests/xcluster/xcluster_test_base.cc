@@ -12,6 +12,7 @@
 //
 
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include <string>
 
@@ -164,33 +165,13 @@ void XClusterTestBase::TearDown() {
 }
 
 Status XClusterTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster) {
-  auto producer_future = std::async(std::launch::async, [&] {
-    return run_on_cluster(producer_cluster());
-  });
-  auto consumer_future = std::async(std::launch::async, [&] {
-    return run_on_cluster(consumer_cluster());
-  });
-
-  auto producer_status = producer_future.get();
-  auto consumer_status = consumer_future.get();
-
-  RETURN_NOT_OK(producer_status);
-  return consumer_status;
+  return XClusterTestUtils::RunOnBothClusters(
+      producer_cluster(), consumer_cluster(), run_on_cluster);
 }
 
 Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster) {
-  auto producer_future = std::async(std::launch::async, [&] {
-    return run_on_cluster(&producer_cluster_);
-  });
-  auto consumer_future = std::async(std::launch::async, [&] {
-    return run_on_cluster(&consumer_cluster_);
-  });
-
-  auto producer_status = producer_future.get();
-  auto consumer_status = consumer_future.get();
-
-  RETURN_NOT_OK(producer_status);
-  return consumer_status;
+  return XClusterTestUtils::RunOnBothClusters(
+      &producer_cluster_, &consumer_cluster_, run_on_cluster);
 }
 
 Status XClusterTestBase::WaitForLoadBalancersToStabilize() {
@@ -688,6 +669,38 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
   return WaitForValidSafeTimeOnAllTServers(namespace_id, *cluster->mini_cluster_.get(), deadline);
 }
 
+Status XClusterTestBase::WaitForInValidSafeTimeOnAllTServers(
+    const NamespaceId& namespace_id, MiniCluster& cluster,
+    boost::optional<CoarseTimePoint> deadline) {
+  if (!deadline) {
+    deadline = PropagationDeadline();
+  }
+  const auto description =
+      Format("Wait for safe_time of namespace $0 to be invalid", namespace_id);
+  for (auto& tserver : cluster.mini_tablet_servers()) {
+    RETURN_NOT_OK(Wait(
+        [&]() -> Result<bool> {
+          auto safe_time_result = tserver->server()->GetXClusterContext().GetSafeTime(namespace_id);
+          if (!safe_time_result) {
+            return false;
+          }
+          return !*safe_time_result;
+        },
+        *deadline, description));
+  }
+
+  return Status::OK();
+}
+
+Status XClusterTestBase::WaitForInValidSafeTimeOnAllTServers(
+    const NamespaceId& namespace_id, Cluster* cluster, boost::optional<CoarseTimePoint> deadline) {
+  if (!cluster) {
+    cluster = &consumer_cluster_;
+  }
+
+  return WaitForInValidSafeTimeOnAllTServers(namespace_id, *cluster->mini_cluster_.get(), deadline);
+}
+
 Status XClusterTestBase::WaitForReadOnlyModeOnAllTServers(
     const NamespaceId& namespace_id, bool is_read_only, Cluster* cluster,
     boost::optional<CoarseTimePoint> deadline) {
@@ -827,6 +840,7 @@ Status XClusterTestBase::VerifyReplicationError(
         rpc.Reset();
         rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
         RETURN_NOT_OK(master_proxy->GetReplicationStatus(req, &resp, &rpc));
+        LOG(INFO) << "GetReplicationStatus response: " << resp.ShortDebugString();
         if (resp.has_error()) {
           return StatusFromPB(resp.error().status());
         }
@@ -916,13 +930,7 @@ Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName
   }
 
   for (const auto& name : namespace_names) {
-    master::GetNamespaceInfoResponsePB resp;
-    RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
-        std::string() /* namespace_id */, name, YQL_DATABASE_PGSQL, &resp));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-    auto namespace_id = resp.namespace_().id();
+    auto namespace_id = VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), name));
     RETURN_NOT_OK(WaitForSafeTime(namespace_id, now));
   }
   return Status::OK();

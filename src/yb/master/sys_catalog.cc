@@ -43,6 +43,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
@@ -608,6 +609,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .metric_registry = metric_registry_,
       .log_anchor_registry = tablet_peer()->log_anchor_registry(),
       .tablet_options = tablet_options,
+      .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = " P " + tablet_peer()->permanent_uuid(),
       .transaction_participant_context = tablet_peer().get(),
       .local_tablet_filter = client::LocalTabletFilter(),
@@ -1368,16 +1370,69 @@ Status SysCatalogTable::ReadPgClassInfo(
   return Status::OK();
 }
 
-Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t database_oid,
-                                                                const uint32_t table_oid,
-                                                                const string& column_name) {
-  TRACE_EVENT0("master", "ReadPgClassOidColumn");
+Result<PgOidToOidMap> SysCatalogTable::ReadPgClassColumnWithOidValueMap(
+    const PgOid database_oid, const string& column_name) {
+  TRACE_EVENT0("master", "ReadPgClassColumnWithOidValueMap");
 
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
 
-  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
-  const auto result_col_id = VERIFY_RESULT(schema.ColumnIdByName(column_name)).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
+  const auto result_col_id = schema.column_id(result_col_idx).rep();
+  const auto result_col_type = schema.column(result_col_idx).type()->main();
+  SCHECK_FORMAT(result_col_type == DataType::UINT32, Corruption,
+                "Invalid $0 column type: $1", column_name, result_col_type);
+
+  dockv::ReaderProjection projection(schema, {oid_col_id, result_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    const dockv::KeyEntryValues empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        nullptr /* condition */, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  // pg_class table contains a row for every database object (tables/indexes/
+  // composite types etc). Each such row contains a lot of information about the
+  // database object itself. But here, we are trying to fetch table->'column_name'
+  // (e.g. table->relnamespace) information only.
+  PgOidToOidMap result_oid_map;
+  qlexpr::QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& oid_col = row.GetValue(oid_col_id);
+    SCHECK(oid_col, Corruption, "Could not read oid column from pg_class");
+    const PgOid oid = oid_col->uint32_value();
+
+    // Process the 'column_name' (e.g. relnamespace) oid for this table/index.
+    const auto& result_oid_col = row.GetValue(result_col_id);
+    SCHECK(result_oid_col, Corruption, "Could not read " + column_name + " column from pg_class");
+    const PgOid result_oid = result_oid_col->uint32_value();
+    VLOG(1) << "oid: " << oid << " Column: " << column_name << " Result oid: " << result_oid;
+    result_oid_map.insert({oid, result_oid});
+  }
+
+  return result_oid_map;
+}
+
+Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(const PgOid database_oid,
+                                                             const PgOid table_oid,
+                                                             const string& column_name) {
+  TRACE_EVENT0("master", "ReadPgClassColumnWithOidValue");
+
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
+  const auto result_col_id = schema.column_id(result_col_idx).rep();
+  const auto result_col_type = schema.column(result_col_idx).type()->main();
+  SCHECK_FORMAT(result_col_type == DataType::UINT32, Corruption,
+                "Invalid $0 column type: $1", column_name, result_col_type);
+
   dockv::ReaderProjection projection(schema, {oid_col_id, result_col_id});
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
@@ -1397,15 +1452,12 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
   // composite types etc). Each such row contains a lot of information about the
   // database object itself. But here, we are trying to fetch table->relnamespace
   // information only.
-  uint32 oid = kInvalidOid;
+  PgOid oid = kInvalidOid;
   qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the relnamespace oid for this table/index.
     const auto& result_oid_col = row.GetValue(result_col_id);
-    if (!result_oid_col) {
-      return STATUS(Corruption, "Could not read " + column_name + " column from pg_class");
-    }
-
+    SCHECK(result_oid_col, Corruption, "Could not read " + column_name + " column from pg_class");
     oid = result_oid_col->uint32_value();
     VLOG(1) << "Table oid: " << table_oid << " Column " << column_name << " oid: " << oid;
   }
@@ -1413,8 +1465,50 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
   return oid;
 }
 
-Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_oid,
-                                                       const uint32_t relnamespace_oid) {
+Result<PgOidToStringMap> SysCatalogTable::ReadPgNamespaceNspnameMap(const PgOid database_oid) {
+  TRACE_EVENT0("master", "ReadPgNamespaceNspnameMap");
+
+  auto read_data =
+      VERIFY_RESULT(TableReadData(database_oid, kPgNamespaceTableOid, ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto nspname_col_id = VERIFY_RESULT(schema.ColumnIdByName("nspname")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, nspname_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    const dockv::KeyEntryValues empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        nullptr /* condition */, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  PgOidToStringMap nspname_map;
+  qlexpr::QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& oid_col = row.GetValue(oid_col_id);
+    SCHECK(oid_col, Corruption, "Could not read oid column from pg_class");
+    const PgOid oid = oid_col->uint32_value();
+
+    // Process the nspname string for this relnamespace.
+    const auto& nspname_col = row.GetValue(nspname_col_id);
+    SCHECK(nspname_col, Corruption, "Could not read nspname column from pg_namespace");
+
+    const string nspname = nspname_col->string_value();
+    VLOG(1) << "relnamespace oid: " << oid << " nspname: " << nspname;
+    SCHECK_FORMAT(!nspname.empty(), IllegalState,
+                  "Not found or empty nspname for relnamespace oid $0", oid);
+
+    nspname_map.insert({oid, nspname});
+  }
+
+  return nspname_map;
+}
+
+Result<string> SysCatalogTable::ReadPgNamespaceNspname(const PgOid database_oid,
+                                                       const PgOid relnamespace_oid) {
   TRACE_EVENT0("master", "ReadPgNamespaceNspname");
 
   auto read_data =
@@ -1441,21 +1535,15 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
   string name;
   qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
-    // Process the relnamespace oid for this table/index.
+    // Process the nspname string for this relnamespace.
     const auto& nspname_col = row.GetValue(nspname_col_id);
-    if (!nspname_col) {
-      return STATUS(Corruption, "Could not read nspname column from pg_namespace");
-    }
-
+    SCHECK(nspname_col, Corruption, "Could not read nspname column from pg_namespace");
     name = nspname_col->string_value();
     VLOG(1) << "relnamespace oid: " << relnamespace_oid << " nspname: " << name;
   }
 
-  if (name.empty()) {
-    return STATUS(Corruption, "Not found or empty nspname for relnamespace oid " +
-        std::to_string(relnamespace_oid));
-  }
-
+  SCHECK_FORMAT(!name.empty(), IllegalState,
+                "Not found or empty nspname for relnamespace oid $0", relnamespace_oid);
   return name;
 }
 

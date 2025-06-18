@@ -113,7 +113,7 @@ export const getUniverseStatusIcon = (curStatus) => {
 export const isPendingUniverseTask = (universeUUID, taskItem) => {
   return (
     taskItem.targetUUID === universeUUID &&
-    (taskItem.status === 'Running' || taskItem.status === 'Initializing') &&
+    (taskItem.status === 'Running' || taskItem.status === 'Initializing' || taskItem.status === 'Abort') &&
     Number(taskItem.percentComplete) !== 100
   );
 };

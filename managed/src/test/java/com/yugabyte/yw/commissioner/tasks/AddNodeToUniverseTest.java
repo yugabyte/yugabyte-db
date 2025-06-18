@@ -454,6 +454,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       HighAvailabilityConfig.create("clusterKey");
     }
     mockWaits(mockClient, 3);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 3);

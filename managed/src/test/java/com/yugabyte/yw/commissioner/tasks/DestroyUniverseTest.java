@@ -24,6 +24,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -67,6 +68,7 @@ import org.yb.cdc.CdcConsumer;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
@@ -124,6 +126,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
               u.getUniverseDetails().rootCA = certInfo.getUuid();
             });
     mockClient = mock(YBClient.class);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
@@ -173,6 +176,10 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
           .thenReturn(successResponse);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      IsServerReadyResponse mockServerReadyResponse = mock(IsServerReadyResponse.class);
+      when(mockServerReadyResponse.getNumNotRunningTablets()).thenReturn(0);
+      when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockServerReadyResponse);
       mockWaits(mockClient);
     } catch (Exception e) {
       fail(e.getMessage());

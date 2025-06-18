@@ -7,7 +7,7 @@ import {
 import { FormProvider, useForm } from 'react-hook-form';
 // import { yupResolver } from '@hookform/resolvers/yup';
 // import { useTranslation } from 'react-i18next';
-import { AssignPublicIPField, EARField } from '../../fields';
+import { AssignPublicIPField, EARField, EITField } from '../../fields';
 import { SecuritySettingsProps } from './dtos';
 import { mui } from '@yugabyte-ui-library/core';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
@@ -46,7 +46,9 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
       <Box sx={{ mt: 3 }}></Box>
       <StyledPanel>
         <StyledHeader>{'Encryption in Transit Settings'}</StyledHeader>
-        <StyledContent>Work In Progress</StyledContent>
+        <StyledContent>
+          <EITField disabled={false} />
+        </StyledContent>
       </StyledPanel>
       <Box sx={{ mt: 3 }}></Box>
       <StyledPanel>

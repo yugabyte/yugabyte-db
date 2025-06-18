@@ -222,8 +222,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String namespace;
     public boolean isReadOnlyCluster;
     public String ybSoftwareVersion = null;
-    public boolean enableNodeToNodeEncrypt = false;
-    public boolean enableClientToNodeEncrypt = false;
     public UUID rootCA = null;
     public ServerType serverType = ServerType.EITHER;
     public int tserverPartition = 0;
@@ -1097,7 +1095,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
         taskUniverseDetails.getPrimaryCluster().userIntent;
 
-    if (universeFromDBParams.rootCA != null || universeFromDBParams.getClientRootCA() != null) {
+    if (primaryClusterIntent.enableClientToNodeEncrypt
+        || primaryClusterIntent.enableNodeToNodeEncrypt) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
@@ -1105,12 +1104,20 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tlsInfo.put("insecure", taskUniverseDetails.allowInsecure);
       String rootCert;
       String rootKey;
-      if (universeFromDBParams.rootCA != null) {
-        rootCert = CertificateHelper.getCertPEM(universeFromDBParams.rootCA);
-        rootKey = CertificateHelper.getKeyPEM(universeFromDBParams.rootCA);
+
+      UUID rootCAUUID =
+          taskParams().rootCA == null ? taskUniverseDetails.rootCA : taskParams().rootCA;
+
+      UUID clientRootCAUUID =
+          taskUniverseDetails.rootAndClientRootCASame
+              ? rootCAUUID
+              : taskUniverseDetails.getClientRootCA();
+      if (rootCAUUID != null) {
+        rootCert = CertificateHelper.getCertPEM(rootCAUUID);
+        rootKey = CertificateHelper.getKeyPEM(rootCAUUID);
       } else {
-        rootCert = CertificateHelper.getCertPEM(universeFromDBParams.getClientRootCA());
-        rootKey = CertificateHelper.getKeyPEM(universeFromDBParams.getClientRootCA());
+        rootCert = CertificateHelper.getCertPEM(clientRootCAUUID);
+        rootKey = CertificateHelper.getKeyPEM(clientRootCAUUID);
       }
 
       if (rootKey != null && !rootKey.isEmpty()) {
@@ -1122,10 +1129,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // In case root cert key is null which will be the case with Hashicorp Vault certificates
         // Generate wildcard node cert and client cert and set them in override file
         CertificateInfo certInfo;
-        if (universeFromDBParams.rootCA != null) {
-          certInfo = CertificateInfo.get(universeFromDBParams.rootCA);
+        if (rootCAUUID != null) {
+          certInfo = CertificateInfo.get(rootCAUUID);
         } else {
-          certInfo = CertificateInfo.get(universeFromDBParams.getClientRootCA());
+          certInfo = CertificateInfo.get(clientRootCAUUID);
         }
 
         Map<String, Object> rootCA = new HashMap<>();

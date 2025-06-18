@@ -529,11 +529,8 @@ public class OtelCollectorConfigGenerator {
         OtelCollectorConfigFormat.LokiExporter lokiExporter =
             new OtelCollectorConfigFormat.LokiExporter();
         String endpoint = lokiConfig.getEndpoint();
-        if (endpoint.endsWith("/")) {
-          endpoint = endpoint.substring(0, endpoint.length() - 1);
-        }
-        if (!endpoint.endsWith("/loki/api/v1/push")) {
-          endpoint = endpoint + "/loki/api/v1/push";
+        if (!endpoint.endsWith(TelemetryProviderService.LOKI_PUSH_ENDPOINT)) {
+          endpoint = endpoint + TelemetryProviderService.LOKI_PUSH_ENDPOINT;
         }
         lokiExporter.setEndpoint(endpoint);
         Map<String, String> headers = new HashMap<>();

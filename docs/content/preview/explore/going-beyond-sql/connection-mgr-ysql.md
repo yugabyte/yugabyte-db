@@ -81,7 +81,13 @@ To enable built-in connection pooling for universes deployed using YugabyteDB An
 - Turn on the **Connection pooling** option when creating a universe. Refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/#advanced-configuration).
 - Edit connection pooling on an existing universe. Refer to [Edit connection pooling](../../../yugabyte-platform/manage-deployments/edit-universe/#edit-connection-pooling).
 
-When managing universes using YugabyteDB Anywhere, do not set connection pooling options using flags.
+Note that when managing universes using YugabyteDB Anywhere, do not set connection pooling flags, `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, and `pgsql_proxy_bind_address`.
+
+#### Connect
+
+To connect to the YSQL Connection Manager, use the [ysqlsh](../../../api/ysqlsh/) command with the [`-h <IP>`](../../../api/ysqlsh/#h-hostname-host-hostname) flag, instead of specifying the Unix-domain socket directory.
+
+Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-port) (custom PostgreSQL port or default 6433) will connect you to the PostgreSQL process, not the YSQL connection manager process.
 
 ## Configuration
 
@@ -138,7 +144,7 @@ When using YSQL Connection Manager, sticky connections can form in the following
 
 ## Limitations
 
-- Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-server-options) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
+- Changes to [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters) for a user or database that are set using ALTER ROLE SET or ALTER DATABASE SET queries may reflect in other pre-existing active sessions.
 - YSQL Connection Manager can route up to 10,000 connection pools. This includes pools corresponding to dropped users and databases.
 - Prepared statements may be visible to other sessions in the same connection pool. [#24652](https://github.com/yugabyte/yugabyte-db/issues/24652)
 - Attempting to use DEALLOCATE/DEALLOCATE ALL queries can result in unexpected behavior. [#24653](https://github.com/yugabyte/yugabyte-db/issues/24653)
@@ -148,3 +154,5 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - YSQL Connection Manager does not yet support IPv6 connections. [#24765](https://github.com/yugabyte/yugabyte-db/issues/24765)
 - Currently, [auth-method](https://docs.yugabyte.com/preview/secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. [#20658](https://github.com/yugabyte/yugabyte-db/issues/20658)
 - Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate logical connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact the YSQL Connection Manager Development team before setting `ysql_conn_mgr_use_auth_backend` to false. [#25313](https://github.com/yugabyte/yugabyte-db/issues/25313)
+- Salted Challenge Response Authentication Mechanism ([SCRAM](https://docs.yugabyte.com/preview/secure/authentication/password-authentication/#scram-sha-256)) is not supported with YSQL Connection Manager. [#25870](https://github.com/yugabyte/yugabyte-db/issues/25870)
+- Unix socket connections to YSQL Connection Manager are not supported. [#20048](https://github.com/yugabyte/yugabyte-db/issues/20048)

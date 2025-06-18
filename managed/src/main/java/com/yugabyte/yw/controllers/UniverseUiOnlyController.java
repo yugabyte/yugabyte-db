@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFormDataToTaskParams;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.ImportUniverseTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
@@ -23,10 +25,12 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -432,5 +436,61 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.ActionType.TlsConfigUpdate,
             taskUUID);
     return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
+  }
+
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result importUniverse(UUID customerUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    try {
+      ObjectNode formData = (ObjectNode) request.body().asJson();
+      ImportUniverseTaskParams taskParams =
+          Json.mapper().treeToValue(formData, ImportUniverseTaskParams.class);
+      taskParams.creatingUser = CommonUtils.getUserFromContext();
+      taskParams.platformUrl = request.host();
+      UUID taskUuid = universeCRUDHandler.importUniverse(customer, taskParams);
+      auditService()
+          .createAuditEntryWithReqBody(
+              request,
+              Audit.TargetType.Universe,
+              Objects.toString(taskParams.universeUuid, null),
+              Audit.ActionType.Import,
+              taskUuid);
+      return new YBPTask(taskUuid, taskParams.universeUuid).asResult();
+    } catch (Exception e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
+  }
+
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result migrateUniverse(UUID customerUUID, UUID universeUuid, Http.Request request) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    try {
+      UpgradeTaskParams taskParams =
+          UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
+              request, UpgradeTaskParams.class, universe);
+      UniverseResp universeResp = universeCRUDHandler.migrateUniverse(customer, taskParams);
+      auditService()
+          .createAuditEntryWithReqBody(
+              request,
+              Audit.TargetType.Universe,
+              Objects.toString(universeResp.universeUUID, null),
+              Audit.ActionType.Update,
+              universeResp.taskUUID);
+      return PlatformResults.withData(universeResp);
+    } catch (Exception e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
   }
 }

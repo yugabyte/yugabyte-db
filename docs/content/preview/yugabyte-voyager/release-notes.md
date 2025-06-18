@@ -17,11 +17,48 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.6.2 - June 17, 2025
+
+### New feature
+
+- [Configuration files](../reference/configuration-file/) can now be used for all commands in live migration workflows.
+
+### Enhancements
+
+- The migration assessment report for the [performance optimization](../known-issues/postgresql/#performance-optimizations) "Hotspots with indexes on timestamp/date as first column" now includes reporting for primary keys and unique key indexes.
+- Improved the readability of the HTML assessment report by moving performance optimizations to a dedicated section.
+- Added a guardrail in export data live migration resumption scenarios for PostgreSQL source to prevent multiple export data streaming processes from running at the same time.
+
+### Bug fixes
+
+- Fixed an issue where Oracle Normal Indexes were incorrectly reported as unsupported in the schema analysis report.
+- Fixed a bug in the `assess-migration` command that caused it to fail with an error in scenarios where the source database had a column of an array of any unsupported YugabyteDB datatype.
+- Fixed a bug in the `import-data` command for a live migration scenario that prevented resuming `import-data` if a failure occurred after cutover was initiated.
+- Fixed a bug in yugabyted UI where data migration progress was not shown/updated for tables with a large number of rows (exceeding `int32` range).
+
+## v2025.6.1 - June 3, 2025
+
+### New feature
+
+- Added support for the [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
+
+  This is required for [YugabyteDB Aeon](/preview/yugabyte-cloud/) or restricted environments where only the YugabyteDB Connector is supported.
+
+### Enhancements
+
+- Issues in the assessment report are now displayed in sorted order by issue category.
+- Voyager now exits cleanly when an invalid `CONTROL_PLANE_TYPE` is provided, avoiding stack traces on the console.
+- Refined the warning message when a load balancer is detected during the import data phase.
+
+### Bug fixes
+
+- Fixed an issue where SSL mode `ALLOW` was supported but incorrectly flagged as invalid by import commands.
+
 ## v2025.5.2 - May 20, 2025
 
 ### New features
 
-- Added support for using a config file to manage parameters in offline migration using `yb-voyager`.
+- Added support for using a [configuration file](../reference/configuration-file/) to manage parameters in offline migration using `yb-voyager`.
 
 ### Enhancements
 

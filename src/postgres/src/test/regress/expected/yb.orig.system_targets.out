@@ -32,7 +32,7 @@ SELECT tableoid::regclass, * FROM t_temp;
 SELECT xmin, * FROM t_temp;
  xmin | k | v 
 ------+---+---
-    3 | 1 | 1
+    4 | 1 | 1
 (1 row)
 
 SELECT xmax, * FROM t_temp;

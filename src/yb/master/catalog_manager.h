@@ -800,7 +800,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
   YsqlManagerIf& GetYsqlManager();
-  YsqlManager& GetYsqlManagerImpl() { return *ysql_manager_.get(); }
+  YsqlManager& GetYsqlManagerImpl() { return *DCHECK_NOTNULL(ysql_manager_.get()); }
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
@@ -1056,9 +1056,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
-
-  Result<std::string> GetPgSchemaName(
-      const TableId& table_id, const PersistentTableInfo& table_info);
 
   Result<std::unordered_map<std::string, uint32_t>> GetPgAttNameTypidMap(
       const TableId& table_id, const PersistentTableInfo& table_info);
@@ -2599,7 +2596,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const NamespaceMap& namespace_map, const UDTypeMap& type_map,
       const ExternalTableSnapshotDataMap& tables_data, const LeaderEpoch& epoch);
 
-  Status RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp);
+  Status RepackSnapshotsForBackup(
+      ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables);
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(

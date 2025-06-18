@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/noirbizarre/gonja"
+	"github.com/nikolalohinski/gonja"
 )
 
 func CopyFile(
@@ -17,13 +17,34 @@ func CopyFile(
 	values map[string]any,
 	templateSubpath, destination string,
 	mod fs.FileMode,
+	username string,
 ) error {
-	templatePath := filepath.Join(util.TemplateDir(), templateSubpath)
-	output, err := ResolveTemplate(ctx, values, templatePath)
+	userDetail, err := util.UserInfo(username)
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(destination, []byte(output), mod)
+	templatePath := filepath.Join(util.TemplateDir(), templateSubpath)
+	util.FileLogger().Infof(ctx, "Resolving template file %s", templatePath)
+	output, err := ResolveTemplate(ctx, values, templatePath)
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Resolution failed for template file %s", templatePath)
+		return err
+	}
+	file, err := os.OpenFile(destination, os.O_TRUNC|os.O_RDWR|os.O_CREATE, mod)
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Error in creating file %s - %s", destination, err.Error())
+		return err
+	}
+	defer file.Close()
+	if !userDetail.IsCurrent {
+		err = file.Chown(int(userDetail.UserID), int(userDetail.GroupID))
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in changing file owner %s - %s", destination, err.Error())
+			return err
+		}
+	}
+	_, err = file.WriteString(output)
 	if err != nil {
 		return err
 	}

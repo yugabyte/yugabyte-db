@@ -1416,14 +1416,15 @@ class WaitQueue::Impl {
     SET_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
     auto scoped_reporter = waiting_txn_registry_->Create();
     if (waiter_txn_id.IsNil()) {
-      // If waiter_txn_id is Nil, then we're processing a single-shard transaction. We do not have
-      // to report single shard transactions to transaction coordinators because they can't
-      // possibly be involved in a deadlock. This is true because no transactions can wait on
-      // single shard transactions, so they only have out edges in the wait-for graph and cannot
-      // be a part of a cycle.
+      // When object locking is disabled fast path txns cannot be involved in a deadlock. This is
+      // because no transaction can wait on fast path transactions, so they only have out edges in
+      // the wait-for graph and cannot be a part of a cycle.
       //
       // We still register the single shard waiters with the local waiting transaction registry
       // for the purpose of observability in pg_locks.
+      //
+      // Note that this branch is only hit for fast path transactions when object locking feature
+      // is disabled. When enabled, fast path waiters enter the wait-queue as a distributed txn.
       RETURN_NOT_OK(scoped_reporter->RegisterSingleShardWaiter(
           txn_status_manager_->tablet_id(), request_start_us));
     } else {

@@ -28,7 +28,7 @@ type: docs
   </li>
   <li >
     <a href="../async-transactional-setup-manual/" class="nav-link">
-      Manual
+      Fully Manual
     </a>
   </li>
 </ul>

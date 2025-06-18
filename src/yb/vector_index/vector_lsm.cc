@@ -53,6 +53,9 @@ DEFINE_RUNTIME_uint64(vector_index_task_pool_size, 1000,
     "Pool is just used to avoid memory allocations and does not limit the total "
     "number of tasks.");
 
+DEFINE_RUNTIME_uint64(vector_index_compaction_always_include_size_threshold, 64_MB,
+    "Always include chunks of smaller or equal size in a compaction by size ratio.");
+
 DEFINE_RUNTIME_int32(vector_index_compaction_priority_start_bound, 0,
     "Compaction task of Vector LSM that has number of chunk files less than specified will have "
     "priority 0. Set to -1 to use the value of 'compaction_priority_start_bound' flag.");
@@ -66,11 +69,22 @@ DEFINE_RUNTIME_int32(vector_index_compaction_priority_step_size, -1,
 DEFINE_RUNTIME_int32(vector_index_files_number_compaction_trigger, 5,
     "Number of files to trigger Vector LSM background compaction.");
 
+DEFINE_RUNTIME_int32(vector_index_max_size_amplification_percent, 200,
+    "The max size amplification for vector index background compaction. "
+    "Set to -1 to disable compactions by size amplification.");
+
+DEFINE_RUNTIME_int32(vector_index_compaction_size_ratio_percent, 20,
+    "The percentage upto which chunks that are larger are include in vector index "
+    "background compaction. Set to -100 to disable compactions by size ratio.");
+
+DEFINE_RUNTIME_int32(vector_index_compaction_min_merge_width, 4,
+    "The minimum number of chunks in a single background compaction by size ratio.");
+
 DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
     "Whether to dump stats related to vector index search.");
 
 DEFINE_RUNTIME_bool(vector_index_disable_compactions, true,
-    "Disable Vector LSM backgorund compactions.");
+    "Disable Vector LSM background compactions.");
 
 DEFINE_test_flag(bool, vector_index_skip_manifest_update_during_shutdown, false,
     "Whether VectorLSM manifest update should be skipped after shutdown has been initiated");
@@ -97,8 +111,16 @@ YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
 // is stopped.
 constexpr size_t kRunningMark = 1e18;
 
-std::string GetChunkPath(const std::string& storage_dir, size_t chunk_serial_no) {
-  return JoinPathSegments(storage_dir, Format("vectorindex_$0", chunk_serial_no));
+std::string GetChunkPath(
+    const std::string& storage_dir, const std::string& extension, uint64_t chunk_serial_no) {
+  return JoinPathSegments(storage_dir, Format("vectorindex_$0$1", chunk_serial_no, extension));
+}
+
+template<IndexableVectorType Vector,
+         ValidDistanceResultType DistanceResult>
+std::string GetChunkPath(
+    const VectorLSMOptions<Vector, DistanceResult>& options, uint64_t chunk_serial_no) {
+  return GetChunkPath(options.storage_dir, options.file_extension, chunk_serial_no);
 }
 
 size_t MaxConcurrentReads() {
@@ -114,6 +136,11 @@ int32_t CompactionPriorityStartBound() {
 int32_t CompactionPriorityStepSize() {
   const auto step_size = FLAGS_vector_index_compaction_priority_step_size;
   return step_size >= 0 ? step_size : FLAGS_compaction_priority_step_size;
+}
+
+size_t CompactionMinMergeWidth() {
+  const auto width = make_unsigned(FLAGS_vector_index_compaction_min_merge_width);
+  return std::max<size_t>(width, 2); // Must be at least two chunks.
 }
 
 size_t FilesNumberCompactionTrigger() {
@@ -132,10 +159,16 @@ MonoDelta TEST_sleep_on_merged_chunk_populated;
 
 class VectorLSMFileMetaData final {
  public:
-  explicit VectorLSMFileMetaData(size_t serial_no) : serial_no_(serial_no) {}
+  explicit VectorLSMFileMetaData(uint64_t serial_no, uint64_t size_on_disk)
+      : serial_no_(serial_no), size_on_disk_(size_on_disk)
+  {}
 
-  size_t serial_no() const {
+  uint64_t serial_no() const {
     return serial_no_;
+  }
+
+  uint64_t size_on_disk() const {
+    return size_on_disk_;
   }
 
   bool IsObsolete() const {
@@ -147,11 +180,12 @@ class VectorLSMFileMetaData final {
   }
 
   std::string ToString() const {
-    return YB_CLASS_TO_STRING(serial_no);
+    return YB_CLASS_TO_STRING(serial_no, size_on_disk);
   }
 
  private:
-  const size_t serial_no_;
+  const uint64_t serial_no_;
+  const uint64_t size_on_disk_;
   std::atomic<bool> obsolete_ = { false };
 };
 
@@ -377,7 +411,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
 
   ImmutableChunkPtr Immutate(size_t order_no, std::promise<Status>* flush_promise) {
     // Move should not be used for index as the mutable chunk could still be used by other
-    // entities, for exampe by VectorLSMInsertTask.
+    // entities, for example by VectorLSMInsertTask.
     return std::make_shared<ImmutableChunk>(
         order_no, num_entries ? index : VectorIndexPtr{},
         std::move(user_frontiers), flush_promise);
@@ -390,19 +424,25 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
-  // Chunk serial no, used in file name and never changes.
+  // Chunk's associated file metadata. Can be null.
   VectorLSMFileMetaDataPtr file;
 
   // In memory order for chunk. All chunks in immutable chunks are ordered using it.
   // Could be changed between application runs.
-  size_t order_no = 0;
+  const size_t order_no = 0;
 
+  // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
   ImmutableChunkState state = ImmutableChunkState::kInMemory;
+
   VectorIndexPtr index;
-  rocksdb::UserFrontiersPtr user_frontiers;
+
+  // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
+  const rocksdb::UserFrontiersPtr user_frontiers;
 
  private:
+  // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
   std::promise<Status>* flush_promise = nullptr;
+
   std::atomic<bool> under_compaction = { false };
 
  public:
@@ -431,10 +471,25 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
         flush_promise(flush_promise_)
   {}
 
-  size_t serial_no() const {
+  uint64_t serial_no() const {
     return file ? file->serial_no() : 0;
   }
 
+  uint64_t file_size() const {
+    return file ? file->size_on_disk() : 0;
+  }
+
+  // Must be triggered under LSM::mutex_ lock to guarantee thread-safety.
+  bool IsOnDisk() const {
+    return state == ImmutableChunkState::kOnDisk;
+  }
+
+  // Must be triggered under LSM::mutex_ lock to guarantee thread-safety.
+  bool IsInManifest() const {
+    return state == ImmutableChunkState::kInManifest;
+  }
+
+  // Must be triggered under LSM::mutex_ lock to guarantee thread-safety.
   void Flushed(const Status& status = Status::OK()) {
     if (flush_promise) {
       flush_promise->set_value(status);
@@ -475,10 +530,23 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
     MarkObsolete();
   }
 
+  // Must be triggered under LSM::mutex_ lock to guarantee thread-safety.
+  bool ReadyForCompaction() const {
+    return !IsUnderCompaction() && IsInManifest();
+  }
+
   std::string ToString() const {
+    // TODO(vector_index): access to state and user_frontiers should probably be under LSM::mutex_.
     return YB_STRUCT_TO_STRING(
         order_no, state, file, user_frontiers,
+        (index, AsString(static_cast<void*>(index.get()))),
         (under_compaction, std::to_string(IsUnderCompaction())));
+  }
+
+  std::string ToShortString() const {
+    return Format(
+        "{order_no: $0, serial_no: $1, file_size: $2}",
+        order_no, serial_no(), file_size());
   }
 
  private:
@@ -528,7 +596,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionScope {
   // Must be triggered under LSM::mutex_ to have thread safe access to chunk's state.
   bool TryLock(size_t chunk_index, const ImmutableChunkPtr& chunk) {
     DCHECK(chunk.get());
-    if (chunk->state != ImmutableChunkState::kInManifest || !chunk->TryLockForCompaction()) {
+    if (!chunk->IsInManifest() || !chunk->TryLockForCompaction()) {
       return false;
     }
 
@@ -559,29 +627,31 @@ class VectorLSM<Vector, DistanceResult>::CompactionScope {
 
   void AddToUpdate(VectorLSMUpdatePB& update) {
     for (const auto& chunk : chunks_) {
-      DCHECK_ONLY_NOTNULL(chunk->file.get());
-      update.add_remove_chunks(chunk->file->serial_no());
+      // Empty chunk is possible, for example it could be used to update frontiers.
+      if (chunk->file) {
+        update.add_remove_chunks(chunk->file->serial_no());
+      }
     }
   }
 
   std::string ToString() const {
     static auto chunks_formatter = [](const auto& chunk) {
-      return Format("{order_no: $0, serial_no: $1}", chunk->order_no, chunk->serial_no());
+      return chunk->ToShortString();
     };
     return YB_CLASS_TO_STRING(index, (chunks, AsString(chunks_, chunks_formatter)));
   }
 
  private:
+  // Exclusive upper bound.
+  size_t end_index() const {
+    return index_ + size();
+  }
+
   // Index of the front chunk from chunks in the LSM's immutable chunks collection.
   size_t index_ = 0;
 
   // Continuous interval of chunks from LSM's immutable chunks collection.
   ImmutableChunkPtrs chunks_;
-
-  // Exclusive upper bound.
-  size_t end_index() const {
-    return index_ + size();
-  }
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -636,14 +706,24 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
  private:
   void Run(const Status& ready, PriorityThreadPoolSuspender* suspender) override {
     if (!ready.ok()) {
-      LOG_WITH_PREFIX(INFO) << "not ready: " << ready;
+      LOG_WITH_PREFIX(INFO) << "Not ready: " << ready;
       return Completed(ready);
     }
 
+    // Remember current serial_no to track possible changes in immutable chunks.
+    const auto last_serial_no = lsm_.LastSerialNo();
+
     // TODO(vector_index): leverage the suspender.
     auto status = DoRun();
-    LOG_WITH_PREFIX(INFO) << "done: " << status;
+    LOG_WITH_PREFIX(INFO) << "Done: " << status;
     Completed(status);
+
+    if (last_serial_no == lsm_.LastSerialNo()) {
+      VLOG_WITH_FUNC(2) << "VectorLSM not changed, no need to schedule next background compaction";
+    } else {
+      VLOG_WITH_FUNC(2) << "VectorLSM changed, scheduling next background compaction";
+      lsm_.ScheduleBackgroundCompaction();
+    }
   }
 
   bool ShouldRemoveWithKey(void* key) override {
@@ -659,8 +739,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
       return rocksdb::internal::kShuttingDownPriority;
     }
 
-    // TODO(vector_index): maybe should not account immutable chunks which are not yet manifested.
-    const int num_chunks = narrow_cast<int>(lsm_.num_immutable_chunks());
+    const int num_chunks  = narrow_cast<int>(lsm_.NumSavedImmutableChunks());
     const int start_bound = CompactionPriorityStartBound();
     int result = 0;
     if (num_chunks >= start_bound) {
@@ -696,9 +775,6 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     if (callback_) {
       callback_(status);
     }
-
-    // Maybe schedule pending background compaction.
-    lsm_.ScheduleBackgroundCompaction();
   }
 
   const std::string& LogPrefix() const {
@@ -839,12 +915,12 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
   auto load_result = VERIFY_RESULT(VectorLSMMetadataLoad(env_, options_.storage_dir));
   next_manifest_file_no_ = load_result.next_free_file_no;
-  std::unordered_map<size_t, const VectorLSMChunkPB*> chunks;
+  std::unordered_map<uint64_t, const VectorLSMChunkPB*> chunks;
   for (const auto& update : load_result.updates) {
     for (const auto& chunk : update.add_chunks()) {
       chunks.emplace(chunk.serial_no(), &chunk);
     }
-    for (const auto& chunk_no : update.remove_chunks()) {
+    for (const auto chunk_no : update.remove_chunks()) {
       if (!chunks.erase(chunk_no)) {
         return STATUS_FORMAT(Corruption, "Attempt to remove non existing chunk: $0", chunk_no);
       }
@@ -855,8 +931,10 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
     VectorLSMFileMetaDataPtr file;
     VectorIndexPtr index;
     if (chunk_pb->serial_no()) {
-      index = options_.vector_index_factory();
-      file  = CreateVectorLSMFileMetaData(*index, chunk_pb->serial_no());
+      index = options_.vector_index_factory(FactoryMode::kLoad);
+
+      const auto file_size = VERIFY_RESULT(GetChunkFileSize(chunk_pb->serial_no()));
+      file = CreateVectorLSMFileMetaData(*index, chunk_pb->serial_no(), file_size);
     }
 
     auto user_frontiers = options_.frontiers_factory();
@@ -867,24 +945,33 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
         std::move(user_frontiers), ImmutableChunkState::kInManifest
     ));
 
-    last_serial_no_ = std::max<size_t>(last_serial_no_, chunk_pb->serial_no());
+    last_serial_no_ = std::max<uint64_t>(last_serial_no_, chunk_pb->serial_no());
   }
 
-  CountDownLatch latch(immutable_chunks_.size());
+  std::vector<std::promise<Status>> promises(immutable_chunks_.size());
   for (size_t i = 0; i != immutable_chunks_.size(); ++i) {
     auto& chunk = immutable_chunks_[i];
     if (!chunk->file) {
-      latch.CountDown();
+      promises[i].set_value(Status::OK());
       continue;
     }
-    options_.insert_thread_pool->EnqueueFunctor([this, &latch, &chunk] {
-      CheckFailure(chunk->index->LoadFromFile(
-          GetChunkPath(options_.storage_dir, chunk->file->serial_no()),
-          MaxConcurrentReads()));
-      latch.CountDown();
+    options_.insert_thread_pool->EnqueueFunctor([this, &promise = promises[i], &chunk] {
+      auto status = chunk->index->LoadFromFile(
+          GetChunkPath(options_, chunk->file->serial_no()),
+          MaxConcurrentReads());
+      if (!status.ok()) {
+        status = status.CloneAndPrepend(Format("Failed to load $0", chunk->file->serial_no()));
+        LOG_WITH_PREFIX(INFO) << status;
+      }
+      promise.set_value(status);
     });
   }
-  latch.Wait();
+  for (auto& promise : promises) {
+    auto status = promise.get_future().get();
+    if (!status.ok() && failed_status_.ok()) {
+      failed_status_ = status;
+    }
+  }
 
   std::sort(
       immutable_chunks_.begin(), immutable_chunks_.end(), [](const auto& lhs, const auto& rhs) {
@@ -894,6 +981,10 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
                         << "last serial no: " << last_serial_no_ << ", "
                         << "next manifest no: " << next_manifest_file_no_;
   VLOG_WITH_PREFIX(2)   << "Loaded " << AsString(immutable_chunks_);
+
+  if (auto_compactions_enabled_) {
+    LOG_WITH_PREFIX(INFO) << "Background compactions enabled";
+  }
 
   return Status::OK();
 }
@@ -915,7 +1006,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
     std::lock_guard lock(mutex_);
     chunks.reserve(immutable_chunks_.size());
     for (const auto& chunk : immutable_chunks_) {
-      if (chunk->state == ImmutableChunkState::kInManifest) {
+      if (chunk->IsInManifest()) {
         chunks.push_back(chunk);
       }
     }
@@ -927,8 +1018,8 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
     if (chunk->file) {
       const auto serial_no = chunk->file->serial_no();
       RETURN_NOT_OK(env_->LinkFile(
-          GetChunkPath(options_.storage_dir, serial_no),
-          GetChunkPath(out, serial_no)));
+          GetChunkPath(options_, serial_no),
+          GetChunkPath(out, options_.file_extension, serial_no)));
     }
     chunk->AddToUpdate(update);
   }
@@ -937,7 +1028,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateCheckpoint(const std::string& ou
   RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
 
   // TODO(vector_index): merge the cleanup logic with the same from DoCompactChunks().
-  // Some chunks could become obsolete, let's explicitely unreference them and trigger obsolete
+  // Some chunks could become obsolete, let's explicitly unreference them and trigger obsolete
   // chunks cleanup.
   chunks.clear();
   TriggerObsoleteChunksCleanup(/* async = */ true);
@@ -1112,7 +1203,8 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   auto start_chunks_search = MonoTime::NowIf(dump_stats);
   for (const auto& index : indexes) {
     auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Chunk results: " << AsString(chunk_results);
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Chunk " << index->IndexStatsStr() << " results: " << AsString(chunk_results);
     sum_num_found_entries += chunk_results.size();
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
@@ -1149,13 +1241,26 @@ Result<bool> VectorLSM<Vector, DistanceResult>::HasVectorId(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<size_t> VectorLSM<Vector, DistanceResult>::TotalEntries() const {
+  while (insert_registry_->HasRunningTasks()) {
+    std::this_thread::sleep_for(10ms);
+  }
+  auto indexes = VERIFY_RESULT(AllIndexes());
+  size_t result = 0;
+  for (const auto& index : indexes) {
+    result += index->Size();
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorLSMFileMetaDataPtr VectorLSM<Vector, DistanceResult>::CreateVectorLSMFileMetaData(
-    VectorIndex& index, size_t serial_no) {
-  auto* raw_ptr = new VectorLSMFileMetaData(serial_no);
+    VectorIndex& index, uint64_t serial_no, uint64_t size_on_disk) {
+  auto* raw_ptr = new VectorLSMFileMetaData(serial_no, size_on_disk);
   auto ptr = VectorLSMFileMetaDataPtr(raw_ptr, [this](VectorLSMFileMetaData* raw_ptr) {
     std::unique_ptr<VectorLSMFileMetaData> ptr { raw_ptr };
     if (!ptr->IsObsolete()) {
-      return; // Non-obsolete files should be kept on disk, just relase the memory.
+      return; // Non-obsolete files should be kept on disk, just release the memory.
     }
 
     ObsoleteFile(std::move(ptr));
@@ -1166,16 +1271,22 @@ VectorLSMFileMetaDataPtr VectorLSM<Vector, DistanceResult>::CreateVectorLSMFileM
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-size_t VectorLSM<Vector, DistanceResult>::NextSerialNo() {
+uint64_t VectorLSM<Vector, DistanceResult>::NextSerialNo() {
   std::lock_guard lock(mutex_);
   return ++last_serial_no_;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+uint64_t VectorLSM<Vector, DistanceResult>::LastSerialNo() const {
+  SharedLock lock(mutex_);
+  return last_serial_no_;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::TEST_SkipManifestUpdateDuringShutdown() {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "Hit test condition";
   for (auto it = updates_queue_.begin(); it != updates_queue_.end();) {
-    if (it->second->state == ImmutableChunkState::kOnDisk) {
+    if (it->second->IsOnDisk()) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Erasing chunk: " << it->second->ToString();
       it = updates_queue_.erase(it);
     } else {
@@ -1186,6 +1297,12 @@ Status VectorLSM<Vector, DistanceResult>::TEST_SkipManifestUpdateDuringShutdown(
     updates_queue_empty_cv_.notify_all();
   }
   return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool VectorLSM<Vector, DistanceResult>::ManifestAcquired() {
+  SharedLock lock(mutex_);
+  return writing_manifest_;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1220,28 +1337,51 @@ Result<WritableFile*> VectorLSM<Vector, DistanceResult>::RollManifest() {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+auto VectorLSM<Vector, DistanceResult>::SaveIndexToFile(VectorIndex& index, uint64_t serial_no) ->
+    Result<std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>> {
+  VLOG_WITH_PREFIX(1) << Format(
+      "Saving vector index on disk, serial_no: $0, num entries: $1",
+      serial_no, index.Size());
+
+  const auto file_path = GetChunkPath(options_, serial_no);
+  auto new_index = VERIFY_RESULT(index.SaveToFile(file_path));
+  auto& actual_index = new_index ? *new_index : index;
+
+  const auto file_size = VERIFY_RESULT(env_->GetFileSize(file_path));
+  LOG_WITH_PREFIX(INFO) << Format(
+      "Saved vector index on disk, serial_no: $0, num entries: $1, file size: $2",
+      serial_no, actual_index.Size(), file_size);
+
+  return std::make_pair(CreateVectorLSMFileMetaData(actual_index, serial_no, file_size), new_index);
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& chunk) {
   VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(*chunk);
 
+  VectorIndexPtr new_index;
   if (chunk->index) {
     LOG_IF(DFATAL, chunk->file.get())
         << "Chunk is already saved to "
-        << GetChunkPath(options_.storage_dir, chunk->file->serial_no());
+        << GetChunkPath(options_, chunk->file->serial_no());
 
     const auto serial_no = NextSerialNo();
     if (serial_no == 1 && FLAGS_TEST_vector_index_delay_saving_first_chunk_ms != 0) {
       std::this_thread::sleep_for(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms * 1ms);
     }
 
-    chunk->file = CreateVectorLSMFileMetaData(*chunk->index, serial_no);
-    const auto chunk_path = GetChunkPath(options_.storage_dir, serial_no);
-    RETURN_NOT_OK(chunk->index->SaveToFile(chunk_path));
+    std::tie(chunk->file, new_index) = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
   }
 
   WritableFile* manifest_file = nullptr;
   ImmutableChunkPtr writing_chunk;
   {
     std::lock_guard lock(mutex_);
+    if (new_index) {
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "Update index: " << AsString(*chunk) << " => " << AsString(new_index->IndexStatsStr());
+      chunk->index = new_index;
+    }
     chunk->state = ImmutableChunkState::kOnDisk;
     if (stopping_ && FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) {
       return TEST_SkipManifestUpdateDuringShutdown();
@@ -1261,11 +1401,11 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     // to the very first chunk, are on disk. The subsequent UpdateManifest() not necessary stop on
     // the given chunk, it takes all the on-disk chunks into account starting from the first one.
     // TODO(vector_index): probably the cycle could be replaced with `updates_queue_.begin() == it`
-    // or `updates_queue_.begin()->second->state == ImmutableChunkState::kOnDisk`.
+    // or `updates_queue_.begin()->second->IsOnDisk()`.
     // to identify if we need to capture writing_manifest_.
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Updates queue: " << AsString(updates_queue_);
     for (;;) {
-      if (it->second->state != ImmutableChunkState::kOnDisk) {
+      if (!it->second->IsOnDisk()) {
         return Status::OK();
       }
       if (it == updates_queue_.begin()) {
@@ -1278,20 +1418,32 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     writing_chunk = updates_queue_.begin()->second;
   }
 
-  return UpdateManifest(manifest_file, std::move(writing_chunk));
+  return UpdateManifest(*manifest_file, std::move(writing_chunk));
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::AddChunkToManifest(
+    WritableFile& manifest_file, ImmutableChunk& chunk) {
+  DCHECK_EQ(chunk.state, ImmutableChunkState::kOnDisk);
+  DCHECK(ManifestAcquired());
+
+  VectorLSMUpdatePB update;
+  chunk.AddToUpdate(update);
+  VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
+
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(manifest_file, update));
+
+  // TODO(vector_index): print chunk number as well, could be covered within #27098.
+  LOG_WITH_PREFIX(INFO) << Format("Added chunk to manifest: $0", chunk.ToShortString());
+  return Status::OK();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
-    WritableFile* manifest_file, ImmutableChunkPtr chunk) {
-  DCHECK_ONLY_NOTNULL(chunk.get());
-  DCHECK_EQ(chunk->state, ImmutableChunkState::kOnDisk);
-
+    WritableFile& manifest_file, ImmutableChunkPtr chunk) {
   while (chunk) {
-    VectorLSMUpdatePB update;
-    chunk->AddToUpdate(update);
-    VLOG_WITH_PREFIX_AND_FUNC(3) << update.ShortDebugString();
-    RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*manifest_file, update));
+    DCHECK_ONLY_NOTNULL(chunk.get());
+    RETURN_NOT_OK(AddChunkToManifest(manifest_file, *chunk));
 
     // Update chunks state and move to the next chunk in the flushing queue if any.
     {
@@ -1305,17 +1457,18 @@ Status VectorLSM<Vector, DistanceResult>::UpdateManifest(
         updates_queue_empty_cv_.notify_all();
       }
 
-      if (updates_queue_.size() &&
-          updates_queue_.begin()->second->state == ImmutableChunkState::kOnDisk) {
+      if (updates_queue_.size() && updates_queue_.begin()->second->IsOnDisk()) {
         chunk = updates_queue_.begin()->second;
       } else {
         chunk = nullptr;
         ReleaseManifestUnlocked();
       }
     }
-
-    ScheduleBackgroundCompaction();
   }
+
+  // Scheduling a background compaction after the loop to maybe pick all flushed chunks,
+  // rather than trying to schedule after each chunk got manifested.
+  ScheduleBackgroundCompaction();
 
   return Status::OK();
 }
@@ -1369,12 +1522,17 @@ Status VectorLSM<Vector, DistanceResult>::RollChunk(size_t min_vectors) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<uint64_t> VectorLSM<Vector, DistanceResult>::GetChunkFileSize(uint64_t serial_no) const {
+  return env_->GetFileSize(GetChunkPath(options_, serial_no));
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr>
 VectorLSM<Vector, DistanceResult>::CreateVectorIndex(size_t min_vectors) const {
   auto capacity = std::max(min_vectors, options_.vectors_per_chunk);
   VLOG_WITH_PREFIX_AND_FUNC(1) << "requested capacity: " << capacity;
 
-  auto index = options_.vector_index_factory();
+  auto index = options_.vector_index_factory(FactoryMode::kCreate);
   RETURN_NOT_OK(index->Reserve(
       capacity, options_.insert_thread_pool->options().max_workers, MaxConcurrentReads()));
 
@@ -1416,7 +1574,7 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Noting to flush";
       return Status::OK();
     }
-    VLOG_WITH_PREFIX_AND_FUNC(1) << "Flushing " << mutable_chunk_->num_entries << " entries";
+    VLOG_WITH_PREFIX_AND_FUNC(1) << mutable_chunk_->num_entries << " entries";
     RETURN_NOT_OK(DoFlush(wait ? &promise : nullptr));
     mutable_chunk_ = nullptr;
   }
@@ -1431,7 +1589,7 @@ rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier()
   VLOG_WITH_PREFIX_AND_FUNC(5) << "immutable_chunks: " << AsString(immutable_chunks_);
 
   for (const auto& chunk : immutable_chunks_) {
-    if (chunk->state != ImmutableChunkState::kInManifest) {
+    if (!chunk->IsInManifest()) {
       continue;
     }
     rocksdb::UserFrontier::Update(
@@ -1444,7 +1602,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 rocksdb::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
   std::lock_guard lock(mutex_);
   for (const auto& chunk : immutable_chunks_) {
-    if (chunk->state != ImmutableChunkState::kInManifest) {
+    if (!chunk->IsInManifest()) {
       return rocksdb::FlushAbility::kAlreadyFlushing;
     }
   }
@@ -1455,15 +1613,17 @@ rocksdb::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-auto VectorLSM<Vector, DistanceResult>::options() const ->
-    const typename VectorLSM<Vector, DistanceResult>::Options& {
-  return options_;
+size_t VectorLSM<Vector, DistanceResult>::NumImmutableChunks() const {
+  SharedLock lock(mutex_);
+  return immutable_chunks_.size();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-size_t VectorLSM<Vector, DistanceResult>::num_immutable_chunks() const {
+size_t VectorLSM<Vector, DistanceResult>::NumSavedImmutableChunks() const {
   SharedLock lock(mutex_);
-  return immutable_chunks_.size();
+  return std::ranges::count_if(
+      immutable_chunks_,
+      [](auto&& chunk) { return chunk->IsInManifest() || chunk->IsOnDisk(); });
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1474,6 +1634,12 @@ Env* VectorLSM<Vector, DistanceResult>::TEST_GetEnv() const {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 bool VectorLSM<Vector, DistanceResult>::TEST_HasBackgroundInserts() const {
   return insert_registry_->HasRunningTasks();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool VectorLSM<Vector, DistanceResult>::TEST_HasCompactions() const {
+  SharedLock lock(compaction_tasks_mutex_);
+  return !compaction_tasks_.empty();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1505,7 +1671,7 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
       }
     }
     if (!index) {
-      index = options_.vector_index_factory();
+      index = options_.vector_index_factory(FactoryMode::kCreate);
     }
   }
   return index->Distance(lhs, rhs);
@@ -1608,7 +1774,7 @@ void VectorLSM<Vector, DistanceResult>::DeleteFile(const VectorLSMFileMetaData& 
   // Sanity check, only obsolete files can be deleted.
   DCHECK(file.IsObsolete());
 
-  auto path = GetChunkPath(options_.storage_dir, file.serial_no());
+  auto path = GetChunkPath(options_, file.serial_no());
   if (!env_->FileExists(path)) {
     LOG_WITH_PREFIX(WARNING) << "File does not exist " << path;
     return;
@@ -1643,16 +1809,17 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 typename VectorLSM<Vector, DistanceResult>::CompactionScope
 VectorLSM<Vector, DistanceResult>::PickChunksForFullCompaction() const {
   CompactionScope scope;
-  scope.reserve(num_immutable_chunks());
 
-  // It is expected the collection of immutable chunks is sorted by order_no, so it is safe
-  // to start from the very first item and grab a continuous interaval of manifested chunks.
+  // The collection of immutable chunks is sorted by order_no, Let's start from the beginning
+  // and grab a continuous interval of the manifested chunks.
   {
     SharedLock lock(mutex_);
+    scope.reserve(immutable_chunks_.size());
     for (size_t i = 0; i < immutable_chunks_.size(); ++i) {
       if (!scope.TryLock(i, immutable_chunks_[i])) {
         break;
       }
+      VLOG_WITH_PREFIX(1) << "Manual compaction picking " << immutable_chunks_[i]->ToShortString();
     }
   }
 
@@ -1661,16 +1828,200 @@ VectorLSM<Vector, DistanceResult>::PickChunksForFullCompaction() const {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 typename VectorLSM<Vector, DistanceResult>::CompactionScope
+VectorLSM<Vector, DistanceResult>::PickChunksReadyForCompaction(
+    size_t begin_idx, size_t end_idx, const std::string& reason) const {
+  DCHECK_LE(end_idx, immutable_chunks_.size());
+  DCHECK_LE(begin_idx, end_idx);
+
+  CompactionScope scope;
+  scope.reserve(end_idx - begin_idx);
+  for (size_t idx = begin_idx; idx != end_idx; ++idx) {
+    const auto& chunk = immutable_chunks_[idx];
+    if (scope.TryLock(idx, chunk)) {
+      LOG_WITH_PREFIX(INFO) << reason << " picking " << chunk->ToShortString();
+    } else {
+      // It is not expected to happen.
+      LOG_WITH_PREFIX(DFATAL) << reason << " failed to pick " << AsString(chunk);
+      break;
+    }
+  }
+
+  return scope;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+typename VectorLSM<Vector, DistanceResult>::CompactionScope
+VectorLSM<Vector, DistanceResult>::PickChunksBySizeAmplification() const {
+  // Percentage flexibility while reducing size amplification.
+  const auto ratio = FLAGS_vector_index_max_size_amplification_percent;
+  if (ratio < 0) {
+    VLOG_WITH_PREFIX(2) << "Size amplification compactions disabled by gflag";
+    return {};
+  }
+
+  // Find base chunk: the very first chunk with data on disk.
+  uint64_t base_chunk_size = 0;
+  auto base_chunk_it = immutable_chunks_.begin();
+  for (; base_chunk_it != immutable_chunks_.end(); ++base_chunk_it) {
+    const auto& base_chunk = *base_chunk_it;
+    if (!base_chunk->ReadyForCompaction()) {
+      VLOG_WITH_PREFIX(2)
+          << "Size amp not needed, stopping at base chunk not ready for compaction "
+          << base_chunk->ToShortString();
+      return {};
+    }
+
+    base_chunk_size = base_chunk->file_size();
+    if (base_chunk_size) {
+      break;
+    }
+  }
+
+  // Get the longest span of the candidates ready for the compaction.
+  size_t num_candidates_on_disk = 0;
+  uint64_t candidates_size = 0;
+  auto candidate_end = base_chunk_it + 1;
+  for (; candidate_end != immutable_chunks_.end(); ++candidate_end) {
+    const auto& candidate = *candidate_end;
+    if (!candidate->ReadyForCompaction()) {
+      VLOG_WITH_PREFIX(3)
+          << "Size amp stopping at chunk not ready for compaction " << candidate->ToShortString();
+      break;
+    }
+
+    const auto size = candidate->file_size();
+    candidates_size += size;
+    num_candidates_on_disk += size != 0;
+    VLOG_WITH_PREFIX(3) << "Size amp candidate " << candidate->ToShortString();
+  }
+
+  if (num_candidates_on_disk == 0) {
+    VLOG_WITH_PREFIX(2) << Format("Size amp not needed due to not enough candidates on disk");
+  }
+
+  // Size amplification == percentage of additional size: [candidates size / base size] >= ratio.
+  if (candidates_size * 100 < ratio * base_chunk_size) {
+    VLOG_WITH_PREFIX(2) << Format(
+        "Size amp not needed, newer chunks total size: $0 bytes, "
+        "earliest chunk size: $1 bytes, size amplification percent: $2",
+        candidates_size, base_chunk_size, ratio);
+    return {};
+  }
+
+  LOG_WITH_PREFIX(INFO) << Format(
+      "Size amp needed, newer chunks total size: $0 bytes, "
+      "earliest chunk size: $1 bytes, size amplification percent: $2",
+      candidates_size, base_chunk_size, ratio);
+  return PickChunksReadyForCompaction(
+      /* begin_idx = */ 0, std::distance(immutable_chunks_.begin(), candidate_end), "Size amp");
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+typename VectorLSM<Vector, DistanceResult>::CompactionScope
+VectorLSM<Vector, DistanceResult>::PickChunksBySizeRatio() const {
+  const auto ratio = FLAGS_vector_index_compaction_size_ratio_percent;
+  if (ratio <= -100) {
+    VLOG_WITH_PREFIX(2) << "Size ratio compactions disabled by gflag";
+    return {};
+  }
+
+  const auto min_width = CompactionMinMergeWidth();
+  if (immutable_chunks_.size() < min_width) {
+    VLOG_WITH_PREFIX(2) << "Size ratio compactions not needed, not enough candidates";
+    return {};
+  }
+
+  const uint64_t always_include_size_threshold =
+      FLAGS_vector_index_compaction_always_include_size_threshold;
+
+  auto candidate_end_idx = immutable_chunks_.size();
+  auto candidate_begin_idx = candidate_end_idx;
+  size_t num_candidates_on_disk = 0;
+
+  // Adjust end iterator to stop if there's not enough chunks.
+  auto rend = immutable_chunks_.rend() - min_width + 1;
+  for (auto it = immutable_chunks_.rbegin(); it != rend; ++it) {
+    if (!(*it)->ReadyForCompaction()) {
+      continue;
+    }
+
+    auto candidate_size = (*it)->file_size();
+    num_candidates_on_disk = candidate_size != 0;
+    VLOG_WITH_PREFIX(3) << "Size ratio candidate " << (*it)->ToShortString();
+
+    // Check if the succeeding chunks need compaction.
+    auto succeeding_it = it + 1;
+    for (; succeeding_it != immutable_chunks_.rend(); ++succeeding_it) {
+      if (!(*succeeding_it)->ReadyForCompaction()) {
+        VLOG_WITH_PREFIX(3)
+            << "Size ratio stopping at candidate not ready for compaction "
+            << (*succeeding_it)->ToShortString();
+        break;
+      }
+
+      const auto succeeding_size = (*succeeding_it)->file_size();
+
+      // It is a valid case when a candidate has no file on disk, e.g. for metadata updates. Also
+      // let's pick small chunks without checking the criteria is met.
+      if (num_candidates_on_disk && (succeeding_size > always_include_size_threshold)) {
+        // Pick files if the total/last candidate chunk size (increased by the specified ratio) is
+        // still larger than the next candidate chunk.
+        double max_expected_size = candidate_size * (100.0 + ratio) / 100.0;
+        if (max_expected_size < static_cast<double>(succeeding_size)) {
+          VLOG_WITH_PREFIX(3)
+              << "Size ratio stopping at candidate not meet the size criteria "
+              << (*succeeding_it)->ToShortString();
+          break;
+        }
+      }
+
+      candidate_size += succeeding_size;
+      num_candidates_on_disk += succeeding_size != 0;
+      VLOG_WITH_PREFIX(3) << "Size ratio candidate " << (*succeeding_it)->ToShortString();
+    }
+
+    // Found a series of consecutive chunks that need compaction.
+    if (num_candidates_on_disk >= min_width) {
+      candidate_end_idx = std::distance(immutable_chunks_.begin(), it.base());
+
+      // We either reach the end or stop on the chunk that does not meet the criteria.
+      candidate_begin_idx = std::distance(immutable_chunks_.begin(), succeeding_it.base());
+      break;
+    }
+  }
+
+  if (candidate_begin_idx == immutable_chunks_.size()) {
+    VLOG_WITH_PREFIX(2) << Format("Size ratio not needed, size ratio percent: $0", ratio);
+    return {};
+  }
+
+  LOG_WITH_PREFIX(INFO) << Format("Size ratio needed, size ratio percent: $0", ratio);
+  return PickChunksReadyForCompaction(candidate_begin_idx, candidate_end_idx, "Size ratio");
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+typename VectorLSM<Vector, DistanceResult>::CompactionScope
 VectorLSM<Vector, DistanceResult>::PickChunksForCompaction() const {
-  // TODO(vector_index): to be implemented by https://github.com/yugabyte/yugabyte-db/issues/27089.
+  SharedLock lock(mutex_);
+  if (auto chunks = PickChunksBySizeAmplification(); !chunks.empty()) {
+    return chunks;
+  }
+
+  if (auto chunks = PickChunksBySizeRatio(); !chunks.empty()) {
+    return chunks;
+  }
+
+  // TODO(vector_index): Size amplification and size ratio are within configured limits.
+  // If max read amplification exceeds configured limits, then force compaction to reduce
+  // the number of chunks without looking at file size ratio. Refer to original RocksDB:
+  // https://github.com/facebook/rocksdb/blob/main/db/compaction/compaction_picker_universal.cc
   return {};
 }
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::ImmutableChunkPtr>
 VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& input_chunks) {
-  // Input chunks collection must be sorted by order_no and each chunk's state must be set
-  // to ImmutableChunkState::kInManifest.
+  // Input chunks collection must be sorted by order_no and each chunk must be in manifest.
   DCHECK(!input_chunks.empty());
 
   std::vector<VectorIndexPtr> indexes;
@@ -1737,9 +2088,12 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
     LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: " << merged_index->Size() << "]";
 
     // Save new index to disk.
-    merged_index_file = CreateVectorLSMFileMetaData(*merged_index, NextSerialNo());
-    const auto chunk_path = GetChunkPath(options_.storage_dir, merged_index_file->serial_no());
-    RETURN_NOT_OK(merged_index->SaveToFile(chunk_path));
+    VectorIndexPtr new_index;
+    std::tie(merged_index_file, new_index) = VERIFY_RESULT(SaveIndexToFile(
+        *merged_index, NextSerialNo()));
+    if (new_index) {
+      merged_index = new_index;
+    }
     LOG_WITH_PREFIX(INFO)
         << "Compaction done, new chunk " << merged_index_file->ToString() << " saved to disk";
   }
@@ -1755,7 +2109,7 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
     const CompactionContext& context, CompactionScope&& scope) {
   RETURN_NOT_OK(RUNNING_STATUS());
   RSTATUS_DCHECK(!scope.empty(), InvalidArgument, "Compaction scope must be specified");
-  LOG_WITH_PREFIX(INFO) << "Picked chunks: " << AsString(scope);
+  VLOG_WITH_PREFIX(2) << "Picked chunks: " << AsString(scope);
 
   auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks()));
 
@@ -1780,7 +2134,7 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
       SharedLock lock(mutex_);
       for (size_t i = 0; i < immutable_chunks_.size(); ++i) {
         const auto& chunk = immutable_chunks_[i];
-        if (chunk->state != ImmutableChunkState::kInManifest || scope.contains(i)) {
+        if (!chunk->IsInManifest() || scope.contains(i)) {
           continue;
         }
         chunk->AddToUpdate(update);
@@ -1826,7 +2180,7 @@ Result<std::unique_ptr<typename VectorLSM<Vector, DistanceResult>::CompactionTas
 VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback callback) {
   DCHECK(callback) << "Compaction callback must be specified";
 
-  // Check running compacitons, only one task for manual compaction is allowed at a time.
+  // Check running compactions, only one task for manual compaction is allowed at a time.
   {
     UniqueLock lock(compaction_tasks_mutex_);
     if (has_pending_manual_compaction_ ||
@@ -1835,7 +2189,7 @@ VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback ca
     }
     has_pending_manual_compaction_ = true; // Prevents adding background compaction tasks.
 
-    // Let's wait for ongoning background compactions completion to be able to pick all the
+    // Let's wait for ongoing background compactions completion to be able to pick all the
     // chunks for the manual compaction. No other tasks are expected in compaction_tasks_.
     if (!compaction_tasks_.empty()) {
       WaitForCompactionTasksDone(lock);
@@ -1843,6 +2197,8 @@ VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback ca
   }
 
   // TODO(vector_index): do we need to trigger sync flush?
+  // TODO(vector_index): do we need to wait for updates_queue_ is empty to grab more chunk
+  // for a manual compaction, even without explicit flush being triggered here?
 
   // Pick files for manual compaction -- it's required to do while has_pending_manual_compaction_
   // is set, otherwise background compaction won't allow to pick all the manifested chunks.
@@ -1862,26 +2218,38 @@ VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback ca
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
   if (FLAGS_vector_index_disable_compactions) {
+    VLOG_WITH_PREFIX(2) << "Background compactions disabled by gflag";
+    return;
+  }
+
+  if (!auto_compactions_enabled_) {
     VLOG_WITH_PREFIX(2) << "Background compactions disabled";
     return;
   }
 
   // TODO(vector_index): this logic should be replaced with compaction_score calculation with
-  // triggerring on the following conditions: 1) immutable chunk's state becomes kInManifest, 2)
+  // triggering on the following conditions: 1) immutable chunk's state becomes kInManifest, 2)
   // a chunk is being deleted from immutable_chunks_ collection. The following formula should be
   // used: score = [num chunks in manifest] / file_number_compaction_trigger. And the compaction
   // should be triggered if score >= 1.
-  size_t num_manifested_chunks = 0;
+  size_t num_manifested_chunks_on_disk = 0;
   {
     SharedLock lock(mutex_);
-    num_manifested_chunks = std::ranges::count_if(
+    if (stopping_) {
+      return;
+    }
+
+    num_manifested_chunks_on_disk = std::ranges::count_if(
         immutable_chunks_,
-        [](auto&& chunk){ return chunk->state == ImmutableChunkState::kInManifest; });
+        [](auto&& chunk) {
+          return !chunk->IsUnderCompaction() && chunk->IsInManifest() && chunk->file;
+        });
   }
-  if (num_manifested_chunks < FilesNumberCompactionTrigger()) {
-    VLOG_WITH_PREFIX(2)
-        << "Skipping background compaction as number of manifested files < compaction trigger "
-        << "(" << num_manifested_chunks << " < " << FilesNumberCompactionTrigger() << ")";
+  if (num_manifested_chunks_on_disk < FilesNumberCompactionTrigger()) {
+    VLOG_WITH_PREFIX(2) << Format(
+        "Skipping background compaction due to the number of manifested chunks "
+        "on disk ($0) is less than the value of the compaction trigger ($1)",
+        num_manifested_chunks_on_disk, FilesNumberCompactionTrigger());
     return;
   }
 
@@ -1895,6 +2263,11 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
       return;
     }
 
+    // TODO(vector_index): None of approaches for picking chunks is checked at this point, which
+    // leads to a possibility of unnecessary compaction attempts by creating and submitting
+    // a CompactionTask which will do nothing. Alternative way is to try to pick chunks for
+    // compaction and in case of success create and submit the task -- but it is better to not
+    // setup picked chunks for the compaction task letting it pick large scope on execution.
     task = std::make_unique<CompactionTask>(*this);
     RegisterUnlocked(*task);
   }
@@ -1915,6 +2288,13 @@ Status VectorLSM<Vector, DistanceResult>::ScheduleManualCompaction(StdStatusCall
   }
 
   return SubmitTask(std::move(task));
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::EnableAutoCompactions() {
+  auto_compactions_enabled_ = true;
+  LOG_WITH_PREFIX(INFO) << "Background compactions enabled";
+  ScheduleBackgroundCompaction();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

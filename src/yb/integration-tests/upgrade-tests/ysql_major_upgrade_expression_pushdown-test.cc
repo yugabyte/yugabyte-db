@@ -105,16 +105,11 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
   bool mixed_mode_saop_pushdown_ = false;
   bool mixed_mode_ = false;
 
-  Status SetMixedModeSaopPushdownForPg15(bool value) {
-    if (!mixed_mode_)
-      // We can't set this flag on PG11 servers, so first validate that there is a PG15 server
-      return Status::OK();
-
+  Status SetMixedModeSaopPushdown(bool value) {
     mixed_mode_saop_pushdown_ = value;
 
     const auto saop_flag = "ysql_yb_mixed_mode_saop_pushdown";
-    const auto tserver = cluster_->tablet_server(kMixedModeTserverPg15);
-    RETURN_NOT_OK(cluster_->SetFlag(tserver, saop_flag, value ? "true" : "false"));
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers(saop_flag, value ? "true" : "false"));
     std::this_thread::sleep_for(50ms); // Sometimes the flag takes a while to propagate
     return Status::OK();
   }
@@ -273,13 +268,13 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
 
       if (upgrade_compat == "11" && mixed_mode_expression_pushdown_) {
         /* Retry any SAOP expressions with SAOP pushdown disabled */
-        RETURN_NOT_OK(SetMixedModeSaopPushdownForPg15(false));
+        RETURN_NOT_OK(SetMixedModeSaopPushdown(false));
         for (auto &expr : exprs) {
           if (expr.IsSaopExpression()) {
             RETURN_NOT_OK(check_filters(conn, kLocalFilter, expr, ts_id));
           }
         }
-        RETURN_NOT_OK(SetMixedModeSaopPushdownForPg15(true));
+        RETURN_NOT_OK(SetMixedModeSaopPushdown(true));
       }
 
       return Status::OK();
@@ -287,6 +282,7 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
 
     // All expressions should be pushable in PG11
     mixed_mode_ = false;
+    RETURN_NOT_OK(SetMixedModeSaopPushdown(true));
     RETURN_NOT_OK(check(kMixedModeTserverPg11));
 
     RETURN_NOT_OK(
@@ -300,7 +296,6 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
     RETURN_NOT_OK(UpgradeClusterToMixedMode());
     mixed_mode_ = true;
 
-    RETURN_NOT_OK(SetMixedModeSaopPushdownForPg15(true));
     for (auto mixed_mode_expression_pushdown : {true, false}) {
       RETURN_NOT_OK(SetMixedModePushdown(mixed_mode_expression_pushdown));
       RETURN_NOT_OK(check(kMixedModeTserverPg11));
@@ -394,24 +389,24 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
       if (t1 == kInt4Column) {
         for (const auto& mod_name : {get_mod_name(t1), "mod"}) {
           exprs.push_back(Expression(Format("($0($1, 10) = 0)", mod_name, t1),
-                                     Behaviour::kPushable, Behaviour::kMMPushable));
+                                     Behaviour::kMMPushable));
         }
         exprs.push_back(Expression(Format("(($0 % 10) = 0)", t1),
-                                   Behaviour::kPushable, Behaviour::kMMPushable));
+                                   Behaviour::kMMPushable));
       } else if (is_int(t1)) {
         for (const auto& mod_name : {get_mod_name(t1), "mod"}) {
           exprs.push_back(Expression(Format("($0($1, '10'::$2) = 0)", mod_name, t1, get_cast(t1)),
-                                     Behaviour::kPushable, Behaviour::kMMPushable));
+                                     Behaviour::kMMPushable));
         }
         exprs.push_back(Expression(Format("(($0 % '10'::$1) = 0)", t1, get_cast(t1)),
-                                   Behaviour::kPushable, Behaviour::kMMPushable));
+                                   Behaviour::kMMPushable));
       } else {
         for (const auto &mod_name : {"numeric_mod", "mod"}) {
           exprs.push_back(Expression(Format("($0($1, '10'::numeric) = 0.0)", mod_name, t1),
-                                     Behaviour::kPushable, Behaviour::kMMPushable));
+                                     Behaviour::kMMPushable));
         }
         exprs.push_back(Expression(Format("(($0 % '10'::numeric) = 0.0)", t1),
-                                   Behaviour::kPushable, Behaviour::kMMPushable));
+                                   Behaviour::kMMPushable));
       }
     }
 
@@ -523,17 +518,17 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
 TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestScalarArrayOpExprs) {
   ASSERT_OK(TestPushdowns(Format("EXPLAIN $0 SELECT * FROM $1 WHERE", kExplainArgs, kTableName), {
     Expression(Format("($0 = ANY ('{1,2}'::integer[]))", kInt4Column),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
     Expression(Format("($0 <> ALL ('{1,2}'::text[]))", kTextColumn),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
     Expression(Format("(($0 = ANY ('{1,2}'::integer[])) AND ($1 = ANY ('{1,2}'::text[])))",
                       kInt4Column, kTextColumn),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
     Expression(Format("(($0 = ANY ('{1,2}'::integer[])) OR ($1 = ANY ('{1,2}'::text[])))",
                       kInt4Column, kTextColumn),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
     Expression(Format("($0 ~~ ANY ('{1%,2%}'::text[]))", kTextColumn),
-               Behaviour::kPushable, Behaviour::kMMPushable),
+               Behaviour::kMMPushable),
   }));
 }
 
@@ -697,15 +692,15 @@ TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestStringOperations) {
     Format("(\"substring\"($0, 2) = 'ello'::text)", kTextColumn), // F_SUBSTRING_TEXT_INT4
     Format("(\"substring\"($0, 2, 3) = 'ell'::text)", kTextColumn), // F_SUBSTRING_TEXT_INT4_INT4
   }) {
-    exprs.push_back(Expression(cond, Behaviour::kPushable, Behaviour::kMMPushable));
+    exprs.push_back(Expression(cond, Behaviour::kMMPushable));
   }
 
   // special cases: the formatting for these conditions changes in the output depending on the YSQL
   // version, so use a regex to check that the correct condition is present in the output
   exprs.push_back(Expression(Format("like($0, 'h%'::text)", kTextColumn), // F_LIKE_TEXT_TEXT
-                             Behaviour::kPushable, Behaviour::kMMPushable, ".*like.*"));
+                             Behaviour::kMMPushable, ".*like.*"));
   exprs.push_back(Expression(Format("notlike($0, 'h%'::text)", kTextColumn), // F_NOTLIKE_TEXT_TEXT
-                             Behaviour::kPushable, Behaviour::kMMPushable, ".*notlike.*"));
+                             Behaviour::kMMPushable, ".*notlike.*"));
 
   // these functions don't exist in PG11, so they can't be pushed
   exprs.push_back(Expression(Format("regexp_like($0, 'h.*'::text)", kTextColumn),

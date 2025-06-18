@@ -117,6 +117,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       fail();
     }
 
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     setFollowerLagMock();

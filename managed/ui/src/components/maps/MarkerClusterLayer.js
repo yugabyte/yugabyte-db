@@ -76,7 +76,7 @@ export default class MarkerClusterLayer extends MapLayer {
 
   UNSAFE_componentWillMount() {
     super.componentWillMount();
-    this.leafletElement = Leaflet.markerClusterGroup({
+    this.leafletElement = Leaflet?.markerClusterGroup({
       zoomToBoundsOnClick: false,
       spiderfyOnMaxZoom: false,
       singleMarkerMode: true,

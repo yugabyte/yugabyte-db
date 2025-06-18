@@ -45,14 +45,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
 
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    LibPqTestBase::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
-    options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_invalidation_messages");
-  }
-
   Result<int64_t> GetCatalogVersion(PGConn* conn) {
     const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
         "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
@@ -558,7 +550,8 @@ class PgCatalogVersionTest : public LibPqTestBase {
   }
 
   void VerifyCatCacheRefreshMetricsHelper(
-      int num_full_refreshes, int num_delta_refreshes) {
+      int num_full_refreshes, int num_delta_refreshes,
+      std::pair<bool, bool> at_least = {false, false}) {
     auto json_metrics = GetJsonMetrics();
 
     int count = 0;
@@ -566,12 +559,22 @@ class PgCatalogVersionTest : public LibPqTestBase {
       // Should see one full refresh.
       if (metric.name.find("CatCacheRefresh") != std::string::npos) {
         ++count;
-        ASSERT_EQ(metric.value, num_full_refreshes);
+        LOG(INFO) << "CatCacheRefresh count: " << metric.value;
+        if (at_least.first) {
+          ASSERT_GE(metric.value, num_full_refreshes);
+        } else {
+          ASSERT_EQ(metric.value, num_full_refreshes);
+        }
       }
       // Should not see any incremental refresh.
       if (metric.name.find("CatCacheDeltaRefresh") != std::string::npos) {
         ++count;
-        ASSERT_EQ(metric.value, num_delta_refreshes);
+        LOG(INFO) << "CatCacheDeltaRefresh count: " << metric.value;
+        if (at_least.second) {
+          ASSERT_GE(metric.value, num_delta_refreshes);
+        } else {
+          ASSERT_EQ(metric.value, num_delta_refreshes);
+        }
       }
       if (count == 2) {
         break;
@@ -2547,7 +2550,8 @@ TEST_F(PgCatalogVersionTest, InvalMessageLocalCatalogVersion) {
 
 TEST_F(PgCatalogVersionTest, InvalMessageGarbageCollection) {
   RestartClusterWithInvalMessageEnabled(
-      { "--check_lagging_catalog_versions_interval_secs=5" });
+      { "--check_lagging_catalog_versions_interval_secs=5",
+        "--min_invalidation_message_retention_time_secs=1" });
   InvalMessageLocalCatalogVersionHelper();
 }
 
@@ -2952,6 +2956,76 @@ TEST_F(PgCatalogVersionTest, CreateFunction) {
   // Connection 2: Call the function again; should now return 'dom'
   result = ASSERT_RESULT(conn2.FetchRow<std::string>("SELECT echo_me('red'::rainbow)"));
   ASSERT_EQ(result, "dom");
+}
+
+// Tests that CREATE RULE increments the catalog version.
+TEST_F(PgCatalogVersionTest, CreateRule) {
+  auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE source_table(id int, name text)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE intermediate_table(id int, name text)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE destination_table(id int, name text)"));
+
+  // First backend: rule that forwards some inserts from source_table -> intermediate_table
+  ASSERT_OK(conn1.Execute(R"(
+      CREATE RULE forward_to_intermediate AS ON INSERT TO source_table
+          WHERE NEW.id >= 20 AND NEW.id < 30 DO
+      INSERT INTO intermediate_table VALUES (NEW.id, NEW.name);
+  )"));
+
+  // Second backend: INSTEAD rule on intermediate_table that forwards to destination_table
+  ASSERT_OK(conn2.Execute(R"(
+      CREATE RULE redirect_to_destination AS ON INSERT TO intermediate_table
+          WHERE NEW.id > 25 DO INSTEAD
+      INSERT INTO destination_table VALUES (NEW.id, NEW.name);
+  )"));
+
+  // Back on backend 1: insert should ultimately land in destination_table, not intermediate_table
+  // Note that conn1 and conn2 are on the same node, so we don't need to wait for the heartbeat
+  // to propagate the new version of the rule.
+  ASSERT_OK(conn1.Execute("INSERT INTO intermediate_table VALUES (32,'custom entry')"));
+
+  auto intermediate_count =
+      ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT count(*) FROM intermediate_table"));
+  auto destination_count =
+      ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT count(*) FROM destination_table"));
+  ASSERT_EQ(intermediate_count, 0);
+  ASSERT_EQ(destination_count, 1);
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
+  RestartClusterWithInvalMessageEnabled(
+      { "--check_lagging_catalog_versions_interval_secs=1" });
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
+  TestThreadHolder thread_holder;
+  constexpr int kThreads = 5;
+  // Start a few threads to simulate the situation where we keep creating new connections,
+  // and run a query, while the main thread concurrently running DDLs to increment catalog
+  // versions. Some of the new connections should see a catalog version V1 during setup,
+  // but when they complete the connection setup and are ready to execute the query, a
+  // newer catalog version V2 is seen at the shared memory so they will need to refresh
+  // catalog cache.
+  for (int i = 0; i != kThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+      while (!stop.load(std::memory_order_acquire)) {
+        auto new_conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+        auto result = ASSERT_RESULT(new_conn.FetchAllAsString("SELECT 1"));
+        ASSERT_EQ(result, "1");
+      }
+    });
+  }
+  CoarseTimePoint start = CoarseMonoClock::Now();
+  while (start + 60s > CoarseMonoClock::Now()) {
+    ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN c2 INT"));
+    ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN c2"));
+  }
+  thread_holder.Stop();
+  // We expect to see 0 full refreshes, should see some incremental refreshes.
+  VerifyCatCacheRefreshMetricsHelper(
+      0 /* num_full_refreshes */, 1 /* num_delta_refreshes */,
+      std::make_pair(false, true) /* at_least */);
 }
 
 } // namespace pgwrapper

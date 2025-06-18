@@ -537,13 +537,17 @@ func FixConfigValues() error {
 
 	if viper.GetBool("prometheus.enableHttps") {
 		// Default to YBA certs
-		if err := SetYamlValue(InputFile(), "prometheus.httpsCertPath",
-			viper.GetString("server_cert_path")); err != nil {
-			return err
-		}
-		if err := SetYamlValue(InputFile(), "prometheus.httpsKeyPath",
-			viper.GetString("server_key_path")); err != nil {
-			return err
+		if len(viper.GetString("prometheus.httpsCertPath")) == 0 &&
+			 len(viper.GetString("prometheus.httpsKeyPath")) == 0 {
+			log.Info("Defaulting prometheus https cert and key to YBA certs.")
+			if err := SetYamlValue(InputFile(), "prometheus.httpsCertPath",
+				viper.GetString("server_cert_path")); err != nil {
+				return err
+			}
+			if err := SetYamlValue(InputFile(), "prometheus.httpsKeyPath",
+				viper.GetString("server_key_path")); err != nil {
+				return err
+			}
 		}
 		InitViper()
 	}

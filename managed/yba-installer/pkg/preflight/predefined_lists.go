@@ -19,6 +19,7 @@ var InstallChecks = []Check{
 	checks.Prometheus,
 	checks.ReplicatedNotExists,
 	checks.SystemdUserSupported,
+	checks.Glibc,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks
@@ -36,6 +37,7 @@ var UpgradeChecks = []Check{
 	checks.Prometheus,
 	checks.NonRootUpgradeCheck,
 	checks.ServicesRunningCheck,
+	checks.Glibc,
 }
 
 var ReplicatedMigrateChecks = []Check{

@@ -369,7 +369,6 @@ ADD_CXX_FLAGS("-Werror=return-type")
 ADD_CXX_FLAGS("-Werror=non-virtual-dtor")
 
 if(IS_CLANG)
-  ADD_CXX_FLAGS("-ftime-trace")
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
@@ -883,6 +882,7 @@ add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
 add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
 
 set(YB_SUBDIR_NAMES
+    ann_methods
     ash
     bfcommon
     bfpg

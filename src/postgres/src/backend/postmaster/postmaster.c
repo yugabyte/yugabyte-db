@@ -368,6 +368,7 @@ static bool connsAllowed = true;
 
 /* Start time of SIGKILL timeout during immediate shutdown or child crash */
 /* Zero means timeout is not running */
+/* YB: We also use the timeout for fast shutdown. */
 static time_t AbortStartTime = 0;
 
 /* Length of said timeout */
@@ -1997,8 +1998,12 @@ ServerLoop(void)
 		 * shutting down.  This is a last measure to get them unwedged.
 		 *
 		 * Note we also do this during recovery from a process crash.
+		 *
+		 * YB Note: to decrease chance of hung backends, we also want to kill
+		 * backends if they're not responding after a certain time.
 		 */
-		if ((Shutdown >= ImmediateShutdown || (FatalError && !SendStop)) &&
+		if ((Shutdown >= ImmediateShutdown || (FatalError && !SendStop) ||
+			(YBIsEnabledInPostgresEnvVar() && Shutdown >= FastShutdown)) &&
 			AbortStartTime != 0 &&
 			(now - AbortStartTime) >= SIGKILL_CHILDREN_AFTER_SECS)
 		{
@@ -3120,6 +3125,10 @@ pmdie(SIGNAL_ARGS)
 						(errmsg("aborting any active transactions")));
 				pmState = PM_STOP_BACKENDS;
 			}
+
+			if (YBIsEnabledInPostgresEnvVar())
+				/* set stopwatch for them to die */
+				AbortStartTime = time(NULL);
 
 			/*
 			 * PostmasterStateMachine will issue any necessary signals, or

@@ -23,19 +23,67 @@ Usage: yb-voyager archive changes [ <arguments> ... ]
 
 ### Arguments
 
-The valid *arguments* for archive changes are described in the following table:
+The following table lists the valid CLI flags and parameters for `archive changes` command.
 
-| <div style="width:150px">Argument</div> | Description/valid options |
-| :------- | :------------------------ |
-| --delete-changes-without-archiving | Delete the imported changes without archiving them. Note that the changes are deleted from the export directory only after disk utilisation exceeds 70%. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
-| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --fs-utilization-threshold | Disk utilization threshold in percentage. <br>Default: 70 |
-| -h, --help | Command line help for archive changes. |
-| --move-to | Path to the directory where the imported change events are to be moved to. Note that the changes are deleted from the export directory only after the disk use exceeds 70%. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| -y, --yes | Answer yes to all prompts during migration. <br>Default: false |
+When run at the same time, flags take precedence over configuration flag settings.
+
+{{<table>}}
+
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
+| :--- | :-------- | :---------- |
+
+| --delete-changes-without-archiving |
+
+```yaml{.nocopy}
+archive-changes:
+  delete-changes-without-archiving:
+```
+
+|Delete the imported changes without archiving them. Note that the changes are deleted from the export directory only after disk utilisation exceeds 70%. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --fs-utilization-threshold |
+
+```yaml{.nocopy}
+archive-changes:
+  fs-utilization-threshold:
+```
+
+|Disk utilization threshold in percentage. <br>Default: 70 |
+| --move-to |
+
+```yaml{.nocopy}
+archive-changes:
+  move-to:
+```
+
+|Path to the directory where the imported change events are to be moved to. Note that the changes are deleted from the export directory only after the disk use exceeds 70%. |
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+|Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| --send-diagnostics |
+
+```yaml{.nocopy}
+send-diagnostics:
+```
+
+|Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| -h, --help | — | Command line help for archive changes. |
+| -y, --yes | — | Answer yes to all prompts during migration. <br>Default: false |
+
+{{</table>}}
 
 ### Examples
+
+Configuration file:
+
+```sh
+yb-voyager archive changes --config-file <path-to-config-file>
+```
+
+CLI:
 
 Example to delete changes without archiving them to another destination is as follows:
 

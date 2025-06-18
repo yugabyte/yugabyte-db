@@ -63,13 +63,8 @@ public class SetUniverseKey {
   }
 
   private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
-    YBClient client = null;
-    String hostPorts = u.getMasterAddresses();
-    String certificate = u.getCertificateNodetoNode();
-
-    try {
+    try (YBClient client = ybService.getUniverseClient(u)) {
       String dbKeyId = EncryptionAtRestUtil.getKmsHistory(u.getUniverseUUID(), keyRef).dbKeyId;
-      client = ybService.getClient(hostPorts, certificate);
       if (!client.hasUniverseKeyInMemory(dbKeyId, masterAddr)) {
         client.addUniverseKeys(ImmutableMap.of(dbKeyId, keyVal), masterAddr);
         log.info(
@@ -94,8 +89,6 @@ public class SetUniverseKey {
       String errMsg =
           String.format("Error sending universe encryption key to node %s", masterAddr.toString());
       log.error(errMsg, e);
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
   }
 

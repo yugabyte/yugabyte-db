@@ -39,6 +39,9 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
+
 namespace yb::pggate {
 namespace {
 
@@ -372,12 +375,34 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
-  // Send at most "parallelism_level_" number of requests at one time.
-  size_t send_count = std::min(parallelism_level_, active_op_count_);
-  VLOG(1) << "Number of operations to send: " << send_count;
-  response_ = VERIFY_RESULT(sender_(
-      pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
-      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+  if (active_op_count_ > 0) {
+    // Send at most "parallelism_level_" number of requests at one time.
+    size_t send_count = std::min(parallelism_level_, active_op_count_);
+
+    uint64_t max_size = FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio
+                        / send_count;
+
+    for (const auto& op : pgsql_ops_) {
+      if (op->is_active() && op->is_read()) {
+        auto& read_op = down_cast<PgsqlReadOp&>(*op);
+        auto req_size_limit = read_op.read_request().size_limit();
+        if (req_size_limit > 0) {
+          VLOG(2) << "Capping read op at size limit: " << max_size
+                  << " (from " << req_size_limit << ")";
+        }
+
+        // Cap the size limit if the size limit is unset or exceeds the maximum size.
+        if (req_size_limit > max_size || req_size_limit == 0) {
+              read_op.read_request().set_size_limit(max_size);
+        }
+      }
+    }
+
+    VLOG(1) << "Number of operations to send: " << send_count;
+    response_ = VERIFY_RESULT(sender_(
+        pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
+        HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+  }
   return Status::OK();
 }
 
@@ -571,13 +596,8 @@ bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {
     // Executed in parallel on PgClient
     return false;
   }
-  if (req.is_aggregate()) {
-    return true;
-  }
-  if (!req.has_is_forward_scan() && !req.where_clauses().empty()) {
-    return true;
-  }
-  return false;
+  // At this time ordered scan requires tablet scan order, so they have to be done sequentially
+  return !req.has_is_forward_scan();
 }
 
 Result<bool> PgDocReadOp::DoCreateRequests() {

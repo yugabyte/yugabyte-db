@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <ranges>
+
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
@@ -42,6 +44,7 @@
 #include "yb/yql/pggate/pggate_flags.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DEFINE_test_flag(int32, scan_tests_num_rows, 0,
                  "Number of rows to load for various scanning tests, or 0 for default.");
@@ -53,6 +56,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -1944,15 +1948,6 @@ TEST_F(PgSingleTServerTest, BackwardScanOnIndexDescendingColumn) {
   ASSERT_STR_EQ(ToUpperCase(result), "NULL");
 }
 
-class PgSmallRpcWorkersTest : public PgSingleTServerTest {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
-
-    PgSingleTServerTest::SetUp();
-  }
-};
-
 TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 10;
   constexpr int kNumRows = 20;
@@ -1974,13 +1969,29 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestart) {
   ASSERT_EQ(result, "1");
 }
 
+class PgSmallRpcWorkersTest : public PgSingleTServerTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
+
+    PgSingleTServerTest::SetUp();
+  }
+};
+
 TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGINT PRIMARY KEY, value BIGINT)"));
+  // The version increment is used to make sure that all the new connections which will be created
+  // simultaneously will load new cache.
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn));
   ThreadHolder threads;
   std::atomic<int> key = 0;
-  for (unsigned int i = 0; i != 64; ++i) {
-    threads.AddThread([this, &stop = threads.stop_flag(), &key] {
+  constexpr auto kConnectionCount = 64;
+  CountDownLatch latch(kConnectionCount);
+  for ([[maybe_unused]] auto _  : std::views::iota(0, kConnectionCount)) {
+    threads.AddThread([this, &stop = threads.stop_flag(), &key, &latch] {
+      latch.CountDown();
+      latch.Wait();
       auto new_conn = ASSERT_RESULT(Connect());
       while (!stop.load()) {
         auto k = ++key;
@@ -1995,13 +2006,60 @@ TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
       }
     });
   }
-  for (unsigned int i = 0; i != 3; ++i) {
-    std::this_thread::sleep_for(1s);
+  latch.Wait();
+  for ([[maybe_unused]] auto _ : std::views::iota(0, 3)) {
     ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 BIGINT"));
     std::this_thread::sleep_for(1s);
     ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
+    std::this_thread::sleep_for(1s);
   }
-  threads.WaitAndStop(1s);
+}
+
+TEST_F(PgSingleTServerTest, IterKeyInvalidationDuringBackwardScan) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = false;
+
+  constexpr size_t kNumKeys = 200;
+  const auto kKeys = std::views::iota(0ULL, kNumKeys);
+
+  use_colocation_ = false;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (h INT, r TEXT, v INT, PRIMARY KEY ((h) HASH, r DESC)) "
+      "SPLIT INTO 1 TABLETS"));
+  std::mt19937_64 rng(42);
+  std::vector<std::string> rs(kNumKeys);
+  for (auto i : kKeys) {
+    // Here we need "magic" key length. So with doc hybrid time this key is encoded as 64 bytes.
+    // But if key is written as a part of transaction, i.e. hybrid time has non-zero write time.
+    // Then it is encoded as 65 bytes, which is causing KeyBuffer relocation.
+    rs[i] = RandomHumanReadableString(RandomUniformInt(37, 42), &rng);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '$1', 0)", i, rs[i]));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+  for (auto i : kKeys) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE h = $0 AND r = '$1'", i, rs[i]));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '$1', 1)", i, rs[i]));
+    ASSERT_OK(conn.CommitTransaction());
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (auto i : kKeys) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '{', 0)", i));
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  for (auto i : kKeys) {
+    LOG(INFO) << "Query key: " << i;
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
+        "SELECT h, v FROM test WHERE h = $0 ORDER BY r LIMIT 1", i)));
+    LOG(INFO) << "Rows: " << rows;
+    ASSERT_EQ(rows, Format("$0, 1", i));
+  }
 }
 
 }  // namespace pgwrapper

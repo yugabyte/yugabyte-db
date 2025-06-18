@@ -1652,9 +1652,9 @@ bool BlockBasedTable::PrefixMayMatch(const ReadOptions& read_options, const Slic
   return may_match;
 }
 
-InternalIterator* BlockBasedTable::NewIterator(const ReadOptions& read_options,
-                                               Arena* arena,
-                                               bool skip_filters) {
+InternalIterator* BlockBasedTable::NewIterator(
+    const ReadOptions& read_options, Arena* arena, bool skip_filters,
+    SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   auto state = std::make_unique<BlockEntryIteratorState>(
       this, read_options, skip_filters, BlockType::kData);
   // TODO: unify the semantics across NewIterator callsites, so that we can pass an arena across
@@ -1662,8 +1662,8 @@ InternalIterator* BlockBasedTable::NewIterator(const ReadOptions& read_options,
   // put the top level iterator on the arena and potentially even the State object, however, not
   // the IndexIterator, as that does not expose arena allocation semantics...
   return NewTwoLevelIterator(
-      state.release(), NewIndexIterator(read_options), arena, true /* need_free_iter_and_state */
-  );
+      state.release(), NewIndexIterator(read_options), arena,
+      /* need_free_iter_and_state = */ true, skip_corrupt_data_blocks_unsafe);
 }
 
 bool BlockBasedTable::NonBlockBasedFilterKeyMayMatch(

@@ -39,6 +39,7 @@ import org.apache.commons.collections4.CollectionUtils;
 @Slf4j
 public class TelemetryProviderService {
 
+  public static final String LOKI_PUSH_ENDPOINT = "/loki/api/v1/push";
   private final BeanValidator beanValidator;
   private final RuntimeConfGetter confGetter;
 

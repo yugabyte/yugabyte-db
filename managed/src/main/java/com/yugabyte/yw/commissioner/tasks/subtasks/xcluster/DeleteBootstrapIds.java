@@ -87,8 +87,6 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
             .collect(Collectors.toSet());
 
     Universe sourceUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();
-    String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
     if (bootstrapIds.isEmpty()) {
       log.info(
           "Skipped {}: There is no BootstrapId to delete for source universe ({})",
@@ -98,8 +96,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
     }
     log.info("Bootstrap ids to be deleted: {}", bootstrapIds);
 
-    try (YBClient client =
-        ybService.getClient(sourceUniverseMasterAddresses, sourceUniverseCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
       // The `OBJECT_NOT_FOUND` error will be ignored.
       DeleteCDCStreamResponse resp =
           client.deleteCDCStream(bootstrapIds, true /* ignoreErrors */, forceDelete);

@@ -1,6 +1,7 @@
 package helpers
 
 import (
+    "bytes"
     "crypto/rand"
     "encoding/json"
     "errors"
@@ -406,4 +407,28 @@ func (h *HelperContainer) BuildMasterURLsAndAttemptGetRequests(
     }
     body, _, err := h.AttemptGetRequests(urlList, expectJson)
     return body, err
+}
+
+// Get created_on from yugabyted.conf
+func (h *HelperContainer) GetClusterCreationTimestamp() (int64, error) {
+    data, err := os.ReadFile(ConfFile)
+    if err != nil {
+        return 0, fmt.Errorf("Failed to read conf file: %v", err)
+    }
+    confObj := map[string]interface{}{}
+    decoder := json.NewDecoder(bytes.NewReader(data))
+    decoder.UseNumber()
+    err = decoder.Decode(&confObj)
+    if err != nil {
+        return 0, fmt.Errorf("Failed to unmarshal conf file: %v", err)
+    }
+    tsNumber, ok := confObj["created_on"].(json.Number)
+    if !ok {
+        return 0, fmt.Errorf("Timestamp is not a number: %v", err)
+    }
+    ts, err := strconv.ParseInt(string(tsNumber), 10, 64)
+    if err != nil {
+        return 0, fmt.Errorf("Failed to parse string: %v", err)
+    }
+    return ts, nil
 }
