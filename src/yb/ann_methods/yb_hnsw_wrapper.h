@@ -22,7 +22,7 @@ namespace yb::ann_methods {
 
 template <class Vector, class DistanceResult>
 vector_index::VectorIndexIfPtr<Vector, DistanceResult> CreateYbHnsw(
-    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options);
+      const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options);
 
 template <class Vector, class DistanceResult>
 Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(

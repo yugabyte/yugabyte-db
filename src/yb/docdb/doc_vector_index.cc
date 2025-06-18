@@ -73,23 +73,27 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
 }
 
 template <template<class, class> class Factory, class LSM>
-auto VectorLSMFactory(const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options) {
+auto VectorLSMFactory(
+    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
+    const MemTrackerPtr& mem_tracker) {
   using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
   return [block_cache, hnsw_options = ConvertToHnswOptions(options),
-          backend = options.hnsw().backend()](vector_index::FactoryMode mode) {
-    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend);
+          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
+    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
   };
 }
 
 template<vector_index::IndexableVectorType Vector,
          vector_index::ValidDistanceResultType DistanceResult>
 auto GetVectorLSMFactory(
-    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options)
+    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
+    const MemTrackerPtr& mem_tracker)
     -> Result<vector_index::VectorIndexFactory<Vector, DistanceResult>> {
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return VectorLSMFactory<ann_methods::UsearchIndexFactory, LSM>(block_cache, options);
+      return VectorLSMFactory<ann_methods::UsearchIndexFactory, LSM>(
+          block_cache, options, mem_tracker);
     case PgVectorIndexType::DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
@@ -199,10 +203,11 @@ class DocVectorIndexImpl : public DocVectorIndex {
  public:
   DocVectorIndexImpl(
       const TableId& table_id, Slice indexed_table_key_prefix, ColumnId column_id,
-      HybridTime hybrid_time, const DocDB& doc_db, const hnsw::BlockCachePtr& block_cache)
+      HybridTime hybrid_time, const DocDB& doc_db, const hnsw::BlockCachePtr& block_cache,
+      const MemTrackerPtr& mem_tracker)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
         column_id_(column_id), hybrid_time_(hybrid_time), doc_db_(doc_db),
-        block_cache_(block_cache) {
+        block_cache_(block_cache), mem_tracker_(mem_tracker) {
   }
 
   const TableId& table_id() const override {
@@ -236,7 +241,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .log_prefix = log_prefix,
       .storage_dir = GetStorageDir(data_root_dir, DirName()),
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
-          block_cache_, idx_options))),
+          block_cache_, idx_options, mem_tracker_))),
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,
       .insert_thread_pool = thread_pools.insert_thread_pool,
@@ -365,6 +370,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const HybridTime hybrid_time_;
   const DocDB doc_db_;
   const hnsw::BlockCachePtr block_cache_;
+  const MemTrackerPtr mem_tracker_;
   std::string index_id_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
@@ -403,11 +409,12 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
     const DocDB& doc_db,
-    const hnsw::BlockCachePtr& block_cache) {
+    const hnsw::BlockCachePtr& block_cache,
+    const MemTrackerPtr& mem_tracker) {
   auto& options = index_info.vector_idx_options();
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), hybrid_time,
-      doc_db, block_cache);
+      doc_db, block_cache, mem_tracker);
   RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool_provider, options));
   return result;
 }

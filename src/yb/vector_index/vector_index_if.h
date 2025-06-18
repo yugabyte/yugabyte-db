@@ -22,6 +22,12 @@
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_options.h"
 
+namespace yb {
+
+class MemTracker;
+
+}
+
 namespace yb::vector_index {
 
 struct SearchOptions {

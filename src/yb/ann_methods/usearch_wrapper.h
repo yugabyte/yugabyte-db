@@ -37,7 +37,8 @@ class UsearchIndexFactory {
  public:
   static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
       vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-      const vector_index::HNSWOptions& options, HnswBackend backend);
+      const vector_index::HNSWOptions& options, HnswBackend backend,
+      const std::shared_ptr<MemTracker>& mem_tracker);
 };
 
 template<vector_index::IndexableVectorType Vector,
@@ -47,7 +48,7 @@ class SimplifiedUsearchIndexFactory {
   static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
       vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
     return UsearchIndexFactory<Vector, DistanceResult>::Create(
-        mode, nullptr, options, HnswBackend::USEARCH);
+        mode, nullptr, options, HnswBackend::USEARCH, nullptr);
   }
 };
 

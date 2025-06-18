@@ -22,6 +22,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 
 #include "yb/vector_index/distance.h"
@@ -115,14 +116,23 @@ class UsearchIndex :
   using IndexImpl = index_dense_gt<VectorId>;
 
   UsearchIndex(
-      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend)
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const MemTrackerPtr& mem_tracker)
       : block_cache_(block_cache),
         dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
         metric_(options.CreateMetric<Vector>()),
         backend_(backend),
-        index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))) {
+        index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))),
+        mem_tracker_(mem_tracker) {
     CHECK_GT(dimensions_, 0);
+  }
+
+  ~UsearchIndex() {
+    auto current_consumption = current_consumption_.load();
+    if (current_consumption) {
+      mem_tracker_->Release(current_consumption);
+    }
   }
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
@@ -137,6 +147,7 @@ class UsearchIndex :
 
   Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
+    auto se = UpdateConsumptionOnExit();
     // Usearch could allocate 3 times more entries, than requested.
     // Since it always allocate power of 2, we use this weird logic to make it pick minimal
     // power of 2 that is greater or equals than num_vectors.
@@ -149,6 +160,7 @@ class UsearchIndex :
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v) {
+    auto se = UpdateConsumptionOnExit();
     auto add_result = index_.add(vector_id, v.data());
     RSTATUS_DCHECK(
         add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
@@ -187,6 +199,7 @@ class UsearchIndex :
   }
 
   Status DoLoadFromFile(const std::string& path, size_t max_concurrent_reads) {
+    auto se = UpdateConsumptionOnExit();
     try {
       auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
       if (result) {
@@ -274,6 +287,33 @@ class UsearchIndex :
   }
 
  private:
+  auto UpdateConsumptionOnExit() {
+    return ScopeExit([this] {
+      UpdateConsumption();
+    });
+  }
+
+  void UpdateConsumption() {
+    if (!mem_tracker_) {
+      return;
+    }
+    auto new_consumption = index_.impl().tape_allocator().total_allocated();
+    auto current_consumption = current_consumption_.load();
+    // usearch does not release memory, so lower new_consumption just means that we have 2
+    // concurrent calls to UpdateConsumption, and call with lesser new_consumption happened
+    // earlier.
+    if (new_consumption <= current_consumption) {
+      return;
+    }
+    std::lock_guard lock(consumption_mutex_);
+    current_consumption = current_consumption_.load();
+    if (new_consumption <= current_consumption) {
+      return;
+    }
+    mem_tracker_->Consume(new_consumption - current_consumption);
+    current_consumption_.store(new_consumption);
+  }
+
   const hnsw::BlockCachePtr block_cache_;
   size_t dimensions_;
   DistanceKind distance_kind_;
@@ -281,6 +321,9 @@ class UsearchIndex :
   HnswBackend backend_;
   IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
+  MemTrackerPtr mem_tracker_;
+  std::atomic<size_t> current_consumption_;
+  simple_spinlock consumption_mutex_;
 };
 
 }  // namespace
@@ -290,11 +333,12 @@ template <vector_index::IndexableVectorType Vector,
 vector_index::VectorIndexIfPtr<Vector, DistanceResult>
     UsearchIndexFactory<Vector, DistanceResult>::Create(
     vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-    const HNSWOptions& options, HnswBackend backend) {
+    const HNSWOptions& options, HnswBackend backend, const MemTrackerPtr& mem_tracker) {
   if (backend == HnswBackend::YB_HNSW && mode == vector_index::FactoryMode::kLoad) {
     return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
   }
-  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(block_cache, options, backend);
+  return std::make_shared<UsearchIndex<Vector, DistanceResult>>(
+      block_cache, options, backend, mem_tracker);
 }
 
 template class UsearchIndexFactory<FloatVector, float>;

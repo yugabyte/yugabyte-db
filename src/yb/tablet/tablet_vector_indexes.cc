@@ -119,7 +119,8 @@ TabletVectorIndexes::TabletVectorIndexes(
     : TabletComponent(tablet),
       thread_pool_provider_(thread_pool_provider),
       priority_thread_pool_provider_(priority_thread_pool_provider),
-      block_cache_(block_cache) {
+      block_cache_(block_cache),
+      mem_tracker_(MemTracker::CreateTracker(-1, "vector_indexes", tablet->mem_tracker())) {
 }
 
 Status TabletVectorIndexes::Open() NO_THREAD_SAFETY_ANALYSIS {
@@ -175,7 +176,8 @@ Status TabletVectorIndexes::DoCreateIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().rocksdb_dir(), vector_index_thread_pool_provider,
       indexed_table->doc_read_context->table_key_prefix(), index_table.hybrid_time,
-      *index_table.index_info, doc_db(), block_cache_));
+      *index_table.index_info, doc_db(), block_cache_,
+      MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_)));
   if (!bootstrap) {
     auto read_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
     if (read_op.ok()) {

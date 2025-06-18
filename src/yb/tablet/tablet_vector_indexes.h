@@ -118,6 +118,7 @@ class TabletVectorIndexes : public TabletComponent {
   const VectorIndexThreadPoolProvider thread_pool_provider_;
   const VectorIndexPriorityThreadPoolProvider priority_thread_pool_provider_;
   const hnsw::BlockCachePtr block_cache_;
+  const MemTrackerPtr mem_tracker_;
 
   std::atomic<bool> has_vector_indexes_{false};
   mutable std::shared_mutex vector_indexes_mutex_;

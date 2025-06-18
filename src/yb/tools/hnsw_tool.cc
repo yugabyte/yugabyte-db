@@ -26,6 +26,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/random_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"

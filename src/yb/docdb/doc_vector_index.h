@@ -114,6 +114,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
     const DocDB& doc_db,
-    const hnsw::BlockCachePtr& block_cache);
+    const hnsw::BlockCachePtr& block_cache,
+    const MemTrackerPtr& mem_tracker);
 
 }  // namespace yb::docdb
