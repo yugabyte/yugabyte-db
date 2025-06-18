@@ -51,6 +51,8 @@ var listUserCmd = &cobra.Command{
 			r = rUsers
 		}
 
+		fetchRoleBindingsForListing("", authAPI, "List")
+
 		userCtx := formatter.Context{
 			Command: "list",
 			Output:  os.Stdout,
