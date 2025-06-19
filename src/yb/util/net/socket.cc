@@ -320,6 +320,7 @@ Status Socket::GetPeerAddress(Endpoint* out) const {
 
 Status Socket::Bind(const Endpoint& endpoint, bool explain_addr_in_use) {
   DCHECK_GE(fd_, 0);
+  VLOG_WITH_FUNC(2) << "Binding socket " << fd_ << " to " << AsString(endpoint);
   if (PREDICT_FALSE(::bind(fd_, endpoint.data(), narrow_cast<socklen_t>(endpoint.size())) != 0)) {
     Errno err(errno);
     Status s = STATUS(NetworkError, Format("Error binding socket to $0", endpoint), err);
@@ -378,6 +379,7 @@ Status Socket::BindForOutgoingConnection() {
     << "Invalid local IP set for 'local_ip_for_outbound_sockets': '"
     << FLAGS_local_ip_for_outbound_sockets << "': " << ec;
 
+  VLOG_WITH_FUNC(2) << "Binding outgoing socket";
   RETURN_NOT_OK(Bind(Endpoint(bind_address, 0)));
   return Status::OK();
 }
