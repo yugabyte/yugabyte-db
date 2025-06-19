@@ -884,6 +884,32 @@ TEST_P(PgVectorIndexTest, Paging) {
   }
 }
 
+Status CreateEchoFunction(PGConn& conn) {
+  return conn.Execute(R"EOF(
+      CREATE OR REPLACE FUNCTION echo_int(i INT)
+      RETURNS INT
+      LANGUAGE plpgsql
+      VOLATILE
+      AS $$
+      BEGIN
+        RETURN i;
+      END;
+      $$;
+  )EOF");
+}
+
+TEST_P(PgVectorIndexTest, PagingWithFunction) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(CreateEchoFunction(conn));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test SELECT i, vector('[1.0, 1.0, 1.' || lpad(i::text, 5, '0') || ']') "
+      "FROM generate_series (1, 300) AS i"));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT * FROM test WHERE id >= echo_int(0) "
+      "ORDER BY embedding <-> '[1.0, 1.0, 1.0]'::vector LIMIT 100;"));
+  LOG(INFO) << "Result: " << result;
+}
+
 TEST_P(PgVectorIndexTest, Options) {
   auto conn = ASSERT_RESULT(MakeTable());
   std::unordered_map<TabletId, std::unordered_set<TableId>> checked_indexes;
