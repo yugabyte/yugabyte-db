@@ -1102,13 +1102,14 @@ class TransactionProvider {
   client::YBTransactionPtr next_plain_;
 };
 
-Result<PgClientSessionOperations> PrepareOperations(
+Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperations(
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
     const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
     bool has_distributed_txn, CoarseTimePoint deadline,
     TransactionProvider& transaction_provider) {
   auto write_time = HybridTime::FromPB(req->write_time());
-  PgClientSessionOperations ops;
+  std::pair<PgClientSessionOperations, VectorIndexQueryPtr> result;
+  auto& ops = result.first;
   ops.reserve(req->ops().size());
   client::YBTablePtr table;
   bool finished = false;
@@ -1135,7 +1136,8 @@ Result<PgClientSessionOperations> PrepareOperations(
             !vector_index_query->IsContinuation(read.index_request().paging_state())) {
           vector_index_query = std::make_shared<VectorIndexQuery>();
         }
-        vector_index_query->Prepare(read, table, ops);
+        result.second = vector_index_query;
+        result.second->Prepare(read, table, ops);
       } else {
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
         if (read_from_followers) {
@@ -1172,7 +1174,7 @@ Result<PgClientSessionOperations> PrepareOperations(
   }
 
   finished = true;
-  return ops;
+  return result;
 }
 
 struct RpcPerformQuery : public PerformData {
@@ -2638,10 +2640,9 @@ class PgClientSession::Impl {
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
     data->subtxn_id = options.active_sub_transaction_id();
 
-    data->ops = VERIFY_RESULT(PrepareOperations(
+    std::tie(data->ops, data->vector_index_query) = VERIFY_RESULT(PrepareOperations(
         &data->req, session, &data->sidecars, tables, vector_index_query_data_,
         data->transaction != nullptr /* has_distributed_txn */, deadline, transaction_provider_));
-    data->vector_index_query = vector_index_query_data_;
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
