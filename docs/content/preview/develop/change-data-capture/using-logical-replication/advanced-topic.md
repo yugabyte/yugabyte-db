@@ -223,13 +223,22 @@ END;
 $$
 SECURITY DEFINER;
 
+CREATE OR REPLACE PROCEDURE appuser.disable_catalog_version_check()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    EXECUTE 'SET yb_disable_catalog_version_check = true';
+END;
+$$
+SECURITY DEFINER;
 
-REVOKE EXECUTE ON PROCEDURE appuser.set_yb_read_time FROM PUBLIC; 
-GRANT EXECUTE ON PROCEDURE appuser.set_yb_read_time TO appuser;
+REVOKE EXECUTE ON PROCEDURE appuser.disable_catalog_version_check FROM PUBLIC; 
+GRANT EXECUTE ON PROCEDURE appuser.disable_catalog_version_check TO appuser;
 ```
 
 With this setup, the command to be executed by the application user as part of the transaction prior to executing the snapshot SELECT query would be:
 
-```sh
-CALL set_yb_read_time('<consistent_point commit time> ht')
+```sql
+CALL set_yb_read_time('<consistent_point commit time> ht');
+CALL disable_catalog_version_check();
 ```
