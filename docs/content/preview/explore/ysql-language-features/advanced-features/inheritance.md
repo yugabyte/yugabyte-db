@@ -68,7 +68,7 @@ Any columns added to/dropped from the parent `accounts` table are propagated to 
 
 However, there are certain caveats to keep in mind here.
 1. The parent table `accounts` may have its own rows that are not part of any child tables.
-2. The primary key for account_id on the parent `accounts` table does not propagate to children and has to be redefined for each child table. This is also true for foreign key constraints and non-primary key unique constaints. Special case has to be taken to maintain such constraints across parent-child hierarchies.
+2. The primary key for account_id on the parent `accounts` table does not propagate to children and has to be redefined for each child table. This is also true for foreign key constraints and non-primary key unique constaints. Special care has to be taken to maintain such constraints across parent-child hierarchies.
 
 Table inheritance can lead to complex hierarchies similar to class inheritance in object-oriented programming because a specific table can inherit from multiple parent tables and can itself be a parent table for other child tables.
 
@@ -79,9 +79,7 @@ SELECT and UPDATE queries on the parent table operate on a union of the parent a
 ```
 SELECT SUM(balance) FROM ONLY accounts WHERE account_id = 10;
 
-UPDATE ONLY accounts
-SET balance = balance + 100
-WHERE account_id = 1;
+UPDATE ONLY accounts SET balance = balance + 100 WHERE account_id = 1;
 ```
 
 ## Schema changes
