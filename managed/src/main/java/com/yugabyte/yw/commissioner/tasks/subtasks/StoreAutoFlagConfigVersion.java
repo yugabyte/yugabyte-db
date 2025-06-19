@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.models.Universe;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol;
@@ -45,6 +46,16 @@ public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
+
+    PrevYBSoftwareConfig config = universe.getUniverseDetails().prevYBSoftwareConfig;
+    if (config != null
+        && config.getSoftwareVersion()
+            == universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion) {
+      log.info(
+          "Auto flag config version already stored for universe {}. Skipping.",
+          universe.getUniverseUUID());
+      return;
+    }
 
     int autoFlagConfigVersion;
     try {
