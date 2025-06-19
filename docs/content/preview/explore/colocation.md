@@ -183,14 +183,13 @@ For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if
 
 ## xCluster and colocation
 
-If you are not using automatic mode, then setting up xCluster for
-colocated tables requires additional work.
+xCluster replication currently only supports colocated tables for [semi-automatic and fully manual](../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/) modes.
 
-To set up xCluster for colocated tables when using manual or
+When setting up xCluster for colocated tables when using manual or
 semi-automatic mode, the `colocation_id` for a given table or index
 needs to match on the source and target universes.
 
-To set up xCluster for colocated tables in these modes, do the following:
+To set up xCluster for colocated tables, do the following:
 
 1. Create the table in the colocated database on the source universe with colocation ID explicitly specified.
 
