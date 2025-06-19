@@ -897,6 +897,10 @@ void YBCStartSysTablePrefetching(
 
 void YBCStopSysTablePrefetching();
 
+void YBCPauseSysTablePrefetching();
+
+void YBCResumeSysTablePrefetching();
+
 bool YBCIsSysTablePrefetchingStarted();
 
 void YBCRegisterSysTableForPrefetching(
