@@ -17,11 +17,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -84,9 +86,11 @@ public class AttachDetachController extends AuthenticatedController {
 
   @Inject private SwamperHelper swamperHelper;
 
+  @Inject private ConfigHelper configHelper;
+
+  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
+
   private static final String RELEASES_PATH = "yb.releases.path";
-  private static final String YBC_RELEASE_PATH = "ybc.docker.release";
-  private static final String YBC_RELEASES_PATH = "ybc.releases.path";
 
   @ApiOperation(
       notes =
@@ -198,16 +202,9 @@ public class AttachDetachController extends AuthenticatedController {
 
       String storagePath = AppConfigHelper.getStoragePath();
       String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
-      String ybcReleasePath = confGetter.getStaticConf().getString(YBC_RELEASE_PATH);
-      String ybcReleasesPath = confGetter.getStaticConf().getString(YBC_RELEASES_PATH);
 
       PlatformPaths platformPaths =
-          PlatformPaths.builder()
-              .storagePath(storagePath)
-              .releasesPath(releasesPath)
-              .ybcReleasePath(ybcReleasePath)
-              .ybcReleasesPath(ybcReleasesPath)
-              .build();
+          PlatformPaths.builder().storagePath(storagePath).releasesPath(releasesPath).build();
 
       attachDetachSpec =
           AttachDetachSpec.builder()
@@ -285,20 +282,14 @@ public class AttachDetachController extends AuthenticatedController {
 
     String storagePath = AppConfigHelper.getStoragePath();
     String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
-    String ybcReleasePath = confGetter.getStaticConf().getString(YBC_RELEASE_PATH);
-    String ybcReleasesPath = confGetter.getStaticConf().getString(YBC_RELEASES_PATH);
 
     PlatformPaths platformPaths =
-        PlatformPaths.builder()
-            .storagePath(storagePath)
-            .releasesPath(releasesPath)
-            .ybcReleasePath(ybcReleasePath)
-            .ybcReleasesPath(ybcReleasesPath)
-            .build();
+        PlatformPaths.builder().storagePath(storagePath).releasesPath(releasesPath).build();
 
     AttachDetachSpec attachDetachSpec =
         AttachDetachSpec.importSpec(tempSpecFile.getRef().path(), platformPaths, customer);
-    attachDetachSpec.save(platformPaths, releaseManager, swamperHelper);
+    attachDetachSpec.save(
+        platformPaths, releaseManager, swamperHelper, configHelper, ysqlQueryExecutor, confGetter);
 
     auditService()
         .createAuditEntryWithReqBody(

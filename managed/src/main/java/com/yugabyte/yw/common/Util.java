@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +19,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.utils.Pair;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
@@ -1190,6 +1193,70 @@ public class Util {
           u.setUniverseDetails(universeDetails);
         };
     return Universe.saveDetails(universe.getUniverseUUID(), updater, false);
+  }
+
+  public static void validateUniverseOwnershipAndNotDetached(
+      Universe universe,
+      ConfigHelper configHelper,
+      YsqlQueryExecutor ysqlQueryExecutor,
+      RuntimeConfGetter confGetter) {
+    if (universe.getUniverseDetails().universeDetached) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Universe %s is detached. Operations are not allowed on detached universes.",
+              universe.getName()));
+    }
+
+    if (!isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Universe belongs to different YugabyteDB Anywhere instance. "
+                  + "Please delete the metadata from this YBA instance."));
+    }
+  }
+
+  public static boolean isUniverseOwner(
+      Universe universe,
+      ConfigHelper configHelper,
+      YsqlQueryExecutor ysqlQueryExecutor,
+      RuntimeConfGetter confGetter) {
+
+    UUID currentYwUuid = configHelper.getYugawareUUID();
+
+    if (currentYwUuid == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Current YugabyteDB Anywhere UUID not found");
+    }
+
+    UUID storedYwUuid = getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
+
+    // If stored YW UUID is DETACHED_UNIVERSE_UUID, the universe is orphaned and operations should
+    // not be allowed
+    if (storedYwUuid == AttachDetachSpec.DETACHED_UNIVERSE_UUID) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Universe %s has no owner. Operations are not allowed on orphaned" + " universes.",
+              universe.getName()));
+    }
+    return currentYwUuid.equals(storedYwUuid);
+  }
+
+  public static UUID getStoredYwUuid(
+      Universe universe, YsqlQueryExecutor ysqlQueryExecutor, RuntimeConfGetter confGetter) {
+    try {
+      YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+          ysqlQueryExecutor.getConsistencyInfo(universe);
+      return consistencyInfo.getYwUUID();
+    } catch (Exception e) {
+      log.error("Failed to query YW UUID for universe {}: {}", universe.getName(), e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Error querying YW UUID for universe %s: %s", universe.getName(), e.getMessage()));
+    }
   }
 
   public static boolean isAddressReachable(String host, int port) {

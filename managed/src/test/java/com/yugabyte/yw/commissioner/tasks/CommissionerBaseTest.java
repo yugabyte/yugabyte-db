@@ -112,6 +112,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.nio.file.Paths;
@@ -237,6 +238,28 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   @Before
   public void setUpBase() {
+    UUID yugawareUuid = UUID.randomUUID();
+    ObjectNode ywMetadata = Json.newObject();
+    ywMetadata.put("yugaware_uuid", yugawareUuid.toString());
+    ywMetadata.put("version", "2024.2.0.0-b1");
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.YugawareMetadata.name(), ywMetadata, "Yugaware Metadata");
+
+    lenient().when(mockConfigHelper.getYugawareUUID()).thenReturn(yugawareUuid);
+
+    mockYsqlQueryExecutor = app.injector().instanceOf(YsqlQueryExecutor.class);
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        new YsqlQueryExecutor.ConsistencyInfoResp();
+    try {
+      java.lang.reflect.Field ywUuidField =
+          YsqlQueryExecutor.ConsistencyInfoResp.class.getDeclaredField("ywUuid");
+      ywUuidField.setAccessible(true);
+      ywUuidField.set(consistencyInfo, yugawareUuid);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to set yw_uuid in consistency info", e);
+    }
+    lenient().when(mockYsqlQueryExecutor.getConsistencyInfo(any())).thenReturn(consistencyInfo);
+
     mockConfig = spy(app.config());
     commissioner = app.injector().instanceOf(Commissioner.class);
     customerTaskManager = app.injector().instanceOf(CustomerTaskManager.class);
