@@ -2371,6 +2371,14 @@ void YBCStopSysTablePrefetching() {
   pgapi->StopSysTablePrefetching();
 }
 
+void YBCPauseSysTablePrefetching() {
+  pgapi->PauseSysTablePrefetching();
+}
+
+void YBCResumeSysTablePrefetching() {
+  pgapi->ResumeSysTablePrefetching();
+}
+
 bool YBCIsSysTablePrefetchingStarted() {
   return pgapi->IsSysTablePrefetchingStarted();
 }
