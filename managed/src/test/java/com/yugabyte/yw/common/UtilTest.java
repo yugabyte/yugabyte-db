@@ -12,12 +12,15 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.cronutils.utils.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -522,5 +525,233 @@ public class UtilTest extends FakeDBApplication {
     // Empty containers like array and object remain as it is
     JsonNode emptyContainers = Util.convertStringToJson("{\"no\": {}, \"na\": []}");
     assertEquals(emptyContainers, Util.addJsonPathToLeafNodes(emptyContainers));
+  }
+
+  @Test
+  public void testIsUniverseOwner_MatchingUUIDs() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    UUID storedYwUuid = currentYwUuid; // Same UUID
+
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(storedYwUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    assertTrue(
+        "Should return true when UUIDs match",
+        Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+  }
+
+  @Test
+  public void testIsUniverseOwner_DifferentUUIDs() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    UUID storedYwUuid = UUID.randomUUID(); // Different UUID
+
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(storedYwUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    assertFalse(
+        "Should return false when UUIDs don't match",
+        Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+  }
+
+  @Test
+  public void testIsUniverseOwner_NullCurrentYwUuid() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    when(configHelper.getYugawareUUID()).thenReturn(null);
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw exception when current YW UUID is null",
+            PlatformServiceException.class,
+            () -> Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention UUID not found",
+        exception.getMessage().contains("Current YugabyteDB Anywhere UUID not found"));
+  }
+
+  @Test
+  public void testIsUniverseOwner_NullStoredYwUuid() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+    when(universe.getName()).thenReturn("test-universe");
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(null);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    assertFalse(
+        "Should return false when stored YW UUID is null (not matching current UUID)",
+        Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+  }
+
+  @Test
+  public void testGetStoredYwUuid_ValidResponse() {
+    Universe universe = mock(Universe.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID expectedUuid = UUID.randomUUID();
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(expectedUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    UUID result = Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
+
+    assertEquals("Should return the UUID from consistency info", expectedUuid, result);
+  }
+
+  @Test
+  public void testGetStoredYwUuid_NullConsistencyInfo() {
+    Universe universe = mock(Universe.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    when(universe.getName()).thenReturn("test-universe");
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(null);
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw PlatformServiceException when consistency info is null",
+            PlatformServiceException.class,
+            () -> Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention error querying YW UUID",
+        exception.getMessage().contains("Error querying YW UUID"));
+  }
+
+  @Test
+  public void testGetStoredYwUuid_ExceptionThrown() {
+    Universe universe = mock(Universe.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    when(universe.getName()).thenReturn("test-universe");
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class)))
+        .thenThrow(new RuntimeException("Database error"));
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw PlatformServiceException when query fails",
+            PlatformServiceException.class,
+            () -> Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention error querying YW UUID",
+        exception.getMessage().contains("Error querying YW UUID"));
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_DetachedUniverse() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = true;
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+    when(universe.getName()).thenReturn("test-universe");
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw exception for detached universe",
+            PlatformServiceException.class,
+            () ->
+                Util.validateUniverseOwnershipAndNotDetached(
+                    universe, configHelper, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention detached universe",
+        exception.getMessage().contains("is detached"));
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_NotOwner() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = false;
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    UUID storedYwUuid = UUID.randomUUID(); // Different UUID
+
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(storedYwUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw exception when not owner",
+            PlatformServiceException.class,
+            () ->
+                Util.validateUniverseOwnershipAndNotDetached(
+                    universe, configHelper, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention different YBA instance",
+        exception.getMessage().contains("belongs to different YugabyteDB Anywhere instance"));
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_ValidOwner() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = false;
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    UUID storedYwUuid = currentYwUuid; // Same UUID
+
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(storedYwUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    // Should not throw any exception
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
   }
 }

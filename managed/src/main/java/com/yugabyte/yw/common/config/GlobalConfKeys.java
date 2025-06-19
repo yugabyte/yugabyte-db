@@ -811,6 +811,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow universes to be detached from a source platform and attached to dest platform",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowAutoProviderToK8sPlatform =
+      new ConfKeyInfo<>(
+          "yb.attach_detach.allow_auto_provider_to_k8s_platform",
+          ScopeType.GLOBAL,
+          "Allow auto-provider K8s universes to attach to K8s-based YBA",
+          "Allow Kubernetes auto-provider universes to be attached to Kubernetes-based YBA. "
+              + "Note that you must only attach auto-provider universe to Kubernetes-based YBA "
+              + "if the destination and source YBA exist on the same Kubernetes cluster",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> transactionalXClusterEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.enabled",

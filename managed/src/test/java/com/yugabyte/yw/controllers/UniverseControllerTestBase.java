@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudUtilFactory;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.KubernetesManager;
@@ -57,6 +59,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -98,11 +101,11 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected String authToken;
   protected YBClientService mockService;
   protected YBClient mockClient;
+  protected YsqlQueryExecutor mockYsqlQueryExecutor;
   protected ApiHelper mockApiHelper;
   protected CallHome mockCallHome;
   protected CustomerConfig s3StorageConfig;
   protected EncryptionAtRestManager mockEARManager;
-  protected YsqlQueryExecutor mockYsqlQueryExecutor;
   protected YcqlQueryExecutor mockYcqlQueryExecutor;
   protected ShellProcessHandler mockShellProcessHandler;
   protected CallbackController mockCallbackController;
@@ -209,6 +212,26 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   @Before
   public void setUp() {
+    UUID yugawareUuid = UUID.randomUUID();
+    ObjectNode ywMetadata = Json.newObject();
+    ywMetadata.put("yugaware_uuid", yugawareUuid.toString());
+    ywMetadata.put("version", "2024.2.0.0-b1");
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.YugawareMetadata.name(), ywMetadata, "Yugaware Metadata");
+
+    mockYsqlQueryExecutor = app.injector().instanceOf(YsqlQueryExecutor.class);
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        new YsqlQueryExecutor.ConsistencyInfoResp();
+    try {
+      java.lang.reflect.Field ywUuidField =
+          YsqlQueryExecutor.ConsistencyInfoResp.class.getDeclaredField("ywUuid");
+      ywUuidField.setAccessible(true);
+      ywUuidField.set(consistencyInfo, yugawareUuid);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to set yw_uuid in consistency info", e);
+    }
+    lenient().when(mockYsqlQueryExecutor.getConsistencyInfo(any())).thenReturn(consistencyInfo);
+
     customer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(customer, "TEST25");
     user = ModelFactory.testUser(customer);

@@ -477,8 +477,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       // a bump on the cluster config version. The actual number depends on the
       // number of invocations of saveUniverseDetails, so it can vary but the
       // important thing is that it is much more than the other case.
-      // 7 version increments + 1 modify blacklist.
-      verify(mockClient, times(14)).changeMasterClusterConfig(any());
+      // 7 version increments + 1 modify blacklist + 1 from YugawareMetadata init.
+      verify(mockClient, times(15)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }

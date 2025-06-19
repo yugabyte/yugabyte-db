@@ -14,8 +14,10 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
@@ -58,6 +60,8 @@ import play.mvc.Result;
 public class UniverseActionsController extends AuthenticatedController {
   @Inject private UniverseActionsHandler universeActionsHandler;
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private ConfigHelper configHelper;
+  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
 
   @ApiOperation(
       notes =
@@ -107,6 +111,8 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result pause(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
     // Check if the universe is of type kubernetes, if yes throw an exception
     UUID taskUUID = universeActionsHandler.pause(customer, universe);
     auditService()
@@ -178,6 +184,8 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result setUniverseKey(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
 
     log.info("Updating universe key {} for {}.", universe.getUniverseUUID(), customer.getUuid());
     // Get the user submitted form data.
@@ -215,6 +223,8 @@ public class UniverseActionsController extends AuthenticatedController {
       UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
 
     log.info(
         "Updating load balancer config {} for {}.", universe.getUniverseUUID(), customer.getUuid());
@@ -258,6 +268,8 @@ public class UniverseActionsController extends AuthenticatedController {
       UUID customerUUID, UUID universeUUID, Boolean markActive, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
 
     universeActionsHandler.setBackupFlag(universe, markActive);
     auditService()
@@ -290,6 +302,8 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result setHelm3Compatible(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
     universeActionsHandler.setHelm3Compatible(universe);
     auditService()
         .createAuditEntry(
@@ -321,6 +335,8 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result resetVersion(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
     auditService()
         .createAuditEntry(
             request,
@@ -371,6 +387,8 @@ public class UniverseActionsController extends AuthenticatedController {
       UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
 
     UUID taskUUID =
         universeActionsHandler.updateAdditionalServicesState(

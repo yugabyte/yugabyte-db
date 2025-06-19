@@ -3,6 +3,7 @@
 package api.v2.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
 
 import api.v2.mappers.ClusterMapper;
@@ -22,6 +23,7 @@ import api.v2.models.UniverseSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -34,13 +36,17 @@ import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler.OpType;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -50,6 +56,7 @@ import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
@@ -58,14 +65,21 @@ import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.ebean.annotation.Transactional;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -81,10 +95,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private Commissioner commissioner;
+  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
 
   private static final String RELEASES_PATH = "yb.releases.path";
-  private static final String YBC_RELEASE_PATH = "ybc.docker.release";
-  private static final String YBC_RELEASES_PATH = "ybc.releases.path";
 
   public api.v2.models.Universe getUniverse(UUID cUUID, UUID uniUUID)
       throws JsonProcessingException {
@@ -281,6 +294,14 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         !detachUniverseSpec.getSkipReleases());
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
+
+    // Validate DB version supports attach/detach
+    String dbVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    validateUniverseVersionForAttachDetach(dbVersion);
+
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
@@ -314,12 +335,32 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               universe.getUniverseDetails().universePaused));
     }
 
-    // Lock Universe to prevent updates from happening.
+    // TODO: Replace this with lockAndFreezeUniverseForUpdate
     universe = Util.lockUniverse(universe);
     AttachDetachSpec attachDetachSpec;
     InputStream is;
     try {
       List<PriceComponent> priceComponents = PriceComponent.findByProvider(provider);
+
+      Map<UUID, ImageBundle> imageBundles = new HashMap<>();
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      for (UniverseDefinitionTaskParams.Cluster cluster : universeDetails.clusters) {
+        UUID imageBundleUUID = cluster.userIntent.imageBundleUUID;
+        if (imageBundleUUID != null) {
+          ImageBundle imageBundle = ImageBundle.get(imageBundleUUID);
+          if (imageBundle != null && !imageBundles.containsKey(imageBundleUUID)) {
+            imageBundles.put(imageBundleUUID, imageBundle);
+          }
+        }
+      }
+      if (imageBundles.isEmpty()) {
+        UUID providerUUID =
+            UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider);
+        List<ImageBundle> defaultBundles = ImageBundle.getDefaultForProvider(providerUUID);
+        for (ImageBundle defaultBundle : defaultBundles) {
+          imageBundles.put(defaultBundle.getUuid(), defaultBundle);
+        }
+      }
 
       List<CertificateInfo> certificateInfoList = CertificateInfo.getCertificateInfoList(universe);
 
@@ -361,16 +402,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
       String storagePath = AppConfigHelper.getStoragePath();
       String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
-      String ybcReleasePath = confGetter.getStaticConf().getString(YBC_RELEASE_PATH);
-      String ybcReleasesPath = confGetter.getStaticConf().getString(YBC_RELEASES_PATH);
 
       PlatformPaths platformPaths =
-          PlatformPaths.builder()
-              .storagePath(storagePath)
-              .releasesPath(releasesPath)
-              .ybcReleasePath(ybcReleasePath)
-              .ybcReleasesPath(ybcReleasesPath)
-              .build();
+          PlatformPaths.builder().storagePath(storagePath).releasesPath(releasesPath).build();
 
       attachDetachSpec =
           AttachDetachSpec.builder()
@@ -379,6 +413,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               .provider(provider)
               .instanceTypes(instanceTypes)
               .priceComponents(priceComponents)
+              .imageBundles(imageBundles)
               .certificateInfoList(certificateInfoList)
               .nodeInstances(nodeInstances)
               .kmsHistoryList(kmsHistoryList)
@@ -392,8 +427,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               .build();
 
       is = attachDetachSpec.exportSpec();
+      detachDbFromYBA(universe);
+      setUniverseDetachedState(universe, true);
     } catch (Exception e) {
       // Unlock the universe if error is thrown to return universe back to original state.
+      // TODO: Replace this with unlockUniverseForUpdate
       Util.unlockUniverse(universe);
       throw e;
     }
@@ -418,20 +456,25 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
     String storagePath = AppConfigHelper.getStoragePath();
     String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
-    String ybcReleasePath = confGetter.getStaticConf().getString(YBC_RELEASE_PATH);
-    String ybcReleasesPath = confGetter.getStaticConf().getString(YBC_RELEASES_PATH);
 
     PlatformPaths platformPaths =
-        PlatformPaths.builder()
-            .storagePath(storagePath)
-            .releasesPath(releasesPath)
-            .ybcReleasePath(ybcReleasePath)
-            .ybcReleasesPath(ybcReleasesPath)
-            .build();
+        PlatformPaths.builder().storagePath(storagePath).releasesPath(releasesPath).build();
 
     AttachDetachSpec attachDetachSpec =
         AttachDetachSpec.importSpec(
             attachUniverseSpec.getDownloadedSpecFile().getRef().path(), platformPaths, customer);
+
+    // Validate DB version supports attach/detach
+    String dbVersion =
+        attachDetachSpec
+            .getUniverse()
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .ybSoftwareVersion;
+    validateUniverseVersionForAttachDetach(dbVersion);
+
+    validateProviderCompatibility(attachDetachSpec.getProvider());
     // Software (platform) version of dest, check with source version. Should be same
     String destVersion =
         StringUtils.substringBefore(
@@ -447,7 +490,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
           "Software versions do not match, please attach to a platform with software version: "
               + srcVersion);
     }
-    attachDetachSpec.save(platformPaths, releaseManager, swamperHelper);
+    attachDetachSpec.save(
+        platformPaths, releaseManager, swamperHelper, configHelper, ysqlQueryExecutor, confGetter);
   }
 
   @Transactional
@@ -457,21 +501,83 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
-    List<Schedule> schedules =
-        Schedule.getAllSchedulesByOwnerUUIDAndType(
-            universe.getUniverseUUID(), TaskType.CreateBackup);
+    // Validate DB version supports attach/detach
+    String dbVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    validateUniverseVersionForAttachDetach(dbVersion);
 
-    for (Schedule schedule : schedules) {
-      log.info("Deleting schedule: {}... of universe: {}", schedule, universeUUID);
-      schedule.delete();
-    }
+    // Delete metadata is allowed if universe is detached, or if this YBA instance is not the
+    // universe owner (i.e. universe is attached elsewhere)
+    if (universe.getUniverseDetails().universeDetached
+        || !Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter)) {
+      List<Schedule> schedules =
+          Schedule.getAllSchedulesByOwnerUUIDAndType(
+              universe.getUniverseUUID(), TaskType.CreateBackup);
 
-    List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.getUniverseUUID());
-    for (NodeInstance nodeInstance : nodeInstances) {
-      log.info("Deleting node instance: {}", nodeInstance);
-      nodeInstance.delete();
+      for (Schedule schedule : schedules) {
+        log.info("Deleting schedule: {}... of universe: {}", schedule, universeUUID);
+        schedule.delete();
+      }
+
+      List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.getUniverseUUID());
+      for (NodeInstance nodeInstance : nodeInstances) {
+        log.info("Deleting node instance: {}", nodeInstance);
+        nodeInstance.delete();
+      }
+      Universe.delete(universe.getUniverseUUID());
+    } else {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot delete metadata for a universe that is owned by this YBA instance and is in a"
+              + " healthy state. The universe must be detached or owned by another YBA"
+              + " to allow metadata deletion.");
     }
-    Universe.delete(universe.getUniverseUUID());
+  }
+
+  private void validateProviderCompatibility(Provider sourceProvider) {
+    if (sourceProvider.getCloudCode() == Common.CloudType.kubernetes) {
+      if (!isYBARunningOnKubernetes()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Cannot attach Kubernetes universe to this YBA. Kubernetes universes can only be"
+                + " attached to Kubernetes-based YBA installations.");
+      }
+
+      if (isAutoProvider(sourceProvider)) {
+        boolean allowAutoProviderToK8sPlatform =
+            confGetter.getGlobalConf(GlobalConfKeys.allowAutoProviderToK8sPlatform);
+
+        if (!allowAutoProviderToK8sPlatform) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot attach Kubernetes universe with auto-provider to this YBA. To allow this"
+                  + " operation, set the runtime flag"
+                  + " 'yb.attach_detach.allow_auto_provider_to_k8s_platform' to true. Note that"
+                  + " you must only attach auto-provider universe to Kubernetes-based YBA if the"
+                  + " destination and source YBA exist on the same Kubernetes cluster");
+        }
+      }
+    }
+  }
+
+  private boolean isYBARunningOnKubernetes() {
+    String kubernetesServiceHost = KubernetesEnvironmentVariables.getServiceHost();
+    String kubernetesServicePort = KubernetesEnvironmentVariables.getServicePort();
+    return (kubernetesServiceHost != null && kubernetesServicePort != null);
+  }
+
+  // Determine if provider is auto-configured (k8s only). Auto providers automatically inherit their
+  // configuration from the K8s cluster where YBA is deployed. Hence, auto providers should lack a
+  // KUBECONFIG
+  private boolean isAutoProvider(Provider provider) {
+    return provider.getCloudCode() == Common.CloudType.kubernetes && !hasKubeConfig(provider);
+  }
+
+  private boolean hasKubeConfig(Provider provider) {
+    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(provider);
+    KubernetesInfo kubernetesInfo = CloudInfoInterface.get(provider);
+
+    return providerConfig.containsKey("KUBECONFIG_NAME") || kubernetesInfo.getKubeConfig() != null;
   }
 
   private void checkAttachDetachEnabled() {
@@ -482,11 +588,86 @@ public class UniverseManagementHandler extends ApiControllerUtils {
           "Attach/Detach feature is not enabled. Please set the runtime flag"
               + " 'yb.attach_detach.enabled' to true.");
     }
-    String ybaVersion =
-        StringUtils.substringBefore(
-            String.valueOf(
-                configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version")),
-            "-");
+  }
+
+  private void validateUniverseVersionForAttachDetach(String dbVersion) {
+    if (Util.compareYBVersions(
+            dbVersion, "2024.2.0.0-b1", "2.23.1.0-b29", true /* suppressFormatError */)
+        < 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Universe DB version %s does not support attach/detach operations. "
+                  + "Minimum required version is 2024.2.0.0-b1 (stable) or 2.23.1.0-b29 (preview).",
+              dbVersion));
+    }
+  }
+
+  private Universe setUniverseDetachedState(Universe universe, boolean detached) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.universeDetached = detached;
+          u.setUniverseDetails(universeDetails);
+        };
+    return Universe.saveDetails(universe.getUniverseUUID(), updater, false);
+  }
+
+  private void detachDbFromYBA(Universe universe) {
+    try {
+      NodeDetails node = CommonUtils.getServerToRunYsqlQuery(universe, true);
+
+      String updateQuery =
+          String.format(
+              "UPDATE %s SET yw_uuid = '%s', yw_host = '%s' WHERE seq_num = (SELECT MAX(seq_num)"
+                  + " FROM %s)",
+              Util.CONSISTENCY_CHECK_TABLE_NAME,
+              AttachDetachSpec.DETACHED_UNIVERSE_UUID.toString(),
+              AttachDetachSpec.DETACHED_HOST,
+              Util.CONSISTENCY_CHECK_TABLE_NAME);
+
+      RunQueryFormData runQueryFormData = new RunQueryFormData();
+      runQueryFormData.setDbName(Util.SYSTEM_PLATFORM_DB);
+      runQueryFormData.setQuery(updateQuery);
+
+      JsonNode ysqlResponse =
+          ysqlQueryExecutor.executeQueryInNodeShell(
+              universe,
+              runQueryFormData,
+              node,
+              confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
+
+      if (ysqlResponse != null && ysqlResponse.has("error")) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Error while marking universe as detached in consistency check table: %s",
+                ysqlResponse.get("error").asText()));
+      }
+      log.info(
+          "Marked universe as detached (yw_uuid={}, yw_host='{}') in consistency check table for"
+              + " universe: {}",
+          AttachDetachSpec.DETACHED_UNIVERSE_UUID,
+          AttachDetachSpec.DETACHED_HOST,
+          universe.getName());
+    } catch (IllegalStateException e) {
+      log.error(
+          "Failed to find valid tserver to mark universe as detached for universe {}: {}",
+          universe.getName(),
+          e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Could not find valid tserver to mark universe as detached for universe %s: %s",
+              universe.getName(), e.getMessage()));
+    } catch (Exception e) {
+      log.error("Failed to mark universe as detached for universe {}: {}", universe.getName(), e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Error marking universe as detached for universe %s: %s",
+              universe.getName(), e.getMessage()));
+    }
   }
 
   public api.v2.models.UniverseResourceDetails getUniverseResources(
