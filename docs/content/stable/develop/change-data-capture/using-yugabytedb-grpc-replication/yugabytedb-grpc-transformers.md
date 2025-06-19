@@ -53,7 +53,7 @@ By default, the YugabyteDB CDC service publishes events with a schema that only 
 
 The SMT `YBExtractNewRecordState` is used to flatten the records published by the connector and just keep the payload field in a flattened format.
 
-The following examples show what the payload would look like for each [before image mode](../using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes). Note that in this example, we have set the property `delete.handling.mode` to `none` for the transformer so it will neither drop the delete records from the stream. Additionally, this SMT works on the `after` field of the payload and since the `after` field for the DELETE record is `null`, the output after applying this transformer on a DELETE record is also `null`.
+The following examples show what the payload would look like for each [before image mode](../cdc-get-started/#before-image-modes). Note that in this example, as you have set the property `delete.handling.mode` to `none` for the transformer, it will not drop the delete records from the stream. Additionally, this SMT works on the `after` field of the payload and since the `after` field for the DELETE record is `null`, the output after applying this transformer on a DELETE record is also `null`.
 
 ### CHANGE
 
@@ -139,7 +139,7 @@ Some sink connectors may not understand the payload format published by the conn
 
 `PGCompatible` differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
 
-The following examples show what the payload would look like for each [before image mode](../using-yugabytedb-grpc-replication/cdc-get-started/#before-image-modes).
+The following examples show what the payload would look like for each [before image mode](../cdc-get-started/#before-image-modes).
 
 ### CHANGE
 

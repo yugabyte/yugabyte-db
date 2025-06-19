@@ -128,7 +128,7 @@ yugabyte=# EXPLAIN (COSTS off) SELECT COUNT(*) FROM t1, t2 WHERE t1.id = t2.id A
 (13 rows)
 ```
 
-'t1' appears twice, once in each of the 2 query blocks. However, in the EXPLAIN output one instance is aliased 't1_1', while the other instance has no alias. 't1_1' was not in the original SQL but instead was *generated as a unique identifer* for the instance of 't1' in the main query block. If multiple instances of an entity appear in a query, and we want to write hints referencing these entities, then the generated unique alias should be used.
+'t1' appears twice, once in each of the 2 query blocks. However, in the EXPLAIN output one instance is aliased 't1_1', while the other instance has no alias. 't1_1' was not in the original SQL but instead was *generated as a unique identifer* for the instance of 't1' in the main query block. If multiple instances of an entity appear in a query, and you want to write hints referencing these entities, then you should use the generated unique alias.
 
 An alternative approach is to rewrite the query and provide unique aliases. However, rewriting a query is often not possible, and in some cases rewriting the SQL to assign unique aliases can be very difficult and confusing.
 
@@ -463,7 +463,7 @@ In this example, the hint `/*+ NestLoop(t2 t3 t1) SeqScan(t3) SeqScan(t2) */` en
 
 For any set of hints specified for a query referencing table `t1`, there can be at most:
 
-- 1 join method hint referencing 't1'
+- 1 join method hint referencing `t1`
 - 1 Leading hint referencing `t1` (see [Hints for join order](#hints-for-join-order))
 - 1 table access method hint referencing `t1`
 
@@ -698,7 +698,7 @@ error hint:
 (2 rows)
 ```
 
-Here we can see from the debugging output that the `SeqScan(t1)` hint is used. Similarly, for the second (`SELECT id`) we see:
+The debugging output shows that the `SeqScan(t1)` hint is used. Similarly, for the second (`SELECT id`) you would see the following:
 
 ```sql
 yugabyte=# EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = 7;
@@ -746,7 +746,7 @@ yugabyte=# SELECT * FROM t1 WHERE t1.id = 7;
 (1 row)
 ```
 
-To use hints for this query (without an EXPLAIN), we need to insert a new row in the hints table:
+To use hints for this query (without an EXPLAIN), you need to insert a new row in the hints table:
 
 ```sql
 yugabyte=# INSERT INTO hint_plan.hints
@@ -821,7 +821,7 @@ yugabyte=# SELECT norm_query_string, hints FROM hint_plan.hints ORDER BY id;
 (4 rows)
 ```
 
-Now when the query is re-run we will see a sequential scan used for `t1` instead of index scan:
+Now when the query is re-run you will see a sequential scan used for `t1` instead of index scan:
 
 ```sql
 yugabyte=# EXPLAIN (VERBOSE true, COSTS off) SELECT * FROM t1 WHERE t1.val = 9;
@@ -920,13 +920,13 @@ yugabyte=# EXPLAIN (COSTS off) SELECT COUNT(*) FROM t1, t2 WHERE t1.id = t2.id A
 (15 rows)
 ```
 
-Suppose we would like to change:
+Suppose you would like to change:
 
-1. NestedLoop(t1_1 t2) to MergeJoin(t2 t1_1)
-2. YbBatchedNestedLoopJoin(t3 t1) to HashJoin(t1 t3)
-3. IndexScan(t1) to SeqScan(t1)
+1. NestedLoop(t1_1 t2) to MergeJoin(t2 t1_1).
+2. YbBatchedNestedLoopJoin(t3 t1) to HashJoin(t1 t3).
+3. IndexScan(t1) to SeqScan(t1).
 
-To accomplish 1 and 2, we need to change both the join orders and the join methods. The set of hints to accomplish this is:
+To accomplish 1 and 2, you need to change both the join orders and the join methods. The set of hints to accomplish this is:
 
 ```sql
 yugabyte=# /*+ Leading((t2 t1_1)) Leading((t1 t3)) MergeJoin(t1_1 t2) HashJoin(t1 t3) SeqScan(t1) */ EXPLAIN (COSTS off) SELECT COUNT(*) FROM t1
