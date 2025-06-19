@@ -25,7 +25,7 @@ Before you start using the Keycloak, ensure that you have:
 
 To configure Keycloak, do the following:
 
-- Create database `keycloak` on your cluser.
+- In YugabyteDB, create a database called `keycloak` on your cluster.
 
     ```sh
     CREATE DATABASE keycloak;
@@ -188,15 +188,15 @@ keycloak=# \dt
 
 ## Test Keycloak
 
-Go to `localhost:8080` and you will see the dashboard to create a user. Enter your desired username and the password and click on `Create user`. 
+Go to `localhost:8080` and you will see the dashboard to create a user. Provide a username and password and click **Create user**. 
 
 ![Keycloak Create User](/images/develop/ecosystem-integrations/keycloak/keycloak-create-user.png)
 
-Once the user is created, you will see the following screen. Click on the `Open Administration Console` button.
+Keycloak creates the user and displays the following screen.
 
 ![Keycloak Open Admin Console](/images/develop/ecosystem-integrations/keycloak/keycloak-open-admin-console.png)
 
-You can also verify the user creation on your database as well:
+You can also verify the user creation on your database as follows:
 
 ```sql
 yugabyte=# \c keycloak 
@@ -208,10 +208,10 @@ keycloak=# select id,username from user_entity ;
 (1 row)
 ```
 
-On the sign in page, enter the username and password you just created and click on `Sign in`.:
+Click **Open Administration Console**. On the sign in page that displays, enter the username and password you just created and click **Sign in**.
 
 ![Keycloak Sign In](/images/develop/ecosystem-integrations/keycloak/keycloak-sign-in.png)
 
-You are now logged in to the Keycloak dashboard:
+You are now signed in to the Keycloak dashboard:
 
 ![Keycloak Dashboard](/images/develop/ecosystem-integrations/keycloak/keycloak-welcome-page.png)
