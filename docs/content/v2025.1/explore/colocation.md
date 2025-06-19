@@ -169,8 +169,8 @@ To view metrics such as table size, use the name of the parent colocation table.
 
 - Metrics for table metrics such as table size are available for the colocation tablet, not for individual colocated tables that are part of the colocation.
 - Tablet splitting is disabled for colocated tables.
-- You can't configure xCluster replication for colocated tables using the YugabyteDB Anywhere UI in the 2.18.0 release. This functionality will be available in a future release.
 - To avoid hotspots, do not colocate tables that receive disproportionately high loads.
+- xCluster replication automatic mode does not yet support colocated tables.
 
 ### Semantic differences between colocated and non-colocated tables
 
@@ -180,7 +180,11 @@ For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if
 
 ## xCluster and colocation
 
-xCluster is supported for colocated tables and indexes in v2.18.0 only via [yb-admin](../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocation_id` for a given table or index needs to match on the source and target universes.
+xCluster replication currently only supports colocated tables for [semi-automatic and fully manual](../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/) modes.
+
+When setting up xCluster for colocated tables when using manual or
+semi-automatic mode, the `colocation_id` for a given table or index
+needs to match on the source and target universes.
 
 To set up xCluster for colocated tables, do the following:
 
@@ -234,7 +238,10 @@ To set up xCluster for colocated tables, do the following:
     Replication setup successfully
     ```
 
-If new colocated tables are added to the same colocated database on both source and target universes with matching colocation IDs, then they are automatically included in replication.
+If more colocated tables are added to the same colocated database on
+both source and target universes with matching colocation IDs, then they
+are automatically included in replication.  There is no need to set up
+the parent table for replication again.
 
 For information on how to set up xCluster for non-colocated tables, refer to [xCluster deployment](../../deploy/multi-dc/async-replication/).
 
