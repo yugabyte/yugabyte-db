@@ -17,6 +17,8 @@ import com.yugabyte.yw.common.encryption.HashBuilder;
 import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
 import com.yugabyte.yw.common.encryption.bc.Pbkdf2HmacSha256Hasher;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -179,7 +181,12 @@ public class Users extends Model {
   private String timezone;
 
   // The role of the user.
-  @ApiModelProperty(value = "User role")
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.19.3.0.</b> Use "
+              + " getRoleBindings instead.",
+      example = "Admin")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.3.0")
   private Role role;
 
   @ApiModelProperty(value = "True if the user is the primary user")
