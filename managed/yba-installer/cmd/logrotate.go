@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
+
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
@@ -73,7 +74,7 @@ func (l LogRotate) Uninstall(cleanData bool) error {
 }
 func (l LogRotate) Upgrade() error {
 	l.logrotateDirectories = newLogrotateDirectories()
-	if err := config.GenerateTemplate(l); err != nil {
+	if err := template.GenerateTemplate(l); err != nil {
 		return fmt.Errorf("failed to generate logrotate template: %w", err)
 	}
 	// Make the logrotate.sh script executable
@@ -153,7 +154,7 @@ func (l LogRotate) Restart() error {
 	return nil
 }
 func (l LogRotate) Install() error {
-	if err := config.GenerateTemplate(l); err != nil {
+	if err := template.GenerateTemplate(l); err != nil {
 		return fmt.Errorf("failed to generate logrotate template: %w", err)
 	}
 	// Make the logrotate.sh script executable
@@ -165,7 +166,7 @@ func (l LogRotate) Install() error {
 
 func (l LogRotate) Reconfigure() error {
 	log.Debug("Reconfiguring logrotate service")
-	if err := config.GenerateTemplate(l); err != nil {
+	if err := template.GenerateTemplate(l); err != nil {
 		return fmt.Errorf("failed to reconfigure logrotate: %w", err)
 	}
 	// Make the logrotate.sh script executable

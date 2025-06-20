@@ -11,9 +11,9 @@ import (
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 type perfAdvisorDirectories struct {
@@ -21,9 +21,8 @@ type perfAdvisorDirectories struct {
 	templateFileName    string
 	PABin               string
 	ConfigLocation      string
-	PALogDir   string
+	PALogDir            string
 }
-
 
 type PerfAdvisor struct {
 	name    string
@@ -37,9 +36,9 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 		SystemdFileLocation: common.SystemdDir + "/yb-perf-advisor.service",
 		templateFileName:    "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
-		PABin:       common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
+		PABin:          common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
 		ConfigLocation: common.GetSoftwareRoot() + "/perf-advisor/config/override.properties",
-		PALogDir:         common.GetBaseInstall() + "/data/logs",
+		PALogDir:       common.GetBaseInstall() + "/data/logs",
 	}
 }
 
@@ -47,8 +46,8 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 func NewPerfAdvisor(version string) PerfAdvisor {
 
 	return PerfAdvisor{
-		name:                  "performance-advisor",
-		version:               version,
+		name:                   "performance-advisor",
+		version:                version,
 		perfAdvisorDirectories: newPerfAdvisorDirectories(version),
 	}
 }
@@ -100,7 +99,6 @@ func (perf PerfAdvisor) Start() error {
 	return nil
 }
 
-
 // Stop disables and stops the Perf Advisor systemd service.
 func (perf PerfAdvisor) Stop() error {
 	serviceName := filepath.Base(perf.SystemdFileLocation)
@@ -136,18 +134,18 @@ func (perf PerfAdvisor) Status() (common.Status, error) {
 	props, err := systemd.Show(filepath.Base(perf.SystemdFileLocation), "LoadState", "SubState",
 		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
 	if err != nil {
-		 // Log and return error if unable to get service status.
+		// Log and return error if unable to get service status.
 		log.Error("Failed to get perf advisor status: " + err.Error())
 		return status, err
 	}
-	 // If the service is not found, mark as not installed.
+	// If the service is not found, mark as not installed.
 	if props["LoadState"] == "not-found" {
 		status.Status = common.StatusNotInstalled
-		 // If the service is running, mark as running and set the start timestamp.
+		// If the service is running, mark as running and set the start timestamp.
 	} else if props["SubState"] == "running" {
 		status.Status = common.StatusRunning
 		status.Since = common.StatusSince(props["ActiveEnterTimestamp"])
-		 // If the service is inactive, mark as stopped and set the stop timestamp.
+		// If the service is inactive, mark as stopped and set the stop timestamp.
 	} else if props["ActiveState"] == "inactive" {
 		status.Status = common.StatusStopped
 		status.Since = common.StatusSince(props["ActiveExitTimestamp"])
@@ -188,13 +186,13 @@ func (perf PerfAdvisor) Uninstall(removeData bool) error {
 }
 
 func (perf PerfAdvisor) createSoftwareDirectories() error {
-  // Build a list of directories to create (here, just yb-platform under the software root)
-  dirs := []string{
-    common.GetSoftwareRoot() + "/perf-advisor",
+	// Build a list of directories to create (here, just yb-platform under the software root)
+	dirs := []string{
+		common.GetSoftwareRoot() + "/perf-advisor",
 		common.GetSoftwareRoot() + "/perf-advisor/config",
-  }
-  // Create the directories on disk (if they don't already exist)
-  return common.CreateDirs(dirs)
+	}
+	// Create the directories on disk (if they don't already exist)
+	return common.CreateDirs(dirs)
 }
 
 func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
@@ -240,22 +238,22 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 		return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
 	}
 
-  // Move override.properties into perf-advisor/config
+	// Move override.properties into perf-advisor/config
 	overrideSrc := filepath.Join(targetDir, "override.properties")
-  overrideDst := filepath.Join(targetDir, "config", "override.properties")
-  input, err := os.Open(overrideSrc)
-  if err != nil {
-    return fmt.Errorf("failed to open %s: %w", overrideSrc, err)
-  }
-  defer input.Close()
-  output, err := os.Create(overrideDst)
-  if err != nil {
-    return fmt.Errorf("failed to create %s: %w", overrideDst, err)
-  }
-  defer output.Close()
-  if _, err := io.Copy(output, input); err != nil {
-    return fmt.Errorf("failed to copy override.properties: %w", err)
-  }
+	overrideDst := filepath.Join(targetDir, "config", "override.properties")
+	input, err := os.Open(overrideSrc)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", overrideSrc, err)
+	}
+	defer input.Close()
+	output, err := os.Create(overrideDst)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %w", overrideDst, err)
+	}
+	defer output.Close()
+	if _, err := io.Copy(output, input); err != nil {
+		return fmt.Errorf("failed to copy override.properties: %w", err)
+	}
 
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
@@ -266,12 +264,12 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 			return err
 		}
 	}
-  return nil
+	return nil
 }
 
 func (perf PerfAdvisor) Install() error {
 	log.Info("Starting Perf Advisor install")
-	config.GenerateTemplate(perf)
+	template.GenerateTemplate(perf)
 
 	if err := perf.createSoftwareDirectories(); err != nil {
 		return err
@@ -296,21 +294,15 @@ func (perf PerfAdvisor) Install() error {
 	return nil
 }
 
-
-func (perf PerfAdvisor) MigrateFromReplicated() error {
-	return nil
-}
-
-func (perf PerfAdvisor) FinishReplicatedMigrate() error {
-	return nil
-}
+func (perf PerfAdvisor) MigrateFromReplicated() error   { return nil }
+func (perf PerfAdvisor) FinishReplicatedMigrate() error { return nil }
 
 // Upgrade will upgrade the perf advisor and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (perf PerfAdvisor) Upgrade() error {
 	log.Info("Starting Perf Advisor upgrade")
 	perf.perfAdvisorDirectories = newPerfAdvisorDirectories(perf.version)
-	if err := config.GenerateTemplate(perf); err != nil {
+	if err := template.GenerateTemplate(perf); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
 	if err := perf.createSoftwareDirectories(); err != nil {
@@ -334,6 +326,11 @@ func (perf PerfAdvisor) Upgrade() error {
 }
 
 func (perf PerfAdvisor) Reconfigure() error {
+	log.Info("Reconfiguring Perf Advisor")
+	if err := template.GenerateTemplate(perf); err != nil {
+		return fmt.Errorf("failed to generate template: %w", err)
+	}
+	log.Info("Perf Advisor reconfigured")
 	return nil
 }
 

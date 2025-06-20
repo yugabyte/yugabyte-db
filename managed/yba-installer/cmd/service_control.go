@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
@@ -56,7 +56,7 @@ var startCmd = &cobra.Command{
 					log.Info("Generating yb-platform config with fixPaths set to true")
 					plat := service.(Platform)
 					plat.FixPaths = true
-					config.GenerateTemplate(plat)
+					template.GenerateTemplate(plat)
 				}
 				if err := service.Initialize(); err != nil {
 					log.Fatal("Failed to initialize " + service.Name() + ": " + err.Error())

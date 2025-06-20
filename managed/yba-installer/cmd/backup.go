@@ -15,8 +15,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 func CreateBackupScript(outputPath string, dataDir string, excludePrometheus bool,
@@ -139,7 +139,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 		time.Sleep(15 * time.Second)
 		// set fixPaths conf variable
 		plat.FixPaths = true
-		config.GenerateTemplate(plat)
+		template.GenerateTemplate(plat)
 
 		if err := plat.Restart(); err != nil {
 			log.Fatal(fmt.Sprintf("Error %s restarting yb-platform.", err.Error()))
