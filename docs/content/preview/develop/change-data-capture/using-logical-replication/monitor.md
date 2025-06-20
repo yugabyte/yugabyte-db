@@ -68,6 +68,7 @@ Provides a list of all replication slots that currently exist on the database cl
 | catalog_xmin | xid | Not applicable for YSQL. Always set to xmin. |
 | restart_lsn | pg_lsn | The Log Sequence Number ([LSN](../key-concepts/#lsn-type)) of the oldest change record which still might be required by the consumer of this slot and thus won't be automatically removed during checkpoints. |
 | confirmed_flush_lsn | pg_lsn | The LSN up to which the logical slot's consumer has confirmed receiving data. Data older than this is not available anymore. Transactions with commit LSN lower than the `confirmed_flush_lsn` are not available anymore. |
+| wal_status | text | Indicates whether the replication slot is available for use. It is set to `lost` if the stream has not been consumed within the past `cdc_intent_retention_ms` duration; otherwise, it is set to `reserved`. 
 | yb_stream_id | text | UUID of the CDC stream |
 | yb_restart_commit_ht | int8 | A uint64 representation of the commit Hybrid Time corresponding to the `restart_lsn`. This can be used by the client (like YugabyteDB connector) to perform a consistent snapshot (as of the `consistent_point`) in the case when a replication slot already exists. |
 
@@ -97,6 +98,23 @@ Displays information about active WAL senders, providing insights into the state
 | sync_priority | integer | Synchronous state of this standby server. Always 0, as logical replication only supports asynchronous replication. |
 | sync_state | text | Synchronous state of this standby server. Always `async`. |
 | reply_time | timestamp with time zone | Timestamp of the last reply message received from the client. |
+
+### pg_stat_replication_slots
+
+Displays one row per logical replication slot, showing statistics about its usage.
+
+| Column name | Data type | Description |
+| :----- | :----- | :----- |
+| slot_name | text | Name of the replication slot. |
+| spill_txns | bigint | Number of transactions spilled to disk when the threshold defined by the `yb_reorderbuffer_max_changes_in_memory` flag is exceeded. |
+| spill_count | bigint | The number of times transactions were spilled to disk. |
+| spill_bytes | bigint | Amount of decoded transaction data spilled to disk while performing decoding of changes for this slot. |
+| stream_txns | bigint | Streaming of in-progress transactions is not supported. Always 0. |
+| stream_count | bigint | Streaming of in-progress transactions is not supported. Always 0. |
+| stream_bytes | bigint | Streaming of in-progress transactions is not supported. Always 0. |
+| total_txns | bigint | Number of decoded transactions sent to the decoding output plugin for this slot. |
+| total_bytes | bigint | Amount of transaction data decoded for sending transactions to the decoding output plugin while decoding changes for this slot. |
+| stats_reset | timestamp with time zone | Time at which these statistics were last reset. |
 
 ## CDC service metrics
 
