@@ -183,7 +183,6 @@ function rightnavAutoScroll() {
 }
 
 $(document).ready(() => {
-  console.log('ready ....');
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
     $('body').addClass('is-safari');
