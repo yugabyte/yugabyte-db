@@ -1,6 +1,6 @@
 ---
 title: System configuration
-headerTitle: System configuration
+headerTitle: 1. System configuration
 linkTitle: 1. System configuration
 description: How to configure system parameters to get the YugabyteDB database cluster to run correctly.
 menu:
@@ -13,11 +13,11 @@ type: docs
 
 Perform the following configuration on each node in the cluster:
 
-- set up time synchronization
-- set ulimits
-- enable transparent hugepages
+1. Set up time synchronization.
+1. Set ulimits.
+1. Enable transparent hugepages.
 
-Keep in mind that, although YugabyteDB is PostgreSQL compatible and runs a postgres process, it is not a PostgreSQL distribution. The PostgreSQL it runs doesn't need the same OS and system resources that open source PostgreSQL requires. For this reason, the kernel configuration requirements are different.
+Keep in mind that, although YugabyteDB is PostgreSQL compatible and runs a PostgreSQL process, it is not a PostgreSQL distribution. The PostgreSQL it runs doesn't need the same OS and system resources that open source PostgreSQL requires. For this reason, the kernel configuration requirements are different.
 
 In particular, the main YugabyteDB process, the YB-TServer, is multi-threaded. As a result, you don't need to modify settings for shared memory and inter-process communication (IPC), because there is no inter-process communication or shared memory in a multi-threaded process model (all memory is shared by the same process).
 

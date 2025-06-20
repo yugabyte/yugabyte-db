@@ -22,9 +22,93 @@ In a YugabyteDB deployment, replication of data between nodes of your primary cl
 
 In a read replica cluster, read replicas are *observer nodes* that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication from the primary cluster.
 
-This document describes how to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using YugabyteDB Anywhere, see [Create a read replica cluster](../../../yugabyte-platform/create-deployments/read-replicas/).
-
 ## Deploy a read replica cluster
+
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="yugabyted" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#manual" class="nav-link" id="manual-tab" data-bs-toggle="tab"
+      role="tab" aria-controls="manual" aria-selected="false">
+      <i class="icon-shell"></i>
+      Manual
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
+
+To create a read replica cluster, you first create a YugabyteDB cluster; this example assumes the primary cluster is deployed. Refer to [Deploy](../../manual-deployment/start-yugabyted/).
+
+You add read replica nodes to the primary cluster using the `--join` and `--read_replica` flags.
+
+To create a secure read replica cluster, first [create your VMs](../../manual-deployment/system-config/) and [install YugabyteDB](../../manual-deployment/install-software/).
+
+Then, on the machine running your primary cluster, generate the certificates for each read replica node, passing in the IP addresses of the read replica nodes.
+
+```sh
+./bin/yugabyted cert generate_server_certs --hostnames=<IP_of_RR_1>,<IP_of_RR_2>,<IP_of_RR_3>,<IP_of_RR_4>,<IP_of_RR_5>
+```
+
+The certificates are added to directories named `$HOME/var/generated_certs/<IP_Address>/`, one for each node certificate you generated.
+
+Copy the certificates to the respective read replica nodes in the `<base_dir>/certs` directory.
+
+To create the read replica cluster, do the following:
+
+1. Add read replica nodes on separate VMs using the `--join` and `--read_replica` flags, as follows:
+
+    ```sh
+    ./bin/yugabyted start \
+        --secure \
+        --advertise_address=<IP_of_RR_1> \
+        --join=<IP_of_VM_1> \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node4 \
+        --cloud_location=aws.us-east-1.us-east-1d \
+        --read_replica
+
+    ./bin/yugabyted start \
+        --secure \
+        --advertise_address=<IP_of_RR_2> \
+        --join=<IP_of_VM_1> \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node5 \
+        --cloud_location=aws.us-east-1.us-east-1d \
+        --read_replica
+
+    ./bin/yugabyted start \
+        --secure \
+        --advertise_address=<IP_of_RR_3> \
+        --join=<IP_of_VM_1> \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node6 \
+        --cloud_location=aws.us-east-1.us-east-1e \
+        --read_replica
+
+    ./bin/yugabyted start \
+        --secure \
+        --advertise_address=<IP_of_RR_4> \
+        --join=<IP_of_VM_1> \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node7 \
+        --cloud_location=aws.us-east-1.us-east-1f \
+        --read_replica
+
+    ./bin/yugabyted start \
+        --secure \
+        --advertise_address=<IP_of_RR_5> \
+        --join=<IP_of_VM_1> \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node8 \
+        --cloud_location=aws.us-east-1.us-east-1f \
+        --read_replica
+    ```
+
+  </div>
+
+  <div id="manual" class="tab-pane fade" role="tabpanel" aria-labelledby="manual-tab">
 
 You can deploy a read replica cluster that asynchronously replicates data with a primary cluster as follows:
 
@@ -69,3 +153,7 @@ You can deploy a read replica cluster that asynchronously replicates data with a
    The placements should match the information in step 3.
 
 The primary cluster should begin asynchronous replication with the read replica cluster.
+
+  </div>
+
+</div>
