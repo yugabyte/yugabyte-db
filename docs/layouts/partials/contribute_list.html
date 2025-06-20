@@ -1,3 +1,10 @@
+{{ $editPage := "" }}
+{{ $changeFilePath := "" }}
+{{ if not .File.Path }}
+  {{- $editPage = "https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/ADD_FILE_PATH_HERE" -}}
+  {{- $changeFilePath = " contribute-edit-file-path" -}}
+{{- end -}}
+
 <div class="dropdown dropdown-list" id="contribute-list">
   <ul class="navbar-nav mt-2 mt-lg-0">
     <li class="nav-item dropdown mr-4 d-none d-lg-block">
@@ -13,7 +20,7 @@
         <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/issues/new?title=%5BDocs%5D+New+docs+proposal&labels=area/documentation&template=docs.yml" title="Suggest new content" target="_blank" rel="noopener">
           Suggest new content
         </a>
-        <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/{{ .File.Path }}" title="Edit this page" target="_blank" rel="noopener">
+        <a class="dropdown-item{{$changeFilePath}}" href="https://github.com/yugabyte/yugabyte-db/tree/master/docs/content/{{ .File.Path }}"{{- if $editPage }} data-git="{{ $editPage }}"{{- end }} title="Edit this page" target="_blank" rel="noopener">
           Edit this page
         </a>
         <a class="dropdown-item" href="/preview/contribute/docs/" title="Contributor guide" target="_blank" rel="noopener">
