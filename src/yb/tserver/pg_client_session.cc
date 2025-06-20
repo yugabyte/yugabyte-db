@@ -1106,7 +1106,8 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
     const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
     bool has_distributed_txn, CoarseTimePoint deadline,
-    TransactionProvider& transaction_provider) {
+    TransactionProvider& transaction_provider,
+    bool is_object_locking_enabled) {
   auto write_time = HybridTime::FromPB(req->write_time());
   std::pair<PgClientSessionOperations, VectorIndexQueryPtr> result;
   auto& ops = result.first;
@@ -1119,7 +1120,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
     }
   });
   const auto read_from_followers = req->options().read_from_followers();
-  bool set_object_locking_txn = false;
+  bool has_write_ops = false;
   for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
       auto& read = *op.mutable_read();
@@ -1159,16 +1160,14 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         .op = std::move(write_op),
         .vector_index_read_request = nullptr,
       });
-      set_object_locking_txn = true;
+      has_write_ops = true;
     }
   }
 
   for (const auto& pg_client_session_operation : ops) {
     session->Apply(pg_client_session_operation.op);
   }
-  set_object_locking_txn = set_object_locking_txn && !has_distributed_txn &&
-                           GetAtomicFlag(&FLAGS_enable_object_locking_for_table_locks);
-  if (set_object_locking_txn) {
+  if (has_write_ops && !has_distributed_txn && is_object_locking_enabled) {
     session->SetObjectLockingTxnMeta(
         VERIFY_RESULT(transaction_provider.NextTxnMetaForPlain(deadline)));
   }
@@ -2633,7 +2632,8 @@ class PgClientSession::Impl {
 
     std::tie(data->ops, data->vector_index_query) = VERIFY_RESULT(PrepareOperations(
         &data->req, session, &data->sidecars, tables, vector_index_query_data_,
-        data->transaction != nullptr /* has_distributed_txn */, deadline, transaction_provider_));
+        data->transaction != nullptr /* has_distributed_txn */, deadline, transaction_provider_,
+        IsObjectLockingEnabled()));
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
