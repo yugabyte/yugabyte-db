@@ -282,7 +282,7 @@ After copying the `csv` files to a directory such as `results-dir`, merge the re
 
 ## Largest benchmark
 
-In our testing, YugabyteDB was able to process 1M tpmC with 150,000 warehouses at an efficiency of 99.8% on an RF3 cluster of 75 48vCPU/96GB machines with a total data size of 50TB.
+In our testing, YugabyteDB was able to process 1.28M tpmC with 100,000 warehouses at an efficiency of 99.9% on an RF3 cluster of 59 c5d.12xlarge machines with a total data size of 20TB.
 
 To accomplish this feat, numerous new features had to be implemented and existing ones optimized, including the following:
 
@@ -295,9 +295,9 @@ To accomplish this feat, numerous new features had to be implemented and existin
 - Transaction retries.
 
 {{<note>}}
-The 150K warehouses benchmark was run on [v2.11](/preview/releases/ybdb-releases/end-of-life/v2.11/).
+The 100K warehouses benchmark was run on [v2.25](/preview/releases/ybdb-releases/v2.25/).
 {{</note>}}
 
 | Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |
 | ---------: | :--- | :-----------: | :---: | ----------- | :---------------: | :--------------------- |
-|    150,000 | 1M   |     99.30     |  75   | 9000        |     123.33 ms     | {{<inst "c5d.12xlarge">}}&nbsp;(48) |
+|    100,000 | 1.28M   |     99.9     |  59   | 6000        |     28.33 ms      | {{<inst "c5d.12xlarge">}}&nbsp;(48) |
