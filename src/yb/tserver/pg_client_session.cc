@@ -2640,7 +2640,7 @@ class PgClientSession::Impl {
 
     data->ops = VERIFY_RESULT(PrepareOperations(
         &data->req, session, &data->sidecars, tables, vector_index_query_data_,
-        transaction ? true : false /* has_distributed_txn */, deadline, transaction_provider_));
+        data->transaction != nullptr /* has_distributed_txn */, deadline, transaction_provider_));
     data->vector_index_query = vector_index_query_data_;
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {

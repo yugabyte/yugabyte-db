@@ -801,19 +801,26 @@ TEST_F_EX(
   ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
 
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Execute("UPDATE test SET v=v+1 WHERE k=1"));
+  google::SetVLOGLevel("conflict_resolution*", 3);
+  {
+    RegexWaiterLogSink log_waiter(R"#(.*ResolveTransactionConflicts.*object_locking_txn_meta.*)#");
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.Execute("UPDATE test SET v=v+1 WHERE k=1"));
+    ASSERT_FALSE(log_waiter.IsEventOccurred());
+  }
 
   SyncPoint::GetInstance()->LoadDependency(
       {{"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestDeadlockFastPath"}});
   SyncPoint::GetInstance()->ClearTrace();
   SyncPoint::GetInstance()->EnableProcessing();
 
+  RegexWaiterLogSink log_waiter(R"#(.*ResolveOperationConflicts.*object_locking_txn_meta.*)#");
   auto status_future = std::async(std::launch::async, [&]() -> Status {
     auto conn = VERIFY_RESULT(Connect());
     return conn.Execute("UPDATE test SET v=v+1 WHERE k=1");
   });
   TEST_SYNC_POINT("TestDeadlockFastPath");
+  ASSERT_TRUE(log_waiter.IsEventOccurred());
   auto s = conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
   if (s.ok()) {
     s = conn.Execute("UPDATE test SET v=v+1 WHERE k=1");

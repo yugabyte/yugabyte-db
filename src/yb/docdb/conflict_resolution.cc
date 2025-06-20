@@ -1490,7 +1490,8 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
       << ", resolution_ht: " << resolution_ht
-      << ", read_time: " << read_time;
+      << ", read_time: " << read_time
+      << ", write_batch: " << write_batch.ShortDebugString();
 
   auto context = std::make_unique<TransactionConflictResolverContext>(
       doc_ops, write_batch, resolution_ht, read_time, txn_start_us, tablet_metrics,
@@ -1532,7 +1533,8 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
   TRACE("ResolveOperationConflicts");
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
-      << ", initial_resolution_ht: " << intial_resolution_ht;
+      << ", initial_resolution_ht: " << intial_resolution_ht
+      << ", write_batch: " << write_batch.ShortDebugString();
   auto txn_start_us = write_batch.has_object_locking_txn_meta()
       ? write_batch.object_locking_txn_meta().pg_txn_start_us()
       : write_batch.transaction().pg_txn_start_us();
