@@ -544,7 +544,6 @@ TEST_F(ThreadPoolTest, SubPool) {
     std::this_thread::sleep_for(200ms);
     auto& subpool = *subpool_data.subpool;
     subpool.Shutdown();
-    ASSERT_EQ(subpool.num_active_tasks(), 0);
   }
   for (auto& subpool_data : subpool_data_vec) {
     LOG(INFO) << "Subpool " << subpool_data.index

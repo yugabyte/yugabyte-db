@@ -924,12 +924,8 @@ void TSTabletManager::CleanupSplitTablets() {
 Status TSTabletManager::WaitForAllBootstrapsToFinish(MonoDelta timeout) {
   CHECK_EQ(state(), MANAGER_RUNNING);
 
-  if (timeout.Initialized()) {
-    if (!open_tablet_pool_->WaitFor(timeout)) {
-      return STATUS(TimedOut, "Timeout waiting for all bootstraps to finish");
-    }
-  } else {
-    open_tablet_pool_->Wait();
+  if (!open_tablet_pool_->WaitFor(timeout)) {
+    return STATUS(TimedOut, "Timeout waiting for all bootstraps to finish");
   }
 
   Status s = Status::OK();
@@ -1914,7 +1910,7 @@ Status TSTabletManager::DeleteTablet(
   RETURN_NOT_OK(tablet_peer->Shutdown(
       should_abort_active_txns, tablet::DisableFlushOnShutdown::kTrue));
 
-  yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
+  auto last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
   if (!keep_data) {
     Status s = DeleteTabletData(meta,
@@ -1950,6 +1946,7 @@ Status TSTabletManager::DeleteTablet(
                        meta->data_root_dir(),
                        meta->wal_root_dir());
 
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "6";
   return Status::OK();
 }
 
