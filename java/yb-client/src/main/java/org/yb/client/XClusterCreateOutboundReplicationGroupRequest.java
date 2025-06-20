@@ -17,12 +17,17 @@ public class XClusterCreateOutboundReplicationGroupRequest
 
   private final String replicationGroupId;
   private final Set<String> namespaceIds;
+  private final boolean automaticDdlMode;
 
   XClusterCreateOutboundReplicationGroupRequest(
-      YBTable table, String replicationGroupId, Set<String> namespaceIds) {
+      YBTable table,
+      String replicationGroupId,
+      Set<String> namespaceIds,
+      boolean automaticDdlMode) {
     super(table);
     this.replicationGroupId = replicationGroupId;
     this.namespaceIds = namespaceIds;
+    this.automaticDdlMode = automaticDdlMode;
   }
 
   @Override
@@ -33,6 +38,7 @@ public class XClusterCreateOutboundReplicationGroupRequest
         MasterReplicationOuterClass.XClusterCreateOutboundReplicationGroupRequestPB.newBuilder();
     builder.setReplicationGroupId(this.replicationGroupId);
     builder.addAllNamespaceIds(this.namespaceIds);
+    builder.setAutomaticDdlMode(this.automaticDdlMode);
     return toChannelBuffer(header, builder.build());
   }
 

@@ -27367,6 +27367,10 @@
     "XClusterConfig" : {
       "description" : "xcluster config object",
       "properties" : {
+        "automaticDdlMode" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "createTime" : {
           "description" : "Create time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",
@@ -27657,6 +27661,10 @@
     "XClusterConfigGetResp" : {
       "description" : "xcluster get response",
       "properties" : {
+        "automaticDdlMode" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "createTime" : {
           "description" : "Create time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",

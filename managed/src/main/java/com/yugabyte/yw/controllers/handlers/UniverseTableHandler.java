@@ -161,6 +161,7 @@ public class UniverseTableHandler {
       boolean excludeColocatedTables,
       boolean includeColocatedParentTables,
       boolean xClusterSupportedOnly) {
+
     if (xClusterSupportedOnly && (!includeColocatedParentTables || excludeColocatedTables)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -180,7 +181,11 @@ public class UniverseTableHandler {
     tableInfoList =
         tableInfoList.stream()
             .filter(
-                table -> !TableInfoUtil.isSystemTable(table) || TableInfoUtil.isSystemRedis(table))
+                table ->
+                    !TableInfoUtil.isSystemTable(table)
+                        || TableInfoUtil.isSystemRedis(table)
+                        || TableInfoUtil.isDdlQueueTable(table)
+                        || TableInfoUtil.isSequencesDataTable(table))
             .collect(Collectors.toList());
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
 
@@ -259,7 +264,6 @@ public class UniverseTableHandler {
     }
 
     Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
-
     for (TableInfo table : tableInfoList) {
       TablePartitionInfoKey tableKey =
           new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
@@ -293,6 +297,7 @@ public class UniverseTableHandler {
                   hasColocationInfo)
               .build());
     }
+
     if (xClusterSupportedOnly) {
       tableInfoRespList =
           tableInfoRespList.stream()
