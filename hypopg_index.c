@@ -1785,7 +1785,7 @@ hypo_hideIndexes(RelOptInfo *rel)
  * ending \0
  */
 static void
-hypo_set_indexname(hypoIndex * entry, char *indexname)
+hypo_set_indexname(hypoIndex *entry, char *indexname)
 {
 	char		oid[13];		/* store <oid>, oid is an unsigned int32, so it
 								 * shouldn't be more than 4B, so 10 digits.
