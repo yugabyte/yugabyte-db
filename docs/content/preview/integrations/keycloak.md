@@ -13,11 +13,11 @@ type: docs
 
 [Keycloak](https://www.keycloak.org/) is an open source identity and access management tool that adds authentication to applications and secure services with minimum effort.
 
-Using YugabyteDB as the database for Keycloak provides high availability, horizontal scalability, and global data distribution—making it ideal for large-scale, mission-critical identity systems. Its PostgreSQL compatibility ensures seamless integration, while its distributed architecture enables low-latency authentication across regions and resilience to failures. YugabyteDB supports strong consistency, cloud-native deployment, and elastic scaling, which makes it well-suited for modern Keycloak deployments running in Kubernetes or multi-region environments.
+Using YugabyteDB as the database for Keycloak provides high availability, horizontal scalability, and global data distribution, making it ideal for large-scale, mission-critical identity systems. YugabyteDB supports strong consistency, cloud-native deployment, and elastic scaling, which makes it well-suited for modern Keycloak deployments running in Kubernetes or multi-region environments.
 
 ## Prerequisites
 
-Before you start using Keycloak, ensure that you have:
+Before you start using Keycloak, ensure that you have the following:
 
 - OpenJDK 21.
 - The latest version of [Keycloak](https://www.keycloak.org/downloads).
@@ -33,7 +33,7 @@ To configure Keycloak, do the following:
     CREATE DATABASE keycloak;
     ```
 
-1. Add the following configurations in `keycloak/conf/keycloak.conf` file.
+1. Add the following configurations in the `keycloak/conf/keycloak.conf` file.
 
     ```sh
     # The database vendor.
@@ -83,7 +83,13 @@ To configure Keycloak, do the following:
 
     ```sql
     yugabyte=# \c keycloak
+    ```
+
+    ```output
     You are now connected to database "keycloak" as user "yugabyte".
+    ```
+
+    ```sql
     keycloak=# \dt
     ```
 
@@ -183,29 +189,43 @@ To configure Keycloak, do the following:
 
 ## Test Keycloak
 
-1. Navigate to `localhost:8080` and you will see the dashboard to create a user. Provide a username and password, and click **Create user**.
+1. Navigate to `localhost:8080` to access the dashboard to create a user.
 
     ![Keycloak Create User](/images/develop/ecosystem-integrations/keycloak/keycloak-create-user.png)
 
-     Keycloak creates the user as per the following illustration:
+1. Provide a username and password, and click **Create user**.
+
+    Keycloak creates the user.
+
     ![Keycloak Open Admin Console](/images/develop/ecosystem-integrations/keycloak/keycloak-open-admin-console.png)
 
-1. You can also verify the user creation on your database as follows:
+    You can also verify the user creation on your database as follows:
 
     ```sql
     yugabyte=# \c keycloak
+    ```
+
+    ```output
     You are now connected to database "keycloak" as user "yugabyte".
-    keycloak=# select id,username from user_entity ;
+    ```
+
+    ```sql
+    keycloak=# SELECT id,username FROM user_entity;
+    ```
+
+    ```output
                       id                  |   username
     --------------------------------------+---------------
      5fa4b561-66e1-49ab-9a85-bbb4d6088f15 | keycloak_user
     (1 row)
     ```
 
-1. Click **Open Administration Console**. On the sign in page, enter the username and password you just created, and click **Sign in**.
+1. Click **Open Administration Console**.
+
+1. On the sign in page, enter the username and password you just created, and click **Sign in**.
 
     ![Keycloak Sign In](/images/develop/ecosystem-integrations/keycloak/keycloak-sign-in.png)
 
-    You are now signed in to the Keycloak dashboard:
+    You are now signed in to the Keycloak dashboard.
 
     ![Keycloak Dashboard](/images/develop/ecosystem-integrations/keycloak/keycloak-welcome-page.png)
