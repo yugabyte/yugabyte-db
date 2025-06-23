@@ -425,16 +425,37 @@ Default: `true`
 
 Enable or disable the query planner's use of batched nested loop join.
 
+##### yb_enable_cbo
+
+{{% tags/wrap %}}
+
+Default: `legacy_mode`
+{{% /tags/wrap %}}
+
+Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-scans-cost-model) and [yb_enable_optimizer_statistics](#yb-enable-optimizer-statistics) parameters.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+When enabling CBO, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+See also the [--ysql_yb_enable_cbo](#ysql-yb-enable-cbo) flag. If the flag is set, this parameter takes precedence.
+
 ##### yb_enable_base_scans_cost_model
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="483">}}
+
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
+
+Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 
 ##### yb_enable_optimizer_statistics
 
@@ -444,6 +465,8 @@ Default: `false`
 {{% /tags/wrap %}}
 
 Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+
+Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 
 ##### yb_fetch_size_limit
 
@@ -2021,6 +2044,27 @@ database, the cost of reading `table pg_yb_catalog_version` becomes more
 expensive when the number of YB-TServers, or the number of databases goes up.
 
 {{< /note >}}
+
+### Cost-based optimizer flag
+
+Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO).
+
+See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
+
+##### ysql_yb_enable_cbo
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `legacy_mode`
+{{% /tags/wrap %}}
+
+Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+When enabling CBO, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 ### Auto Analyze service flags
 

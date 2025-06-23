@@ -16,11 +16,11 @@ type: docs
 
 Enable the YugabyteDB [cost-based optimizer (CBO)](../../architecture/query-layer/planner-optimizer/) to create optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution.
 
-The CBO is controlled using the `yb_enable_cbo` configuration parameter. The `yb_enable_cbo` parameter provides a heuristic-based optimizer mode that operates independently of table analysis. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable this mode for specific connections if needed.
+The CBO is controlled using the [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) configuration parameter. The `yb_enable_cbo` parameter provides a heuristic-based optimizer mode that operates independently of table analysis. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable this mode for specific connections if needed.
 
 Note that `yb_enable_cbo` replaces the `yb_enable_optimizer_statistics` and `yb_enable_base_scans_cost_model` parameters, which will be deprecated and removed in a future release.
 
-## Settings
+## Options
 
 The following table shows `yb_enable_cbo` settings and the equivalent using the replaced parameters.
 
@@ -49,7 +49,7 @@ When enabling the cost models, ensure that packed row for colocated tables is en
 
 ### If the tables are not analyzed
 
-1. Set `yb_enable_cbo` to off.
+1. Set `yb_enable_cbo` to `off`.
 
     This setting ensures that the heuristic-based optimizer mode does not use the statistics inconsistently while tables are being analyzed. It's important to ensure that each client connection reflects the updated setting after the parameter change.
 
@@ -59,13 +59,13 @@ When enabling the cost models, ensure that packed row for colocated tables is en
 
 1. Analyze the tables.
 
-1. Set `yb_enable_cbo` to on.
+1. Set `yb_enable_cbo` to `on`.
 
 1. Re-establish any existing application connections (if specifying the parameter via ALTER DATABASE command, for example) or perform a rolling restart of the servers if you are setting the TServer flag.
 
 ### If the tables are already analyzed
 
-Set `yb_enable_cbo` to on, then re-establish any existing application connections (if specifying the parameter via ALTER DATABASE command, for example) or perform a rolling restart of the servers if you are setting the TServer flag.
+Set `yb_enable_cbo` to `on`, then re-establish any existing application connections (if specifying the parameter via ALTER DATABASE command, for example) or perform a rolling restart of the servers if you are setting the TServer flag.
 
 ## ANALYZE and Auto Analyze service
 
