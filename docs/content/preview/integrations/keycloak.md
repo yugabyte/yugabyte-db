@@ -2,7 +2,6 @@
 title: Keycloak
 linkTitle: Keycloak
 description: Use Keycloak with YSQL API
-aliases:
 menu:
   preview_integrations:
     identifier: keycloak
@@ -13,7 +12,7 @@ type: docs
 
 [Keycloak](https://www.keycloak.org/) is an open source identity and access management tool that adds authentication to applications and secure services with minimum effort.
 
-Using YugabyteDB as the database for Keycloak provides high availability, horizontal scalability, and global data distribution, making it ideal for large-scale, mission-critical identity systems. YugabyteDB supports strong consistency, cloud-native deployment, and elastic scaling, which makes it well-suited for modern Keycloak deployments running in Kubernetes or multi-region environments.
+Using YugabyteDB as the database for Keycloak provides high availability, horizontal scalability, and global data distribution, making it ideal for large-scale, mission-critical identity systems.
 
 ## Prerequisites
 
