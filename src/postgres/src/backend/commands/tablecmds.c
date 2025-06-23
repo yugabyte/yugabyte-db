@@ -7516,8 +7516,9 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 				 */
 				if (childatt->attinhcount == 1 && !childatt->attislocal)
 				{
+					AlteredTableInfo *yb_childtab = ATGetQueueEntry(wqueue, childrel);
 					/* Time to delete this child column, too */
-					ATExecDropColumn(wqueue, yb_tab, childrel, colName,
+					ATExecDropColumn(wqueue, yb_childtab, childrel, colName,
 									 behavior, true, true,
 									 false, lockmode);
 				}
