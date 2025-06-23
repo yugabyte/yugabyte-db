@@ -17,7 +17,7 @@ Using YugabyteDB as the database for Keycloak provides high availability, horizo
 
 ## Prerequisites
 
-Before you start using the Keycloak, ensure that you have:
+Before you start using Keycloak, ensure that you have:
 
 - OpenJDK 21.
 - The latest version of [Keycloak](https://www.keycloak.org/downloads).
