@@ -39,7 +39,7 @@ DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
-DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_string(TEST_block_alter_table);
 
@@ -157,7 +157,7 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 class TestWithTransactionalDDL: public PgObjectLocksTestRF1 {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     PgObjectLocksTestRF1::SetUp();
   }
 };
@@ -323,7 +323,7 @@ class PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl : public PgObjectLocksTest
                                                         public ::testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = GetParam();
     PgObjectLocksTestRF1SessionExpiry::SetUp();
   }
 };
@@ -378,7 +378,7 @@ class PgObjectLocksTestRF1SessionExpiryWithDdlMaybeUseTxnDdl
       public ::testing::WithParamInterface<std::pair<bool, bool>> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = GetParam().first;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = GetParam().first;
     allow_ddl_verification_task_ = GetParam().second;
     PgObjectLocksTestRF1SessionExpiry::SetUp();
   }
@@ -473,7 +473,8 @@ class PgObjectLocksTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     const bool table_locks_enabled = EnableTableLocks();
     opts->extra_tserver_flags.emplace_back(
-        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks"));
+        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
+                   "ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
@@ -482,7 +483,8 @@ class PgObjectLocksTest : public LibPqTestBase {
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
 
     opts->extra_master_flags.emplace_back(
-        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks"));
+        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
+                   "ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_master_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", table_locks_enabled));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
