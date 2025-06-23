@@ -107,7 +107,7 @@ public class YNPProvisioning extends AbstractTaskBase {
           earlyoomNode.put(
               "earlyoom_args", AdditionalServicesStateData.toArgs(data.getEarlyoomConfig()));
         }
-        ynpNode.put("earlyoom", earlyoomNode);
+        ynpNode.set("earlyoom", earlyoomNode);
       }
       if (provider.getDetails().getNtpServers() != null
           && !provider.getDetails().getNtpServers().isEmpty()) {
@@ -250,6 +250,7 @@ public class YNPProvisioning extends AbstractTaskBase {
     if (provider.getDetails().airGapInstall) {
       sb.append(" --is_airgap");
     }
+    sb.append(" && chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running YNP installation command: {}", command);
     nodeUniverseManager

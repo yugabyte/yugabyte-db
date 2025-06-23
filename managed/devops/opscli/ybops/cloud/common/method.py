@@ -701,8 +701,7 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
             help="Delete the static public ip.")
 
     def callback(self, args):
-        self.update_ansible_vars_with_args(args)
-        self.cloud.setup_ansible(args).run("destroy-instance.yml", self.extra_vars)
+        pass
 
 
 class CreateInstancesMethod(AbstractInstancesMethod):
