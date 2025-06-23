@@ -427,7 +427,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   public TaskInfo waitForTask(UUID taskUUID, long sleepDuration) throws InterruptedException {
     int numRetries = 0;
-    TaskInfo taskInfo = null;
+    TaskInfo taskInfo;
     while (numRetries < MAX_RETRY_COUNT) {
       // Here is a hack to decrease amount of accidental problems for tests using this
       // function:
@@ -453,12 +453,18 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       numRetries++;
     }
 
+    Optional<TaskInfo> taskInfoOptional = TaskInfo.maybeGet(taskUUID);
+    if (taskInfoOptional.isEmpty()) {
+      throw new RuntimeException(
+          "WaitFor task exceeded maxRetries and could not fetch TaskInfo for taskUUID: "
+              + taskUUID);
+    }
+    taskInfo = taskInfoOptional.get();
     String runningTasks =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskState() == State.Running)
             .map(t -> getBriefTaskInfo(t))
             .collect(Collectors.joining(","));
-
     throw new RuntimeException(
         "WaitFor task exceeded maxRetries! Task state is "
             + taskInfo.getTaskState()
