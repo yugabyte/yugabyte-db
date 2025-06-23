@@ -23,7 +23,7 @@ To test and take advantage of features developed for enhanced PostgreSQL compati
 | [Cost based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
 | [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../../reference/configuration/yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
-| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2024.2">}} |
+| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../../reference/configuration/yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2025.1">}} |
 | [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}} |
 
 | Planned Feature | Flag/Configuration Parameter | EA |
