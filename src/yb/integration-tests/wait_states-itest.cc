@@ -246,6 +246,7 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
   void DoPgWritesUntilStopped(std::atomic<bool>& stop);
   virtual void DoPgReadsUntilStopped(std::atomic<bool>& stop);
   virtual void MaybeSleepBeforePgWriteCommits() {}
+  virtual bool StartRegularWorkers() { return true; }
 
   std::atomic<size_t> num_ash_calls_done_;
 
@@ -363,6 +364,14 @@ size_t WaitStateTestCheckMethodCounts::GetMethodCount(const std::string& method)
 }
 
 void WaitStateTestCheckMethodCounts::LaunchWorkers(TestThreadHolder* thread_holder) {
+  thread_holder->AddThreadFunctor([this, &stop = thread_holder->stop_flag()] {
+    DoAshCalls(stop);
+  });
+
+  if (!StartRegularWorkers()) {
+    return;
+  }
+
   if (IsCQLEnabled()) {
     for (int i = 0; i < NumWriterThreads(); i++) {
       thread_holder->AddThreadFunctor(
@@ -381,9 +390,6 @@ void WaitStateTestCheckMethodCounts::LaunchWorkers(TestThreadHolder* thread_hold
         [this, &stop = thread_holder->stop_flag()] { DoPgReadsUntilStopped(stop); });
   }
 
-  thread_holder->AddThreadFunctor([this, &stop = thread_holder->stop_flag()] {
-    DoAshCalls(stop);
-  });
 }
 
 void WaitStateTestCheckMethodCounts::UpdateCounts(
@@ -781,12 +787,17 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
     return 1;
   }
 
+  bool StartRegularWorkers() override {
+    return code_to_look_for_ != ash::WaitStateCode::kWaitForReadTime;
+  }
+
  protected:
   const ash::WaitStateCode code_to_look_for_;
   const bool verify_code_was_pulled_;
 
   void CreateIndexesUntilStopped(std::atomic<bool>& stop);
   void AddNodesUntilStopped(std::atomic<bool>& stop);
+  void DoPgDeferrableReadsUntilStopped(std::atomic<bool>& stop);
   std::atomic<size_t> num_indexes_created_{0};
 };
 
@@ -820,6 +831,22 @@ void AshTestVerifyOccurrenceBase::AddNodesUntilStopped(std::atomic<bool>& stop) 
   } while (WaitFor([&stop]() { return stop.load(); }, waitTime, "Wait to be stopped").IsTimedOut());
 }
 
+void AshTestVerifyOccurrenceBase::DoPgDeferrableReadsUntilStopped(std::atomic<bool>& stop) {
+  constexpr auto kTableName = "test_table";
+  ASSERT_OK(main_thread_connection_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(main_thread_connection_->ExecuteFormat(
+      "INSERT INTO $0 (k) VALUES (1)", kTableName));
+  ASSERT_OK(main_thread_connection_->Execute(
+      "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE"));
+  while (!stop) {
+    ASSERT_OK(main_thread_connection_->FetchFormat(
+        "SELECT * FROM $0 WHERE k = 1", kTableName));
+    SleepFor(10ms * kTimeMultiplier);
+  }
+  ASSERT_OK(main_thread_connection_->CommitTransaction());
+}
+
 std::string WaitStateCodeToString(const testing::TestParamInfo<ash::WaitStateCode>& param_info) {
   return yb::ToString(param_info.param);
 }
@@ -837,6 +864,10 @@ void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder)
     case ash::WaitStateCode::kRetryableRequests_SaveToDisk:
       thread_holder->AddThreadFunctor(
           [this, &stop = thread_holder->stop_flag()] { AddNodesUntilStopped(stop); });
+      break;
+    case ash::WaitStateCode::kWaitForReadTime:
+      thread_holder->AddThreadFunctor(
+          [this, &stop = thread_holder->stop_flag()] { DoPgDeferrableReadsUntilStopped(stop); });
       break;
     default: {
     }
@@ -858,6 +889,7 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kRpc_Done,
       ash::WaitStateCode::kRetryableRequests_SaveToDisk,
       ash::WaitStateCode::kMVCC_WaitForSafeTime,
+      ash::WaitStateCode::kWaitForReadTime,
       ash::WaitStateCode::kLockedBatchEntry_Lock,
       ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot,
       ash::WaitStateCode::kCreatingNewTablet,
