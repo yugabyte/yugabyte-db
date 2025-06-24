@@ -206,8 +206,6 @@ extern bool IsYBSystemColumn(int attrNum);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
-extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
-
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
