@@ -155,6 +155,10 @@ Result<bool> DocRowwiseIterator::PgFetchRow(Slice key, bool restart, dockv::PgTa
   return PgFetchNext(table_row);
 }
 
+void DocRowwiseIterator::Refresh() {
+  done_ = false;
+}
+
 inline void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
 
