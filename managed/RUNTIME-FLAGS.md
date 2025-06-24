@@ -169,6 +169,7 @@
 | "Restore YBA postgres metadata during Yugaware container restart" | "yb.ha.k8s_restore_skip_dump_file_delete" | "GLOBAL" | "Restore YBA postgres metadata during Yugaware container restart" | "Boolean" |
 | "Node Agent Server Cert Expiry Notice" | "yb.node_agent.server_cert_expiry_notice" | "GLOBAL" | "Duration to start notifying about expiry before node agent server cert actually expires" | "Duration" |
 | "Disable Node Agent Configure Server" | "yb.node_agent.disable_configure_server" | "GLOBAL" | "Disable server configuration RPCs in node agent. Defaults to ansible if it is enabled." | "Boolean" |
+| "Enable Node Agent Message Compression" | "yb.node_agent.enable_message_compression" | "GLOBAL" | "Enable compression for message sent over node agent channel." | "Boolean" |
 | "Enable Task Runtime Info on Retry" | "yb.task.enable_task_runtime_info_on_retry" | "GLOBAL" | "Use the runtime info from the previously failed task on retry" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |

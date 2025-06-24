@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/status"
 )
 
@@ -215,6 +216,7 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 			Version:       config.String(util.PlatformVersionKey),
 			RestartNeeded: config.Bool(util.NodeAgentRestartKey),
 			Offloadable:   util.IsPexEnvAvailable(),
+			Compressor:    gzip.Name,
 		},
 	}, nil
 }
@@ -338,14 +340,14 @@ func (server *RPCServer) SubmitTask(
 			if err2 != nil {
 				util.FileLogger().
 					Errorf(ctx, "Error in running configure handler - %s", err2.Error())
-				return res, status.Errorf(codes.Internal, err2.Error())
+				return res, status.Error(codes.Internal, err2.Error())
 			}
 			res.TaskId = taskID
 			return res, nil
 		default:
 			return res, status.Errorf(
 				codes.Unimplemented,
-				fmt.Sprintf("Unsupported type: %s", configureServiceInput.GetService()),
+				"Unsupported type: %s", configureServiceInput.GetService(),
 			)
 		}
 	}

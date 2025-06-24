@@ -1677,6 +1677,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeAgentEnableMessageCompression =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_message_compression",
+          ScopeType.GLOBAL,
+          "Enable Node Agent Message Compression",
+          "Enable compression for message sent over node agent channel.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
       new ConfKeyInfo<>(
           "yb.task.enable_task_runtime_info_on_retry",
