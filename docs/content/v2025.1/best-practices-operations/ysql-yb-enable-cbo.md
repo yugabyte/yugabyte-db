@@ -24,10 +24,6 @@ You configure the CBO using the [yb_enable_cbo](../../reference/configuration/yb
 
 Note that `yb_enable_cbo` replaces the [yb_enable_optimizer_statistics](../../reference/configuration/yb-tserver/#yb-enable-optimizer-statistics) and [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) parameters, which will be deprecated and removed in a future release.
 
-## Prerequisites
-
-When enabling the cost models, ensure that packed row for colocated tables is enabled (the default). See [Packed row flags](../../reference/configuration/yb-tserver/#packed-row-flags).
-
 ## New deployments
 
 For new YSQL deployments, or when migrating from another system, enable the CBO by adding the flag to `ysql_pg_conf_csv` as follows:

@@ -3,8 +3,6 @@ title: Query Planner
 headerTitle: Query Planner / CBO
 linkTitle: Query Planner
 headcontent: Understand how the planner chooses the optimal path for query execution
-tags:
-  feature: early-access
 menu:
   v2025.1:
     identifier: query-planner
@@ -27,11 +25,11 @@ YugabyteDB's YSQL API uses a simple heuristics-based optimizer to determine the 
 
 ## Cost-based optimizer (YSQL)
 
-To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster topology.
+To account for the distributed nature of the data, YugabyteDB has implemented a cost-based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster topology.
 
 The YugabyteDB CBO is disabled by default.
 
-For more information on configuring CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/)
+For more information on configuring CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 ### Plan search algorithm
 
@@ -83,7 +81,7 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 
 ### Best practices
 
-- If your table already has rows, and you create an additional index (for example, `create index i on t (k);`), you must re-run analyze to populate the index `pg_class.reltuples` with the correct row count. [Issue](https://github.com/yugabyte/yugabyte-db/issues/25394)
+- If your table already has rows, and you create an additional index (for example, `create index i on t (k);`), you must re-run analyze to populate the index `pg_class.reltuples` with the correct row count. {{<issue 25394>}}
 
     If you need to create a new index to replace a old one while your application is running, create the new one first, run analyze, then drop the old one.
 
