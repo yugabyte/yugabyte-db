@@ -2127,14 +2127,14 @@ Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto 
 
 ### Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+Support for advisory locks is {{<tags/feature/ea idea="812">}}.
 
 To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+{{<tags/feature/ea>}}
 {{<tags/feature/t-server>}}
 Default: `false`
 {{% /tags/wrap %}}

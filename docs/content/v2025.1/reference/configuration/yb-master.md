@@ -1040,7 +1040,7 @@ Default: false
 
 ## Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+Support for advisory locks is {{<tags/feature/ea idea="812">}}.
 
 To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 
