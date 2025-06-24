@@ -19,6 +19,7 @@ message ServerInfo {
     string version = 1;
     bool restartNeeded = 2;
     bool offloadable = 3;
+    string compressor = 4;
 }
 
 message PingRequest {

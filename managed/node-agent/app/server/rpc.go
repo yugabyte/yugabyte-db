@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/status"
 )
 
@@ -215,6 +216,7 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 			Version:       config.String(util.PlatformVersionKey),
 			RestartNeeded: config.Bool(util.NodeAgentRestartKey),
 			Offloadable:   util.IsPexEnvAvailable(),
+			Compressor:    gzip.Name,
 		},
 	}, nil
 }

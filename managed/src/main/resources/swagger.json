@@ -4041,6 +4041,9 @@
         "certPath" : {
           "type" : "string"
         },
+        "compressor" : {
+          "type" : "string"
+        },
         "offloadable" : {
           "type" : "boolean"
         },
@@ -4051,7 +4054,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "certPath", "offloadable", "serverCert", "serverKey" ],
+      "required" : [ "certPath", "compressor", "offloadable", "serverCert", "serverKey" ],
       "type" : "object"
     },
     "ConfigEntry" : {
