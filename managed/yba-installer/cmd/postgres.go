@@ -19,6 +19,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
@@ -56,7 +57,7 @@ func newPostgresDirectories() postgresDirectories {
 		MountPath:           common.GetBaseInstall() + "/data/pgsql/run/postgresql",
 		dataDir:             common.GetBaseInstall() + "/data/postgres",
 		PgBin:               common.GetSoftwareRoot() + "/pgsql/bin",
-		LogFile:             common.GetBaseInstall() + "/data/logs/postgres.log",
+		LogFile:             common.GetBaseInstall() + "/data/logs/postgresql",
 	}
 }
 
@@ -529,38 +530,50 @@ func (pg Postgres) alterPassword() error {
 // Set the data directory in postgresql.conf
 // Also sets up LDAP if necessary
 func (pg Postgres) modifyPostgresConf() error {
-	// work to set data directory separate in postgresql.conf
 	pgConfPath := filepath.Join(pg.ConfFileLocation, "postgresql.conf")
-	conf, err := os.ReadFile(pgConfPath)
+	in, err := os.Open(pgConfPath)
 	if err != nil {
-		return fmt.Errorf("Error opening %s: %s", pgConfPath, err.Error())
+		return fmt.Errorf("error opening %s: %s", pgConfPath, err.Error())
 	}
-	lines := strings.Split(string(conf), "\n")
-	foundData := false
-	dataLine := fmt.Sprintf("data_directory = '%s'\n", pg.dataDir)
-	foundPort := false
-	portLine := fmt.Sprintf("port = %d\n", viper.GetInt("postgres.install.port"))
-	for i, line := range lines {
-		if strings.HasPrefix(line, "data_directory =") {
-			lines[i] = dataLine
-			foundData = true
-		} else if strings.HasPrefix(line, "port =") {
-			lines[i] = portLine
-			foundPort = true
+	defer in.Close()
+
+	out, err := os.CreateTemp(filepath.Dir(pgConfPath), "postgresql.conf.tmp")
+	if err != nil {
+		return fmt.Errorf("error creating temp file for %s: %s", pgConfPath, err.Error())
+	}
+	defer func() {
+		out.Close()
+		os.Remove(out.Name())
+	}()
+
+	entries := []common.ConfEntry{
+		{Key: "data_directory", Value: pg.dataDir, Quotes: true},
+		{Key: "port", Value: fmt.Sprintf("%d", viper.GetInt("postgres.install.port")), Quotes: false},
+		{Key: "logging_collector", Value: "on", Quotes: false},
+		{Key: "log_directory", Value: filepath.Dir(pg.LogFile), Quotes: true},
+		{Key: "log_filename", Value: "postgresql-%Y-%m-%d_%H%M%S.log", Quotes: true},
+		{Key: "log_rotation_age", Value: "1d", Quotes: false},
+		{Key: "log_rotation_size", Value: "10MB", Quotes: false},
+	}
+
+	updater := common.ConfUpdater{Entries: entries}
+	if err := updater.Update(in, out); err != nil {
+		return fmt.Errorf("failed to update postgresql.conf: %w", err)
+	}
+
+	// Overwrite the original file with the updated temp file
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+	if err := os.Rename(out.Name(), pgConfPath); err != nil {
+		return fmt.Errorf("failed to replace postgresql.conf: %w", err)
+	}
+	if common.HasSudoAccess() {
+		if err := common.Chown(pgConfPath, viper.GetString("service_username"), viper.GetString("service_username"), false); err != nil {
+			return fmt.Errorf("failed to change ownership of %s: %w", pgConfPath, err)
 		}
 	}
-
-	if !foundData {
-		lines = append(lines, dataLine)
-	}
-	if !foundPort {
-		lines = append(lines, portLine)
-	}
-
-	err = os.WriteFile(pgConfPath, []byte(strings.Join(lines, "\n")), 0600)
-	if err != nil {
-		return fmt.Errorf("error writing pg conf file to %s: %s", pgConfPath, err.Error())
-	}
+	logging.Info("Modified postgresql.conf at " + pgConfPath)
 	return nil
 }
 
@@ -693,15 +706,6 @@ func (pg Postgres) createYugawareDatabase() {
 }
 
 func (pg Postgres) createFilesAndDirs() error {
-	f, err := common.Create(pg.LogFile)
-	if err != nil && !errors.Is(err, os.ErrExist) {
-		log.Error("Failed to create postgres logfile: " + err.Error())
-		return err
-	}
-	if f != nil {
-		f.Close()
-	}
-
 	// Needed for socket acceptance in the non-root case.
 	if err := common.MkdirAll(pg.MountPath, os.ModePerm); err != nil {
 		log.Error("failed to create " + pg.MountPath + ": " + err.Error())
@@ -715,9 +719,6 @@ func (pg Postgres) createFilesAndDirs() error {
 
 		confDir := filepath.Dir(pg.ConfFileLocation)
 		if err := common.Chown(confDir, userName, userName, true); err != nil {
-			return err
-		}
-		if err := common.Chown(filepath.Dir(pg.LogFile), userName, userName, true); err != nil {
 			return err
 		}
 		if err := common.Chown(filepath.Join(common.GetBaseInstall(), "data/pgsql"),

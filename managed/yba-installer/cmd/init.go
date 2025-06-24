@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	PostgresVersion   string = ""
-	PrometheusVersion string = ""
+	PostgresVersion    string = ""
+	PrometheusVersion  string = ""
 	PerfAdvisorVersion string = ""
 )
 
@@ -103,6 +103,7 @@ func initServices() {
 	serviceManager.RegisterService(NewPrometheus(PrometheusVersion))
 	serviceManager.RegisterService(NewPlatform(ybactl.Version))
 	serviceManager.RegisterService(NewPerfAdvisor(PerfAdvisorVersion))
+	serviceManager.RegisterService(NewLogRotate())
 	var services []components.Service
 	for s := range serviceManager.Services() {
 		services = append(services, s)

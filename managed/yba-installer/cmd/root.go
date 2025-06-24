@@ -18,6 +18,7 @@ const (
 	PrometheusServiceName  string = "prometheus"
 	YbdbServiceName        string = "ybdb"
 	PerfAdvisorServiceName string = "performance-advisor"
+	LogRotateServiceName   string = "yb-logrotate"
 )
 
 var (

@@ -20,6 +20,7 @@ var InstallChecks = []Check{
 	checks.ReplicatedNotExists,
 	checks.SystemdUserSupported,
 	checks.Glibc,
+	checks.Logrotate,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks
@@ -45,6 +46,7 @@ var UpgradeChecks = []Check{
 	checks.NonRootUpgradeCheck,
 	checks.ServicesRunningCheck,
 	checks.Glibc,
+	checks.Logrotate,
 }
 
 var ReplicatedMigrateChecks = []Check{
@@ -55,4 +57,5 @@ var ReplicatedMigrateChecks = []Check{
 	checks.ValidateLocaleConfig,
 	checks.MigrateDiskCheck,
 	checks.HTTPHACheck,
+	checks.Logrotate,
 }
