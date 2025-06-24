@@ -1062,6 +1062,10 @@ class TransactionProvider {
     return txn_meta_for_release;
   }
 
+  bool HasNextTxnForPlain() const {
+    return next_plain_ != nullptr;
+  }
+
  private:
   struct BuildStrategy {
     bool is_ddl = false;
@@ -1810,6 +1814,7 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     saved_priority_.reset();
     const bool is_ddl = req.has_ddl_mode();
+    const bool is_commit = req.commit();
     const bool ddl_use_regular_transaction_block =
         is_ddl && req.ddl_mode().use_regular_transaction_block();
     const auto kind = GetSessionKindBasedOnDDLOptions(is_ddl, ddl_use_regular_transaction_block);
@@ -1817,10 +1822,19 @@ class PgClientSession::Impl {
     auto& txn = GetSessionData(kind).transaction;
     if (!txn) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "ddl: " << is_ddl
+          << "ddl: " << is_ddl << ", " << (is_commit ? "commit" : "abort")
           << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
           << ", no running distributed transaction";
-      return ReleaseObjectLocksIfNecessary(txn, kind, deadline);
+      if (is_commit || is_ddl || !IsObjectLockingEnabled()) {
+        return ReleaseObjectLocksIfNecessary(txn, kind, deadline);
+      }
+      // When object locking is enabled, prevent re-use of plain docdb txn is case of abort.
+      if (!transaction_provider_.HasNextTxnForPlain()) {
+        return Status::OK();
+      }
+      txn = transaction_provider_.Take<PgClientSessionKind::kPlain>(
+          client::ForceGlobalTransaction::kFalse, deadline).first;
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Consuming re-usable kPlain txn " << txn->id();
     }
 
     client::YBTransactionPtr txn_value;
@@ -3306,7 +3320,7 @@ class PgClientSession::Impl {
       return Status::OK();
     }
     if (!txn && kind != PgClientSessionKind::kPlain) {
-      // Release of object locks would be handled by master's ddl verification task.
+      // kDdl might not have a txn when this function is invoked on Shutdown.
       return Status::OK();
     }
 
