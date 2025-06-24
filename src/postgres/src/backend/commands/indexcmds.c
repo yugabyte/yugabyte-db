@@ -2196,9 +2196,10 @@ DefineIndex(Oid relationId,
 
 		StartTransactionCommand();
 
-		YbDdlMode ddl_mode = (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) ?
-							  YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
-							  YB_DDL_MODE_VERSION_INCREMENT;
+		YbDdlMode	ddl_mode = (yb_ddl_transaction_block_enabled) ?
+			YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
+			YB_DDL_MODE_VERSION_INCREMENT;
+
 		YBIncrementDdlNestingLevel(ddl_mode);
 
 		/* Wait for all backends to have up-to-date version. */

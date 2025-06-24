@@ -2150,7 +2150,7 @@ ExecuteTruncateGuts(List *explicit_rels,
 	 * check early and report error if necessary.
 	 */
 	if (IsYugaByteEnabled() &&
-		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+		yb_ddl_transaction_block_enabled &&
 		IsInTransactionBlock(yb_is_top_level))
 	{
 		foreach(cell, rels)
@@ -4901,7 +4901,7 @@ ATController(AlterTableStmt *parsetree,
 		 * enabled, then the invalidation will be taken care of during the Abort
 		 * of the transaction.
 		 */
-		if (!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+		if (!yb_ddl_transaction_block_enabled)
 			YbInvalidateTableCacheForAlteredTables();
 		PG_RE_THROW();
 	}
@@ -4938,7 +4938,7 @@ ATController(AlterTableStmt *parsetree,
 		 * enabled, then the invalidation will be taken care of during the Abort
 		 * of the transaction.
 		 */
-		if (!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+		if (!yb_ddl_transaction_block_enabled)
 			YbInvalidateTableCacheForAlteredTables();
 		PG_RE_THROW();
 	}
