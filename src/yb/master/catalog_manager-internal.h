@@ -42,6 +42,8 @@ namespace master {
 
 static const std::string kRelnamespaceNotFoundErrorStr =
     "Not found or invalid relnamespace oid for table oid ";
+static const std::string kCommittedPgsqlTableNotFoundErrorStr =
+    "No committed pgsql table was found for DocDB table ";
 
 inline Status CheckIfNoLongerLeader(const Status& s) {
   // TODO (KUDU-591): This is a bit of a hack, as right now

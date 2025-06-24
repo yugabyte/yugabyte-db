@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/common/read_hybrid_time.h"
+
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql/ysql_catalog_config.h"
 
@@ -111,8 +113,13 @@ class YsqlManager : public YsqlManagerIf {
 
   Status ValidateTServerVersion(const VersionInfoPB& version) const override;
 
-  Result<uint32_t> GetYqlTableOid(
-      const TableId& table_id, const PersistentTableInfo& table_info) const;
+  // Returns the pg_class.oid of the PostgreSQL table corresponding to the given DocDB table_id.
+  // Returns a non-OK status if the DocDB table is uncommitted. Uncommitted DocDB tables can be:
+  // - Orphaned: dropped in YSQL but still present in DocDB.
+  // - Transient: created during an ongoing DDL operation.
+  Result<uint32_t> GetPgTableOidIfCommitted(
+      const TableId& table_id, const PersistentTableInfo& table_info,
+      const ReadHybridTime& read_time = ReadHybridTime()) const;
 
   // Use GetCachedPgSchemaName() with internal cache if you need to get PgSchemaName
   // for several tables.
@@ -123,7 +130,8 @@ class YsqlManager : public YsqlManagerIf {
       PgDbRelNamespaceMap& cache) const override;
   // Use GetPgSchemaName() if you need to get PgSchemaName for a single table.
   Result<std::string> GetPgSchemaName(
-      const TableId& table_id, const PersistentTableInfo& table_info) const override;
+      const TableId& table_id, const PersistentTableInfo& table_info,
+      const ReadHybridTime& read_time = ReadHybridTime()) const override;
 
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);

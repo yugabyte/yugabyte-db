@@ -274,7 +274,8 @@ class SysCatalogTable {
   // Read 'column_name' (e.g. relnamespace) OID from the pg_class catalog table.
   Result<PgOid> ReadPgClassColumnWithOidValue(const PgOid database_oid,
                                               const PgOid table_oid,
-                                              const std::string& column_name);
+                                              const std::string& column_name,
+                                              const ReadHybridTime& read_time = ReadHybridTime());
 
   // Read all nspname strings from the pg_namespace catalog table.
   // Return map: relnamespace oid -> nspname string.
@@ -282,7 +283,8 @@ class SysCatalogTable {
 
   // Read nspname string from the pg_namespace catalog table.
   Result<std::string> ReadPgNamespaceNspname(const PgOid database_oid,
-                                             const PgOid relnamespace_oid);
+                                             const PgOid relnamespace_oid,
+                                             const ReadHybridTime& read_time = ReadHybridTime());
 
   // Read attname and atttypid from pg_attribute catalog table.
   Result<std::unordered_map<std::string, uint32_t>> ReadPgAttNameTypidMap(
