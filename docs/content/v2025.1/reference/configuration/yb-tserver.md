@@ -1257,7 +1257,7 @@ Timeout after which it is inferred that a particular tablet is not of interest f
 ##### --timestamp_syscatalog_history_retention_interval_sec
 
 {{% tags/wrap %}}
-
+{{<tags/feature/ea idea="1182">}}
 Default: `4 * 3600` (4 hours)
 {{% /tags/wrap %}}
 
