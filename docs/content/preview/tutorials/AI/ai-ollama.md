@@ -70,10 +70,11 @@ Download the application and provide settings specific to your deployment:
 1. Install the application dependencies.
 
    ```sh
+   cd ollama-news-archive
    git lfs fetch --all
    npm install
    cd backend/ && npm install
-   cd news-app-ui/ && npm install
+   cd ../news-app-ui/ && npm install
    ```
 
 1. Configure the database connection parameters in `{project_directory/backend/index.js}`.
