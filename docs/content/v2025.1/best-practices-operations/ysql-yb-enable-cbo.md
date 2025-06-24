@@ -11,6 +11,8 @@ menu:
     identifier: ysql-yb-enable-cbo
     parent: best-practices-operations
     weight: 60
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -21,11 +23,6 @@ Use of the CBO is recommended for all YSQL deployments.
 You configure the CBO using the [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) configuration parameter. The `yb_enable_cbo` parameter also provides a heuristic-based optimizer mode that operates independently of table analysis. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable this mode for specific connections if needed.
 
 Note that `yb_enable_cbo` replaces the [yb_enable_optimizer_statistics](../../reference/configuration/yb-tserver/#yb-enable-optimizer-statistics) and [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) parameters, which will be deprecated and removed in a future release.
-
-For more information, refer to:
-
-- [How to modify configuration parameters](../../reference/configuration/yb-tserver/#how-to-modify-configuration-parameters)
-- [YSQL configuration parameters](../../reference/configuration/yb-tserver/#how-to-modify-configuration-parameters)
 
 ## Prerequisites
 
@@ -62,6 +59,8 @@ The following table shows `yb_enable_cbo` settings and the equivalent using the 
 
 You should migrate existing deployments from using `legacy_mode` or `legacy_stats_mode` to either `on` (recommended) or, if you do not want to use CBO, `off`.
 
+For information on using YSQL configuration parameters, see [How to modify configuration parameters](../../reference/configuration/yb-tserver/#how-to-modify-configuration-parameters).
+
 <!--## Recommended settings
 
 | Scenario | Tables analyzed | Setting |
@@ -77,7 +76,7 @@ You should migrate existing deployments from using `legacy_mode` or `legacy_stat
 
 To ensure that running applications don't use unsuitable plans, use the following instructions to migrate an existing deployment to use CBO.
 
-### If the tables are not analyzed
+#### Tables are not analyzed
 
 1. Set `yb_enable_cbo` to `off`.
 
@@ -87,15 +86,17 @@ To ensure that running applications don't use unsuitable plans, use the followin
 
 1. Remove any existing flag setting (`yb_enable_optimizer_statistics`, `yb_enable_base_scans_cost_model`) from `ysql_pg_conf_csv` and elsewhere (ALTER DATABASE, ALTER ROLE, hints, SET command issued in the application connection, and so on).
 
-1. Analyze the tables.
+1. Analyze the tables. Refer to [ANALYZE](../../api/ysql/the-sql-language/statements/cmd_analyze/).
 
 1. Set `yb_enable_cbo` to `on`.
 
-1. Re-establish any existing application connections (if specifying the parameter via ALTER DATABASE command, for example) or perform a rolling restart of the servers if you are setting the TServer flag.
+1. Re-establish any existing application connections (if specifying the parameter via [ALTER DATABASE](../../api/ysql/the-sql-language/statements/ddl_alter_db/) command, for example) or perform a rolling restart of the servers if you are setting the TServer flag.
 
-### If the tables are already analyzed
+#### Tables are already analyzed
 
-Set `yb_enable_cbo` to `on`, then re-establish any existing application connections (if specifying the parameter via [ALTER DATABASE](../../api/ysql/the-sql-language/statements/ddl_alter_db/) command, for example) or perform a rolling restart of the servers if you are setting the TServer flag.
+1. Set `yb_enable_cbo` to `on`
+
+1. Re-establish any existing application connections (if specifying the parameter via [ALTER DATABASE](../../api/ysql/the-sql-language/statements/ddl_alter_db/) command, for example) or perform a rolling restart of the servers if you are setting the TServer flag.
 
 ## ANALYZE and Auto Analyze service
 
