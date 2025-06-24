@@ -827,7 +827,7 @@ void TabletServer::StartTSLocalLockManager() {
     std::lock_guard l(lock_);
     ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
         clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
-        tablet_manager_->waiting_txn_pool());
+        tablet_manager_->waiting_txn_pool(), object_lock_shared_state_manager_.get());
     ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
   }
 }

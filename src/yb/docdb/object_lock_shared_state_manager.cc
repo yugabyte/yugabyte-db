@@ -21,6 +21,33 @@
 
 namespace yb::docdb {
 
+namespace {
+
+TableLockType FastpathLockTypeToTableLockType(ObjectLockFastpathLockType lock_type) {
+  switch (lock_type) {
+    case ObjectLockFastpathLockType::kAccessShare:
+      return TableLockType::ACCESS_SHARE;
+    case ObjectLockFastpathLockType::kRowShare:
+      return TableLockType::ROW_SHARE;
+    case ObjectLockFastpathLockType::kRowExclusive:
+      return TableLockType::ROW_EXCLUSIVE;
+  }
+  FATAL_INVALID_ENUM_VALUE(ObjectLockFastpathLockType, lock_type);
+}
+
+auto GetEntriesForFastpathLockType(ObjectLockFastpathLockType lock_type) {
+  return docdb::GetEntriesForLockType(FastpathLockTypeToTableLockType(lock_type));
+}
+
+ObjectLockPrefix MakeLockPrefix(
+    const ObjectLockFastpathRequest& request, dockv::KeyEntryType entry_type) {
+  return ObjectLockPrefix(
+      request.database_oid, request.relation_oid, request.object_oid, request.object_sub_oid,
+      entry_type);
+}
+
+} // namespace
+
 class ObjectLockOwnerRegistry::Impl {
  public:
   RegistrationGuard Register(const TransactionId& id) {
@@ -74,6 +101,30 @@ TransactionId ObjectLockOwnerRegistry::GetTransactionId(SessionLockOwnerTag tag)
 void ObjectLockSharedStateManager::SetupShared(ObjectLockSharedState& shared) {
   DCHECK(!shared_);
   shared_ = &shared;
+}
+
+void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
+    const LockRequestConsumer& consume) {
+  ParentProcessGuard g;
+  if (!shared_) {
+    return;
+  }
+  auto consume_fastpath_request = [&](ObjectLockFastpathRequest request) {
+    auto txn_id = registry_.GetTransactionId(request.owner);
+    if (txn_id.IsNil()) {
+      return;
+    }
+    ObjectLockOwner owner(txn_id, request.subtxn_id);
+    auto entries = GetEntriesForFastpathLockType(request.lock_type);
+    for (const auto& [entry_type, intent_types] : entries) {
+      consume(ObjectSharedLockRequest{
+          .owner = owner,
+          .entry = {
+              .key = MakeLockPrefix(request, entry_type),
+              .intent_types = intent_types}});
+    }
+  };
+  shared_->ConsumePendingLockRequests(make_lw_function(consume_fastpath_request));
 }
 
 TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {

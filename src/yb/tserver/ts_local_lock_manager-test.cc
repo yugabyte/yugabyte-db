@@ -63,6 +63,7 @@ auto kTxn2 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 constexpr auto kDatabase1 = 1;
 constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
+constexpr auto kObject2 = 2;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
 
@@ -149,16 +150,12 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
         .lock_type = lock_type});
   }
 
-  size_t GrantedLocksSize() const {
+  size_t GrantedLocksSize() {
     return lm_->TEST_GrantedLocksSize();
   }
 
-  size_t WaitingLocksSize() const {
+  size_t WaitingLocksSize() {
     return lm_->TEST_WaitingLocksSize();
-  }
-
-  TransactionId FastpathLastOwner() {
-    return shared_manager_->TEST_last_owner();
   }
 
   tserver::TSLocalLockManager* lm_;
@@ -182,12 +179,25 @@ TEST_F(TSLocalLockManagerTest, TestLockAndRelease) {
 
 TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
   auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id);
-  ASSERT_OK(LockRelationPgFastpath(txn1.tag(), kTxn1.subtxn_id, kDatabase1, kObject1,
-                                   ObjectLockFastpathLockType::kAccessShare));
-  ASSERT_EQ(FastpathLastOwner(), kTxn1.txn_id);
+  for (auto l = TableLockType_MIN + 1; l <= TableLockType_MAX; l++) {
+    auto lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(l));
+    if (!lock_type) {
+      continue;
+    }
+
+    ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+        txn1.tag(), kTxn1.subtxn_id, kDatabase1, kObject1, *lock_type)));
+    ASSERT_GE(GrantedLocksSize(), 1);
+    ASSERT_EQ(WaitingLocksSize(), 0);
+
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+    ASSERT_EQ(GrantedLocksSize(), 0);
+    ASSERT_EQ(WaitingLocksSize(), 0);
+  }
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
-TEST_F(TSLocalLockManagerTest, TestReleaseAllLocksForTxn) {
+TEST_F(TSLocalLockManagerTest, TestReleaseLocksForOwner) {
   for (int i = 0; i < 5; i++) {
     ASSERT_OK(LockRelation(kTxn1, kDatabase1, i, TableLockType::ACCESS_SHARE));
   }
@@ -300,7 +310,6 @@ TEST_F(TSLocalLockManagerTest, TestWaitersSignaledOnEveryRelease) {
 // i.e (1 -> k-1) are rolled back/released. Previous locks acquired by the txn still remain
 // valid until an explicit unlock request is executed. The below test asserts this behavior.
 TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
-  constexpr auto kObject2 = 2;
   ASSERT_OK(LockRelations(
       kTxn1, kDatabase1, {kObject1, kObject2},
       {TableLockType::ACCESS_SHARE, TableLockType::SHARE_UPDATE_EXCLUSIVE}));
@@ -494,5 +503,36 @@ TEST_F(TSLocalLockManagerTest, TestWaiterResetsStateDuringShutdown) {
   ASSERT_STR_CONTAINS(status.ToString(), "Object Lock Manager shutting down");
 }
 #endif
+
+TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
+  constexpr const char* kCrashPoints[] = {
+    "ObjectLockSharedState::AddLockRequest:unfinalized",
+    "ObjectLockSharedState::AddLockRequest:finalized",
+  };
+
+  ASSERT_EQ(GrantedLocksSize(), 0);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+
+  auto txn1 = lock_owner_registry_->Register(kTxn1.txn_id);
+
+  for (uint32_t i = 0; i < arraysize(kCrashPoints); ++i) {
+    ASSERT_OK(ForkAndRunToCrashPoint([&] {
+      (void) LockRelationPgFastpath(
+          txn1.tag(), kTxn1.subtxn_id, kDatabase1, i, ObjectLockFastpathLockType::kRowShare);
+    }, kCrashPoints[i]));
+  }
+
+  ASSERT_EQ(GrantedLocksSize(), 1);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject2, TableLockType::EXCLUSIVE));
+  ASSERT_EQ(GrantedLocksSize(), 3);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_EQ(GrantedLocksSize(), 1);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
 
 } // namespace yb::tserver

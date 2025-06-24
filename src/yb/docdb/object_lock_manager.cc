@@ -28,6 +28,7 @@
 #include "yb/docdb/local_waiting_txn_registry.h"
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/lock_util.h"
+#include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/thread_pool.h"
@@ -80,6 +81,8 @@ YB_DEFINE_ENUM(LocksMapType, (kGranted)(kWaiting));
 YB_STRONGLY_TYPED_BOOL(IsLockRetry);
 
 using LockStateBlockersMap = std::unordered_map<LockState, std::shared_ptr<ConflictDataManager>>;
+
+using LockBatchEntrySpan = std::span<LockBatchEntry<ObjectLockManager>>;
 
 // TrackedLockEntry is used to keep track of the LockState of the transaction for a given key.
 //
@@ -259,10 +262,13 @@ struct ObjectLockedBatchEntry {
 
 class ObjectLockManagerImpl {
  public:
-  ObjectLockManagerImpl(ThreadPool* thread_pool, server::RpcServerBase& server)
-  : thread_pool_token_(thread_pool->NewToken(ThreadPool::ExecutionMode::CONCURRENT)),
-    server_(server),
-    waiters_amidst_resumption_on_messenger_("ObjectLockManagerImpl: " /* log_prefix */) {}
+  ObjectLockManagerImpl(
+      ThreadPool* thread_pool, server::RpcServerBase& server,
+      ObjectLockSharedStateManager* shared_manager)
+    : thread_pool_token_(thread_pool->NewToken(ThreadPool::ExecutionMode::CONCURRENT)),
+      server_(server),
+      waiters_amidst_resumption_on_messenger_("ObjectLockManagerImpl: " /* log_prefix */),
+      shared_manager_(shared_manager) {}
 
   void Lock(LockData&& data);
 
@@ -278,14 +284,17 @@ class ObjectLockManagerImpl {
 
   void DumpStatusHtml(std::ostream& out) EXCLUDES(global_mutex_);
 
-  size_t TEST_LocksSize(LocksMapType locks_map) const;
-  size_t TEST_GrantedLocksSize() const;
-  size_t TEST_WaitingLocksSize() const;
+  size_t TEST_LocksSize(LocksMapType locks_map);
+  size_t TEST_GrantedLocksSize();
+  size_t TEST_WaitingLocksSize();
   std::unordered_map<ObjectLockPrefix, LockState>
       TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
 
  private:
   friend struct WaiterEntry;
+
+  void ConsumePendingSharedLockRequests() REQUIRES(global_mutex_);
+  void ConsumePendingSharedLockRequest(ObjectSharedLockRequest& request) REQUIRES(global_mutex_);
 
   TrackedTxnLockEntryPtr GetTransactionEntryUnlocked(const ObjectLockOwner& object_lock_owner)
       REQUIRES(global_mutex_);
@@ -294,8 +303,11 @@ class ObjectLockManagerImpl {
   // them without holding the global lock. Returns a vector with pointers in the same order
   // as the keys in the batch.
   TrackedTxnLockEntryPtr Reserve(
-      std::span<LockBatchEntry<ObjectLockManager>> batch,
-      const ObjectLockOwner& object_lock_owner) EXCLUDES(global_mutex_);
+      LockBatchEntrySpan batch, const ObjectLockOwner& object_lock_owner) EXCLUDES(global_mutex_);
+
+  TrackedTxnLockEntryPtr DoReserve(
+      LockBatchEntrySpan key_to_intent_type, const ObjectLockOwner& object_lock_owner)
+      REQUIRES(global_mutex_);
 
   // Update refcounts and maybe collect garbage.
   void DoCleanup(std::span<const LockBatchEntry<ObjectLockManager>> key_to_intent_type)
@@ -318,6 +330,11 @@ class ObjectLockManagerImpl {
       TrackedTxnLockEntryPtr& transaction_entry, LockData& data, LockState existing_state,
       LockBatchEntries<ObjectLockManager>::iterator lock_entry_it,
       IsLockRetry is_retry) REQUIRES(transaction_entry->mutex);
+
+  void DoLockSingleEntryWithoutConflictCheck(
+      const LockBatchEntry<ObjectLockManager>& lock_entry,
+      TrackedTxnLockEntryPtr& transaction_entry, const ObjectLockOwner& owner)
+      REQUIRES(transaction_entry->mutex);
 
   void DoUnlock(
       const ObjectLockOwner& object_lock_owner,
@@ -369,6 +386,8 @@ class ObjectLockManagerImpl {
   LocalWaitingTxnRegistry* waiting_txn_registry_ = nullptr;
   std::atomic<bool> shutdown_in_progress_{false};
   OperationCounter waiters_amidst_resumption_on_messenger_;
+
+  ObjectLockSharedStateManager* const shared_manager_;
 };
 
 void WaiterEntry::Resume(ObjectLockManagerImpl* lock_manager, Status resume_with_status) {
@@ -449,6 +468,22 @@ LockState TrackedTransactionLockEntry::GetLockStateForKeyUnlocked(
   return existing_states[object_id];
 }
 
+void ObjectLockManagerImpl::ConsumePendingSharedLockRequests() {
+  if (shared_manager_) {
+    shared_manager_->ConsumePendingSharedLockRequests(
+        make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
+          ConsumePendingSharedLockRequest(request);
+        }));
+  }
+}
+
+void ObjectLockManagerImpl::ConsumePendingSharedLockRequest(ObjectSharedLockRequest& request) {
+  auto& lock_entry = request.entry;
+  auto transaction_entry = DoReserve({&lock_entry, 1}, request.owner);
+  std::lock_guard lock(transaction_entry->mutex);
+  DoLockSingleEntryWithoutConflictCheck(lock_entry, transaction_entry, request.owner);
+}
+
 TrackedTxnLockEntryPtr ObjectLockManagerImpl::GetTransactionEntryUnlocked(
     const ObjectLockOwner& object_lock_owner) {
   // TODO: Should we switch similar logic of allocation and reuse as with lock entries?
@@ -458,9 +493,13 @@ TrackedTxnLockEntryPtr ObjectLockManagerImpl::GetTransactionEntryUnlocked(
 }
 
 TrackedTxnLockEntryPtr ObjectLockManagerImpl::Reserve(
-    std::span<LockBatchEntry<ObjectLockManager>> key_to_intent_type,
-    const ObjectLockOwner& object_lock_owner) {
+    LockBatchEntrySpan key_to_intent_type, const ObjectLockOwner& object_lock_owner) {
   std::lock_guard lock(global_mutex_);
+  return DoReserve(key_to_intent_type, object_lock_owner);
+}
+
+TrackedTxnLockEntryPtr ObjectLockManagerImpl::DoReserve(
+    LockBatchEntrySpan key_to_intent_type, const ObjectLockOwner& object_lock_owner) {
   auto transaction_entry = GetTransactionEntryUnlocked(object_lock_owner);
   for (auto& key_and_intent_type : key_to_intent_type) {
     auto& value = locks_[key_and_intent_type.key];
@@ -496,6 +535,10 @@ void ObjectLockManagerImpl::DoCleanup(
 
 void ObjectLockManagerImpl::Lock(LockData&& data) {
   TRACE("Locking a batch of $0 keys", data.key_to_lock.lock_batch.size());
+  {
+    std::lock_guard lock(global_mutex_);
+    ConsumePendingSharedLockRequests();
+  }
   auto transaction_entry = Reserve(data.key_to_lock.lock_batch, data.object_lock_owner);
   DoLock(transaction_entry, std::move(data), IsLockRetry::kFalse);
 }
@@ -630,12 +673,23 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
   }
 }
 
+void ObjectLockManagerImpl::DoLockSingleEntryWithoutConflictCheck(
+    const LockBatchEntry<ObjectLockManager>& lock_entry, TrackedTxnLockEntryPtr& transaction_entry,
+    const ObjectLockOwner& owner) {
+  TRACE_FUNC();
+  lock_entry.locked->num_holding.fetch_add(
+      IntentTypeSetAdd(lock_entry.intent_types), std::memory_order_acq_rel);
+  VLOG(4) << AsString(owner) << " acquired lock " << AsString(lock_entry);
+  transaction_entry->AddAcquiredLockUnlocked(lock_entry, owner, LocksMapType::kGranted);
+}
+
 void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner) {
   TRACE("Unlocking all keys for owner $0", AsString(object_lock_owner));
 
   TrackedTxnLockEntryPtr txn_entry;
   {
     std::lock_guard lock(global_mutex_);
+    ConsumePendingSharedLockRequests();
     auto txn_itr = txn_locks_.find(object_lock_owner.txn_id);
     if (txn_itr == txn_locks_.end()) {
       return;
@@ -990,6 +1044,7 @@ void ObjectLockManagerImpl::DumpStatusHtml(std::ostream& out) {
   out << "<table class='table table-striped'>\n";
   out << "<tr><th>Prefix</th><th>LockBatchEntry</th></tr>" << std::endl;
   std::lock_guard l(global_mutex_);
+  ConsumePendingSharedLockRequests();
   for (const auto& [prefix, entry] : locks_) {
     auto key_str = AsString(prefix);
     out << "<tr>"
@@ -1030,8 +1085,9 @@ void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
   out << "</table>\n";
 }
 
-size_t ObjectLockManagerImpl::TEST_LocksSize(LocksMapType locks_map) const {
+size_t ObjectLockManagerImpl::TEST_LocksSize(LocksMapType locks_map) {
   std::lock_guard lock(global_mutex_);
+  ConsumePendingSharedLockRequests();
   size_t size = 0;
   for (const auto& [txn, txn_entry] : txn_locks_) {
     UniqueLock txn_lock(txn_entry->mutex);
@@ -1044,11 +1100,11 @@ size_t ObjectLockManagerImpl::TEST_LocksSize(LocksMapType locks_map) const {
   return size;
 }
 
-size_t ObjectLockManagerImpl::TEST_GrantedLocksSize() const {
+size_t ObjectLockManagerImpl::TEST_GrantedLocksSize() {
   return TEST_LocksSize(LocksMapType::kGranted);
 }
 
-size_t ObjectLockManagerImpl::TEST_WaitingLocksSize() const {
+size_t ObjectLockManagerImpl::TEST_WaitingLocksSize() {
   return TEST_LocksSize(LocksMapType::kWaiting);
 }
 
@@ -1067,8 +1123,10 @@ std::unordered_map<ObjectLockPrefix, LockState>
   return txn_entry->existing_states;
 }
 
-ObjectLockManager::ObjectLockManager(ThreadPool* thread_pool, server::RpcServerBase& server)
-  : impl_(std::make_unique<ObjectLockManagerImpl>(thread_pool, server)) {}
+ObjectLockManager::ObjectLockManager(
+    ThreadPool* thread_pool, server::RpcServerBase& server,
+    ObjectLockSharedStateManager* shared_manager)
+    : impl_(std::make_unique<ObjectLockManagerImpl>(thread_pool, server, shared_manager)) {}
 
 ObjectLockManager::~ObjectLockManager() = default;
 
@@ -1097,11 +1155,11 @@ void ObjectLockManager::DumpStatusHtml(std::ostream& out) {
   impl_->DumpStatusHtml(out);
 }
 
-size_t ObjectLockManager::TEST_GrantedLocksSize() const {
+size_t ObjectLockManager::TEST_GrantedLocksSize() {
   return impl_->TEST_GrantedLocksSize();
 }
 
-size_t ObjectLockManager::TEST_WaitingLocksSize() const {
+size_t ObjectLockManager::TEST_WaitingLocksSize() {
   return impl_->TEST_WaitingLocksSize();
 }
 

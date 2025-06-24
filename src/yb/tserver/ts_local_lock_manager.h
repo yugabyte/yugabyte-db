@@ -20,6 +20,8 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/server/clock.h"
 #include "yb/server/server_fwd.h"
 
@@ -82,7 +84,8 @@ class TSLocalLockManager {
  public:
   TSLocalLockManager(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
-      server::RpcServerBase& messenger_server, ThreadPool* thread_pool);
+      server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      docdb::ObjectLockSharedStateManager* shared_manager = nullptr);
   ~TSLocalLockManager();
 
   // Tries acquiring object locks with the specified modes and registers them against the given
@@ -123,8 +126,8 @@ class TSLocalLockManager {
   void PopulateObjectLocks(
       google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const;
 
-  size_t TEST_GrantedLocksSize() const;
-  size_t TEST_WaitingLocksSize() const;
+  size_t TEST_GrantedLocksSize();
+  size_t TEST_WaitingLocksSize();
   void TEST_MarkBootstrapped();
   std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
       TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
