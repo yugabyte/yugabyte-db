@@ -39,6 +39,8 @@
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
 
+#include "yb/tserver/service_util.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
@@ -380,7 +382,7 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     << ") db catalog versions: "
     << resp.db_catalog_version_data().ShortDebugString()
     << ") db inval messages: "
-    << resp.db_catalog_inval_messages_data().ShortDebugString();
+    << tserver::CatalogInvalMessagesDataDebugString(resp);
 }
 
 void MasterHeartbeatServiceImpl::TSHeartbeat(

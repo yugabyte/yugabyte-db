@@ -26,6 +26,7 @@
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
 
@@ -70,6 +71,10 @@ Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer);
 
 std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
     const tablet::TabletPeerPtr& peer);
+
+std::string CatalogInvalMessagesDataDebugString(const master::TSHeartbeatResponsePB& resp);
+std::string CatalogInvalMessagesDataDebugString(
+    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data);
 
 // Template helpers.
 
