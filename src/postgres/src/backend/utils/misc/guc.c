@@ -3435,7 +3435,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_force_early_ddl_serialization,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 

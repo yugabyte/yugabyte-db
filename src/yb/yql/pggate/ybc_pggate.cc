@@ -168,7 +168,7 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     " right away without incurring a master lookup");
 
 DEFINE_RUNTIME_PG_FLAG(
-    bool, yb_force_early_ddl_serialization, true,
+    bool, yb_force_early_ddl_serialization, false,
     "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
     "DDLs might face a conflict error on the catalog version increment at the end after doing all "
     "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
