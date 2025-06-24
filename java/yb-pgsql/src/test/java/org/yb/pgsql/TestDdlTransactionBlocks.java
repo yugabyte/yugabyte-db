@@ -44,6 +44,11 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
 
   @Test
   public void yb_ddl_txn_block_tests() throws Exception {
+    // GH-27235 - There are issues with schema invalidation on other backends
+    // for rolled back transactional DDLs, causing the test to fail with
+    // Connection Mangaer enabled. Force the test to operate on one physical
+    // connection until this issue is resolved.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_ddl_txn_block_schedule");
   }
 }
