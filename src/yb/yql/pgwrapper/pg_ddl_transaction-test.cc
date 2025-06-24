@@ -27,9 +27,13 @@ class PgDdlTransactionTest : public LibPqTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
-    opts->extra_master_flags.push_back("--TEST_ysql_yb_ddl_transaction_block_enabled=true");
+    opts->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    opts->extra_master_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
     opts->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    opts->extra_tserver_flags.push_back("--TEST_ysql_yb_ddl_transaction_block_enabled=true");
+    opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    opts->extra_tserver_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
   }
 };
 

@@ -127,3 +127,5 @@ bool yb_mixed_mode_saop_pushdown = false;
 
 // Internal GUC to help a backend identify that the connection is from the Auto-Analyze service.
 bool yb_use_internal_auto_analyze_service_conn = false;
+
+bool yb_ddl_transaction_block_enabled = false;

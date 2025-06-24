@@ -65,7 +65,6 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
 
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 namespace {
 
@@ -332,8 +331,7 @@ uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requir
 
 Status PgTxnManager::CalculateIsolation(
     bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement) {
-  if (FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction()
-                                                       : IsDdlMode()) {
+  if (yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
     VLOG_TXN_STATE(2);
     if (!priority_.has_value())
       priority_ = NewPriority(txn_priority_requirement);
@@ -406,11 +404,11 @@ Status PgTxnManager::CalculateIsolation(
   } else if (read_only_op &&
              (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
               docdb_isolation == IsolationLevel::READ_COMMITTED) &&
-             (!FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled || !IsDdlMode())) {
+             (!yb_ddl_transaction_block_enabled || !IsDdlMode())) {
     // Preserves isolation_level_ as NON_TRANSACTIONAL
   } else {
     if (IsDdlMode()) {
-      DCHECK(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled)
+      DCHECK(yb_ddl_transaction_block_enabled)
           << "Unexpected DDL state found in plain transaction";
     }
 
@@ -594,8 +592,8 @@ Status PgTxnManager::ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_s
 
 Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info) {
   VLOG_TXN_STATE(2);
-  if (!((FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled && IsDdlModeWithSeparateTransaction()) ||
-          (!FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled && IsDdlMode()))) {
+  if (!((yb_ddl_transaction_block_enabled && IsDdlModeWithSeparateTransaction()) ||
+          (!yb_ddl_transaction_block_enabled && IsDdlMode()))) {
     RSTATUS_DCHECK(
         !commit_info, IllegalState,
         "Commit separate ddl txn called when not in a separate DDL transaction");
