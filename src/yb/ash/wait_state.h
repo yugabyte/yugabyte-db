@@ -158,6 +158,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
     (kConflictResolution_WaitOnConflictingTxns)
+    (kWaitForReadTime)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
