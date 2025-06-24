@@ -3,6 +3,8 @@ title: pgvector extension
 headerTitle: pgvector extension
 linkTitle: pgvector
 description: Using the pgvector extension in YugabyteDB
+tags:
+  feature: tech-preview
 menu:
   preview:
     identifier: extension-pgvector
