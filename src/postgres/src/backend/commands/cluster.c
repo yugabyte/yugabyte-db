@@ -811,6 +811,16 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 
 		ReleaseSysCache(tuple);
 	}
+	else if (IsYBRelation(OldHeap) && relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * YB: If the old heap was a YB relation, then it will not have a TOAST
+		 * table. If the new heap is a temp table, then we might need to create
+		 * a TOAST table for it. Let NewHeapCreateToastTable make the decision.
+		 */
+		reloptions = (Datum) 0;
+		NewHeapCreateToastTable(OIDNewHeap, reloptions, lockmode, InvalidOid);
+	}
 
 	table_close(OldHeap, NoLock);
 
