@@ -542,9 +542,14 @@ class FilteringIterator {
       const docdb::DocDBStatistics* statistics,
       SkipSeek skip_seek) {
     RETURN_NOT_OK(InitCommon(request, read_context.get().schema(), projection));
-    return ql_storage.GetIteratorForYbctid(
-        request.stmt_id(), projection, read_context, txn_op_context, read_operation_data,
-        min_ybctid, max_ybctid, pending_op, &iterator_holder_, statistics, skip_seek);
+    if (!iterator_holder_) {
+      return ql_storage.GetIteratorForYbctid(
+          request.stmt_id(), projection, read_context, txn_op_context, read_operation_data,
+          min_ybctid, max_ybctid, pending_op, &iterator_holder_, statistics, skip_seek);
+    } else {
+      down_cast<DocRowwiseIterator&>(*iterator_holder_).Refresh();
+      return Status::OK();
+    }
   }
 
   Result<FetchResult> FetchNext(dockv::PgTableRow* table_row) {
@@ -1953,8 +1958,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
       // to continue seeking through all the given batch arguments even though one
       // of them wasn't found. If it wasn't found, table_iter_ becomes invalid
       // and we have to make a new iterator.
-      // TODO (dmitry): In case of iterator recreation info from RestartReadHt field will be lost.
-      //                The #17159 issue is created for this problem.
+      //
+      // This can also happen when there is a tombstone at timestamp higher than
+      // the read_time but less than the global_limit. See #17159 for more info.
       iter.emplace(&table_iter_);
       RETURN_NOT_OK(iter->InitForYbctid(
           ql_storage, request_, projection, doc_read_context, txn_op_context_, read_operation_data,
@@ -1967,7 +1973,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
         iter->FetchTuple(batch_argument.ybctid().value().binary_value(), &row))) {
       case FetchResult::NotFound:
         ++not_found_rows;
-        // rebuild iterator on next iteration
+        // Refresh iterator on next iteration
         iter = std::nullopt;
         break;
       case FetchResult::FilteredOut:
