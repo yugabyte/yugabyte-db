@@ -17,8 +17,10 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
  relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
 -------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
+ x     | COPY FROM | SUCCESS   | PIPE |              12 |           0 |                1 |               0
+ x     | COPY FROM | SUCCESS   | PIPE |              39 |           0 |                4 |               0
  x     | COPY FROM | SUCCESS   | PIPE |              93 |           0 |                5 |               0
-(1 row)
+(3 rows)
 
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
@@ -301,7 +303,8 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
  relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
 -------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
  t     | COPY FROM | ERROR     | PIPE |               0 |           0 |                0 |               0
-(1 row)
+ t     | COPY FROM | ERROR     | PIPE |               0 |           0 |                0 |               0
+(2 rows)
 
 SELECT COUNT(*) FROM t;
  count 
