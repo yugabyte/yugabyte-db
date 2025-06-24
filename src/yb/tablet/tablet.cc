@@ -4010,6 +4010,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
           min_allowed, ht_lease);
     }
   } else if (min_allowed) {
+    SCOPED_WAIT_STATUS(WaitForReadTime);
     RETURN_NOT_OK(WaitUntil(clock_.get(), min_allowed, deadline));
   }
   if (min_allowed > ht_lease.lease) {

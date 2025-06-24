@@ -159,6 +159,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRemoteBootstrap_StartRemoteSession)
     (kRemoteBootstrap_ReadDataFromFile)
     (kRemoteBootstrap_RateLimiter)
+    (kWaitForReadTime)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
