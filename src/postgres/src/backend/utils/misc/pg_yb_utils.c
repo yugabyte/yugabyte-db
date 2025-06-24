@@ -6944,6 +6944,12 @@ bool		yb_ysql_conn_mgr_sticky_guc = false;
  */
 bool		yb_ysql_conn_mgr_superuser_existed = false;
 
+/*
+ * `yb_ysql_conn_mgr_sticky_locks` denotes whether any session-scoped locks
+ * are/were held by the current session.
+ */
+bool		yb_ysql_conn_mgr_sticky_locks = false;
+
 bool
 YbIsSuperuserConnSticky()
 {
@@ -6987,7 +6993,9 @@ YbIsStickyConnection(int *change)
 	ysql_conn_mgr_sticky_object_count += *change;
 	*change = 0;				/* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
-	return (ysql_conn_mgr_sticky_object_count > 0) || YbIsConnectionMadeStickyUsingGUC();
+	return (ysql_conn_mgr_sticky_object_count > 0) ||
+			YbIsConnectionMadeStickyUsingGUC() ||
+			yb_ysql_conn_mgr_sticky_locks;
 }
 
 void	  **
