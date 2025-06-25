@@ -56,6 +56,7 @@ DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
 DECLARE_int64(TEST_delay_after_table_analyze_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_force_early_ddl_serialization);
 
 using namespace std::chrono_literals;
 
@@ -83,6 +84,8 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 10;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
     google::SetVLOGLevel("pg_auto_analyze_service", 2);
+    // To ensure that auto-analyze doesn't preempt other DDLs.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_force_early_ddl_serialization) = true;
 
     PgMiniTestBase::SetUp();
 
