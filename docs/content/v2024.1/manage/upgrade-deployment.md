@@ -206,7 +206,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 {{< note title="Note" >}}
 
-- `upgrade_ysql` Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
+- `upgrade_ysql`is a cluster-level operation; you don't need to run it on every node.
 - Concurrent YSQL operations in a cluster can lead to transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by retrying the operation. If `upgrade_ysql` encounters these errors, then it should also be retried.
 {{< /note >}}
 
