@@ -1220,16 +1220,21 @@ Status TabletServer::SetTserverCatalogMessageList(
               };
   auto it3 = std::lower_bound(db_message_lists->begin(), db_message_lists->end(),
                               new_catalog_version, comp);
+  const auto msg_info = message_list.has_value() ? std::to_string(message_list.value().size())
+                                                 : "nullopt";
   if (it3 == db_message_lists->end()) {
     // This means that either the queue is empty, or the new_catalog_version is larger than
     // the last version in the queue (the queue is sorted in catalog version).
-    LOG(INFO) << "appending new version: " << new_catalog_version;
+    LOG(INFO) << "appending version " << new_catalog_version << ", message_list: " << msg_info
+              << ", db " << db_oid;
     db_message_lists->emplace_back(new_catalog_version, message_list, now);
   } else  {
     // std::lower_bound: returns an iterator pointing to the first element in the range
     // that is not less than (i.e., greater than or equal to) new_catalog_version.
     if (std::get<0>(*it3) > new_catalog_version) {
-      LOG(INFO) << "inserting new version: " << new_catalog_version;
+      LOG(INFO) << "inserting version " << new_catalog_version << ", message_list: "
+                << msg_info << " before existing version " << std::get<0>(*it3)
+                << ", db " << db_oid;
       db_message_lists->insert(it3, std::make_tuple(new_catalog_version, message_list, now));
     } else {
       VLOG(2) << "found existing version: " << new_catalog_version;
