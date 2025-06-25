@@ -313,8 +313,6 @@ Improper use can compromise replication consistency and lead to data divergence.
 - ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, TRUNCATE, and ALTER LARGE OBJECT DDLs are not supported.
 - DDLs related to PUBLICATION and SUBSCRIPTION are not supported.
 - Replication of colocated tables is not yet supported.
-- Attempting to read the current value of sequences on the target universe while replication is underway may give incorrect values.
-- Sequence next values may not be fully rolled back during unplanned failovers; while perhaps unexpected, this is harmless.
 - Rewinding of sequences (e.g., restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
 - While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: `file_fdw`, `fuzzystrmatch`, `pgcrypto`, `postgres_fdw`, `sslinfo`, `uuid-ossp`, `hypopg`, `pg_stat_monitor`, and `pgaudit`. All other extensions must be created _before_ setting up automatic mode.
 

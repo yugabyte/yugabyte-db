@@ -14,10 +14,6 @@ type: docs
 
 Use the `currval( sequence_name )` function to return the last value returned by the `nextval( sequence_name )` function for the specified sequence in the current session.
 
-**Limitations**
-
-- If `currval`is called on a database being replicated to by xCluster replication in automatic mode then the returned value may be ahead or behind of where the rest of the database appears to be at.
-
 ## Semantics
 
 ### _sequence_name_
