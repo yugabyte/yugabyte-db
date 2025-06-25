@@ -4,6 +4,8 @@ headerTitle: Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
+tags:
+  feature: early-access
 menu:
   preview:
     identifier: ash
@@ -105,7 +107,7 @@ SELECT * FROM pg_catalog.yb_servers() WHERE uuid = <top_level_node_id>;
 ```
 
 ``` output
-     host     | port | num_connections | node_type | cloud |  region   |    zone    | public_ip |               uuid               
+     host     | port | num_connections | node_type | cloud |  region   |    zone    | public_ip |               uuid
 --------------+------+-----------------+-----------+-------+-----------+------------+-----------+----------------------------------
  10.9.111.111 | 5433 |               0 | primary   | aws   | us-west-2 | us-west-2a |           | 5cac7c86ba4e4f0e838bf180d75bcad5
 ```
