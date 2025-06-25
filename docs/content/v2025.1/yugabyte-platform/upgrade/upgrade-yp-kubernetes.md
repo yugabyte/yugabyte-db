@@ -45,7 +45,7 @@ helm repo update
 To upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:
 
 ```sh
-helm upgrade yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --reset-then-reuse-values --set image.tag={{<yb-version version="preview" format="build">}} --wait
+helm upgrade yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --reset-then-reuse-values --set image.tag={{<yb-version version="stable" format="build">}} --wait
 ```
 
 To obtain the value for `--set image.tag`, execute the following command:
@@ -60,12 +60,12 @@ If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster 
 
 ## Install YugabyteDB Kubernetes Operator by upgrading an existing YBA
 
-The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/ea idea="831">}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
+The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. You can install the operator by upgrading an existing YBA as follows:
 
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/2024.1/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/2025.1/crds/concatenated_crd.yaml
     ```
 
 1. Get a list of Helm chart releases in namespace using the following command:
