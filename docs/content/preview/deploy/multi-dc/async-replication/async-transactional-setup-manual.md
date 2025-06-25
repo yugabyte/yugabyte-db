@@ -263,4 +263,4 @@ You should see output similar to the following:
 ]
 ```
 
-Default time reported in xCluster safe time is year 2112. You need to wait until the xCluster safe time on the Standby advances beyond setup replication clock time.
+You need to wait until the xCluster safe time on the Standby advances beyond setup replication clock time.
