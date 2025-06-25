@@ -1,7 +1,7 @@
 ---
 title: Manual deployment of YugabyteDB clusters
-headerTitle: On-premises
-linkTitle: On-premises
+headerTitle: Single data center deployments
+linkTitle: Single-DC deployments
 description: Deploy YugabyteDB manually in a single region or private data center using basic administration commands.
 headcontent: Deploy YugabyteDB in a single region or private data center
 menu:

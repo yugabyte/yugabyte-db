@@ -52,6 +52,17 @@ If you want to use [YSQL Connection Manager](../../../explore/going-beyond-sql/c
 --tserver_flags "enable_ysql_conn_mgr=true"
 ```
 
+### YB Controller service
+
+After installing YugabyteDB, if you want to use backup and restore, you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
+
+For example, if you installed v{{< yb-version version="stable"  format="short">}}, extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
+
+```sh
+cd yugabyte-{{< yb-version version="stable" >}}
+mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+```
+
 ## Deploy a multi-zone cluster
 
 Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.

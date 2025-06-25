@@ -44,6 +44,14 @@ Note that single zone configuration is a special case of multi-zone where all pl
 
 For instructions on running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to [Multi-DC deployments](../../../deploy/multi-dc/).
 
+## Configure YugabyteDB
+
+To configure YugabyteDB, run the following shell script:
+
+```sh
+./bin/post_install.sh
+```
+
 ## YB-Master servers
 
 ### Run YB-Master servers with command line flags
