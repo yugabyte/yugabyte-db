@@ -1096,7 +1096,7 @@ determines whether any of the databases to be replicated need to be
 copied to the target (this is called bootstrapping the databases).
 
 If bootstrapping is required then the `create_checkpoint` command
-outputs directions for bootstrapping the databases that that need
+outputs directions for bootstrapping the databases that that need to be
 bootstrapping.
 
 ##### create_checkpoint flags
@@ -1114,7 +1114,7 @@ bootstrapping.
 : A string to uniquely identify the replication.
 
 --automatic_mode  {{<tags/feature/ea idea="2176">}}
-: Enable automatic mode for the xCluster replication. For more information refer to [Automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/). If this flag is omitted then semi-automatic mode will be used.
+: Enable automatic mode for the xCluster replication. For more information refer to [Automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/). If you omit this flag, then semi-automatic mode is used.
 
 #### add_to_checkpoint
 
@@ -1131,7 +1131,7 @@ For example, to add new databases to xCluster replication, first checkpoint them
 The `add_to_checkpoint` command takes a snapshot of the database and determines whether any of the databases to be added to the replication need to be copied to the target.
 
 If bootstrapping is required then the `add_to_checkpoint` command
-outputs directions for bootstrapping the databases that need
+outputs directions for bootstrapping the databases that need to be
 bootstrapping.
 
 ##### add_to_checkpoint flags
