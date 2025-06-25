@@ -54,59 +54,6 @@ class PgAddColumnDefaultTest : public LibPqTestBase,
     TestThreadHolder thread_holder_;
 };
 
-// Test concurrently inserted rows during an ALTER TABLE ... ADD COLUMN ... DEFAULT operation
-// use the missing default value for the new column.
-TEST_P(PgAddColumnDefaultTest, AddColumnDefaultConcurrency) {
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (t int PRIMARY KEY)", kTableName));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 3))", kTableName));
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_alter_table", "alter_schema"));
-
-  thread_holder_.AddThreadFunctor([this] {
-    LOG(INFO) << "Begin alter table thread";
-    PGConn alter_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    Status status = alter_conn.ExecuteFormat(
-        "ALTER TABLE $0 ADD COLUMN c1 varchar(10) DEFAULT 'default'", kTableName);
-  });
-
-  // Concurrently insert new rows while the alter table is executing. These rows should use the
-  // missing default value.
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(4, 6))", kTableName));
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_alter_table", "completion"));
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    const auto table_id = VERIFY_RESULT(GetTableIdByTableName(
-        client.get(), kDatabaseName, kTableName));
-    std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
-    Synchronizer sync;
-    RETURN_NOT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
-    RETURN_NOT_OK(sync.Wait());
-    return table_info->schema.columns().size() == 2;
-  }, MonoDelta::FromSeconds(60), "Wait for schema to match"));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(7, 9))", kTableName));
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_alter_table", ""));
-  thread_holder_.JoinAll();
-
-  // Explicitly insert null values into the new column.
-  ASSERT_OK(conn_->ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(10, 12), null)", kTableName));
-  // Verify that we can read the correct values for the new column.
-  auto res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
-      Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));
-  ASSERT_EQ(res, 9);
-  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
-      client.get(), kDatabaseName, kTableName));
-  // Compact the table.
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* deadline (seconds) */,
-      true /* is_compaction */));
-  // Verify that we can read the correct values for the new column after compaction.
-  res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
-      Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));
-  ASSERT_EQ(res, 9);
-}
-
 // Test compaction after updates are performed on columns with missing default values.
 TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCompactionAfterUpdate) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -208,5 +155,73 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(StorageFormat::Regular, StorageFormat::PackedRowsV1,
         StorageFormat::PackedRowsV2));
 
+class PgAddColumnDefaultConcurrencyTest : public PgAddColumnDefaultTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgAddColumnDefaultTest::UpdateMiniClusterOptions(opts);
+    // This test verifies behavior without table-level locking and transactional DDL.
+    // Both features are disabled to concurrent inserts during ALTER TABLE.
+    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+  }
+};
+
+// Test concurrently inserted rows during an ALTER TABLE ... ADD COLUMN ... DEFAULT operation
+// use the missing default value for the new column.
+TEST_P(PgAddColumnDefaultConcurrencyTest, AddColumnDefaultConcurrency) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (t int PRIMARY KEY)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 3))", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_alter_table", "alter_schema"));
+
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin alter table thread";
+    PGConn alter_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    Status status = alter_conn.ExecuteFormat(
+        "ALTER TABLE $0 ADD COLUMN c1 varchar(10) DEFAULT 'default'", kTableName);
+  });
+
+  // Concurrently insert new rows while the alter table is executing. These rows should use the
+  // missing default value.
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(4, 6))", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_alter_table", "completion"));
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    const auto table_id = VERIFY_RESULT(GetTableIdByTableName(
+        client.get(), kDatabaseName, kTableName));
+    std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+    Synchronizer sync;
+    RETURN_NOT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    RETURN_NOT_OK(sync.Wait());
+    return table_info->schema.columns().size() == 2;
+  }, MonoDelta::FromSeconds(60), "Wait for schema to match"));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(7, 9))", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_alter_table", ""));
+  thread_holder_.JoinAll();
+
+  // Explicitly insert null values into the new column.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(10, 12), null)", kTableName));
+  // Verify that we can read the correct values for the new column.
+  auto res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
+      Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));
+  ASSERT_EQ(res, 9);
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client.get(), kDatabaseName, kTableName));
+  // Compact the table.
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      3 /* deadline (seconds) */,
+      true /* is_compaction */));
+  // Verify that we can read the correct values for the new column after compaction.
+  res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
+      Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));
+  ASSERT_EQ(res, 9);
+}
+
+INSTANTIATE_TEST_CASE_P(
+    AddColumnDefaultTest, PgAddColumnDefaultConcurrencyTest,
+    ::testing::Values(StorageFormat::Regular, StorageFormat::PackedRowsV1,
+        StorageFormat::PackedRowsV2));
 } // namespace pgwrapper
 } // namespace yb
