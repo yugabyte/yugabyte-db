@@ -180,7 +180,6 @@ DEFINE_RUNTIME_PG_FLAG(
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
@@ -2284,8 +2283,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .ysql_enable_neghit_full_inheritscache =
         &FLAGS_ysql_enable_neghit_full_inheritscache,
-      .TEST_ysql_yb_ddl_transaction_block_enabled =
-          &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
       .ysql_max_invalidation_message_queue_size =
@@ -2443,6 +2440,14 @@ void YBCStartSysTablePrefetching(
 
 void YBCStopSysTablePrefetching() {
   pgapi->StopSysTablePrefetching();
+}
+
+void YBCPauseSysTablePrefetching() {
+  pgapi->PauseSysTablePrefetching();
+}
+
+void YBCResumeSysTablePrefetching() {
+  pgapi->ResumeSysTablePrefetching();
 }
 
 bool YBCIsSysTablePrefetchingStarted() {

@@ -60,6 +60,7 @@ Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_mast
   const auto master_addrs = HostPort::ToCommaSeparatedString(remote_masters);
 
   rpc::MessengerBuilder messenger_builder("xcluster-remote");
+  messenger_builder.UseLocalHostOutboundIpBaseInTests();
   std::string certs_dir;
 
   if (FLAGS_use_node_to_node_encryption) {
@@ -71,10 +72,6 @@ Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_mast
         &messenger_builder));
   }
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
-  if (FLAGS_TEST_running_test) {
-    messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
-  }
-
   yb_client_ = VERIFY_RESULT(YBClientBuilder()
                                  .set_client_name(kClientName)
                                  .add_master_server_addr(master_addrs)

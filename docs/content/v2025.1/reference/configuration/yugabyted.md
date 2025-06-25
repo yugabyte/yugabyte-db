@@ -641,6 +641,8 @@ For example, finalize the upgrade process after upgrading all the nodes of the Y
 yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 ```
 
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
+
 #### Flags
 
 -h | --help

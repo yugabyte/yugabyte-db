@@ -162,6 +162,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
     when(mockRuntimeConfig.getString("yb.filepaths.tmpDirectory")).thenReturn("/tmp");
+    when(mockRuntimeConfig.getBoolean("yb.ui.feature_flags.enable_earlyoom")).thenReturn(true);
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
 
     KubernetesManager kubernetesManager = mock(KubernetesManager.class);

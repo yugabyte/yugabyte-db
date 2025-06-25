@@ -1221,7 +1221,7 @@ typedef struct
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
 	 *
-	 * Set to false if FLAGS_TEST_yb_ddl_transaction_block_enabled is false.
+	 * Set to false if yb_ddl_transaction_block_enabled is false.
 	 *
 	 * This is also false for online schema changes as they are a class of DDLs
 	 * that split a single DDL into several steps. Each of these steps is a
@@ -1237,7 +1237,7 @@ typedef struct
 	 * block. This is used to invalidate the cache of the altered tables upon
 	 * rollback of the transaction.
 	 *
-	 * When FLAGS_TEST_yb_ddl_transaction_block_enabled is false, this list just
+	 * When yb_ddl_transaction_block_enabled is false, this list just
 	 * contains the tables that have been altered as part of the current ALTER
 	 * TABLE statement. Otherwise, it includes all the tables that have been
 	 * altered in the transaction block i.e. could be from multiple alter table
@@ -1282,7 +1282,7 @@ YBCCommitTransaction()
 
 	/*
 	 * use_regular_txn_block is only true if
-	 * FLAGS_TEST_yb_ddl_transaction_block_enabled is true. So no need to check the
+	 * yb_ddl_transaction_block_enabled is true. So no need to check the
 	 * flag separately.
 	 */
 	if (ddl_transaction_state.use_regular_txn_block)
@@ -2497,7 +2497,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
-	Assert(*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
+	Assert(yb_ddl_transaction_block_enabled);
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
@@ -3003,7 +3003,7 @@ YBCommitTransactionContainingDDL()
 		 * last DDL as the contributing command.
 		 */
 		const char *command_tag_name =
-			(*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) ?
+			(yb_ddl_transaction_block_enabled) ?
 				NULL :
 				GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
 
@@ -3829,7 +3829,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 * When we have ddl transaction block support, we do not need
 				 * this special case code for YSQL upgrade.
 				 */
-					!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+					!yb_ddl_transaction_block_enabled)
 				{
 					/*
 					 * We assume YSQL upgrade only makes simple use of COMMIT
@@ -3903,7 +3903,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	 * transaction.
 	 * Find a better place to return this.
 	 */
-	if (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+	if (yb_ddl_transaction_block_enabled &&
 		should_run_in_autonomous_transaction)
 		aspects |= YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE;
 
@@ -3996,14 +3996,14 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 
 	/*
 	 * Start a separate DDL transaction if
-	 * - FLAGS_TEST_yb_ddl_transaction_block_enabled is false or
+	 * - yb_ddl_transaction_block_enabled is false or
 	 * - If we were asked to by YbGetDdlMode. Currently, only done for
 	 * CREATE INDEX outside of explicit transaction block.
 	 */
 	const bool	use_separate_ddl_transaction =
 		is_ddl &&
 		(ddl_mode.value == YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT ||
-		 !*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
+		 !yb_ddl_transaction_block_enabled);
 
 	elog(DEBUG3, "is_ddl %d", is_ddl);
 	PG_TRY();
@@ -4113,7 +4113,7 @@ void
 YbInvalidateTableCacheForAlteredTables()
 {
 	if ((YbDdlRollbackEnabled() ||
-		 *YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) &&
+		 yb_ddl_transaction_block_enabled) &&
 		ddl_transaction_state.altered_table_ids)
 	{
 		/*

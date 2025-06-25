@@ -755,6 +755,8 @@ class PgApiImpl {
 
   void StartSysTablePrefetching(const PrefetcherOptions& options);
   void StopSysTablePrefetching();
+  void PauseSysTablePrefetching();
+  void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
@@ -911,6 +913,7 @@ class PgApiImpl {
 
   scoped_refptr<PgSession> pg_session_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
+  ReadHybridTime paused_catalog_read_time_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
   std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.

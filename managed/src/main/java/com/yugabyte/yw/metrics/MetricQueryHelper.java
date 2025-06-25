@@ -34,6 +34,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
@@ -339,12 +341,20 @@ public class MetricQueryHelper {
                   ybService,
                   Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()),
                   xClusterConfig.getReplicationGroupName());
-
+          Pattern pattern = Pattern.compile("^(.*?)\\.sequences_data_for\\..*$");
           for (NamespaceInfoPB namespaceInfo : rgInfo.getNamespaceInfos()) {
-            tableIds.addAll(namespaceInfo.getTableStreamsMap().keySet());
+            for (String tableId : namespaceInfo.getTableStreamsMap().keySet()) {
+              Matcher matcher = pattern.matcher(tableId);
+              if (matcher.matches()) {
+                tableIds.add(tableId);
+                // Add the table id without the sequence data part to work around issue #27667.
+                tableIds.add(matcher.group(1));
+              } else {
+                tableIds.add(tableId);
+              }
+            }
             streamIds.addAll(namespaceInfo.getTableStreamsMap().values());
           }
-
         } catch (Exception e) {
           LOG.error("Could not get outbound replication group info", e);
         }

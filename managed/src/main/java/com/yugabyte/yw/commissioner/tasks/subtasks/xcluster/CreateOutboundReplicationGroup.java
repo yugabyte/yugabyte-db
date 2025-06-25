@@ -67,7 +67,9 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
 
       XClusterCreateOutboundReplicationGroupResponse createResponse =
           client.xClusterCreateOutboundReplicationGroup(
-              xClusterConfig.getReplicationGroupName(), taskParams().getDbs());
+              xClusterConfig.getReplicationGroupName(),
+              taskParams().getDbs(),
+              xClusterConfig.isAutomaticDdlMode());
       if (createResponse.hasError()) {
         throw new RuntimeException(
             String.format(

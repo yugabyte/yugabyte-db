@@ -3068,6 +3068,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_ddl_transaction_block_enabled", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("If true, DDL operations in YSQL will execute within "
+						 "the active transaction block instead of their "
+						 "separate transactions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ddl_transaction_block_enabled,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_explain_hide_non_deterministic_fields", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("If set, all fields that vary from run to run are hidden from "
 						 "the output of EXPLAIN"),

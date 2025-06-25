@@ -65,6 +65,7 @@ import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.ImportUniverseTaskParams;
@@ -921,6 +922,21 @@ public class UniverseCRUDHandler {
       if (taskParams.nodeDetailsSet != null) {
         for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
           nodeDetails.otelCollectorMetricsPort = otelPort;
+        }
+      }
+      if (!Util.isOnPremManualProvisioning(taskParams)
+          && taskParams.additionalServicesStateData == null) {
+        boolean enableEarlyoomFeature =
+            confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
+        if (enableEarlyoomFeature) {
+          AdditionalServicesStateData servicesStateData = new AdditionalServicesStateData();
+          Boolean enableEarlyoom =
+              confGetter.getConfForScope(p, ProviderConfKeys.enableEarlyoomByDefaultForProvider);
+          String earlyoomArgs = confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
+          servicesStateData.setEarlyoomConfig(
+              AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
+          servicesStateData.setEarlyoomEnabled(enableEarlyoom);
+          taskParams.additionalServicesStateData = servicesStateData;
         }
       }
     }
