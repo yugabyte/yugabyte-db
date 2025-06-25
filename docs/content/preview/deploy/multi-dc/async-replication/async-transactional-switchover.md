@@ -30,6 +30,12 @@ Assuming universe A is the Primary and universe B is the Standby, use the follow
 
   Ensure that all prerequisites for setting up xCluster are satisfied for the new replication direction. For more information, refer to the [xCluster prerequisites](../#prerequisites).
 
+{{< warning title="Automatic mode requirements" >}}
+
+If you are performing a switchover in automatic mode, you must not run any DDLs while the switchover is being done.  Stop submitting any DDLs and wait for any previously submitted DLLs to be replicated before proceeding.  Checking xCluster safe time (see [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/)) will tell you the latest time up to which DDLs have been replicated.
+
+{{< /warning >}}
+
 ### Set up replication in the reverse direction
 
 Set up xCluster Replication from the Standby universe (B) to Primary universe (A) by following the steps in [Set up transactional xCluster](../../async-replication/async-transactional-setup-automatic/).
@@ -54,11 +60,9 @@ The lag and skew values might be non-zero as they are estimates based on the las
 
 ### Fix up sequences and serial columns
 
-{{< note >}}
-_Not applicable for Automatic mode_
-{{< /note >}}
+Skip this step if you are using xCluster replication automatic mode.
 
-Because xCluster does not replicate sequence data, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+Otherwise because xCluster only replicates sequence data in automatic mode, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
 
 Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
 
@@ -69,5 +73,11 @@ Run the following command against A to delete the old replication group.
 {{% readfile "includes/transactional-drop.md" %}}
 
 ### Switch applications to the new Primary universe (B)
+
+{{< warning title="Automatic mode requirements" >}}
+
+It is safe to resume DDLs at this point.
+
+{{< /warning >}}
 
 The old Standby (B) is now the new Primary universe, and the old Primary (A) is the new Standby universe. Update the application connection strings to point to the new Primary universe (B).
