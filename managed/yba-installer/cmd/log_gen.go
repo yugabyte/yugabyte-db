@@ -62,7 +62,7 @@ other useful data.`,
 			filepath.Join(common.GetDataRoot(), "logs/application.log"),
 			filepath.Join(common.GetDataRoot(), "logs/audit.log"),
 			filepath.Join(common.GetDataRoot(), "logs/postgres.log"),
-			filepath.Join(common.GetDataRoot(), "prometheus/prometheus.log"),
+			filepath.Join(common.GetDataRoot(), "logs/prometheus.log"),
 			filepath.Join(common.GetActiveSymlink(), "yb-platform/conf/yb-platform.conf"),
 			filepath.Join(common.GetActiveSymlink(), "prometheus/conf/prometheus.yml"),
 

@@ -274,6 +274,19 @@ func resolveSymlinkFallback(source, target string) error {
 	return nil
 }
 
+// returns true if and only if filePath is a symlink to targetPath
+func IsSameFile(filePath, targetPath string) (bool, error) {
+	fi, err := os.Stat(filePath)
+	if err != nil {
+		return false, err
+	}
+	tg, err := os.Stat(targetPath)
+	if err != nil {
+		return false, err
+	}
+	return os.SameFile(fi, tg), nil
+}
+
 func IsSubdirectory(base, target string) (bool, error) {
 	// Get absolute paths
 	baseAbs, err := filepath.Abs(base)
