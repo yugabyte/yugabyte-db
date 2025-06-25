@@ -407,6 +407,12 @@ class SysCatalogTable {
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,
       DbOidToCatalogVersionMap* versions);
+  // Similar to reading from pg_yb_catalog_version, read the latest pg_yb_invalidation_messages
+  // via read with restarts.
+  Status ReadYsqlCatalogInvalationMessagesImpl(
+      const ReadHybridTime& read_time,
+      HybridTime* read_restart_ht,
+      DbOidVersionToMessageListMap& messages);
 
   // During a batch write operation, if the max batch bytes have been exceeded, performs a write and
   // creates a new writer. To avoid running the expensive ByteSizeLong calculation too frequently,
