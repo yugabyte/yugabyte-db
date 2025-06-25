@@ -3313,7 +3313,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
 						 "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
-						 "any other method is not allowed."),
+						 "any other method will throw a WARNING message"),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -15953,10 +15953,18 @@ yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source)
 	if (source == PGC_S_DEFAULT || source == PGC_S_TEST)
 		return true;
 
+	/*
+	 * YB: This GUC is set by restore scripts generated via ysql_dump. It is used by the auto
+	 * analyze service. However, when using connection manager, the GUC can become part of the
+	 * deploy phase query (SET stmts are executed). So, we throw a warning instead of an error
+	 * if the source is not PGC_S_DATABASE.
+	 */
+
 	if (source != PGC_S_DATABASE)
 	{
-		GUC_check_errmsg("Can only be set on a database level using ALTER DATABASE SET. Current source: %s", GucSource_Names[source]);
-		return false;
+		ereport(WARNING,
+				(errmsg("can only be set on a database level using ALTER DATABASE SET. Current source: %s",
+						GucSource_Names[source])));
 	}
 	return true;
 }
