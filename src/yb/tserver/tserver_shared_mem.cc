@@ -30,6 +30,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/shmem/interprocess_semaphore.h"
 #include "yb/util/shmem/shared_mem_segment.h"
 #include "yb/util/size_literals.h"
@@ -504,19 +505,23 @@ class PgSessionSharedMemoryManager::Impl {
   Impl(std::string_view instance_id, uint64_t session_id, Create create)
       : instance_id_(instance_id),
         session_id_(session_id),
-        owner_(create == Create::kTrue),
-        shared_memory_object_(MakeSharedMemoryObject(owner_, instance_id, session_id)),
-        mapped_region_(MakeMappedRegion(owner_, shared_memory_object_)),
-        exchange_(header().exchange_header,
-                  mapped_region_.get_size() - offsetof(PgSessionSharedHeader, exchange_header)) {}
+        owner_(create == Create::kTrue) {}
+
+  Status Init() {
+    shared_memory_object_ = VERIFY_RESULT(
+        MakeSharedMemoryObject(owner_, instance_id_, session_id_));
+    mapped_region_ = VERIFY_RESULT(MakeMappedRegion(owner_, shared_memory_object_));
+    exchange_.emplace(
+        header().exchange_header,
+        mapped_region_.get_size() - offsetof(PgSessionSharedHeader, exchange_header));
+    return Status::OK();
+  }
 
   ~Impl() {
     if (!owner_ || FLAGS_TEST_skip_remove_tserver_shared_memory_object) {
       return;
     }
-    std::string shared_memory_object_name(shared_memory_object_.get_name());
-    shared_memory_object_ = boost::interprocess::shared_memory_object();
-    boost::interprocess::shared_memory_object::remove(shared_memory_object_name.c_str());
+    shared_memory_object_.DestroyAndRemove();
   }
 
   const std::string& instance_id() const {
@@ -528,7 +533,7 @@ class PgSessionSharedMemoryManager::Impl {
   }
 
   SharedExchange& exchange() {
-    return exchange_;
+    return *exchange_;
   }
 
   PgSessionLockOwnerTagShared& object_locking_data() {
@@ -536,24 +541,20 @@ class PgSessionSharedMemoryManager::Impl {
   }
 
  private:
-  static boost::interprocess::shared_memory_object MakeSharedMemoryObject(
+  static Result<InterprocessSharedMemoryObject> MakeSharedMemoryObject(
       bool owner, std::string_view instance_id, uint64_t session_id) {
     auto name = MakeSharedMemoryName(instance_id, session_id);
     if (owner) {
-      boost::interprocess::shared_memory_object object(
-          boost::interprocess::create_only, name.c_str(), boost::interprocess::read_write);
-      object.truncate(boost::interprocess::mapped_region::get_page_size());
-      return object;
+      return InterprocessSharedMemoryObject::Create(
+          name, boost::interprocess::mapped_region::get_page_size());
     } else {
-      return boost::interprocess::shared_memory_object(
-          boost::interprocess::open_only, name.c_str(), boost::interprocess::read_write);
+      return InterprocessSharedMemoryObject::Open(name);
     }
   }
 
-  static boost::interprocess::mapped_region MakeMappedRegion(
-      bool owner, const boost::interprocess::shared_memory_object& shared_memory_object) {
-    boost::interprocess::mapped_region region(
-        shared_memory_object, boost::interprocess::read_write);
+  static Result<InterprocessMappedRegion> MakeMappedRegion(
+      bool owner, const InterprocessSharedMemoryObject& shared_memory_object) {
+    auto region = VERIFY_RESULT(shared_memory_object.Map());
     if (owner) {
       new (region.get_address()) PgSessionSharedHeader();
     }
@@ -567,9 +568,9 @@ class PgSessionSharedMemoryManager::Impl {
   const std::string instance_id_;
   const uint64_t session_id_;
   const bool owner_;
-  boost::interprocess::shared_memory_object shared_memory_object_;
-  boost::interprocess::mapped_region mapped_region_;
-  SharedExchange exchange_;
+  InterprocessSharedMemoryObject shared_memory_object_;
+  InterprocessMappedRegion mapped_region_;
+  std::optional<SharedExchange> exchange_;
 };
 
 PgSessionSharedMemoryManager::PgSessionSharedMemoryManager() = default;
@@ -587,15 +588,9 @@ PgSessionSharedMemoryManager& PgSessionSharedMemoryManager::operator=(
 
 Result<PgSessionSharedMemoryManager> PgSessionSharedMemoryManager::Make(
     const std::string& instance_id, uint64_t session_id, Create create) {
-  try {
-    return PgSessionSharedMemoryManager(std::make_unique<Impl>(instance_id, session_id, create));
-  } catch (boost::interprocess::interprocess_exception& exc) {
-    auto result = STATUS_FORMAT(
-        RuntimeError, "Failed to create shared exchange for $0/$1, mode: $2, error: $3",
-        instance_id, session_id, create, exc.what());
-    LOG(DFATAL) << result;
-    return result;
-  }
+  auto impl = std::make_unique<Impl>(instance_id, session_id, create);
+  RETURN_NOT_OK(impl->Init());
+  return PgSessionSharedMemoryManager(std::move(impl));
 }
 
 Status PgSessionSharedMemoryManager::Cleanup(const std::string& instance_id) {

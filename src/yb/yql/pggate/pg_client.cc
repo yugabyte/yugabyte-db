@@ -42,6 +42,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_op.h"
@@ -101,7 +102,7 @@ Result<rpc::CallData> MakeFetchBigDataResult(const Info& info) {
 class BigDataFetcher {
  public:
   virtual void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) = 0;
-  virtual Slice FetchBigSharedMemory(uint64_t id, size_t size) = 0;
+  virtual Result<Slice> FetchBigSharedMemory(uint64_t id, size_t size) = 0;
   virtual ~BigDataFetcher() = default;
 };
 
@@ -205,7 +206,15 @@ struct PerformData : public FetchBigDataCallback {
     using Traits = ResponseReadyTraits<Res>;
     auto id = encoded_id_and_size >> tserver::kBigSharedMemoryIdShift;
     auto size = encoded_id_and_size & ((1ULL << tserver::kBigSharedMemoryIdShift) - 1);
-    auto slice = big_data_fetcher->FetchBigSharedMemory(id, size);
+    auto slice_res = big_data_fetcher->FetchBigSharedMemory(id, size);
+    if (!slice_res) {
+      if constexpr (std::is_same_v<Res, bool>) {
+        return true;
+      } else {
+        return slice_res.status();
+      }
+    }
+    auto slice = *slice_res;
     auto& in_use = *pointer_cast<std::atomic<bool>*>(slice.mutable_data());
     auto result = Traits::FromSlice(slice.WithoutPrefix(sizeof(std::atomic<bool>)));
     in_use.store(false);
@@ -862,17 +871,13 @@ class PgClient::Impl : public BigDataFetcher {
     });
   }
 
-  Slice FetchBigSharedMemory(uint64_t id, size_t size) override {
+  Result<Slice> FetchBigSharedMemory(uint64_t id, size_t size) override {
     if (id != big_shared_memory_id_) {
       big_mapped_region_ = {};
       big_shared_memory_object_ = {};
-      big_shared_memory_object_ = boost::interprocess::shared_memory_object(
-          boost::interprocess::open_only,
-          tserver::MakeSharedMemoryBigSegmentName(
-              session_shared_mem_->instance_id(), id).c_str(),
-          boost::interprocess::read_write);
-      big_mapped_region_ = boost::interprocess::mapped_region(
-          big_shared_memory_object_, boost::interprocess::read_write);
+      big_shared_memory_object_ = VERIFY_RESULT(InterprocessSharedMemoryObject::Open(
+          tserver::MakeSharedMemoryBigSegmentName(session_shared_mem_->instance_id(), id)));
+      big_mapped_region_ = VERIFY_RESULT(big_shared_memory_object_.Map());
     }
     return Slice(
         static_cast<const char*>(big_mapped_region_.get_address()),
@@ -1607,8 +1612,8 @@ class PgClient::Impl : public BigDataFetcher {
   const WaitEventWatcher& wait_event_watcher_;
 
   uint64_t big_shared_memory_id_;
-  boost::interprocess::shared_memory_object big_shared_memory_object_;
-  boost::interprocess::mapped_region big_mapped_region_;
+  InterprocessSharedMemoryObject big_shared_memory_object_;
+  InterprocessMappedRegion big_mapped_region_;
 };
 
 std::string DdlMode::ToString() const {
