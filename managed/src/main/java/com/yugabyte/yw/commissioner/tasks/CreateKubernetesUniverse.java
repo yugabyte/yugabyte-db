@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.*;
+
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -21,7 +23,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -31,6 +35,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -72,6 +77,30 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       if (isFirstTry()) {
         // Verify the task params.
         verifyParams(UniverseOpType.CREATE);
+        // Validate preview flags
+        Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        universe
+            .getUniverseDetails()
+            .clusters
+            .forEach(
+                cluster -> {
+                  try {
+                    String errMsg =
+                        GFlagsUtil.checkPreviewGFlagsOnSpecificGFlags(
+                            cluster.userIntent.specificGFlags,
+                            gFlagsValidation,
+                            cluster.userIntent.ybSoftwareVersion);
+                    if (errMsg != null) {
+                      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+                    }
+                  } catch (IOException e) {
+                    log.error(
+                        "Error while checking preview flags on the cluster: {}", cluster.uuid, e);
+                    throw new PlatformServiceException(
+                        INTERNAL_SERVER_ERROR,
+                        "Error while checking preview flags on cluster: " + cluster.uuid);
+                  }
+                });
       }
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       boolean cacheYCQLAuthPass =

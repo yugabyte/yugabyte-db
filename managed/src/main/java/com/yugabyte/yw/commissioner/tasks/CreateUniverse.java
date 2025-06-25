@@ -9,6 +9,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.*;
+
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMap;
@@ -18,12 +20,15 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -97,6 +102,28 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     // saving the Universe fails. It is ok because the retry
     // will just fail.
     updateTaskDetailsInDB(taskParams());
+    // Validate preview flags
+    universe
+        .getUniverseDetails()
+        .clusters
+        .forEach(
+            cluster -> {
+              try {
+                String errMsg =
+                    GFlagsUtil.checkPreviewGFlagsOnSpecificGFlags(
+                        cluster.userIntent.specificGFlags,
+                        gFlagsValidation,
+                        cluster.userIntent.ybSoftwareVersion);
+                if (errMsg != null) {
+                  throw new PlatformServiceException(BAD_REQUEST, errMsg);
+                }
+              } catch (IOException e) {
+                log.error("Error while checking preview flags on the cluster: {}", cluster.uuid, e);
+                throw new PlatformServiceException(
+                    INTERNAL_SERVER_ERROR,
+                    "Error while checking preview flags on cluster: " + cluster.uuid);
+              }
+            });
   }
 
   // Store the passwords in the temporary variables first and cache.
