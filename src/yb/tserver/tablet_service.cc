@@ -3458,6 +3458,13 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       auto* tablet_lock_info = resp->add_tablet_lock_infos();
       tablet_lock_info->set_is_advisory_lock_tablet(
           tablet_peer->tablet_metadata()->table_type() != PGSQL_TABLE_TYPE);
+      auto tablet_ptr_res = tablet_peer->shared_tablet_safe();
+      if (!tablet_ptr_res.ok()) {
+        resp->Clear();
+        SetupErrorAndRespond(resp->mutable_error(), tablet_ptr_res.status(), &context);
+        return;
+      }
+      auto tablet_ptr = *tablet_ptr_res;
       Status s = Status::OK();
       if (req->transactions_by_tablet().count(tablet_id) > 0) {
         std::map<TransactionId, SubtxnSet> transactions;
@@ -3478,12 +3485,12 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
           }
           transactions.emplace(std::make_pair(*id_or_status, *aborted_subtxns_or_status));
         }
-        s = tablet_peer->shared_tablet()->GetLockStatus(
+        s = tablet_ptr->GetLockStatus(
             transactions, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
             req->max_txn_locks_per_tablet());
       } else {
         DCHECK(!limit_resp_to_txns.empty());
-        s = tablet_peer->shared_tablet()->GetLockStatus(
+        s = tablet_ptr->GetLockStatus(
             limit_resp_to_txns, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
             req->max_txn_locks_per_tablet());
       }
@@ -3550,7 +3557,11 @@ void TabletServiceImpl::CancelTransaction(
 
     auto leader_term = *res;
     auto txn_found = false;
-    auto tablet_ptr = tablet_peer->shared_tablet();
+    auto tablet_ptr_res = tablet_peer->shared_tablet_safe();
+    if (!tablet_ptr_res) {
+      return SetupErrorAndRespond(resp->mutable_error(), tablet_ptr_res.status(), &context);
+    }
+    auto tablet_ptr = *tablet_ptr_res;
     auto future = MakeFuture<Result<TransactionStatusResult>>(
         [txn_id, tablet_peer, leader_term, tablet_ptr, &txn_found](auto callback) {
       txn_found = tablet_ptr->transaction_coordinator()->CancelTransactionIfFound(
