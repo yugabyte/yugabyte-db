@@ -1096,8 +1096,7 @@ determines whether any of the databases to be replicated need to be
 copied to the target (this is called bootstrapping the databases).
 
 If bootstrapping is required then the `create_checkpoint` command
-outputs directions for bootstrapping the databases that that need to be
-bootstrapping.
+outputs directions for bootstrapping the relevant databases.
 
 ##### create_checkpoint flags
 
@@ -1131,8 +1130,7 @@ For example, to add new databases to xCluster replication, first checkpoint them
 The `add_to_checkpoint` command takes a snapshot of the database and determines whether any of the databases to be added to the replication need to be copied to the target.
 
 If bootstrapping is required then the `add_to_checkpoint` command
-outputs directions for bootstrapping the databases that need to be
-bootstrapping.
+outputs directions for bootstrapping the relevant databases.
 
 ##### add_to_checkpoint flags
 
