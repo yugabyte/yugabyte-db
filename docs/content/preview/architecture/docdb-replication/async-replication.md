@@ -242,6 +242,12 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
   [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
 
+- Truncate
+
+  The TRUNCATE command is not supported.
+  
+  Exception: if you turn on the gflag `enable_delete_truncate_xcluster_replicated_table` then you may use TRUNCATE with YCQL in non-transactional xCluster replication.
+  
 - Backups
 
   Backups are supported on both universes. However, for backups on target clusters, if there is an active workload, the consistency of the latest data is not guaranteed. This applies even to transactional modes. Therefore, it is recommended to take backups on the source universe only.
@@ -310,7 +316,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
 - DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
 - CREATE TABLE AS and SELECT INTO DDL statements are not supported. You can work around this by breaking the DDL into a CREATE TABLE followed by INSERT SELECT.
-- ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, TRUNCATE, and ALTER LARGE OBJECT DDLs are not supported.
+- ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, and ALTER LARGE OBJECT DDLs are not supported.
 - DDLs related to PUBLICATION and SUBSCRIPTION are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
