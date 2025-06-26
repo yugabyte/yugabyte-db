@@ -62,7 +62,7 @@ The lag and skew values might be non-zero as they are estimates based on the las
 
 Skip this step if you are using xCluster replication automatic mode.
 
-Otherwise because xCluster only replicates sequence data in automatic mode, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
 
 Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
 
@@ -73,11 +73,5 @@ Run the following command against A to delete the old replication group.
 {{% readfile "includes/transactional-drop.md" %}}
 
 ### Switch applications to the new Primary universe (B)
-
-{{< warning title="Automatic mode requirements" >}}
-
-It is safe to resume DDLs at this point.
-
-{{< /warning >}}
 
 The old Standby (B) is now the new Primary universe, and the old Primary (A) is the new Standby universe. Update the application connection strings to point to the new Primary universe (B).

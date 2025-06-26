@@ -65,6 +65,10 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
 1. Perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore).
 
+   {{< note >}}
+   A full copy is needed here: it is not sufficient to just set up the same schemas on both sides via DDLs, even if there is no data. That will not properly set up some internal metadata including Postgres OIDs.
+   {{< /note >}}
+
 1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
 
     ```sh
@@ -141,6 +145,10 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
     ```
 
 1. Perform a full copy of the database on the Primary to the Standby using distributed backup and restore. See [Distributed snapshots for YSQL](../../../../manage/backup-restore/snapshot-ysql/).
+
+   {{< note >}}
+   A full copy is needed here: it is not sufficient to just set up the same schemas on both sides via DDLs, even if there is no data. That will not properly set up some internal metadata including Postgres OIDs.
+   {{< /note >}}
 
 1. Enable [point in time restore (PITR)](../../../../admin/yb-admin/#create-snapshot-schedule) on the database(s) on both the Primary and Standby universes:
 

@@ -46,10 +46,6 @@ automatically replicated to the Standby universe.
 
 Not all DDLs can be automatically replicated yet; see [XCluster Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
-Some of these DDLs can be replicated manually but others require
-dropping xCluster replication, performing the DDLs on the source
-universe, then re-creating xCluster replication.
-
 {{< /warning >}}
 
 In this mode, xCluster replication operates at the YSQL database granularity. This means you only run xCluster management operations when adding and removing databases from replication, and not when tables in the databases are created or dropped.
@@ -78,7 +74,7 @@ workload (including performing DDLs) to them and wait for the
 replication lag to reach zero before dropping the replication group.
 
 If you stop only running DDLs but not the rest of your workload and wait
-for the DDLs to drain then the target databases will be usable but each
+for the DDLs to drain, then the target databases will be usable but each
 tablet may be stale by a different amount.  This contrasts with the
 stopping and waiting fully case where all the tables will be up-to-date.
 
@@ -100,7 +96,7 @@ usable after dropping replication, you need to stop your workload
 zero before dropping the replication group.
 
 If you stop only running DDLs but not the rest of your workload and wait
-for the DDLs to drain then the target databases will be usable but each
+for the DDLs to drain, then the target databases will be usable but each
 tablet may be stale by a different amount.  This contrasts with the
 stopping and waiting fully case where all the tables will be up-to-date.
 
@@ -115,10 +111,6 @@ than attempting to use them.
 {{< warning title="Warning" >}}
 
 Not all DDLs can be automatically replicated yet; see [XCluster Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
-
-Some of these DDLs can be replicated manually but others require
-dropping xCluster replication, performing the DDLs on the source
-universe, then re-creating xCluster replication.
 
 {{< /warning >}}
 
