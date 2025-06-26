@@ -1040,8 +1040,6 @@ Default: false
 
 ## Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp idea="812">}}.
-
 To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
