@@ -1258,7 +1258,6 @@ Timeout after which it is inferred that a particular tablet is not of interest f
 
 {{% tags/wrap %}}
 
-
 Default: `4 * 3600` (4 hours)
 {{% /tags/wrap %}}
 
