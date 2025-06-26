@@ -1,12 +1,12 @@
 ---
-title: Create a KMS configuration using Google Cloud
+title: Create a KMS configuration using CipherTrust
 headerTitle: Create a KMS configuration
 linkTitle: Create a KMS configuration
-description: Use YugabyteDB Anywhere to create a KMS configuration for Google Cloud KMS.
+description: Use YugabyteDB Anywhere to create a KMS configuration for CipherTrust KMS.
 menu:
   v2025.1_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-2-google-kms
+    identifier: create-kms-config-5-ciphertrust-kms
     weight: 50
 type: docs
 ---
@@ -21,7 +21,7 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
     </a>
   </li>
   <li >
-    <a href="../google-kms/" class="nav-link active">
+    <a href="../google-kms/" class="nav-link">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
       Google
     </a>
@@ -41,32 +41,22 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
   </li>
 
   <li >
-    <a href="../ciphertrust-kms/" class="nav-link">
+    <a href="../ciphertrust-kms/" class="nav-link active">
       CipherTrust
     </a>
   </li>
 
 </ul>
 
-Encryption at rest in YugabyteDB Anywhere supports the use of [Google Cloud KMS](https://cloud.google.com/security-key-management).
-
-Conceptually, Google Cloud KMS consists of a key ring containing one or more cryptographic keys, with each key capable of having multiple versions.
-
-If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
-
-- The primary cryptographic key version should be in the Enabled state.
-- The purpose should be set to symmetric ENCRYPT_DECRYPT.
-- The key rotation period should be set to Never (manual rotation).
-
-Note that YugabyteDB Anywhere does not manage the key ring and deleting the KMS configuration does not destroy the key ring, cryptographic key, or its versions on Google Cloud KMS.
+Encryption at rest in YugabyteDB Anywhere supports the use of [CipherTrust KMS](https://thalesdocs.com/ctp/cm/latest/).
 
 ## Prerequisites
 
-The Google Cloud user associated with a KMS configuration requires a custom role assigned to the service account. See [To use encryption at rest with YugabyteDB Anywhere](../../../prepare/cloud-permissions/cloud-permissions-ear/).
+{{<tags/feature/ea idea="1227">}}CipherTrust support is Early Access. To enable the feature in YugabyteDB Anywhere, set the **Allow CipherTrust KMS** Global Runtime Configuration option (config key `yb.kms.allow_ciphertrust`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 ## Create a KMS configuration
 
-You can create a KMS configuration that uses Google Cloud KMS, as follows:
+You can create a KMS configuration that uses CipherTrust, as follows:
 
 1. Navigate to **Integrations > Security > Encryption At Rest** to access the list of existing configurations.
 
@@ -75,15 +65,14 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
 1. Enter the following configuration details in the form:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
-    - **KMS Provider** — Select **GCP KMS**.
-    - **Service Account Credentials** — Upload the JSON file containing your Google Cloud credentials.
-    - **Location** — Select the region where your crypto key is located.
-    - **Key Ring Name** — Enter the name of the key ring. If a key ring with the same name already exists, the existing key ring is used; otherwise, a new key ring is created automatically.
-    - **Crypto Key Name** — Enter the name of the crypto key. If a crypto key with the same name already exists in the key ring, the settings are validated and the existing crypto key is used; otherwise, a new crypto key is created automatically.
-    - **Protection Level** — Select the crypto key protection at either the software or hardware level.
-    - **KMS Endpoint** — Optionally, specify a custom Google Cloud KMS endpoint to route the encryption traffic.
+    - **KMS Provider** — Select **CipherTrust KMS**.
+    - **CipherTrust Manager URL** — Enter the URL of your CipherTrust Manager deployment.
+    - **Authentication type** — Choose **User Credentials** to provide a username and password, or **Refresh Token** to provide a token.
+    - **Key Name** — Enter the name of the key. If a key with the same name already exists, the existing key is used; otherwise, a new key is created automatically using the specified algorithm and size.
+    - **Key Algorithm** — Choose the encryption algorithm to use to create a new key.
+    - **Key Size** — Choose the key size for a new key.
 
-    ![Google KMS](/images/yp/security/googlekms-config.png)
+    ![Ciphertrust KMS](/images/yp/security/kms-ciphertrust-config.png)
 
 1. Click **Save**.
 
@@ -93,13 +82,13 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
 ## Modify a KMS configuration
 
-You can modify an existing KMS configuration as follows:
+You can modify the credentials to use to access your CipherTrust Manager as follows:
 
 1. Navigate to **Integrations > Security > Encryption At Rest** to open a list of existing configurations.
 
 1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
 
-1. Provide new values for the **Vault Address** and **Secret Token** fields.
+1. Provide new values for the **Authentication** fields.
 
 1. Click **Save**.
 
