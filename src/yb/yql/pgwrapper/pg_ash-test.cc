@@ -262,6 +262,18 @@ const Configuration kPgCronRPCs{
   .master_flags = {
     "--enable_pg_cron=true"}};
 
+const Configuration kPgCDCRPCs{
+  .rpc_list = {
+    ash::PggateRPC::kInitVirtualWALForCDC,
+    ash::PggateRPC::kGetLagMetrics,
+    ash::PggateRPC::kUpdatePublicationTableList,
+    ash::PggateRPC::kGetConsistentChanges,
+    ash::PggateRPC::kDestroyVirtualWALForCDC,
+    ash::PggateRPC::kUpdateAndPersistLSN},
+  .tserver_flags = {
+     "--cdcsdk_publication_list_refresh_interval_secs=1"
+  }};
+
 template <const Configuration& Config>
 class ConfigurableTest : public PgWaitEventAuxTest {
  public:
@@ -292,6 +304,7 @@ using PgMiscWaitEventAux = ConfigurableTest<kMiscRPCs>;
 using PgParallelWaitEventAux = ConfigurableTest<kParallelRPCs>;
 using PgTabletSplitWaitEventAux = ConfigurableTest<kTabletSplitRPCs>;
 using PgCronWaitEventAux = ConfigurableTest<kPgCronRPCs>;
+using PgCDCWaitEventAux = ConfigurableTest<kPgCDCRPCs>;
 
 }  // namespace
 
@@ -551,6 +564,54 @@ TEST_F_EX(PgWaitEventAuxTest, PgCronRPCs, PgCronWaitEventAux) {
   ASSERT_OK(conn_->Execute("DROP EXTENSION pg_cron"));
   ASSERT_OK(conn_->Execute(kCreatePgCronQuery));
   SleepFor(65s * kTimeMultiplier);
+
+  ASSERT_OK(CheckWaitEventAux());
+}
+
+TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
+  static constexpr auto kTableName = "test_table";
+  static constexpr auto kSlotName = "test_slot";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName));
+  auto res = ASSERT_RESULT(conn_->FetchFormat(
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'test_decoding')", kSlotName));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this]() {
+    std::vector<std::string> argv = {
+        GetPgToolPath("pg_recvlogical"),
+        "--dbname=yugabyte",
+        "--username=yugabyte",
+        Format("--host=$0", pg_ts->bind_host()),
+        Format("--port=$0", pg_ts->ysql_port()),
+        Format("--slot=$0", kSlotName),
+        "--endpos=0/6", // so that the replication stops after 2 commits
+        "--file=-",
+        "--start"
+    };
+    ASSERT_OK(Subprocess::Call(argv));
+  });
+
+  // wait for the walsender process
+  SleepFor(2s * kTimeMultiplier);
+
+  ASSERT_OK(conn_->Fetch("SELECT * FROM pg_stat_get_wal_senders()"));
+
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2)", kTableName));
+  ASSERT_OK(conn_->CommitTransaction());
+
+  // wait for UpdateAndPersistLSN RPC to be called
+  SleepFor(2s * kTimeMultiplier);
+
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (3)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (4)", kTableName));
+  ASSERT_OK(conn_->CommitTransaction());
+
+  // wait for DestroyVirtualWALForCDC RPC to be called
+  SleepFor(2s * kTimeMultiplier);
 
   ASSERT_OK(CheckWaitEventAux());
 }

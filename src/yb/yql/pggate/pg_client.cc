@@ -78,6 +78,9 @@ extern int yb_locks_max_transactions;
 extern int yb_locks_txn_locks_per_tablet;
 
 using namespace std::literals;
+using yb::tserver::PgClientServiceProxy;
+using yb::cdc::CDCServiceProxy;
+using yb::ash::PggateRPC;
 
 namespace yb::pggate {
 
@@ -380,21 +383,21 @@ client::VersionedTablePartitionList BuildTablePartitionList(
 
 // List of additional RPCs that are logged by
 // yb_debug_log_docdb_requests
-static ash::PggateRPC kDebugLogRPCs[] = {
-  ash::PggateRPC::kOpenTable,
-  ash::PggateRPC::kAlterTable,
-  ash::PggateRPC::kCreateDatabase,
-  ash::PggateRPC::kBackfillIndex,
-  ash::PggateRPC::kAlterDatabase,
-  ash::PggateRPC::kCreateTable,
-  ash::PggateRPC::kCreateTablegroup,
-  ash::PggateRPC::kDropDatabase,
-  ash::PggateRPC::kDropTable,
-  ash::PggateRPC::kDropTablegroup,
-  ash::PggateRPC::kAcquireAdvisoryLock,
-  ash::PggateRPC::kReleaseAdvisoryLock,
-  ash::PggateRPC::kAcquireObjectLock,
-  ash::PggateRPC::kTruncateTable
+static PggateRPC kDebugLogRPCs[] = {
+  PggateRPC::kOpenTable,
+  PggateRPC::kAlterTable,
+  PggateRPC::kCreateDatabase,
+  PggateRPC::kBackfillIndex,
+  PggateRPC::kAlterDatabase,
+  PggateRPC::kCreateTable,
+  PggateRPC::kCreateTablegroup,
+  PggateRPC::kDropDatabase,
+  PggateRPC::kDropTable,
+  PggateRPC::kDropTablegroup,
+  PggateRPC::kAcquireAdvisoryLock,
+  PggateRPC::kReleaseAdvisoryLock,
+  PggateRPC::kAcquireObjectLock,
+  PggateRPC::kTruncateTable
 };
 
 class PgClient::Impl : public BigDataFetcher {
@@ -423,9 +426,9 @@ class PgClient::Impl : public BigDataFetcher {
       resolve_cache_timeout = MonoDelta::kMax;
     }
     LOG(INFO) << "Using TServer host_port: " << host_port;
-    proxy_ = std::make_unique<tserver::PgClientServiceProxy>(
+    proxy_ = std::make_unique<PgClientServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
-    local_cdc_service_proxy_ = std::make_unique<cdc::CDCServiceProxy>(
+    local_cdc_service_proxy_ = std::make_unique<CDCServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
 
     if (!session_id) {
@@ -527,8 +530,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_include_hidden(include_hidden);
     tserver::PgOpenTableResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::OpenTable,
-        req, resp, ash::PggateRPC::kOpenTable));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::OpenTable,
+        req, resp, PggateRPC::kOpenTable));
     RETURN_NOT_OK(ResponseStatus(resp));
 
     auto result = make_scoped_refptr<PgTableDesc>(
@@ -542,8 +545,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_table_id(table_id.GetYbTableId());
 
     tserver::PgGetTablePartitionListResponsePB resp;
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetTablePartitionList,
-        req, resp, ash::PggateRPC::kGetTablePartitionList));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTablePartitionList,
+        req, resp, PggateRPC::kGetTablePartitionList));
     RETURN_NOT_OK(ResponseStatus(resp));
 
     return BuildTablePartitionList(resp.partitions(), table_id);
@@ -552,8 +555,8 @@ class PgClient::Impl : public BigDataFetcher {
   Result<tserver::PgListClonesResponsePB> ListDatabaseClones() {
     tserver::PgListClonesRequestPB req;
     tserver::PgListClonesResponsePB resp;
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::ListClones,
-        req, resp, ash::PggateRPC::kListClones));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ListClones,
+        req, resp, PggateRPC::kListClones));
     return resp;
   }
 
@@ -585,8 +588,8 @@ class PgClient::Impl : public BigDataFetcher {
         CoarseMonoClock::Now() +
             MonoDelta::FromSeconds((FLAGS_ddl_verification_timeout_multiplier + 1) *
                                    FLAGS_yb_client_admin_operation_timeout_sec);
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::FinishTransaction,
-        req, resp, ash::PggateRPC::kFinishTransaction, deadline));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::FinishTransaction,
+        req, resp, PggateRPC::kFinishTransaction, deadline));
 
     return ResponseStatus(resp);
   }
@@ -608,8 +611,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgPollVectorIndexReadyResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::PollVectorIndexReady,
-        req, resp, ash::PggateRPC::kPollVectorIndexReady));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::PollVectorIndexReady,
+        req, resp, PggateRPC::kPollVectorIndexReady));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.ready();
   }
@@ -624,8 +627,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgRollbackToSubTransactionResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::RollbackToSubTransaction,
-        req, resp, ash::PggateRPC::kRollbackToSubTransaction));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RollbackToSubTransaction,
+        req, resp, PggateRPC::kRollbackToSubTransaction));
     return ResponseStatus(resp);
   }
 
@@ -650,8 +653,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgInsertSequenceTupleResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::InsertSequenceTuple,
-        req, resp, ash::PggateRPC::kInsertSequenceTuple));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::InsertSequenceTuple,
+        req, resp, PggateRPC::kInsertSequenceTuple));
     return ResponseStatus(resp);
   }
 
@@ -683,8 +686,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgUpdateSequenceTupleResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::UpdateSequenceTuple,
-        req, resp, ash::PggateRPC::kUpdateSequenceTuple));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::UpdateSequenceTuple,
+        req, resp, PggateRPC::kUpdateSequenceTuple));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.skipped();
   }
@@ -716,8 +719,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgFetchSequenceTupleResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::FetchSequenceTuple,
-        req, resp, ash::PggateRPC::kFetchSequenceTuple));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::FetchSequenceTuple,
+        req, resp, PggateRPC::kFetchSequenceTuple));
     RETURN_NOT_OK(ResponseStatus(resp));
     return std::make_pair(resp.first_value(), resp.last_value());
   }
@@ -744,8 +747,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgReadSequenceTupleResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::ReadSequenceTuple,
-        req, resp, ash::PggateRPC::kReadSequenceTuple));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ReadSequenceTuple,
+        req, resp, PggateRPC::kReadSequenceTuple));
     RETURN_NOT_OK(ResponseStatus(resp));
     return std::make_pair(resp.last_val(), resp.is_called());
   }
@@ -758,8 +761,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgDeleteSequenceTupleResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::DeleteSequenceTuple,
-        req, resp, ash::PggateRPC::kDeleteSequenceTuple));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::DeleteSequenceTuple,
+        req, resp, PggateRPC::kDeleteSequenceTuple));
     return ResponseStatus(resp);
   }
 
@@ -770,8 +773,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgDeleteDBSequencesResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::DeleteDBSequences,
-        req, resp, ash::PggateRPC::kDeleteDBSequences));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::DeleteDBSequences,
+        req, resp, PggateRPC::kDeleteDBSequences));
     return ResponseStatus(resp);
   }
 
@@ -909,8 +912,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgReserveOidsResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::ReserveOids,
-        req, resp, ash::PggateRPC::kReserveOids));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ReserveOids,
+        req, resp, PggateRPC::kReserveOids));
     RETURN_NOT_OK(ResponseStatus(resp));
     return std::pair<PgOid, PgOid>(resp.begin_oid(), resp.end_oid());
   }
@@ -921,8 +924,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgGetNewObjectIdResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetNewObjectId,
-        req, resp, ash::PggateRPC::kGetNewObjectId));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetNewObjectId,
+        req, resp, PggateRPC::kGetNewObjectId));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.new_oid();
   }
@@ -951,8 +954,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     req.set_db_oid(db_oid);
     RETURN_NOT_OK(DoSyncRPC(
-        &tserver::PgClientServiceProxy::GetXClusterRole, req, resp,
-        ash::PggateRPC::kGetXClusterRole));
+        &PgClientServiceProxy::GetXClusterRole, req, resp,
+        PggateRPC::kGetXClusterRole));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.xcluster_role();
   }
@@ -969,8 +972,8 @@ class PgClient::Impl : public BigDataFetcher {
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline) {
     req->set_session_id(session_id_);
     tserver::PgDropTableResponsePB resp;
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::DropTable,
-        *req, resp, ash::PggateRPC::kDropTable, deadline));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::DropTable,
+        *req, resp, PggateRPC::kDropTable, deadline));
     RETURN_NOT_OK(ResponseStatus(resp));
     client::YBTableName result;
     if (resp.has_indexed_table()) {
@@ -984,8 +987,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgWaitForBackendsCatalogVersionResponsePB resp;
     req->set_session_id(session_id_);
     RETURN_NOT_OK(DoSyncRPC(
-        &tserver::PgClientServiceProxy::WaitForBackendsCatalogVersion,
-        *req, resp, ash::PggateRPC::kWaitForBackendsCatalogVersion, deadline));
+        &PgClientServiceProxy::WaitForBackendsCatalogVersion,
+        *req, resp, PggateRPC::kWaitForBackendsCatalogVersion, deadline));
     RETURN_NOT_OK(ResponseStatus(resp));
     if (resp.num_lagging_backends() != -1) {
       return resp.num_lagging_backends();
@@ -1001,8 +1004,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgBackfillIndexResponsePB resp;
     req->set_session_id(session_id_);
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::BackfillIndex,
-        *req, resp, ash::PggateRPC::kBackfillIndex, deadline));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::BackfillIndex,
+        *req, resp, PggateRPC::kBackfillIndex, deadline));
     return ResponseStatus(resp);
   }
 
@@ -1015,8 +1018,8 @@ class PgClient::Impl : public BigDataFetcher {
       index_id.ToPB(req.add_index_ids());
     }
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetIndexBackfillProgress,
-        req, resp, ash::PggateRPC::kGetIndexBackfillProgress));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetIndexBackfillProgress,
+        req, resp, PggateRPC::kGetIndexBackfillProgress));
     RETURN_NOT_OK(ResponseStatus(resp));
     uint64_t* backfill_status = *backfill_statuses;
     for (const auto entry : resp.rows_processed_entries()) {
@@ -1041,8 +1044,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_max_num_txns(yb_locks_max_transactions);
     req.set_max_txn_locks_per_tablet(yb_locks_txn_locks_per_tablet);
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetLockStatus,
-        req, resp, ash::PggateRPC::kGetLockStatus));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetLockStatus,
+        req, resp, PggateRPC::kGetLockStatus));
     RETURN_NOT_OK(ResponseStatus(resp));
 
     return resp;
@@ -1056,8 +1059,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgTabletServerCountResponsePB resp;
     req.set_primary_only(primary_only);
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::TabletServerCount,
-        req, resp, ash::PggateRPC::kTabletServerCount));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::TabletServerCount,
+        req, resp, PggateRPC::kTabletServerCount));
     RETURN_NOT_OK(ResponseStatus(resp));
     tablet_server_count_cache_[primary_only] = resp.count();
     return resp.count();
@@ -1068,8 +1071,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgListLiveTabletServersResponsePB resp;
     req.set_primary_only(primary_only);
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::ListLiveTabletServers,
-        req, resp, ash::PggateRPC::kListLiveTabletServers));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ListLiveTabletServers,
+        req, resp, PggateRPC::kListLiveTabletServers));
     RETURN_NOT_OK(ResponseStatus(resp));
     client::TabletServersInfo result;
     result.tablet_servers.reserve(resp.servers().size());
@@ -1082,8 +1085,8 @@ class PgClient::Impl : public BigDataFetcher {
 
   Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req) {
     tserver::PgValidatePlacementResponsePB resp;
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::ValidatePlacement,
-        *req, resp, ash::PggateRPC::kValidatePlacement));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ValidatePlacement,
+        *req, resp, PggateRPC::kValidatePlacement));
     return ResponseStatus(resp);
   }
 
@@ -1094,8 +1097,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgGetTableDiskSizeRequestPB req;
     table_oid.ToPB(req.mutable_table_id());
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetTableDiskSize,
-        req, resp, ash::PggateRPC::kGetTableDiskSize));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTableDiskSize,
+        req, resp, PggateRPC::kGetTableDiskSize));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
@@ -1106,8 +1109,8 @@ class PgClient::Impl : public BigDataFetcher {
   Result<bool> CheckIfPitrActive() {
     tserver::PgCheckIfPitrActiveRequestPB req;
     tserver::PgCheckIfPitrActiveResponsePB resp;
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::CheckIfPitrActive,
-        req, resp, ash::PggateRPC::kCheckIfPitrActive));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::CheckIfPitrActive,
+        req, resp, PggateRPC::kCheckIfPitrActive));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
@@ -1118,8 +1121,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgIsObjectPartOfXReplRequestPB req;
     tserver::PgIsObjectPartOfXReplResponsePB resp;
     table_id.ToPB(req.mutable_table_id());
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::IsObjectPartOfXRepl,
-        req, resp, ash::PggateRPC::kIsObjectPartOfXRepl));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::IsObjectPartOfXRepl,
+        req, resp, PggateRPC::kIsObjectPartOfXRepl));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
@@ -1134,8 +1137,8 @@ class PgClient::Impl : public BigDataFetcher {
       req.mutable_session_id()->set_value(session_id_);
     }
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetActiveTransactionList,
-        req, resp, ash::PggateRPC::kGetActiveTransactionList));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetActiveTransactionList,
+        req, resp, PggateRPC::kGetActiveTransactionList));
     RETURN_NOT_OK(ResponseStatus(resp));
 
     const auto& entries = resp.entries();
@@ -1176,8 +1179,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     auto* controller = PrepareController();
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetTableKeyRanges,
-        req, resp, ash::PggateRPC::kGetTableKeyRanges, controller));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTableKeyRanges,
+        req, resp, PggateRPC::kGetTableKeyRanges, controller));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
@@ -1196,8 +1199,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgGetTserverCatalogVersionInfoResponsePB resp;
     req.set_size_only(size_only);
     req.set_db_oid(db_oid);
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetTserverCatalogVersionInfo,
-        req, resp, ash::PggateRPC::kGetTserverCatalogVersionInfo));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTserverCatalogVersionInfo,
+        req, resp, PggateRPC::kGetTserverCatalogVersionInfo));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
@@ -1211,8 +1214,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_db_oid(db_oid);
     req.set_ysql_catalog_version(ysql_catalog_version);
     req.set_num_catalog_versions(num_catalog_versions);
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetTserverCatalogMessageLists,
-        req, resp, ash::PggateRPC::kGetTserverCatalogMessageLists));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTserverCatalogMessageLists,
+        req, resp, PggateRPC::kGetTserverCatalogMessageLists));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
@@ -1230,8 +1233,8 @@ class PgClient::Impl : public BigDataFetcher {
     if (message_list.has_value()) {
       req.mutable_message_list()->set_message_list(message_list.value());
     }
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::SetTserverCatalogMessageList,
-        req, resp, ash::PggateRPC::kSetTserverCatalogMessageList));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::SetTserverCatalogMessageList,
+        req, resp, PggateRPC::kSetTserverCatalogMessageList));
     if (resp.has_status()) {
       return StatusFromPB(resp.status());
     }
@@ -1244,8 +1247,8 @@ class PgClient::Impl : public BigDataFetcher {
       CoarseTimePoint deadline) { \
     tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB) resp; \
     req->set_session_id(session_id_); \
-    auto status = DoSyncRPC(&tserver::PgClientServiceProxy::method, \
-        *req, resp, BOOST_PP_CAT(ash::PggateRPC::k, method), deadline); \
+    auto status = DoSyncRPC(&PgClientServiceProxy::method, \
+        *req, resp, BOOST_PP_CAT(PggateRPC::k, method), deadline); \
     if (!status.ok()) { \
       if (status.IsTimedOut()) { \
         return STATUS_FORMAT(TimedOut, "Timed out waiting for $0", PrettyFunctionName(__func__)); \
@@ -1261,8 +1264,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgCancelTransactionRequestPB req;
     req.set_transaction_id(transaction_id, kUuidSize);
     tserver::PgCancelTransactionResponsePB resp;
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::CancelTransaction,
-        req, resp, ash::PggateRPC::kCancelTransaction));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::CancelTransaction,
+        req, resp, PggateRPC::kCancelTransaction));
     return ResponseStatus(resp);
   }
 
@@ -1270,8 +1273,8 @@ class PgClient::Impl : public BigDataFetcher {
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline) {
     tserver::PgCreateReplicationSlotResponsePB resp;
     req->set_session_id(session_id_);
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::CreateReplicationSlot,
-        *req, resp, ash::PggateRPC::kCreateReplicationSlot, deadline));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::CreateReplicationSlot,
+        *req, resp, PggateRPC::kCreateReplicationSlot, deadline));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1280,8 +1283,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgListReplicationSlotsRequestPB req;
     tserver::PgListReplicationSlotsResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::ListReplicationSlots,
-        req, resp, ash::PggateRPC::kListReplicationSlots));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ListReplicationSlots,
+        req, resp, PggateRPC::kListReplicationSlots));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1293,8 +1296,8 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgGetReplicationSlotResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::GetReplicationSlot,
-        req, resp, ash::PggateRPC::kGetReplicationSlot));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetReplicationSlot,
+        req, resp, PggateRPC::kGetReplicationSlot));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1303,8 +1306,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgExportTxnSnapshotResponsePB resp;
     req->set_session_id(session_id_);
     RETURN_NOT_OK(DoSyncRPC(
-        &tserver::PgClientServiceProxy::ExportTxnSnapshot, *req, resp,
-        ash::PggateRPC::kExportTxnSnapshot));
+        &PgClientServiceProxy::ExportTxnSnapshot, *req, resp,
+        PggateRPC::kExportTxnSnapshot));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.snapshot_id();
   }
@@ -1317,8 +1320,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
     *req.mutable_options() = std::move(options);
     RETURN_NOT_OK(DoSyncRPC(
-        &tserver::PgClientServiceProxy::ImportTxnSnapshot, req, resp,
-        ash::PggateRPC::kImportTxnSnapshot));
+        &PgClientServiceProxy::ImportTxnSnapshot, req, resp,
+        PggateRPC::kImportTxnSnapshot));
     RETURN_NOT_OK(ResponseStatus(resp));
     return std::move(resp.snapshot());
   }
@@ -1328,8 +1331,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgClearExportedTxnSnapshotsResponsePB resp;
     req.set_session_id(session_id_);
     RETURN_NOT_OK(DoSyncRPC(
-        &tserver::PgClientServiceProxy::ClearExportedTxnSnapshots, req, resp,
-        ash::PggateRPC::kClearExportedTxnSnapshots));
+        &PgClientServiceProxy::ClearExportedTxnSnapshots, req, resp,
+        PggateRPC::kClearExportedTxnSnapshots));
     return ResponseStatus(resp);
   }
 
@@ -1353,8 +1356,8 @@ class PgClient::Impl : public BigDataFetcher {
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats() {
     tserver::PgYCQLStatementStatsRequestPB req;
     tserver::PgYCQLStatementStatsResponsePB resp;
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::YCQLStatementStats,
-        req, resp, ash::PggateRPC::kYCQLStatementStats));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::YCQLStatementStats,
+        req, resp, PggateRPC::kYCQLStatementStats));
     return resp;
   }
 
@@ -1383,7 +1386,8 @@ class PgClient::Impl : public BigDataFetcher {
     }
 
     cdc::InitVirtualWALForCDCResponsePB resp;
-    RETURN_NOT_OK(local_cdc_service_proxy_->InitVirtualWALForCDC(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&CDCServiceProxy::InitVirtualWALForCDC,
+        req, resp, PggateRPC::kInitVirtualWALForCDC));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1393,7 +1397,8 @@ class PgClient::Impl : public BigDataFetcher {
     cdc::GetLagMetricsRequestPB req;
     req.set_stream_id(stream_id);
     cdc::GetLagMetricsResponsePB resp;
-    RETURN_NOT_OK(local_cdc_service_proxy_->GetLagMetrics(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&CDCServiceProxy::GetLagMetrics,
+        req, resp, PggateRPC::kGetLagMetrics));
     RETURN_NOT_OK(ResponseStatus(resp));
     *lag_metric = resp.lag_metric();
     return resp;
@@ -1409,8 +1414,8 @@ class PgClient::Impl : public BigDataFetcher {
     }
 
     cdc::UpdatePublicationTableListResponsePB resp;
-    RETURN_NOT_OK(
-        local_cdc_service_proxy_->UpdatePublicationTableList(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&CDCServiceProxy::UpdatePublicationTableList,
+        req, resp, PggateRPC::kUpdatePublicationTableList));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1420,8 +1425,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_session_id(session_id_);
 
     cdc::DestroyVirtualWALForCDCResponsePB resp;
-    RETURN_NOT_OK(
-        local_cdc_service_proxy_->DestroyVirtualWALForCDC(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&CDCServiceProxy::DestroyVirtualWALForCDC,
+        req, resp, PggateRPC::kDestroyVirtualWALForCDC));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1433,7 +1438,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_stream_id(stream_id);
 
     cdc::GetConsistentChangesResponsePB resp;
-    RETURN_NOT_OK(local_cdc_service_proxy_->GetConsistentChanges(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&CDCServiceProxy::GetConsistentChanges,
+        req, resp, PggateRPC::kGetConsistentChanges));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1447,8 +1453,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_confirmed_flush_lsn(confirmed_flush);
 
     cdc::UpdateAndPersistLSNResponsePB resp;
-    RETURN_NOT_OK(
-        local_cdc_service_proxy_->UpdateAndPersistLSN(req, &resp, PrepareController()));
+    RETURN_NOT_OK(DoSyncRPC(&CDCServiceProxy::UpdateAndPersistLSN,
+        req, resp, PggateRPC::kUpdateAndPersistLSN));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1457,8 +1463,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgTabletsMetadataRequestPB req;
     tserver::PgTabletsMetadataResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::TabletsMetadata,
-        req, resp, ash::PggateRPC::kTabletsMetadata));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::TabletsMetadata,
+        req, resp, PggateRPC::kTabletsMetadata));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1467,8 +1473,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgServersMetricsRequestPB req;
     tserver::PgServersMetricsResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::ServersMetrics,
-        req, resp, ash::PggateRPC::kServersMetrics));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ServersMetrics,
+        req, resp, PggateRPC::kServersMetrics));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1478,8 +1484,8 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_last_minute(last_minute);
     tserver::PgCronSetLastMinuteResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::CronSetLastMinute,
-        req, resp, ash::PggateRPC::kCronSetLastMinute));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::CronSetLastMinute,
+        req, resp, PggateRPC::kCronSetLastMinute));
     return ResponseStatus(resp);
   }
 
@@ -1487,8 +1493,8 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgCronGetLastMinuteRequestPB req;
     tserver::PgCronGetLastMinuteResponsePB resp;
 
-    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::CronGetLastMinute,
-        req, resp, ash::PggateRPC::kCronGetLastMinute));
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::CronGetLastMinute,
+        req, resp, PggateRPC::kCronGetLastMinute));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.last_minute();
   }
@@ -1549,49 +1555,58 @@ class PgClient::Impl : public BigDataFetcher {
     }
   }
 
-  template <class Req, class Resp>
-  using SyncRPCFunc = Status (tserver::PgClientServiceProxy::*)(
+  template <class Proxy, class Req, class Resp>
+  using SyncRPCFunc = Status (Proxy::*)(
       const Req&, Resp*, rpc::RpcController*) const;
 
-  template <class Req, class Resp>
-  Status DoSyncRPC(
-      SyncRPCFunc<Req, Resp> func, Req& req, Resp& resp,
-      ash::PggateRPC rpc_enum, CoarseTimePoint deadline = CoarseTimePoint()) {
-    return DoSyncRPC(func, req, resp, rpc_enum, PrepareController<Req>(deadline));
-  }
+  template <class Proxy, class Req, class Resp>
+  Status DoSyncRPCImpl(
+      Proxy& proxy, SyncRPCFunc<Proxy, Req, Resp> func, Req& req, Resp& resp,
+      PggateRPC rpc_enum, rpc::RpcController* controller) {
 
-  template <class Req, class Resp>
-  Status DoSyncRPC(
-      SyncRPCFunc<Req, Resp> func, Req& req, Resp& resp,
-      ash::PggateRPC rpc_enum, rpc::RpcController* controller) {
     AshMetadataToPB(req);
 
-    bool log_detail = false;
-    if (yb_debug_log_docdb_requests) {
-      for (const auto kLogEnum : kDebugLogRPCs) {
-        if (kLogEnum == rpc_enum) {
-          log_detail = true;
-          break;
-        }
-      }
+    const auto log_detail =
+        yb_debug_log_docdb_requests &&
+        std::ranges::any_of(kDebugLogRPCs, [rpc_enum](auto value) { return value == rpc_enum; });
+
+    if (log_detail) {
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.DebugString();
     }
 
-    if (log_detail)
-      LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.DebugString();
-
     auto watcher = wait_event_watcher_(ash::WaitStateCode::kWaitingOnTServer, rpc_enum);
-    Status s = (proxy_.get()->*func)(req, &resp, controller);
+    const auto s = (proxy.*func)(req, &resp, controller);
 
-    if (log_detail)
-      LOG(INFO) << "DoSyncRPC " << GetTypeName<Resp>() << " response:\n "
-    << "status " << s.ToString()
-    << resp.DebugString();
+    if (log_detail) {
+      LOG(INFO) << "DoSyncRPC " << GetTypeName<Resp>() << " response:\n"
+                << "status " << s << "\n" << resp.DebugString();
+    }
 
     return s;
   }
 
-  std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
-  std::unique_ptr<cdc::CDCServiceProxy> local_cdc_service_proxy_;
+  template <class T>
+  auto* GetRpcController(CoarseTimePoint deadline = CoarseTimePoint()) {
+    return PrepareController<T>(deadline);
+  }
+
+  template <class T>
+  auto* GetRpcController(rpc::RpcController* controller) { return controller; }
+
+  auto* GetProxy(PgClientServiceProxy*) const { return proxy_.get(); }
+  auto* GetProxy(CDCServiceProxy*) const { return local_cdc_service_proxy_.get(); }
+
+  template <class Proxy, class Req, class Resp, class... Args>
+  Status DoSyncRPC(
+      SyncRPCFunc<Proxy, Req, Resp> func,
+      Req& req, Resp& resp, PggateRPC rpc_enum, Args&&... args) {
+    return DoSyncRPCImpl(
+        *DCHECK_NOTNULL(GetProxy(static_cast<Proxy*>(nullptr))), func, req, resp, rpc_enum,
+        GetRpcController<Req>(std::forward<Args>(args)...));
+  }
+
+  std::unique_ptr<PgClientServiceProxy> proxy_;
+  std::unique_ptr<CDCServiceProxy> local_cdc_service_proxy_;
 
   rpc::RpcController controller_;
   uint64_t session_id_ = 0;

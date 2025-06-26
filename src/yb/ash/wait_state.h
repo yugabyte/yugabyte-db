@@ -220,6 +220,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
 // Make sure that kAsyncRPC is always 0
 YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   ((kNoRPC, 0))
+  // PgClientService RPCs
   (kAlterDatabase)
   (kAlterTable)
   (kBackfillIndex)
@@ -275,6 +276,14 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kClearExportedTxnSnapshots)
   (kPollVectorIndexReady)
   (kGetXClusterRole)
+
+  // CDCService RPCs
+  (kInitVirtualWALForCDC)
+  (kGetLagMetrics)
+  (kUpdatePublicationTableList)
+  (kDestroyVirtualWALForCDC)
+  (kGetConsistentChanges)
+  (kUpdateAndPersistLSN)
 );
 
 struct WaitStatesDescription {
