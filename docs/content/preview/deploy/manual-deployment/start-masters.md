@@ -176,7 +176,7 @@ $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out 
 
 {{< note title="Note" >}}
 
-This step is required for only multi-AZ deployments and can be skipped for a single AZ deployment.
+This step is required only for multi-AZ deployments and can be skipped for a single AZ deployment.
 
 {{< /note >}}
 
