@@ -1788,7 +1788,7 @@ To create a read replica cluster, you first need an existing YugabyteDB universe
 
 Initially universes have only one cluster, called its primary or live cluster.  This cluster consists of all its non-read replica nodes.
 
-In order to add read replica nodes to the universe, you need to first create a read replica cluster for them to belong to.  Once you have done that,  you add read replica nodes to the universe using the `--join` and `--read_replica` flags.
+In order to add read replica nodes to the universe, you need to first create a read replica cluster for them to belong to.  Once you have done that, you add read replica nodes to the universe using the `--join` and `--read_replica` flags.
 
 #### Create a read replica cluster
 
