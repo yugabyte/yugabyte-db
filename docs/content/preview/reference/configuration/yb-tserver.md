@@ -482,7 +482,7 @@ When set to true, tables and indexes are hash-partitioned based on the first col
 ##### yb_insert_on_conflict_read_batch_size
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="1455">}}
+
 {{<tags/feature/restart-needed>}}
 Default: `0` (disabled)
 {{% /tags/wrap %}}
