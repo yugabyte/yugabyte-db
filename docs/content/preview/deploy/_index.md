@@ -35,7 +35,7 @@ type: indexpage
 {{<index/block>}}
 
   {{<index/item
-    title="On-premises"
+    title="Single-DC deployments"
     body="Deploy YugabyteDB in a private data center."
     href="manual-deployment/"
     icon="fa-thin fa-helmet-safety">}}
