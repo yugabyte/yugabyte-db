@@ -5,7 +5,7 @@ linkTitle: YSQL catalog cache tuning
 description: Trading off memory vs performance in YSQL catalog caches
 headcontent: Trading off memory vs performance in YSQL catalog caches
 menu:
-  stable:
+  v2.20:
     identifier: ysql-catalog-cache-tuning-guide
     parent: best-practices-operations
     weight: 50
@@ -471,6 +471,7 @@ To confirm that catalog caching is the cause of this, see [Confirm that catalog 
 
 - [Use connection pooling](#connection-pooling) to reuse existing connections.
 - [Preload additional system tables](#preload-additional-system-tables).
+- [TServer response cache](#tserver-response-cache).
 
 ### Memory spikes on PostgreSQL backends or out of memory (OOM) events
 
@@ -524,6 +525,12 @@ For example:
 When enabled, only a small subset of the catalog cache entries is preloaded. This reduces the memory spike that results, but can increase the warm up time for queries after a DDL change, as well as the initial query latency when [additional tables are preloaded](#preload-additional-system-tables).
 
 To enable minimal catalog cache preloading, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_minimal_catalog_caches_preload=true`.
+
+### TServer response cache
+
+When enabled, an intermediate cache on the YB-TServer is used to cache certain PostgreSQL catalog responses from the YB-Master leader. This reduces CPU load on YB-Master leader.
+
+To enable TServer response cache, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_enable_read_request_caching=true`.
 
 ## Confirm catalog cache misses are a root cause of latency / load {#confirm-catalog-cache-misses-root-cause-of-latency}
 
