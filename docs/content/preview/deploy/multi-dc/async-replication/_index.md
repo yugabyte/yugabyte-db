@@ -52,7 +52,3 @@ For information on xCluster deployment architecture, replication scenarios, and 
 - Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
 
 - Monitor disk space usage and ensure it remains below 65%. Allocate sufficient disk space to accommodate WALs generated based on the `cdc_wal_retention_time_secs` setting, which is higher than the default [log_min_seconds_to_retain](../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) value.
-
-- If you intend to use automatic mode, it is recommended you turn on {{<tags/feature/ea>}}table-level locking to prevent any chance of a row being successfully written while an ALTER TABLE is changing the table schema.  Such writes are unsafe normally (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)), but can cause unreadable rows on the target universe under automatic mode.
-
-    Turn on table-level locking by setting `enable_object_locking_for_table_locks` on both TServers and Masters on both source and target universes; as is a preview flag, you must enable it by adding it flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
