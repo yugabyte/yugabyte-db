@@ -18,7 +18,7 @@ Use the `nextval( sequence_name )` function to return the next value from the se
 
 **Limitations**
 
-- xCluster replication except for transactional automatic mode is not compatible with sequences and therefore is not compatible with this feature.
+- xCluster replication (unless you are using automatic mode) is not compatible with sequences and therefore is not compatible with this feature.
 
 ## Semantics
 

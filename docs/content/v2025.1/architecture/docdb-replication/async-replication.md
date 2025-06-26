@@ -310,8 +310,8 @@ Improper use can compromise replication consistency and lead to data divergence.
 - CREATE TABLE AS and SELECT INTO DDL statements are not supported. You can work around this by breaking the DDL into a CREATE TABLE followed by INSERT SELECT.
 - ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, TRUNCATE, and ALTER LARGE OBJECT DDLs are not supported.
 - DDLs related to PUBLICATION and SUBSCRIPTION are not supported.
-- Replication of colocated tables is not yet supported.
-- Rewinding of sequences (e.g., restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
+- Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
+- Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
 - While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: `file_fdw`, `fuzzystrmatch`, `pgcrypto`, `postgres_fdw`, `sslinfo`, `uuid-ossp`, `hypopg`, `pg_stat_monitor`, and `pgaudit`. All other extensions must be created _before_ setting up automatic mode.
 
 #### Transactional Semi-Automatic and Manual mode

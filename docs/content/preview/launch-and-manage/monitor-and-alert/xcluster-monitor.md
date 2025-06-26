@@ -204,7 +204,7 @@ You can access the YB-Master and YB-Tserver UIs to monitor the health of xCluste
 
 **YB-Tserver target**
 
-http://127.0.0.1:9000/xcluster
+<http://127.0.0.1:9000/xcluster>
 
 ## Advanced troubleshooting
 
