@@ -553,12 +553,7 @@ Result<int64_t> ReadSumBalance(
     PGConn* conn, int accounts, IsolationLevel isolation,
     std::atomic<int>* counter) {
   RETURN_NOT_OK(conn->StartTransaction(isolation));
-  bool failed = true;
-  auto se = ScopeExit([conn, &failed] {
-    if (failed) {
-      EXPECT_OK(conn->Execute("ROLLBACK"));
-    }
-  });
+  CancelableScopeExit rollback_se{[conn] { EXPECT_OK(conn->Execute("ROLLBACK")); }};
 
   std::string query = "";
   for (int i = 1; i <= accounts; ++i) {
@@ -574,7 +569,7 @@ Result<int64_t> ReadSumBalance(
     sum += VERIFY_RESULT(GetValue<int64_t>(res.get(), i, 0));
   }
 
-  failed = false;
+  rollback_se.Cancel();
   RETURN_NOT_OK(conn->Execute("COMMIT"));
   return sum;
 }

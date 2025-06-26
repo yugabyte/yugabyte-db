@@ -1117,12 +1117,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   auto& ops = result.first;
   ops.reserve(req->ops().size());
   client::YBTablePtr table;
-  bool finished = false;
-  auto se = ScopeExit([&finished, session] {
-    if (!finished) {
-      session->Abort();
-    }
-  });
+  CancelableScopeExit abort_se{[session] { session->Abort(); }};
   const auto read_from_followers = req->options().read_from_followers();
   bool has_write_ops = false;
   for (auto& op : *req->mutable_ops()) {
@@ -1176,7 +1171,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         VERIFY_RESULT(transaction_provider.NextTxnMetaForPlain(deadline)));
   }
 
-  finished = true;
+  abort_se.Cancel();
   return result;
 }
 
@@ -1987,30 +1982,27 @@ class PgClientSession::Impl {
     using pggate::PgDocData;
     using pggate::PgWireDataHeader;
 
-    const int64_t inc_by = req.inc_by();
-    const bool use_sequence_cache = FLAGS_ysql_sequence_cache_method == "server";
-    std::shared_ptr<PgSequenceCache::Entry> entry;
-    // On exit we should notify a waiter for this sequence id that it is available.
-    auto se = ScopeExit([&entry, use_sequence_cache] {
-      if (use_sequence_cache && entry) {
-        entry->NotifyWaiter();
-      }
-    });
-    if (use_sequence_cache) {
+    const auto inc_by = req.inc_by();
+    std::shared_ptr<PgSequenceCache::Entry> cache_entry;
+    if (FLAGS_ysql_sequence_cache_method == "server") {
       const PgObjectId sequence_id(
           narrow_cast<uint32_t>(req.db_oid()), narrow_cast<uint32_t>(req.seq_oid()));
-      entry = VERIFY_RESULT(
+      cache_entry = VERIFY_RESULT(
           sequence_cache().GetWhenAvailable(sequence_id, ToSteady(context->GetClientDeadline())));
+      DCHECK(cache_entry);
+    }
+    // On exit we should notify a waiter for this sequence id that it is available.
+    auto se = cache_entry
+        ? MakeOptionalScopeExit([&cache_entry] { cache_entry->NotifyWaiter(); }) : std::nullopt;
 
-      // If the cache has a value, return immediately.
-      std::optional<int64_t> sequence_value = entry->GetValueIfCached(inc_by);
-      if (sequence_value.has_value()) {
-        // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the
-        // first and last value are the same.
-        resp->set_first_value(*sequence_value);
-        resp->set_last_value(*sequence_value);
-        return Status::OK();
-      }
+    // If the cache has a value, return immediately.
+    if (auto sequence_value = cache_entry ? cache_entry->GetValueIfCached(inc_by) : std::nullopt;
+        sequence_value) {
+      // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the
+      // first and last value are the same.
+      resp->set_first_value(*sequence_value);
+      resp->set_last_value(*sequence_value);
+      return Status::OK();
     }
 
     PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
@@ -2068,9 +2060,9 @@ class PgClientSession::Impl {
     }
     auto last_value = PgDocData::ReadNumber<int64_t>(&cursor);
 
-    if (use_sequence_cache) {
-      entry->SetRange(first_value, last_value);
-      std::optional<int64_t> optional_sequence_value = entry->GetValueIfCached(inc_by);
+    if (cache_entry) {
+      cache_entry->SetRange(first_value, last_value);
+      auto optional_sequence_value = cache_entry->GetValueIfCached(inc_by);
 
       RSTATUS_DCHECK(
           optional_sequence_value.has_value(), InternalError,

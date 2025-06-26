@@ -1235,14 +1235,11 @@ Status TSTabletManager::ApplyTabletSplit(
     fs_manager_->SetTabletPathByDataPath(tcmeta.tablet_id, data_root_dir);
   }
 
-  bool successfully_completed = false;
-  auto se = ScopeExit([&] {
-    if (!successfully_completed) {
+  CancelableScopeExit unregister_wal_se{[&] {
       for (const auto& tcmeta : tcmetas) {
         UnregisterDataWalDir(table_id, tcmeta.tablet_id, data_root_dir, wal_root_dir);
       }
-    }
-  });
+  }};
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
       fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
@@ -1303,7 +1300,7 @@ Status TSTabletManager::ApplyTabletSplit(
         tcmeta.transition_deleter)));
   }
 
-  successfully_completed = true;
+  unregister_wal_se.Cancel();
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation has been applied";
   ts_split_op_apply_->Increment();
   return Status::OK();
@@ -1385,12 +1382,9 @@ Status TSTabletManager::DoApplyCloneTablet(
       fs_manager_, target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
   fs_manager_->SetTabletPathByDataPath(target_tablet_id, data_root_dir);
 
-  bool successfully_created_target = false;
-  auto se = ScopeExit([&] {
-    if (!successfully_created_target) {
-      UnregisterDataWalDir(target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
-    }
-  });
+  CancelableScopeExit unregister_wal_se{[&] {
+    UnregisterDataWalDir(target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
+  }};
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
       fs_manager_, target_tablet_id, fs_manager_->uuid(), *committed_raft_config,
@@ -1478,7 +1472,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
   RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
       &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result)));
-  successfully_created_target = true;
+  unregister_wal_se.Cancel();
 
   return Status::OK();
 }

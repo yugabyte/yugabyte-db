@@ -330,16 +330,13 @@ Status MiniCluster::StartMasters() {
     mini_masters_.resize(options_.num_masters);
   }
 
-  bool started = false;
-  auto se = ScopeExit([this, &started] {
-    if (!started) {
-      for (const auto& master : mini_masters_) {
-        if (master) {
-          master->Shutdown();
-        }
+  CancelableScopeExit shutdown_se{[this] {
+    for (const auto& master : mini_masters_) {
+      if (master) {
+        master->Shutdown();
       }
     }
-  });
+  }};
 
   for (size_t i = 0; i < options_.num_masters; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(
@@ -369,7 +366,7 @@ Status MiniCluster::StartMasters() {
     RETURN_NOT_OK(consensus->StartElection(data));
   }
 
-  started = true;
+  shutdown_se.Cancel();
   return Status::OK();
 }
 
