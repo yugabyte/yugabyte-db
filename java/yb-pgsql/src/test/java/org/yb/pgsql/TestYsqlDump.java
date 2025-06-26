@@ -46,6 +46,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
 
   private static enum IncludeYbMetadata { ON, OFF }
+  private static enum DumpRoleChecks { ON, OFF }
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -101,6 +102,21 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
+  public void ysqlDumpWithDumpRoleChecks() throws Exception {
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb_ysql_dump.sql" /* inputFileRelativePath */,
+        "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+        "data/yb_ysql_dump_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "expected/yb_ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
+        "results/yb_ysql_dump.out" /* outputFileRelativePath */,
+        "results/yb_ysql_dump_describe.out" /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON,
+        DumpRoleChecks.ON);
+  }
+
+  @Test
   public void ysqlDumpAllWithYbMetadata() throws Exception {
     // Note that we're using the same describe input as for regular ysql_dump!
     ysqlDumpTester(
@@ -113,6 +129,22 @@ public class TestYsqlDump extends BasePgSQLTest {
         "results/yb_ysql_dumpall.out" /* outputFileRelativePath */,
         "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */,
         IncludeYbMetadata.ON);
+  }
+
+  @Test
+  public void ysqlDumpAllWithDumpRoleChecks() throws Exception {
+    // Note that we're using the same describe input as for regular ysql_dump!
+    ysqlDumpTester(
+        "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb_ysql_dumpall.sql" /* inputFileRelativePath */,
+        "sql/yb_ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+        "data/yb_ysql_dumpall_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+        "results/yb_ysql_dumpall.out" /* outputFileRelativePath */,
+        "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON,
+        DumpRoleChecks.ON);
   }
 
   @Test
@@ -193,6 +225,22 @@ public class TestYsqlDump extends BasePgSQLTest {
                       final String outputFileRelativePath,
                       final String outputDescribeFileRelativePath,
                       final IncludeYbMetadata includeYbMetadata) throws Exception {
+    ysqlDumpTester(
+        binaryName, dumpedDatabaseName, inputFileRelativePath, inputDescribeFileRelativePath,
+        expectedDumpRelativePath, expectedDescribeFileRelativePath, outputFileRelativePath,
+        outputDescribeFileRelativePath, includeYbMetadata, DumpRoleChecks.OFF);
+  }
+
+  void ysqlDumpTester(final String binaryName,
+                      final String dumpedDatabaseName,
+                      final String inputFileRelativePath,
+                      final String inputDescribeFileRelativePath,
+                      final String expectedDumpRelativePath,
+                      final String expectedDescribeFileRelativePath,
+                      final String outputFileRelativePath,
+                      final String outputDescribeFileRelativePath,
+                      final IncludeYbMetadata includeYbMetadata,
+                      final DumpRoleChecks dumpRoleChecks) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
@@ -226,6 +274,10 @@ public class TestYsqlDump extends BasePgSQLTest {
     if (includeYbMetadata == IncludeYbMetadata.ON) {
       args.add("--include-yb-metadata");
     }
+    if (dumpRoleChecks == DumpRoleChecks.ON) {
+      args.add("--dump-role-checks");
+    }
+
     if (!dumpedDatabaseName.isEmpty()) {
       Collections.addAll(args, "-d", dumpedDatabaseName);
     }

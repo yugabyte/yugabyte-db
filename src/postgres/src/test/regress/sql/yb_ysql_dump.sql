@@ -54,7 +54,12 @@ CREATE TABLE chat_user("chatID" text NOT NULL, PRIMARY KEY("chatID"));
 
 DROP USER IF EXISTS regress_rls_alice;
 CREATE USER regress_rls_alice NOLOGIN;
+
+GRANT ALL ON tbl13 TO regress_rls_alice WITH GRANT OPTION;
+
 SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT ALL ON tbl13 TO tablegroup_test_user;
+
 CREATE TABLE uaccount (pguser      name, seclv       int, PRIMARY KEY(pguser ASC));
 ALTER TABLE uaccount ENABLE ROW LEVEL SECURITY;
 
@@ -200,3 +205,69 @@ CREATE TABLE hash_tbl_pk_with_multiple_included_columns (
   col4 INT,
   PRIMARY KEY (col1 HASH, col2 ASC) INCLUDE (col3, col4)
 );
+
+------------------------------------------------
+-- Test unique constraint on partitioned tables.
+------------------------------------------------
+
+-- Check that index OIDs are assigned correctly in include-yb-metadata mode for partition primary keys
+CREATE TABLE part_uniq_const(v1 INT, v2 INT, v3 INT, PRIMARY KEY (v1, v3)) PARTITION BY RANGE(v1);
+
+CREATE TABLE part_uniq_const_50_100 PARTITION OF part_uniq_const FOR VALUES FROM (50) TO (100);
+
+CREATE TABLE part_uniq_const_30_50 PARTITION OF part_uniq_const FOR VALUES FROM (30) TO (50);
+
+CREATE TABLE part_uniq_const_default PARTITION OF part_uniq_const DEFAULT;
+
+INSERT INTO part_uniq_const VALUES (51, 151, 151), (31, 231, 231), (1, 1001, 1001);
+
+-- Constraints should be output without a separate CREATE INDEX
+-- because partitions do not support ALTER TABLE .. ADD CONSTRAINT .. USING INDEX
+ALTER TABLE part_uniq_const ADD CONSTRAINT part_uniq_const_unique UNIQUE (v1, v2);
+
+-- However, range partitioned index on the child partition table alone should be
+-- output with the specific CREATE INDEX to retain range partitioning
+CREATE UNIQUE INDEX part_uniq_const_50_100_v2_idx ON part_uniq_const_50_100 (v2 ASC);
+
+ALTER TABLE part_uniq_const_50_100 ADD CONSTRAINT part_uniq_const_50_100_v2_uniq  UNIQUE USING INDEX part_uniq_const_50_100_v2_idx;
+
+------------------------------------------------
+-- Test default privileges.
+------------------------------------------------
+-- Revoke/Grant from/to User
+ALTER DEFAULT PRIVILEGES REVOKE USAGE ON SCHEMAS FROM rls_user;
+ALTER DEFAULT PRIVILEGES GRANT USAGE ON SCHEMAS TO rls_user;
+
+-- In Schema Revoke/Grant from/to PUBLIC
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE SELECT ON TABLES FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO PUBLIC;
+
+-- In Schema Revoke/Grant from/to User
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE UPDATE ON TABLES FROM rls_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT UPDATE ON TABLES TO rls_user;
+
+-- For Role Revoke/Grant from/to PUBLIC
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice REVOKE USAGE ON TYPES FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice GRANT EXECUTE ON FUNCTIONS TO PUBLIC;
+
+-- For Role User1 Revoke/Grant from/to User2
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice REVOKE INSERT ON TABLES FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice REVOKE DELETE ON TABLES FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice GRANT SELECT ON TABLES TO rls_user;
+
+-- For Role User1 Revoke/Grant from/to User1
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user REVOKE INSERT ON TABLES FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user REVOKE DELETE ON TABLES FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user GRANT SELECT ON TABLES TO rls_user;
+
+-- For Role In Schema Revoke/Grant from/to PUBLIC
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public REVOKE USAGE ON TYPES FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO PUBLIC;
+
+-- For Role User1 In Schema Revoke/Grant from/to User2
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public REVOKE INSERT ON TABLES FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice IN SCHEMA public GRANT DELETE ON TABLES TO rls_user;
+
+-- For Role User1 In Schema Revoke/Grant from/to User1
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user IN SCHEMA public REVOKE UPDATE ON TABLES FROM rls_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE rls_user IN SCHEMA public GRANT SELECT ON TABLES TO rls_user;

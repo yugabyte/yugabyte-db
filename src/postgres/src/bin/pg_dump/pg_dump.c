@@ -424,6 +424,7 @@ main(int argc, char **argv)
 		{"no-tablegroups", no_argument, &dopt.no_tablegroups, 1},
 		{"no-tablegroup-creations", no_argument, &dopt.no_tablegroup_creations, 1},
 		{"include-yb-metadata", no_argument, &dopt.include_yb_metadata, 1},
+		{"dump-role-checks", no_argument, &dopt.yb_dump_role_checks, 1},
 		{"read-time", required_argument, NULL, 8},
 		{NULL, 0, NULL, 0}
 	};
@@ -662,6 +663,24 @@ main(int argc, char **argv)
 	 */
 	if (dopt.binary_upgrade || dopt.include_yb_metadata)
 		dopt.sequence_data = 1;
+
+	if (dopt.binary_upgrade && dopt.include_yb_metadata)
+	{
+		write_msg(NULL, "options --binary-upgrade and --include-yb-metadata cannot be used together\n");
+		exit_nicely(1);
+	}
+
+	if (dopt.use_setsessauth && dopt.include_yb_metadata)
+	{
+		write_msg(NULL, "option --use-set-session-authorization is not supported yet together with --include-yb-metadata option\n");
+		exit_nicely(1);
+	}
+
+	if (dopt.yb_dump_role_checks && !dopt.include_yb_metadata)
+	{
+		write_msg(NULL, "options --dump-role-checks requires option --include-yb-metadata\n");
+		exit_nicely(1);
+	}
 
 	if (dopt.dataOnly && dopt.schemaOnly)
 	{
@@ -1087,6 +1106,10 @@ help(const char *progname)
 			 "                               YSQL syntax not compatible with PostgreSQL.\n"
 			 "                               (As of now, doesn't automatically include some things\n"
 			 "                               like SPLIT details).\n"));
+	printf(_("  --dump-role-checks           add to the dump additional checks if the used ROLE\n"
+			 "                               exists. The ROLE usage statements are skipped if\n"
+			 "                               the ROLE does not exist.\n"
+			 "                               Requires --include-yb-metadata.\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comments\n"));
 	printf(_("  --no-publications            do not dump publications\n"));
@@ -3811,6 +3834,7 @@ dumpPolicy(Archive *fout, PolicyInfo *polinfo)
 	query = createPQExpBuffer();
 	delqry = createPQExpBuffer();
 
+	/* YB_TODO: See https://github.com/yugabyte/yugabyte-db/issues/27795 */
 	appendPQExpBuffer(query, "CREATE POLICY %s", fmtId(polinfo->polname));
 
 	appendPQExpBuffer(query, " ON %s%s%s", fmtQualifiedDumpable(tbinfo),
@@ -15157,7 +15181,8 @@ dumpDefaultACL(Archive *fout, DefaultACLInfo *daclinfo)
 	appendPQExpBuffer(tag, "DEFAULT PRIVILEGES FOR %s", type);
 
 	/* build the actual command(s) for this tuple */
-	if (!buildDefaultACLCommands(type,
+	if (!buildDefaultACLCommands(GetConnection(fout),
+								 type,
 								 daclinfo->dobj.namespace != NULL ?
 								 daclinfo->dobj.namespace->dobj.name : NULL,
 								 daclinfo->defaclacl,
@@ -15166,6 +15191,7 @@ dumpDefaultACL(Archive *fout, DefaultACLInfo *daclinfo)
 								 daclinfo->initrdefaclacl,
 								 daclinfo->defaclrole,
 								 fout->remoteVersion,
+								 dopt->yb_dump_role_checks,
 								 q))
 		exit_horribly(NULL, "could not parse default ACL list (%s)\n",
 					  daclinfo->defaclacl);
@@ -15245,18 +15271,18 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 	if (strlen(initacls) != 0 || strlen(initracls) != 0)
 	{
 		appendPQExpBuffer(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
-		if (!buildACLCommands(name, subname, nspname, type,
+		if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 							  initacls, initracls, owner,
-							  "", fout->remoteVersion, sql))
+							  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
 			exit_horribly(NULL,
 						  "could not parse initial GRANT ACL list (%s) or initial REVOKE ACL list (%s) for object \"%s\" (%s)\n",
 						  initacls, initracls, name, type);
 		appendPQExpBuffer(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
 	}
 
-	if (!buildACLCommands(name, subname, nspname, type,
+	if (!buildACLCommands(GetConnection(fout), name, subname, nspname, type,
 						  acls, racls, owner,
-						  "", fout->remoteVersion, sql))
+						  "", fout->remoteVersion, dopt->yb_dump_role_checks, sql))
 		exit_horribly(NULL,
 					  "could not parse GRANT ACL list (%s) or REVOKE ACL list (%s) for object \"%s\" (%s)\n",
 					  acls, racls, name, type);

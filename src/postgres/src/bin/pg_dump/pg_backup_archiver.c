@@ -3696,9 +3696,26 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, bool isData)
 			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
 
 			if (AH->public.dopt->include_yb_metadata)
-				ahprintf(AH, "\\if :use_roles\n"
-							 "    %s\n"
-							 "\\endif\n\n", temp->data);
+			{
+				ahprintf(AH, "\\if :use_roles\n");
+				if (AH->public.dopt->yb_dump_role_checks)
+				{
+					PQExpBuffer role_buf = createPQExpBuffer();
+					appendStringLiteralAHX(role_buf, te->owner, AH);
+					ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
+								 ") AS role_exists \\gset\n"
+								 "\\if :role_exists\n"
+								 "    %s\n"
+								 "\\else\n"
+								 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
+								 "\\endif\n", role_buf->data, temp->data, fmtId(te->owner));
+					destroyPQExpBuffer(role_buf);
+				}
+				else
+					ahprintf(AH, "    %s\n", temp->data);
+
+				ahprintf(AH, "\\endif\n\n");
+			}
 			else
 				ahprintf(AH, "%s\n\n", temp->data);
 

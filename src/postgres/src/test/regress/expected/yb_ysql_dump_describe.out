@@ -6,6 +6,10 @@
  public | hash_tbl_pk_with_multiple_included_columns     | table    | yugabyte_test
  public | p1                                             | table    | yugabyte_test
  public | p2                                             | table    | yugabyte_test
+ public | part_uniq_const                                | table    | yugabyte_test
+ public | part_uniq_const_30_50                          | table    | yugabyte_test
+ public | part_uniq_const_50_100                         | table    | yugabyte_test
+ public | part_uniq_const_default                        | table    | yugabyte_test
  public | pre_split_range                                | table    | yugabyte_test
  public | range_tbl_pk_with_include_clause               | table    | yugabyte_test
  public | range_tbl_pk_with_multiple_included_columns    | table    | yugabyte_test
@@ -42,7 +46,7 @@
  public | tr1                                            | table    | yugabyte_test
  public | tr2                                            | table    | yugabyte_test
  public | uaccount                                       | table    | regress_rls_alice
-(41 rows)
+(45 rows)
 
           List of tablespaces
     Name    |     Owner     | Location
