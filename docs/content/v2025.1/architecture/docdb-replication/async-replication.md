@@ -244,8 +244,6 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
   The TRUNCATE command is not supported.
   
-  Exception: if you turn on the gflag `enable_delete_truncate_xcluster_replicated_table` then you may use TRUNCATE with YCQL in non-transactional xCluster replication.
-  
 - Backups
 
   Backups are supported on both universes. However, for backups on target clusters, if there is an active workload, the consistency of the latest data is not guaranteed. This applies even to transactional modes. Therefore, it is recommended to take backups on the source universe only.
