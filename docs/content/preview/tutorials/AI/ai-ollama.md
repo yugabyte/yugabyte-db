@@ -19,7 +19,7 @@ This tutorial shows how you can use [Ollama](https://ollama.com/) to generate te
 
 - [YugabyteDB v2.25+](https://download.yugabyte.com/)
 - [Ollama](https://ollama.com/)
-- Node.js V18+
+- Node.js v18+
 - git-lfs
 - Docker
 
@@ -264,10 +264,9 @@ CREATE TABLE
 
 CREATE INDEX NONCONCURRENTLY ON news_stories USING ybhnsw (embeddings vector_cosine_ops);
 ```
+The search speed is further increased by using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type. This application uses cosine distance for indexing, as the backend query is using cosine similarity search.
 
-The search speed is further increased by using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the HNSW (Hierarchical Navigable Small World) index type. This app uses cosine distance for indexing as the backend query is using cosine similarity search.
-
-This application is quite straightforward. Before executing similarity searches, embeddings need to be generated for each news story and subsequently stored in the database. You can see how this is done in the `generate_embeddings.js` script.
+This application is straightforward. Before executing similarity searches, embeddings for each news story must be generated and then stored in the database. Refer to the `generate_embeddings.js` script for details.
 
 ```javascript
 # generate_embeddings.js
