@@ -64,7 +64,7 @@ YugabyteDB Anywhere accepts OIDC configuration either using a discovery URL that
 
 For air-gapped installations, where YugabyteDB Anywhere does not have access to the discovery URL, you need to explicitly provide the configuration document.
 
-{{<tags/feature/ea idea="1015">}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+{{<tags/feature/ea idea="1501">}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 You configure OIDC as follows:
 
