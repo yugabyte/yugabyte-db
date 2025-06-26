@@ -836,4 +836,30 @@ TEST_F_EX(
   }
 }
 
+TEST_F_EX(PgObjectLocksTestRF1, TestDisableReuseAbortedPlainTxn, TestWithTransactionalDDL) {
+  constexpr auto kStatementTimeoutMs = 1000 * kTimeMultiplier;
+  // Restart the cluster_ with the poll interval set to 5x of statment timeout
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = 5 * kStatementTimeoutMs;
+  google::SetVLOGLevel("pg_client_session*", 1);
+  ASSERT_OK(cluster_->RestartSync());
+  Init();
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(k INT)"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  // TODO(#26792): Change to LOCK_TIMEOUT once GH is addressed.
+  ASSERT_OK(conn2.ExecuteFormat("SET statement_timeout=$0", kStatementTimeoutMs));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto log_waiter = StringWaiterLogSink("Consuming re-usable kPlain txn");
+  // Would timeout before the waiting lock at the OLM is released.
+  ASSERT_NOK(conn2.Execute("LOCK TABLE test in ACCESS SHARE mode"));
+  ASSERT_OK(conn2.RollbackTransaction());
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromMilliseconds(5 * kTimeMultiplier)));
+}
+
 }  // namespace yb::pgwrapper
