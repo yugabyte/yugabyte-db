@@ -390,7 +390,7 @@ Bitmap scans are only supported for LSM indexes.
 ##### yb_enable_bitmapscan
 
 {{% tags/wrap %}}
-{{<tags/feature/tp idea="1092">}}
+{{<tags/feature/ea idea="1092">}}
 Default: `false`
 {{% /tags/wrap %}}
 
