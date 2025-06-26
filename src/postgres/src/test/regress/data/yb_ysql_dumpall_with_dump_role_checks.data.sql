@@ -113,7 +113,12 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 -- Role memberships
 --
 
-GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
+    GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
+\else
+    \echo 'Skipping grant privilege due to missing role:' regress_priv_user8 'OR' yugabyte_test
+\endif
 
 
 --
@@ -318,7 +323,12 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_C
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
+\if :role_exists
     ALTER DATABASE system_platform OWNER TO postgres;
+\else
+    \echo 'Skipping owner privilege due to missing role:' postgres
+\endif
 \endif
 
 \connect system_platform
@@ -409,7 +419,12 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE 
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
+\if :role_exists
     ALTER DATABASE yugabyte OWNER TO postgres;
+\else
+    \echo 'Skipping owner privilege due to missing role:' postgres
+\endif
 \endif
 
 \connect yugabyte
@@ -449,7 +464,12 @@ CREATE TABLEGROUP grp_with_spc;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLEGROUP grp_with_spc OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 \if :use_tablespaces
@@ -467,7 +487,12 @@ CREATE TABLEGROUP grp_without_spc;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 \if :use_tablespaces
@@ -499,7 +524,12 @@ SPLIT INTO 3 TABLETS;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLE public.table1 OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 \if :use_tablespaces
@@ -529,7 +559,12 @@ SPLIT INTO 3 TABLETS;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLE public.table2 OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 \if :use_tablespaces
@@ -560,7 +595,12 @@ TABLEGROUP grp_with_spc;
 
 
 \if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
     ALTER TABLE public.tbl_with_grp_with_spc OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
 \endif
 
 --
