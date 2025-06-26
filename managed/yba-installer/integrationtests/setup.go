@@ -12,7 +12,10 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/containertest"
 )
 
-var testWorkingDir = "/tmp/yba-installer-integration-tests"
+var (
+	testWorkingDir = "/tmp/yba-installer-integration-tests"
+	containerTag   = "yba-installer-test:latest"
+)
 
 var downloadMutex = sync.Mutex{}
 
@@ -77,6 +80,10 @@ func SetupContainer(tb testing.TB, mgr containertest.Manager, port int, version 
 		}
 		tb.Logf("Waiting for container %s to start...", ctrName)
 		time.Sleep(1 * time.Second)
+	}
+	running, err := mgr.IsContainerRunning(ctr)
+	if err != nil || !running {
+		tb.Fatalf("container %s is not running after start. error: %v", ctrName, err)
 	}
 
 	// Set cleanup to stop container

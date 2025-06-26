@@ -42,6 +42,21 @@ public class TestYbAsh extends BasePgSQLTest {
   private static final int ASH_SAMPLE_SIZE = 500;
   private static final String ASH_VIEW = "yb_active_session_history";
 
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
+  @Override
+  protected int getInitialNumMasters() {
+    return 1;
+  }
+
+  @Override
+  protected int getInitialNumTServers() {
+    return 1;
+  }
+
   private void setAshConfigAndRestartCluster(
       int sampling_interval, int sample_size, int circular_buffer_size) throws Exception {
     Map<String, String> flagMap = super.getTServerFlags();
@@ -242,7 +257,7 @@ public class TestYbAsh extends BasePgSQLTest {
           " WHERE query_id = " + nested_query_id ;
       String nested_query_id_samples_count_last_second = "SELECT COUNT(*) FROM " + ASH_VIEW +
           " WHERE query_id = " + nested_query_id + " AND sample_time >= current_timestamp - " +
-          "interval '1 second'" ;
+          "interval '1 second' AND wait_event_component = 'YSQL'" ;
 
       // Verify that there are samples of the nested query
       assertGreaterThan(getSingleRow(statement, nested_query_id_samples_count).getLong(0), 0L);
@@ -250,12 +265,12 @@ public class TestYbAsh extends BasePgSQLTest {
       // Track only top level queries inside pg_stat_statements
       statement.execute("SET pg_stat_statements.track = 'TOP'");
 
-      // sleep for one second so that the circular buffer doesn't contain samples of this query id
-      // for the last one second
-      executePgSleep(statement, 1);
-
       // reset pg_stat_statements so that the nested query is no longer there
       statement.execute("SELECT pg_stat_statements_reset()");
+
+      // sleep for 2 seconds so that the circular buffer doesn't contain samples of this query id
+      // for the last one second
+      executePgSleep(statement, 2);
 
       // Rerun the nested query, now pg_stat_statements should not track it
       statement.execute(String.format("SELECT insert_into_table(100001, 200000)"));

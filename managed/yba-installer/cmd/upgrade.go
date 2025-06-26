@@ -202,15 +202,15 @@ func upgradeCmd() *cobra.Command {
 			}
 			*/
 
-			for _, name := range serviceOrder {
-				log.Info("About to upgrade component " + name)
-				if err := services[name].Upgrade(); err != nil {
+			for service := range serviceManager.Services() {
+				log.Info("About to upgrade component " + service.Name())
+				if err := service.Upgrade(); err != nil {
 					if rollback {
 						rollbackUpgrade(backupDir, state)
 					}
-					log.Fatal("Upgrade of " + name + " failed: " + err.Error())
+					log.Fatal("Upgrade of " + service.Name() + " failed: " + err.Error())
 				}
-				log.Info("Completed upgrade of component " + name)
+				log.Info("Completed upgrade of component " + service.Name())
 			}
 
 			// Permissions update to be safe
@@ -218,15 +218,15 @@ func upgradeCmd() *cobra.Command {
 				log.Fatal("error updating permissions for data and software directories: " + err.Error())
 			}
 
-			for _, name := range serviceOrder {
-				log.Info("About to restart component " + name)
-				if err := services[name].Restart(); err != nil {
+			for service := range serviceManager.Services() {
+				log.Info("About to restart component " + service.Name())
+				if err := service.Restart(); err != nil {
 					if rollback {
 						rollbackUpgrade(backupDir, state)
 					}
-					log.Fatal("Failed restarting " + name + " after upgrade: " + err.Error())
+					log.Fatal("Failed restarting " + service.Name() + " after upgrade: " + err.Error())
 				}
-				log.Info("Completed restart of component " + name)
+				log.Info("Completed restart of component " + service.Name())
 			}
 
 			if err := common.WaitForYBAReady(ybactl.Version); err != nil {
@@ -238,8 +238,7 @@ func upgradeCmd() *cobra.Command {
 
 			var statuses []common.Status
 			//serviceOrder = append([]string{newDbServiceName}, serviceOrder...)
-			for _, name := range serviceOrder {
-				service := services[name]
+			for service := range serviceManager.Services() {
 				status, err := service.Status()
 				if err != nil {
 					log.Fatal("Failed to get status: " + err.Error())

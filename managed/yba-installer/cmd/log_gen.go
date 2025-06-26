@@ -105,7 +105,7 @@ other useful data.`,
 		var osInfoBuf bytes.Buffer
 		osInfoBuf.WriteString("Operating System: " + common.OSName() + "\n")
 		osInfoBuf.WriteString("Python Version: " + common.PythonVersion() + "\n")
-		osInfoBuf.WriteString("Postgres Version: " + services[PostgresServiceName].Version() + "\n")
+		osInfoBuf.WriteString("Postgres Version: " + serviceManager.ServiceByName(PostgresServiceName).Version() + "\n")
 		osInfoBuf.WriteString("CPU Count: " + fmt.Sprintf("%d", runtime.NumCPU()) + "\n")
 		osInfoBuf.WriteString("Memory: " + common.MemoryHuman())
 		osInfo := osInfoBuf.String()

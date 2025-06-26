@@ -4907,5 +4907,53 @@ CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
   ASSERT_EQ(result, utf8_expected);
 }
 
+TEST_F(PgLibPqTest, InconsistentIndexRead) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bank (id INT, balance INT)"));
+  // In this test do the following:
+  // (0) Create an index on balance with a partial clause as id>=0
+  // The partial clause is used to generate a secondary index scan on SELECT SUM(balance).
+  ASSERT_OK(conn.Execute("CREATE INDEX balance_idx ON bank(balance) WHERE id >= 0"));
+
+  // (1) Add 10 accounts to the bank account table each with a balance of 1000.
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO bank (id, balance) VALUES ($0, 1000)", i));
+  }
+  auto initial_sum = ASSERT_RESULT(
+      conn.FetchRow<int64_t>("SELECT SUM(balance) FROM bank WHERE id >= 0"));
+
+  TestThreadHolder thread_holder;
+
+  // (2) Start a writer thread that keeps executing a transaction which deletes the smallest id row
+  // and inserts a new id row with the next available id and a balance of 1000.
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()]() {
+    auto writer_conn = ASSERT_RESULT(Connect());
+    int min_id = 0, next_id = 10;
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(writer_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(writer_conn.ExecuteFormat("DELETE FROM bank WHERE id = $0", min_id));
+      min_id++;
+      ASSERT_OK(writer_conn.ExecuteFormat(
+          "INSERT INTO bank (id, balance) VALUES ($0, 1000)", next_id));
+      next_id++;
+      ASSERT_OK(writer_conn.CommitTransaction());
+    }
+  });
+
+  // (3) Start a reader thread that keeps fetching the sum of balances for all id>=0.
+  // Assert that the balance is always 10k.
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), initial_sum]() {
+    auto reader_conn = ASSERT_RESULT(Connect());
+    while (!stop.load(std::memory_order_acquire)) {
+      auto sum_balance = ASSERT_RESULT(reader_conn.FetchRow<int64_t>(
+          "/*+ IndexScan(bank) */ SELECT SUM(balance) FROM bank WHERE id >= 0"));
+      ASSERT_EQ(sum_balance, initial_sum);
+    }
+  });
+
+  thread_holder.WaitAndStop(std::chrono::seconds(30));
+}
+
 } // namespace pgwrapper
 } // namespace yb

@@ -6174,6 +6174,9 @@
         "certPath" : {
           "type" : "string"
         },
+        "compressor" : {
+          "type" : "string"
+        },
         "offloadable" : {
           "type" : "boolean"
         },
@@ -6186,6 +6189,7 @@
       },
       "required" : [
         "certPath",
+        "compressor",
         "offloadable",
         "serverCert",
         "serverKey"

@@ -208,6 +208,24 @@ std::string GetWaitStateDescription(WaitStateCode code) {
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
 
+bool AshIsPGClass(ash::Class class_id) {
+  switch (class_id) {
+    // PG class
+    case ash::Class::kTServerWait:
+      return true;
+    // YB Client/TServer classes
+    case ash::Class::kYCQLQuery:
+    case ash::Class::kClient:
+    case ash::Class::kRpc:
+    case ash::Class::kConsensus:
+    case ash::Class::kTabletWait:
+    case ash::Class::kRocksDB:
+    case ash::Class::kCommon:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(ash::Class, class_id);
+}
+
 }  // namespace
 
 void WaitStateInfo::VTraceTo(Trace* trace, int level, GStringPiece data) {
@@ -402,8 +420,24 @@ uint32_t WaitStateInfo::AshEncodeWaitStateCodeWithComponent(uint32_t component, 
   return (component << YB_ASH_COMPONENT_POSITION) | code;
 }
 
-uint32_t WaitStateInfo::AshRemoveComponentFromWaitStateCode(uint32_t code) {
-  return (~(0xffffffff << YB_ASH_COMPONENT_POSITION)) & code;
+uint32_t WaitStateInfo::AshNormalizeComponentForTServerEvents(uint32_t code,
+    bool component_bits_set) {
+  // Note: If component_bits_set is false, we assume it to be a tserver wait event code.
+
+  // While populating the wait_event_code in yb_wait_event_desc, component for wait
+  // events is not available. Events in yb_active_session_history has the component set.
+  // So to allow a join between yb_wait_event_desc and yb_active_session_history, encode
+  // the component as 0xFF for all tserver events
+  constexpr uint8_t kAshClassMask = (1 << YB_ASH_CLASS_BITS) - 1;
+  uint8_t class_id = narrow_cast<uint8_t>(code >> YB_ASH_CLASS_POSITION) & kAshClassMask;
+  uint8_t comp_id = narrow_cast<uint8_t>(code >> YB_ASH_COMPONENT_POSITION);
+
+  const bool is_pg_event = (component_bits_set && comp_id == 0) ||
+    AshIsPGClass(static_cast<ash::Class>(class_id));
+
+  if (!is_pg_event)
+    return ((1 << YB_ASH_COMPONENT_BITS) - 1) << YB_ASH_COMPONENT_POSITION | code;
+  return code;
 }
 
 //
