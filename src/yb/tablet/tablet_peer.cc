@@ -1213,7 +1213,8 @@ OpId TabletPeer::GetLatestCheckPoint() {
 }
 
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
-  auto namespace_id = tablet()->metadata()->namespace_id();
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  auto namespace_id = tablet->metadata()->namespace_id();
   if (!namespace_id.empty()) {
     return namespace_id;
   }
@@ -1221,7 +1222,6 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   // fetch it from the client and populate the tablet metadata.
   auto* client = client_future().get();
   master::GetNamespaceInfoResponsePB resp;
-  auto tablet = VERIFY_RESULT(shared_tablet_safe());
   auto* metadata = tablet->metadata();
   auto namespace_name = metadata->namespace_name();
   auto db_type = YQL_DATABASE_CQL;
