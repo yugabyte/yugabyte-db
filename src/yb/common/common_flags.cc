@@ -168,6 +168,12 @@ DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_ddl_transaction_block_enabled, false
     "If true, DDL operations in YSQL will execute within the active transaction"
     "block instead of their separate transactions.");
 
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_committed, false,
+    "If true, DDL operations in READ COMMITTED mode will be executed in a separate DDL transaction "
+    "instead of the as part of the enclosing transaction block even if "
+    "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
+    "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;

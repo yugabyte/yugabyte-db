@@ -281,6 +281,8 @@ extern bool yb_use_internal_auto_analyze_service_conn;
 
 extern bool yb_ddl_transaction_block_enabled;
 
+extern bool yb_disable_ddl_transaction_block_for_read_committed;
+
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,

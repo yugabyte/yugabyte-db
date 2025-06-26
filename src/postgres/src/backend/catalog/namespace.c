@@ -4307,7 +4307,7 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectId = tempNamespaceId;
 	object.objectSubId = 0;
 
-	bool		yb_use_regular_txn_block = yb_ddl_transaction_block_enabled;
+	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
 
 	if (IsYugaByteEnabled())
 	{

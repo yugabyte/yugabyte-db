@@ -1713,15 +1713,6 @@ class PgClientSession::Impl {
         subtxn_id, kMinSubTransactionId,
         InvalidArgument,
         Format("Expected sub_transaction_id to be >= $0", kMinSubTransactionId));
-    // TODO(#3109): This check fails during transaction rollback in case of READ COMMITTED
-    // isolation if the txn contains at least one DDL. This happens even if there was no explicit
-    // SAVEPOINT statement. This is because each statement in RC isolation is a sub-transaction.
-    // Hence, this check needs to be revisited in a follow-up revision.
-    RSTATUS_DCHECK(
-        !req.options().ddl_mode() || !req.options().ddl_use_regular_transaction_block(),
-        NotSupported,
-        "Savepoints are not supported with DDL operations in regular transaction blocks."
-        "Track the support at https://github.com/yugabyte/yugabyte-db/issues/26298");
 
     /*
     * Currently we do not support a transaction block that has both DDL and DML statements (we

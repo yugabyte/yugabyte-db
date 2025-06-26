@@ -4990,6 +4990,29 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
+	/*
+	 * In READ COMMITTED isolation, if the current statement is a DDL, then we
+	 * don't support retrying it, if transactional DDL is enabled. This is
+	 * because we don't support savepoint rollback for DDLs, so we can't rely
+	 * on that mechanism to perform statement level retries.
+	 */
+	if (IsYBReadCommitted() &&
+		YBIsDdlTransactionBlockEnabled() &&
+		YBIsCurrentStmtDdl())
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "retrying DDL statements are not supported in "
+								 "READ COMMITTED isolation level when "
+								 "transactional DDL is enabled. If object "
+								 "locking is enabled, kConflict and "
+								 "kReadRestart errors won't occur.");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
 	if (attempt >= yb_max_query_layer_retries)
 	{
 		const char *retry_err = psprintf("yb_max_query_layer_retries set to %d are exhausted",

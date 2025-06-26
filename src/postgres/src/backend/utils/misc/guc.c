@@ -3070,6 +3070,23 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_disable_ddl_transaction_block_for_read_committed", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("If true, DDL operations in READ COMMITTED mode will "
+						 "be executed in a separate DDL transaction instead of "
+						 "the as part of the enclosing transaction block even "
+						 "if ysql_yb_ddl_transaction_block_enabled is true. In "
+						 "other words, for Read Committed, fall back to the "
+						 "mode when ysql_yb_ddl_transaction_block_enabled is "
+						 "false."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_ddl_transaction_block_for_read_committed,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_explain_hide_non_deterministic_fields", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("If set, all fields that vary from run to run are hidden from "
 						 "the output of EXPLAIN"),
