@@ -64,6 +64,8 @@ HINT:  Set compute_query_id to "auto" or "on" to use hint table.
 (1 row)
 
 SELECT 1;									-- gets warning with conn mgr
+WARNING:  hint table feature is deactivated because queryid is not available
+HINT:  Set compute_query_id to "auto" or "on" to use hint table.
  ?column? 
 ----------
         1
@@ -71,7 +73,6 @@ SELECT 1;									-- gets warning with conn mgr
 
 SET compute_query_id to on;
 SELECT 1;									-- reactivated
-LOG:  hint table feature is reactivated
  ?column? 
 ----------
         1
