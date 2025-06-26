@@ -62,7 +62,7 @@ After the backup creation process is complete, the policy will be automatically 
 
 ![Scheduled Backup policy](/images/yp/schedule-backup-policy-pitr.png)
 
-Backups created with PITR support will show "Enabled" status in the Point-in-Time Restore column of the **Backups** list. Hover over this status to view the restore window's start and end times as per the following illustration:
+Backups created with PITR support will show _Enabled_ status in the Point-in-Time Restore column of the **Backups** list. Hover over this status to view the restore window's start and end times as per the following illustration:
 
 ![Restore window](/images/yp/restore-window-pitr.png)
 
