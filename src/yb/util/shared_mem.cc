@@ -75,13 +75,10 @@ std::string GetSharedMemoryDirectory() {
 
 #if defined(__linux__)
   auto* mount_file = fopen("/proc/mounts", "r");
-  auto se = ScopeExit([&mount_file] {
-    if (mount_file) {
-      fclose(mount_file);
-    }
-  });
 
   if (mount_file) {
+    ScopeExit se{[mount_file] { fclose(mount_file); }};
+
     while (struct mntent* mount_info = getmntent(mount_file)) {
       // We want a read-write tmpfs mount.
       if (strcmp(mount_info->mnt_type, "tmpfs") == 0
@@ -201,12 +198,11 @@ Result<int> CreateTempSharedMemoryFile() {
 
 Result<SharedMemorySegment> SharedMemorySegment::Create(size_t segment_size) {
   int fd = -1;
-  bool auto_close_fd = true;
-  auto se = ScopeExit([&fd, &auto_close_fd] {
-    if (fd != -1 && auto_close_fd) {
+  CancelableScopeExit autoclose_se{[&fd] {
+    if (fd != -1) {
       close(fd);
     }
-  });
+  }};
 
 #if defined(__linux__)
   // Prefer memfd_create over creating temporary files, if available.
@@ -230,7 +226,7 @@ Result<SharedMemorySegment> SharedMemorySegment::Create(size_t segment_size) {
 
   void* segment_address = VERIFY_RESULT(MMap(fd, AccessMode::kReadWrite, segment_size));
 
-  auto_close_fd = false;
+  autoclose_se.Cancel();
   return SharedMemorySegment(segment_address, fd, segment_size);
 }
 
