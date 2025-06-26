@@ -435,7 +435,9 @@ Status PgTxnManager::RestartTransaction() {
 // yb_attempt_to_restart_on_error() (e.g., in case of a retry on kConflict error).
 Status PgTxnManager::ResetTransactionReadPoint() {
   RSTATUS_DCHECK(
-      !IsDdlMode(), IllegalState, "READ COMMITTED semantics don't apply to DDL transactions");
+      !IsDdlMode() || yb_ddl_transaction_block_enabled, IllegalState,
+      "READ COMMITTED semantics don't apply to DDL transactions except if "
+      "yb_ddl_transaction_block_enabled is true.");
   serial_no_.IncReadTime();
   const auto& pick_read_time_alias = FLAGS_ysql_rc_force_pick_read_time_on_pg_client;
   read_time_manipulation_ =

@@ -807,7 +807,7 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 {
 	HeapTuple	newtup;
 
-	bool		yb_use_regular_txn_block = yb_ddl_transaction_block_enabled;
+	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
 
 	if (IsYugaByteEnabled())
 	{
@@ -853,8 +853,7 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 							 Int16GetDatum(attnum),
 							 BoolGetDatum(stainherit));
 
-	bool		yb_use_regular_txn_block =
-		yb_ddl_transaction_block_enabled;
+	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
 
 	if (IsYugaByteEnabled())
 	{

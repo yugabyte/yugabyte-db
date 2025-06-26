@@ -1211,6 +1211,8 @@ typedef struct
 	MemoryContext mem_context;
 	YbCatalogModificationAspects catalog_modification_aspects;
 	bool		is_global_ddl;
+	/* set to true if the current statement being executed is a DDL */
+	bool		is_top_level_ddl_active;
 	NodeTag		current_stmt_node_tag;
 	CommandTag	current_stmt_ddl_command_tag;
 	Oid			database_oid;
@@ -2405,6 +2407,21 @@ YBResetDdlState()
 	HandleYBStatus(status);
 }
 
+bool
+YBIsDdlTransactionBlockEnabled()
+{
+	bool enabled = yb_ddl_transaction_block_enabled;
+
+	if (!IsYBReadCommitted())
+		return enabled;
+
+	/*
+	 * For READ COMMITTED isolation, also check if DDL transaction support has
+	 * been explicitly disabled.
+	 */
+	return enabled && !yb_disable_ddl_transaction_block_for_read_committed;
+}
+
 int
 YBGetDdlNestingLevel()
 {
@@ -2421,6 +2438,12 @@ CommandTag
 YBGetCurrentStmtDdlCommandTag()
 {
 	return ddl_transaction_state.current_stmt_ddl_command_tag;
+}
+
+bool
+YBIsCurrentStmtDdl()
+{
+	return ddl_transaction_state.is_top_level_ddl_active;
 }
 
 bool
@@ -2993,7 +3016,7 @@ YBCommitTransactionContainingDDL()
 		 * last DDL as the contributing command.
 		 */
 		const char *command_tag_name =
-			(yb_ddl_transaction_block_enabled) ?
+			(YBIsDdlTransactionBlockEnabled()) ?
 				NULL :
 				GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
 
@@ -3190,6 +3213,14 @@ YbShouldIncrementLogicalClientVersion(PlannedStmt *pstmt)
 	return false;
 }
 
+static bool
+YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
+{
+	return context == PROCESS_UTILITY_TOPLEVEL ||
+					 (context == PROCESS_UTILITY_QUERY &&
+					  ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
+}
+
 YbDdlModeOptional
 YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 {
@@ -3226,9 +3257,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	 * SPI), and the current original node tag is T_RefreshMatViewStmt, do
 	 * not update the original node tag.
 	 */
-	if (context == PROCESS_UTILITY_TOPLEVEL ||
-		(context == PROCESS_UTILITY_QUERY &&
-		 ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt))
+	if (YbIsTopLevelOrAtomicStatement(context))
 	{
 		/*
 		 * The node tag from the top-level or atomic process utility must
@@ -3810,7 +3839,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 * When we have ddl transaction block support, we do not need
 				 * this special case code for YSQL upgrade.
 				 */
-					!yb_ddl_transaction_block_enabled)
+					!YBIsDdlTransactionBlockEnabled())
 				{
 					/*
 					 * We assume YSQL upgrade only makes simple use of COMMIT
@@ -3831,6 +3860,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			is_ddl = false;
 			break;
 	}
+
+	if (YbIsTopLevelOrAtomicStatement(context))
+		ddl_transaction_state.is_top_level_ddl_active = is_ddl;
 
 	if (!is_ddl)
 	{
@@ -3884,7 +3916,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	 * transaction.
 	 * Find a better place to return this.
 	 */
-	if (yb_ddl_transaction_block_enabled &&
+	if (YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction)
 		aspects |= YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE;
 
@@ -3982,7 +4014,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	const bool use_separate_ddl_transaction =
 		is_ddl &&
 		(ddl_mode.value == YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT ||
-		 !yb_ddl_transaction_block_enabled);
+		 !YBIsDdlTransactionBlockEnabled());
 
 	elog(DEBUG3, "is_ddl %d", is_ddl);
 	PG_TRY();
@@ -4052,6 +4084,17 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 
 			if (use_separate_ddl_transaction)
 				YBDecrementDdlNestingLevel();
+
+			/*
+			 * Reset the is_top_level_ddl_active for this statement as it is
+			 * done executing. This field is set in YbGetDdlMode when we detect
+			 * a DDL statement. We need to the unset it after the DDL statement
+			 * is done and cannot wait for it to be unset upon receiving the
+			 * next statement. This is because not all statements (for eg. DMLs)
+			 * call YBTxnDdlProcessUtility and hence YbGetDdlMode.
+			 */
+			if (YbIsTopLevelOrAtomicStatement(context))
+				ddl_transaction_state.is_top_level_ddl_active = false;
 		}
 	}
 	PG_CATCH();
@@ -4092,7 +4135,7 @@ void
 YbInvalidateTableCacheForAlteredTables()
 {
 	if ((YbDdlRollbackEnabled() ||
-		 yb_ddl_transaction_block_enabled) &&
+		YBIsDdlTransactionBlockEnabled()) &&
 		ddl_transaction_state.altered_table_ids)
 	{
 		/*
@@ -7382,7 +7425,8 @@ bool
 YbIsReadCommittedTxn()
 {
 	return IsYBReadCommitted() &&
-		!(YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet());
+		   !((YBCPgIsDdlMode() && !YBIsDdlTransactionBlockEnabled()) ||
+			 YBCIsInitDbModeEnvVarSet());
 }
 
 static YbOptionalReadPointHandle
