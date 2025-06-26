@@ -1254,7 +1254,7 @@ For example, delete an xCluster replication using the following command:
 
 {{< warning title="Warning" >}}
 
-If you are using automatic mode and your workload is running while you perform this command, the involved target universe databases may be left in an unusable state.  See [Remove a database from a replication group](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/#remove-a-database-from-a-replication-group).
+If you are using automatic mode and your workload is running while you perform this command, the involved target universe databases may be left in an unusable state.  See [Drop xCluster replication group](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/#drop-xcluster-replication-group).
 
 {{< /warning >}}
 
@@ -1782,11 +1782,11 @@ docker run -d --name yugabytedb-node3 --net yb-network \
 
 ### Create and manage read replica clusters
 
-To create a read replica cluster, you first create a YugabyteDB universe; this example assumes a 3-node universe is deployed. Refer to [Create a local multi-node universe](#create-a-local-multi-node-universe).   Creating a universe automatically creates its primary cluster, which consists of all non-read replica nodes.
+To create a read replica cluster, you first need an existing YugabyteDB universe; this example assumes a 3-node universe is deployed. Refer to [Create a local multi-node universe](#create-a-local-multi-node-universe).
 
-You add read replica nodes to the universe using the `--join` and
-`--read_replica` flags.  They will be part of a different cluster, a
-read replica cluster.
+Initially universes have only one cluster, called its primary or live cluster.  This cluster consists of all its non-read replica nodes.
+
+In order to add read replica nodes to the universe, you need to first create a read replica cluster for them to belong to.  Once you have done that, you add read replica nodes to the universe using the `--join` and `--read_replica` flags.
 
 #### Create a read replica cluster
 
