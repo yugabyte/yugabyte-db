@@ -135,10 +135,10 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
         return;
       }
       Optional<NodeAgent> optional =
-          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)
-              ? nodeUniverseManager.maybeGetNodeAgent(
-                  universeOpt.get(), nodeDetails, true /*check feature flag*/)
-              : Optional.empty();
+          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
+              ? Optional.empty()
+              : nodeUniverseManager.maybeGetNodeAgent(
+                  universeOpt.get(), nodeDetails, true /*check feature flag*/);
       if (optional.isPresent()) {
         runWithNodeAgent(optional.get(), universeOpt.get(), nodeDetails);
       } else {

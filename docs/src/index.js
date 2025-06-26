@@ -262,6 +262,21 @@ $(document).ready(() => {
     });
   })();
 
+  (() => {
+    const contributeEditFilePath = document.querySelector('.contribute-edit-file-path');
+    if (contributeEditFilePath) {
+      const gitURL = contributeEditFilePath.getAttribute('data-git');
+      if (gitURL && gitURL.indexOf('ADD_FILE_PATH_HERE') !== -1) {
+        const navBar = document.getElementById('nav_bar');
+        const filePath = navBar.getAttribute('data-file');
+        if (filePath) {
+          const newEditUrl = gitURL.replace('ADD_FILE_PATH_HERE', filePath);
+          contributeEditFilePath.setAttribute('href', newEditUrl);
+        }
+      }
+    }
+  })();
+
   /**
    * Left sidebar nav.
    */

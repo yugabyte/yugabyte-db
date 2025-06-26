@@ -17,6 +17,7 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 
@@ -110,7 +111,7 @@ class XClusterAutomaticModeTest : public XClusterDDLReplicationTestBase {
     std::vector<NamespaceId> sequence_alias_ids;
     for (const auto& ns : namespace_names) {
       sequence_alias_ids.push_back(xcluster::GetSequencesDataAliasForNamespace(
-          VERIFY_RESULT(GetNamespaceId(producer_client(), ns))));
+          VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), ns))));
     }
     return WaitForReplicationDrain(
         0, kRpcTimeout, /*target_time=*/std::nullopt, sequence_alias_ids);
@@ -134,8 +135,8 @@ TEST_F(XClusterAutomaticModeTest, StraightforwardSequenceReplication) {
   const std::string namespace1{"yugabyte"};
   ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false, namespace1));
   ASSERT_EQ(
-      ASSERT_RESULT(GetNamespaceId(producer_client(), namespace1)),
-      ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace1)));
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace1)),
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace1)));
 
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
   ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
@@ -166,11 +167,11 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithFiltering) {
   const std::string namespace2{"yugabyte2"};
   ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false, namespace1, namespace2));
   ASSERT_EQ(
-      ASSERT_RESULT(GetNamespaceId(producer_client(), namespace1)),
-      ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace1)));
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace1)),
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace1)));
   ASSERT_EQ(
-      ASSERT_RESULT(GetNamespaceId(producer_client(), namespace2)),
-      ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace2)));
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace2)),
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace2)));
 
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
   ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
@@ -248,8 +249,8 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithTransform) {
   const std::string namespace1{"db_with_differing_oids"};
   ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/true, namespace1));
   ASSERT_NE(
-      ASSERT_RESULT(GetNamespaceId(producer_client(), namespace1)),
-      ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace1)));
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace1)),
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace1)));
 
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
   ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
@@ -301,7 +302,7 @@ TEST_F(XClusterAutomaticModeTest, SequencePausingAndSafeTime) {
 
   auto sequences_stream_id =
       ASSERT_RESULT(GetCDCStreamID(xcluster::GetSequencesDataAliasForNamespace(
-          ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name)))));
+          ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name)))));
   ASSERT_OK(PauseResumeXClusterProducerStreams({sequences_stream_id}, /*is_paused=*/true));
   ASSERT_OK(
       StringWaiterLogSink("Replication is paused from the producer for stream").WaitFor(300s));
@@ -329,7 +330,7 @@ TEST_F(XClusterAutomaticModeTest, SequencePausingIsolation) {
   auto pause_one_namespace_temporarily = [&](NamespaceName namespace_to_pause,
                                              NamespaceName other_namespace) {
     auto namespace_to_pause_id =
-        ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_to_pause));
+        ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_to_pause));
     LOG(INFO) << "***** Pausing namespace: " << namespace_to_pause
               << " ID: " << namespace_to_pause_id;
     auto sequences_stream_id = ASSERT_RESULT(
@@ -456,7 +457,8 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingAddingNamespac
   // sequences in the middle of the backup/restore step.
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace2));
   auto source_xcluster_client = client::XClusterClient(*producer_client());
-  auto source_db_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace2));
+  auto source_db_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace2));
   ASSERT_OK(source_xcluster_client.AddNamespaceToOutboundReplicationGroup(
       kReplicationGroupId, source_db_id));
   // Wait for checkpointing to finish.
@@ -465,7 +467,8 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingAddingNamespac
   ASSERT_OK(BumpSequences(&producer_cluster_, namespace2));
   ASSERT_OK(RestoreToConsumer({namespace2}));
   // Note that RestoreToConsumer re-creates the namespace so we can't get the ID before now.
-  auto target_db_id = ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace2));
+  auto target_db_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace2));
   ASSERT_OK(AddNamespaceToXClusterReplication(source_db_id, target_db_id));
 
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace2));
@@ -518,7 +521,7 @@ class XClusterSequenceDDLOrdering : public XClusterDDLReplicationTestBase {
     // Wait for sequences_data replication to drain.
     std::vector<NamespaceId> sequence_alias_ids;
     sequence_alias_ids.push_back(xcluster::GetSequencesDataAliasForNamespace(
-        VERIFY_RESULT(GetNamespaceId(producer_client(), namespace_name))));
+        VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name))));
     RETURN_NOT_OK(
         WaitForReplicationDrain(0, kRpcTimeout, /*target_time=*/std::nullopt, sequence_alias_ids));
 

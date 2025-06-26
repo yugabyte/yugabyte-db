@@ -361,6 +361,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "XCluster/DR config GET API timeout in milliseconds",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> xClusterDbScopedAutomaticDdlYbdbMinCompatibleVersion =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.automatic_ddl.ybdbMinCompatibleVersion",
+          ScopeType.GLOBAL,
+          "XCluster DB Scoped Automatic DDL YBDB Min Compatible Version",
+          "Minimum YBDB version for which XCluster DB Scoped Automatic DDL is supported",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
           "ybc.timeout.socket_read_timeout_ms",
@@ -1660,13 +1668,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Duration to start notifying about expiry before node agent server cert actually expires",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> nodeAgentEnableConfigureServer =
+  public static final ConfKeyInfo<Boolean> nodeAgentDisableConfigureServer =
       new ConfKeyInfo<>(
-          "yb.node_agent.enable_configure_server",
+          "yb.node_agent.disable_configure_server",
           ScopeType.GLOBAL,
-          "Enable Node Agent Configure Server",
-          "Enable or disable server configuration RPCs in node agent. Defaults to ansible if it is"
-              + " disabled.",
+          "Disable Node Agent Configure Server",
+          "Disable server configuration RPCs in node agent. Defaults to ansible if it is"
+              + " enabled.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeAgentEnableMessageCompression =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_message_compression",
+          ScopeType.GLOBAL,
+          "Enable Node Agent Message Compression",
+          "Enable compression for message sent over node agent channel.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =

@@ -48,6 +48,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
@@ -188,6 +189,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CloudUtilFactory mockCloudUtilFactory;
   protected ReleasesUtils mockReleasesUtils;
   protected NodeAgentManager mockNodeAgentManager;
+  protected NodeAgentClient mockNodeAgentClient;
   protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
   protected GFlagsAuditHandler mockGFlagsAuditHandler;
 
@@ -267,6 +269,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getYsqlQueryExecutor()).thenReturn(mockYsqlQueryExecutor);
     when(mockBaseTaskDependencies.getGFlagsValidation()).thenReturn(mockGFlagsValidation);
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
+    when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
@@ -332,6 +335,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
     mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
     mockNodeAgentManager = mock(NodeAgentManager.class);
+    mockNodeAgentClient = mock(NodeAgentClient.class);
     mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
     mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
 
@@ -376,6 +380,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(bind(NodeAgentManager.class).toInstance(mockNodeAgentManager))
+                .overrides(bind(NodeAgentClient.class).toInstance(mockNodeAgentClient))
                 .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
                 .overrides(bind(GFlagsAuditHandler.class).toInstance(mockGFlagsAuditHandler))
                 .overrides(
@@ -422,7 +427,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   public TaskInfo waitForTask(UUID taskUUID, long sleepDuration) throws InterruptedException {
     int numRetries = 0;
-    TaskInfo taskInfo = null;
+    TaskInfo taskInfo;
     while (numRetries < MAX_RETRY_COUNT) {
       // Here is a hack to decrease amount of accidental problems for tests using this
       // function:
@@ -438,18 +443,28 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             return taskInfo;
           }
         } catch (Exception e) {
+          log.error(
+              "Error while fetching task info for taskUUID: {} : {}. Retrying...",
+              taskUUID,
+              e.getMessage());
         }
       }
       Thread.sleep(sleepDuration);
       numRetries++;
     }
 
+    Optional<TaskInfo> taskInfoOptional = TaskInfo.maybeGet(taskUUID);
+    if (taskInfoOptional.isEmpty()) {
+      throw new RuntimeException(
+          "WaitFor task exceeded maxRetries and could not fetch TaskInfo for taskUUID: "
+              + taskUUID);
+    }
+    taskInfo = taskInfoOptional.get();
     String runningTasks =
         taskInfo.getSubTasks().stream()
             .filter(t -> t.getTaskState() == State.Running)
             .map(t -> getBriefTaskInfo(t))
             .collect(Collectors.joining(","));
-
     throw new RuntimeException(
         "WaitFor task exceeded maxRetries! Task state is "
             + taskInfo.getTaskState()

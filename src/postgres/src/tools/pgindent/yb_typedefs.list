@@ -273,7 +273,6 @@ YbcPgTableDesc
 YbcPgTabletsDescriptor
 YbcPgThreadLocalRegexpCache
 YbcPgThreadLocalRegexpCacheCleanup
-YbcPgThreadLocalRegexpMetadata
 YbcPgTransactionSetting
 YbcPgTxnSnapshot
 YbcPgTypeAttrs

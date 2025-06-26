@@ -43,7 +43,7 @@ v2.25 is a preview release that is only meant for evaluation purposes and should
 - Upgrade client drivers.
 
     Upgrade all application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
-- Your cluster must be running v2024.2.2.0 or later.
+- Your cluster must be running v2024.2.3.0 or later.
 
     If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
 
@@ -153,7 +153,7 @@ Now that all the YB-Master and YB-TServer processes are on the same version, you
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:7100 ysql_yb_major_version_upgrade_compatibility 0
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:7100 ysql_yb_major_version_upgrade_compatibility 0
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:7100 ysql_yb_major_version_upgrade_compatibility 0
-  
+
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:9100 ysql_yb_major_version_upgrade_compatibility 0
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version_upgrade_compatibility 0
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 0
@@ -180,6 +180,8 @@ You need to run the [finalize_upgrade](../../admin/yb-admin/#finalize-upgrade) c
 ```sh
 yb-admin --master_addresses <master_addresses> finalize_upgrade
 ```
+
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
 ## Rollback phase
 
@@ -221,7 +223,7 @@ Rollback successful
 
 ### Roll back YB-Masters
 
-[Roll back all YB-Masters](../upgrade-deployment/#2-roll-back-yb-masters) to v2024.2.2.0.
+[Roll back all YB-Masters](../upgrade-deployment/#2-roll-back-yb-masters) to v2024.2.3.0.
 
 If you are using the cost based optimizer, run ANALYZE on your databases to get the most optimal query plans.
 
@@ -233,7 +235,7 @@ Now that all the YB-Master and YB-TServer processes are on the same version, you
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:7100 ysql_yb_major_version_upgrade_compatibility 0
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:7100 ysql_yb_major_version_upgrade_compatibility 0
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:7100 ysql_yb_major_version_upgrade_compatibility 0
-  
+
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.1:9100 ysql_yb_major_version_upgrade_compatibility 0
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.2:9100 ysql_yb_major_version_upgrade_compatibility 0
   $ ./bin/yb-ts-cli set_flag --server_address 127.0.0.3:9100 ysql_yb_major_version_upgrade_compatibility 0

@@ -120,6 +120,10 @@ class GenericCalculatorService : public ServiceIf {
   void FillEndpoints(const RpcServicePtr& service, RpcEndpointMap* map) override;
   void Handle(InboundCallPtr incoming) override;
 
+  std::string metric_name() const override {
+    return rpc_test::CalculatorServiceIf::static_service_name();
+  }
+
   std::string service_name() const override {
     return rpc_test::CalculatorServiceIf::static_service_name();
   }

@@ -457,7 +457,7 @@ IndexBuildResult *
 ybvectorcopartitionedbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 {
 	HandleYBStatus(YBCPgWaitVectorIndexReady(
-		YBCGetDatabaseOid(index), index->rd_id));
+		YBCGetDatabaseOid(index), YbGetRelfileNodeId(index)));
 
 	IndexBuildResult *result = palloc0(sizeof(IndexBuildResult));
 

@@ -25,7 +25,7 @@ class CachedRegexpHolder {
  public:
   CachedRegexpHolder(size_t buffer_size,
                      YbcPgThreadLocalRegexpCacheCleanup cleanup)
-      : buffer_(buffer_size, 0), cleanup_(cleanup), cache_{.num = 0, .array = buffer_.data()} {}
+      : buffer_(buffer_size, 0), cleanup_(cleanup), cache_{.array = buffer_.data()} {}
 
   ~CachedRegexpHolder() {
     cleanup_(&cache_);
@@ -51,7 +51,6 @@ thread_local int yb_expression_version = 0;
 thread_local void* jump_buffer = nullptr;
 thread_local void* err_status = nullptr;
 thread_local std::optional<CachedRegexpHolder> re_cache;
-thread_local YbcPgThreadLocalRegexpMetadata re_metadata;
 
 //-----------------------------------------------------------------------------
 // Memory context.
@@ -126,10 +125,6 @@ YbcPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
   DCHECK(!re_cache);
   re_cache.emplace(buffer_size, cleanup);
   return &re_cache->cache();
-}
-
-YbcPgThreadLocalRegexpMetadata* PgGetThreadLocalRegexpMetadata() {
-  return &re_metadata;
 }
 
 }  // namespace yb::pggate

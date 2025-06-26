@@ -448,7 +448,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
 
   pgwrapper::PgSupervisor pg_supervisor(pg_conf, &master_);
   auto se = ScopeExit([&pg_supervisor]() { pg_supervisor.Stop(); });
-  RETURN_NOT_OK(pg_supervisor.StartAndMaybePause());
+  RETURN_NOT_OK(pg_supervisor.Start());
 
   PgWrapper::PgUpgradeParams pg_upgrade_params;
   pg_upgrade_params.ysql_user_name = "yugabyte";

@@ -21,18 +21,58 @@ yb-voyager analyze-schema [ <arguments> ... ]
 
 ### Arguments
 
-The valid *arguments* for analyze schema are described in the following table:
+The following table lists the valid CLI flags and parameters for `analyze-schema` command.
 
-| <div style="width:150px">Argument</div> | Description/valid options |
-| :------- | :------------------------ |
-| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| -h, --help | Command line help. |
-| --output-format | Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. If not provided, reports are generated in both `json` and `html` formats by default. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --target-db-version | Specifies the target version of YugabyteDB in the format `A.B.C.D`.<br>Default: latest stable version |
-| -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+When run at the same time, flags take precedence over configuration flag settings.
+
+{{<table>}}
+
+| <div style="width:150px">CLI flag</div> | Config file parameter | Description |
+| :--- | :-------- | :---------- |
+| --output-format |
+
+```yaml{.nocopy}
+analyze-schema:
+  output-format:
+```
+
+|Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. If not provided, reports are generated in both `json` and `html` formats by default. |
+| --target-db-version |
+
+```yaml{.nocopy}
+analyze-schema:
+  target-db-version:
+```
+
+|Specifies the target version of YugabyteDB in the format `A.B.C.D`.<br>Default: latest stable version |
+| -e, --export-dir |
+
+```yaml{.nocopy}
+export-dir:
+```
+
+|Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| --send-diagnostics |
+
+```yaml{.nocopy}
+send-diagnostics:
+```
+
+|Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| -h, --help | — |Command line help. |
+| -y, --yes | — |Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+{{</table>}}
 
 ### Example
+
+Configuration file:
+
+```sh
+yb-voyager analyze-schema --config-file <path-to-config-file>
+```
+
+CLI:
 
 ```sh
 yb-voyager analyze-schema --export-dir /dir/export-dir --output-format txt

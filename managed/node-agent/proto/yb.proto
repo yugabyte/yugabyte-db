@@ -121,6 +121,8 @@ message DownloadSoftwareInput {
     string httpPackageChecksum = 8;
     string iTestS3PackagePath = 9;
     string remoteTmp = 10;
+    string ybHomeDir = 11;
+    uint32 numReleasesToKeep = 12;
 }
 
 message DownloadSoftwareOutput {

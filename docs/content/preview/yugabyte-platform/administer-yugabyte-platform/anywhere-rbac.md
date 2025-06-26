@@ -14,17 +14,13 @@ type: docs
 
 YugabyteDB Anywhere uses a role-based access control (RBAC) model to manage access to your YugabyteDB Anywhere instance (whether via the UI or the REST API). Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
-RBAC is also available with fine-grained control over access to universes. Fine-grained RBAC is {{<tags/feature/ea idea="509">}}; during Early Access, by default fine-grained RBAC is not enabled. See [Manage users](#manage-users).
-
 ## Users and roles
 
-As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance. How you add and modify users varies depending on whether you have enabled [fine-grained RBAC](#fine-grained-rbac) {{<tags/feature/ea idea="509">}}. You can only assign, create, and modify custom roles if fine-grained RBAC is enabled.
+As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance.
 
-A user can interact with a YugabyteDB Anywhere instance via the UI or [REST API](../../anywhere-automation/anywhere-api/).
+Users are assigned roles, which define the set of actions users can perform, and you can also define the set of universes to which the user has access. A user can interact with a YugabyteDB Anywhere instance via the UI or [REST API](../../anywhere-automation/anywhere-api/).
 
-Users are assigned roles, which define the set of actions users can perform. If fine-grained RBAC is enabled, you can also define the set of universes to which the user has access.
-
-YugabyteDB Anywhere includes built-in roles. If you have enabled fine-grained RBAC, you can also define custom roles for team members to restrict access to specific account features.
+YugabyteDB Anywhere includes built-in roles. You can also define custom roles for team members to restrict access to specific account features.
 
 [API tokens](../../anywhere-automation/) generated for users are assigned the same role as the user that generated them.
 
@@ -57,43 +53,9 @@ The following built-in roles are available:
 
 You can't delete or edit built-in roles.
 
-## Classic RBAC
-
-You can invite new users to your YugabyteDB Anywhere instance as follows:
-
-1. Navigate to **Admin > User Management > Users** and click **Add User**.
-
-    ![Add User](/images/yp/authorization-platform/add-user-classic.png)
-
-1. Enter the user's email.
-
-1. Enter a password for the user to sign in with.
-
-1. Select a [built-in role](#built-in-roles) for the user.
-
-1. Click **Submit**.
-
-To modify a user role, navigate to **Admin > User Management > Users**, click **Actions** that corresponds to the specific user, and choose **Edit User Role**.
-
-To delete a user, navigate to **Admin > Access Management > Users**, click **Actions** for the user to delete, and choose **Delete User**.
-
 ## Fine-grained RBAC
 
 Using fine-grained RBAC, you can assign built-in and custom roles to users to determine the actions they are allowed to perform, and specify the universes that they can access.
-
-During Early Access, by default fine-grained RBAC is not enabled.
-
-To enable the feature, use following API command:
-
-```sh
-curl --request PUT \
-  --url http://{yba_host:port}/api/v1/customers/{customerUUID}/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.rbac.use_new_authz \
-  --header 'Content-Type: text/plain' \
-  --header 'X-AUTH-YW-API-TOKEN: {api_token}' \
-  --data 'true'
-```
-
-If you enable fine-grained RBAC, you can't turn it off. You should test the feature thoroughly in a development or staging environment before enabling it in your production environment.
 
 ### Manage users
 
@@ -181,5 +143,4 @@ To view the users that have been assigned a role, navigate to **Admin > Access M
 - Retrying and aborting a task can require different permissions than executing it the first time.
 - Currently, when creating a user, you can select **Include Future Universes** only when you have selected all current universes.
 - You may need to refresh your browser after creating a universe to apply the permissions for the newly created universe.
-- Currently, LDAP group mapping is not supported for custom roles. Only built-in roles are supported for LDAP users.
 - The View Resource permission provides view access to all logs, task logs, and so on.

@@ -61,7 +61,8 @@ func authWriteConfigFile(r ybaclient.SessionInfo) {
 	session.Write(sessionCtx, []ybaclient.SessionInfo{r})
 }
 
-func authUtil(url *url.URL, apiToken string) {
+// InitializeAuthenticatedSession initializes the auth client
+func InitializeAuthenticatedSession(url *url.URL, apiToken string, showToken bool) {
 	// this was established using authToken
 	authAPI, err := ybaAuthClient.NewAuthAPIClientInitialize(url, apiToken)
 	if err != nil {
@@ -87,13 +88,17 @@ func authUtil(url *url.URL, apiToken string) {
 	logrus.Debugf("Fetched Customer UUID without errors.\n")
 
 	viper.GetViper().Set("apiToken", apiToken)
+	if !showToken {
+		apiToken = util.MaskObject(apiToken)
+	}
 	r.SetApiToken(apiToken)
 	viper.GetViper().Set("user-uuid", r.GetUserUUID())
 
 	authWriteConfigFile(r)
 }
 
-func viperVariablesInAuth(cmd *cobra.Command, force bool) *url.URL {
+// ViperVariablesInAuth sets the viper variables for host, insecure and ca-cert
+func ViperVariablesInAuth(cmd *cobra.Command, force bool) *url.URL {
 	hostConfig := viper.GetString("host")
 	var caCertPath, host string
 	var useInsecure bool

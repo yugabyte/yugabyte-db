@@ -81,6 +81,12 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
         UniverseConfKeys.dbScopedXClusterCreationEnabled.getKey(),
         "true",
         true);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,
+        UniverseConfKeys.XClusterDbScopedAutomaticDdlCreationEnabled.getKey(),
+        "false",
+        true);
 
     downloadAndSetUpYBSoftware(
         os, arch, String.format(DB_SCOPED_STABLE_VERSION_URL, os, arch), DB_SCOPED_STABLE_VERSION);

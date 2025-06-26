@@ -1050,7 +1050,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V4)
 			values[j++] =
-				UInt32GetDatum(YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
+				UInt32GetDatum(YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true));
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
@@ -1327,6 +1327,6 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 						 sample->sample_weight,
 						 pgstat_get_wait_event_type(sample->encoded_wait_event_code),
 						 sample->metadata.database_id,
-						 YBCAshRemoveComponentFromWaitStateCode(sample->encoded_wait_event_code));
+						 YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true));
 	}
 }

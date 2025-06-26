@@ -173,8 +173,13 @@ struct PerformData : public FetchBigDataCallback {
   bool fetching_big_data GUARDED_BY(exchange_mutex) = false;
   rpc::CallData big_call_data GUARDED_BY(exchange_mutex);
 
-  PerformData(ThreadSafeArena* arena, PgsqlOps&& operations_, const PerformCallback& callback_)
-      : operations(std::move(operations_)), resp(arena), callback(callback_) {
+  PgDocMetrics& metrics;
+
+  PerformData(
+      ThreadSafeArena* arena, PgsqlOps&& operations_,
+      const PerformCallback& callback_, PgDocMetrics& metrics_)
+      : operations(std::move(operations_)), resp(arena),
+        callback(callback_), metrics(metrics_) {
   }
 
   void SetupExchange(
@@ -290,6 +295,7 @@ struct PerformData : public FetchBigDataCallback {
       } else {
         operations[i]->set_response(&op_response);
       }
+      metrics.RecordRequestMetrics(op_response.metrics(), operations[i]->is_read());
       ++i;
     }
     return Status::OK();
@@ -456,12 +462,12 @@ class PgClient::Impl : public BigDataFetcher {
         } else {
           auto instance_id = heartbeat_resp_.instance_id();
           if (!instance_id.empty()) {
-            auto exchange = tserver::SharedExchange::Make(
+            auto session_shared_mem = tserver::PgSessionSharedMemoryManager::Make(
                 instance_id, heartbeat_resp_.session_id(), tserver::Create::kFalse);
-            if (exchange.ok()) {
-              exchange_.emplace(std::move(*exchange));
+            if (session_shared_mem.ok()) {
+              session_shared_mem_.emplace(std::move(*session_shared_mem));
             } else {
-              LOG(DFATAL) << "Failed to create exchange: " << exchange.status();
+              LOG(DFATAL) << "Failed to create shared memory: " << session_shared_mem.status();
             }
           }
           create_session_promise_.set_value(heartbeat_resp_.session_id());
@@ -756,7 +762,8 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations) {
+  PerformResultFuture PerformAsync(
+      tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
     auto& arena = operations.front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
     AshMetadataToPB(*options);
@@ -769,10 +776,12 @@ class PgClient::Impl : public BigDataFetcher {
       promise->set_value(result);
     };
 
-    auto data = std::make_shared<PerformData>(&arena, std::move(operations), callback);
-    if (exchange_ && exchange_->ReadyToSend()) {
+    auto data = std::make_shared<PerformData>(
+        &arena, std::move(operations), callback, metrics);
+    if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
       constexpr size_t kHeaderSize = sizeof(uint64_t);
-      auto out = exchange_->Obtain(kHeaderSize + req.SerializedSize());
+      auto& exchange = session_shared_mem_->exchange();
+      auto out = exchange.Obtain(kHeaderSize + req.SerializedSize());
       if (out) {
         LittleEndian::Store64(out, timeout_.ToMilliseconds());
         out += sizeof(uint64_t);
@@ -781,7 +790,7 @@ class PgClient::Impl : public BigDataFetcher {
           ProcessPerformResponse(data.get(), status);
           return promise->get_future();
         }
-        data->SetupExchange(&exchange_.value(), this, timeout_);
+        data->SetupExchange(&exchange, this, timeout_);
         return PerformExchangeFuture(std::move(data));
       }
     }
@@ -799,7 +808,7 @@ class PgClient::Impl : public BigDataFetcher {
     auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
     SCHECK_EQ(end - out, size, InternalError, "Obtained size does not match serialized size");
 
-    return exchange_->SendRequest();
+    return session_shared_mem_->exchange().SendRequest();
   }
 
   void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) override {
@@ -833,7 +842,8 @@ class PgClient::Impl : public BigDataFetcher {
       big_shared_memory_object_ = {};
       big_shared_memory_object_ = boost::interprocess::shared_memory_object(
           boost::interprocess::open_only,
-          tserver::MakeSharedMemoryBigSegmentName(exchange_->instance_id(), id).c_str(),
+          tserver::MakeSharedMemoryBigSegmentName(
+              session_shared_mem_->instance_id(), id).c_str(),
           boost::interprocess::read_write);
       big_mapped_region_ = boost::interprocess::mapped_region(
           big_shared_memory_object_, boost::interprocess::read_write);
@@ -1559,7 +1569,7 @@ class PgClient::Impl : public BigDataFetcher {
   std::atomic<bool> heartbeat_running_{false};
   rpc::RpcController heartbeat_controller_;
   tserver::PgHeartbeatResponsePB heartbeat_resp_;
-  std::optional<tserver::SharedExchange> exchange_;
+  std::optional<tserver::PgSessionSharedMemoryManager> session_shared_mem_;
   std::promise<Result<uint64_t>> create_session_promise_;
   std::array<int, 2> tablet_server_count_cache_;
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
@@ -1768,8 +1778,8 @@ Status PgClient::DeleteDBSequences(int64_t db_oid) {
 }
 
 PerformResultFuture PgClient::PerformAsync(
-    tserver::PgPerformOptionsPB* options, PgsqlOps&& operations) {
-  return impl_->PerformAsync(options, std::move(operations));
+    tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
+  return impl_->PerformAsync(options, std::move(operations), metrics);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {

@@ -688,8 +688,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <grpopt>	OptTableGroup
 %type <ival>	Oid opt_yb_hash opt_yb_index_sort_order yb_hash
 				yb_opt_concurrently_index
-%type <list>	oid_list yb_index_expr_list_hash_elems yb_split_point
-				yb_split_points
+%type <list>	oid_list yb_hash_index_expr_list yb_hash_index_expr_with_alias
+				yb_index_expr_list_hash_elems yb_split_point yb_split_points
 %type <node>	YbBackfillIndexStmt YbCreateTableGroupStmt YbCreateProfileStmt
 				YbDropProfileStmt
 %type <rolespec> OptTableGroupOwner
@@ -8731,14 +8731,46 @@ opt_yb_hash: yb_hash		{ $$ = $1; }
 			 | /* EMPTY */	{ $$ = SORTBY_HASH; }
 		;
 
-yb_index_expr_list_hash_elems: '(' expr_list ')' opt_yb_hash
+yb_hash_index_expr_with_alias:
+			a_expr AS ColId
+				{
+					if (!IsBinaryUpgrade)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("syntax error at or near \"AS\"")));
+					$$ = list_make2($1, makeString($3));
+				}
+			| a_expr %prec EXPR_LIST
+				{
+					$$ = list_make2($1, NULL);
+				}
+		;
+
+
+yb_hash_index_expr_list:
+			yb_hash_index_expr_with_alias
+				{
+					$$ = list_make1($1);
+				}
+			| yb_hash_index_expr_list ',' yb_hash_index_expr_with_alias
+
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+
+yb_index_expr_list_hash_elems: '(' yb_hash_index_expr_list ')' opt_yb_hash
 				{
 					$$ = NULL;
 					ListCell *lc;
 					foreach (lc, $2)
 					{
 							IndexElem *index_elem = makeNode(IndexElem);
-							Node *node = lfirst(lc);
+							List *pair = (List *) lfirst(lc);
+							Node *node = (Node *) linitial(pair);
+							char *alias = lsecond(pair) != NULL ?
+								strVal(lsecond(pair)) : NULL;
 							if (node->type == T_ColumnRef) {
 									index_elem->name = strVal(linitial(((ColumnRef *)node)->fields));
 									index_elem->expr = NULL;
@@ -8746,7 +8778,7 @@ yb_index_expr_list_hash_elems: '(' expr_list ')' opt_yb_hash
 									index_elem->name = NULL;
 									index_elem->expr = copyObject(node);
 							}
-							index_elem->indexcolname = NULL;
+							index_elem->indexcolname = alias;
 							index_elem->collation = NIL;
 							index_elem->opclass = NIL;
 							index_elem->ordering = $4;
@@ -13085,7 +13117,7 @@ LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
 opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 			| /*EMPTY*/
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@0, "ACCESS EXCLUSIVE lock mode");
 			    	$$ = AccessExclusiveLock;
 				}
@@ -13094,43 +13126,43 @@ opt_lock:	IN_P lock_type MODE				{ $$ = $2; }
 lock_type:	ACCESS SHARE					{ $$ = AccessShareLock; }
 			| ROW SHARE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ROW SHARE");
 			    	$$ = RowShareLock;
 				}
 			| ROW EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ROW EXCLUSIVE");
 			    	$$ = RowExclusiveLock;
 				}
 			| SHARE UPDATE EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE UPDATE EXCLUSIVE");
 			    	$$ = ShareUpdateExclusiveLock;
 				}
 			| SHARE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE");
 			    	$$ = ShareLock;
 				}
 			| SHARE ROW EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "SHARE ROW EXCLUSIVE");
 			    	$$ = ShareRowExclusiveLock;
 				}
 			| EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "EXCLUSIVE");
 			    	$$ = ExclusiveLock;
 				}
 			| ACCESS EXCLUSIVE
 				{
-					if (!*YBCGetGFlags()->TEST_enable_object_locking_for_table_locks)
+					if (!*YBCGetGFlags()->enable_object_locking_for_table_locks)
 						parser_ybc_not_support(@1, "ACCESS EXCLUSIVE");
 			    	$$ = AccessExclusiveLock;
 				}

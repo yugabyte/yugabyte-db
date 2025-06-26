@@ -8,6 +8,7 @@ menu:
   stable:
     identifier: monitor-and-alert
     parent: launch-and-manage
+    weight: 30
 type: indexpage
 ---
 

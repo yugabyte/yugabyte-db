@@ -103,8 +103,10 @@ const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 const char* kDDLPrepStmtCommitTimesUpsert = "commit_times_insert";
 const char* kDDLPrepStmtCommitTimesSelect = "commit_times_select";
-const char* kDDLPrepStmtCommitTimesDelete = "commit_times_delete";
 const int kDDLReplicatedTableSpecialKey = 1;
+const char* kSafeTimeBatchCommitTimes = "commit_times";
+const char* kSafeTimeBatchApplySafeTime = "apply_safe_time";
+const char* kSafeTimeBatchLastCommitTimeProcessed = "last_commit_time_processed";
 
 const std::unordered_set<std::string> kSupportedCommandTags {
     // Relations
@@ -216,6 +218,69 @@ Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data
   return doc;
 }
 
+// Parse the JSON string and return the XClusterDDLQueryInfo struct.
+Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
+    const std::string& raw_json_data, int64 ddl_end_time, int64 query_id) {
+  rapidjson::Document doc = VERIFY_RESULT(ParseSerializedJson(raw_json_data));
+  XClusterDDLQueryInfo query_info;
+
+  VALIDATE_MEMBER(doc, kDDLJsonVersion, Int);
+  query_info.version = doc[kDDLJsonVersion].GetInt();
+  SCHECK_EQ(query_info.version, kDDLQueueJsonVersion, InvalidArgument, "Invalid JSON version");
+
+  query_info.ddl_end_time = ddl_end_time;
+  query_info.query_id = query_id;
+
+  VALIDATE_MEMBER(doc, kDDLJsonCommandTag, String);
+  query_info.command_tag = doc[kDDLJsonCommandTag].GetString();
+  VALIDATE_MEMBER(doc, kDDLJsonQuery, String);
+  query_info.query = doc[kDDLJsonQuery].GetString();
+
+  query_info.schema =
+      HAS_MEMBER_OF_TYPE(doc, kDDLJsonSchema, IsString) ? doc[kDDLJsonSchema].GetString() : "";
+  query_info.user =
+      HAS_MEMBER_OF_TYPE(doc, kDDLJsonUser, IsString) ? doc[kDDLJsonUser].GetString() : "";
+
+  query_info.is_manual_execution = HAS_MEMBER_OF_TYPE(doc, kDDLJsonManualReplication, IsBool);
+
+  rapidjson::StringBuffer assignment_buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(assignment_buffer);
+  writer.StartObject();
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonEnumLabelInfo, IsArray)) {
+    writer.Key(kDDLJsonEnumLabelInfo);
+    doc[kDDLJsonEnumLabelInfo].Accept(writer);
+  }
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonTypeInfo, IsArray)) {
+    writer.Key(kDDLJsonTypeInfo);
+    doc[kDDLJsonTypeInfo].Accept(writer);
+  }
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonSequenceInfo, IsArray)) {
+    writer.Key(kDDLJsonSequenceInfo);
+    doc[kDDLJsonSequenceInfo].Accept(writer);
+  }
+  writer.EndObject();
+  query_info.json_for_oid_assignment = assignment_buffer.GetString();
+
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonNewRelMap, IsArray)) {
+    for (const auto& rel : doc[kDDLJsonNewRelMap].GetArray()) {
+      VALIDATE_MEMBER(rel, kDDLJsonRelFileOid, Uint);
+      VALIDATE_MEMBER(rel, kDDLJsonRelName, String);
+      XClusterDDLQueryInfo::RelationInfo rel_info;
+      rel_info.relfile_oid = rel[kDDLJsonRelFileOid].GetUint();
+      rel_info.relation_name = rel[kDDLJsonRelName].GetString();
+      rel_info.is_index =
+          HAS_MEMBER_OF_TYPE(rel, kDDLJsonIsIndex, IsBool) ? rel[kDDLJsonIsIndex].GetBool() : false;
+      rel_info.colocation_id = HAS_MEMBER_OF_TYPE(rel, kDDLJsonColocationId, IsUint)
+                                   ? rel[kDDLJsonColocationId].GetUint()
+                                   : kColocationIdNotSet;
+
+      query_info.relation_map.push_back(std::move(rel_info));
+    }
+  }
+
+  return query_info;
+}
+
 }  // namespace
 
 XClusterDDLQueueHandler::XClusterDDLQueueHandler(
@@ -244,18 +309,12 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     return Status::OK();
   }
 
-  // Wait for all other pollers to have gotten to this safe time.
-  const auto& target_safe_ht = safe_time_batch_->apply_safe_time;
-  // We don't expect to get an invalid safe time, but it is possible in edge cases (see #21528).
-  // Log an error and return for now, wait until a valid safe time does come in so we can continue.
-  if (target_safe_ht.is_special()) {
-    LOG_WITH_PREFIX(WARNING) << "Received invalid safe time " << target_safe_ht;
-    return Status::OK();
-  }
-
   SCHECK(
       !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start, InternalError,
       "Failing due to xcluster_ddl_queue_handler_fail_at_start");
+
+  // Wait for all other pollers to have gotten to this safe time.
+  const auto& apply_safe_time = safe_time_batch_->apply_safe_time;
 
   // TODO(#20928): Make these calls async.
   HybridTime safe_time_ht = VERIFY_RESULT(GetXClusterSafeTimeForNamespace());
@@ -263,26 +322,24 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
       !safe_time_ht.is_special(), InternalError, "Found invalid safe time $0 for namespace $1",
       safe_time_ht, target_namespace_id_);
   SCHECK_GE(
-      safe_time_ht, target_safe_ht, TryAgain, "Waiting for other pollers to catch up to safe time");
+      safe_time_ht, apply_safe_time, TryAgain,
+      "Waiting for other pollers to catch up to safe time");
 
+  HybridTime last_commit_time_processed = safe_time_batch_->last_commit_time_processed;
   // For each commit time in order, we read the ddl_queue table and process the entries at that
   // time. This ensures that we process all of the DDLs in commit order. We use the ddl_end_time to
   // break ties in the case of multiple DDLs in a single transaction.
   for (const auto& commit_time : safe_time_batch_->commit_times) {
-    // TODO(#20928): Make these calls async.
-    const auto new_safe_time = HybridTime(commit_time);
-    auto rows = VERIFY_RESULT(GetRowsToProcess(new_safe_time));
+    if (commit_time > apply_safe_time) {
+      // Ignore commit times that are greater than the apply safe time. These remaining commit times
+      // will be moved to the next batch.
+      break;
+    }
+
     // TODO(Transactional DDLs): Could detect these here and run them in a transaction.
-    for (const auto& [ddl_end_time, query_id, raw_json_data] : rows) {
-      rapidjson::Document doc = VERIFY_RESULT(ParseSerializedJson(raw_json_data));
-      const auto query_info = VERIFY_RESULT(GetDDLQueryInfo(doc, ddl_end_time, query_id));
-
-      // Need to reverify replicated_ddls if this DDL has already been processed.
-      if (VERIFY_RESULT(CheckIfAlreadyProcessed(query_info))) {
-        continue;
-      }
-
-      if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonManualReplication, IsBool)) {
+    // TODO(#20928): Make these calls async.
+    for (const auto& query_info : VERIFY_RESULT(GetQueriesToProcess(commit_time))) {
+      if (query_info.is_manual_execution) {
         // Just add to the replicated_ddls table.
         RETURN_NOT_OK(ProcessManualExecutionQuery(query_info));
         continue;
@@ -302,12 +359,15 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
         }
       });
 
-      RETURN_NOT_OK(ProcessNewRelations(doc, query_info.schema, new_relations, target_safe_ht));
+      RETURN_NOT_OK(ProcessNewRelations(query_info, new_relations, commit_time));
       RETURN_NOT_OK(ProcessDDLQuery(query_info));
+
+      TEST_SYNC_POINT("XClusterDDLQueueHandler::DDLQueryProcessed");
 
       VLOG_WITH_PREFIX(2) << "ExecuteCommittedDDLs: Successfully processed entry "
                           << query_info.ToString();
     }
+    last_commit_time_processed = commit_time;
 
     SCHECK(
         !FLAGS_TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump,
@@ -326,10 +386,7 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
     //
     // TODO(#27071) Add extra fencing to ensure that we don't read the new schema until the safe
     // time is caught up.
-    SCHECK_LE(
-        new_safe_time, target_safe_ht, InternalError,
-        "Found safe time for DDL that is greater than target safe time");
-    VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Bumping safe time to " << new_safe_time;
+    VLOG_WITH_PREFIX(1) << "ExecuteCommittedDDLs: Bumping safe time to " << commit_time;
     update_safe_time_func_(commit_time);
     TEST_SYNC_POINT("XClusterDDLQueueHandler::DdlQueueSafeTimeBumped");
   }
@@ -338,93 +395,35 @@ Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
       !FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end, InternalError,
       "Failing due to xcluster_ddl_queue_handler_fail_at_end");
 
-  // Clear the cached and persisted times for the next batch.
+  // Update/Clear the cached and persisted times for the next batch.
   // If we fail at any point before this, the next poller will first reprocess this batch before
   // calling GetChanges.
-  RETURN_NOT_OK(ClearSafeTimeBatch());
+  RETURN_NOT_OK(UpdateSafeTimeBatchAfterProcessing(last_commit_time_processed));
 
   return Status::OK();
 }
 
-Result<XClusterDDLQueueHandler::DDLQueryInfo> XClusterDDLQueueHandler::GetDDLQueryInfo(
-    rapidjson::Document& doc, int64 ddl_end_time, int64 query_id) {
-  DDLQueryInfo query_info;
-
-  VALIDATE_MEMBER(doc, kDDLJsonVersion, Int);
-  query_info.version = doc[kDDLJsonVersion].GetInt();
-  SCHECK_EQ(query_info.version, kDDLQueueJsonVersion, InvalidArgument, "Invalid JSON version");
-
-  query_info.ddl_end_time = ddl_end_time;
-  query_info.query_id = query_id;
-
-  VALIDATE_MEMBER(doc, kDDLJsonCommandTag, String);
-  query_info.command_tag = doc[kDDLJsonCommandTag].GetString();
-  VALIDATE_MEMBER(doc, kDDLJsonQuery, String);
-  query_info.query = doc[kDDLJsonQuery].GetString();
-
-  query_info.schema =
-      HAS_MEMBER_OF_TYPE(doc, kDDLJsonSchema, IsString) ? doc[kDDLJsonSchema].GetString() : "";
-  query_info.user =
-      HAS_MEMBER_OF_TYPE(doc, kDDLJsonUser, IsString) ? doc[kDDLJsonUser].GetString() : "";
-
-  rapidjson::StringBuffer assignment_buffer;
-  rapidjson::Writer<rapidjson::StringBuffer> writer(assignment_buffer);
-  writer.StartObject();
-  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonEnumLabelInfo, IsArray)) {
-    writer.Key(kDDLJsonEnumLabelInfo);
-    doc[kDDLJsonEnumLabelInfo].Accept(writer);
-  }
-  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonTypeInfo, IsArray)) {
-    writer.Key(kDDLJsonTypeInfo);
-    doc[kDDLJsonTypeInfo].Accept(writer);
-  }
-  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonSequenceInfo, IsArray)) {
-    writer.Key(kDDLJsonSequenceInfo);
-    doc[kDDLJsonSequenceInfo].Accept(writer);
-  }
-  writer.EndObject();
-  query_info.json_for_oid_assignment = assignment_buffer.GetString();
-  return query_info;
-}
-
 Status XClusterDDLQueueHandler::ProcessNewRelations(
-    rapidjson::Document& doc, const std::string& schema,
-    std::unordered_set<YsqlFullTableName>& new_relations, const HybridTime& target_safe_ht) {
+    const XClusterDDLQueryInfo& query_info, std::unordered_set<YsqlFullTableName>& new_relations,
+    const HybridTime& commit_time) {
   const auto source_db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(source_namespace_id_));
   // If there are new relations, need to update the context with the table name -> source
   // table id mapping. This will be passed to CreateTable and will be used in
   // add_table_to_xcluster_target task to find the matching source table.
-  const auto& rel_map = HAS_MEMBER_OF_TYPE(doc, kDDLJsonNewRelMap, IsArray)
-                            ? std::optional(doc[kDDLJsonNewRelMap].GetArray())
-                            : std::nullopt;
-  if (rel_map) {
-    for (const auto& rel : *rel_map) {
-      VALIDATE_MEMBER(rel, kDDLJsonRelFileOid, Uint);
-      VALIDATE_MEMBER(rel, kDDLJsonRelName, String);
-      const auto relfile_oid = rel[kDDLJsonRelFileOid].GetUint();
-      const auto rel_name = rel[kDDLJsonRelName].GetString();
+  for (const auto& rel : query_info.relation_map) {
+    // Only need to set the backfill time for indexes.
+    const auto& backfill_time_opt = rel.is_index ? commit_time : HybridTime::kInvalid;
 
-      // Only need to set the backfill time for colocated indexes.
-      const auto is_index =
-          HAS_MEMBER_OF_TYPE(rel, kDDLJsonIsIndex, IsBool) ? rel[kDDLJsonIsIndex].GetBool() : false;
-      const auto colocation_id = HAS_MEMBER_OF_TYPE(rel, kDDLJsonColocationId, IsUint)
-                                     ? rel[kDDLJsonColocationId].GetUint()
-                                     : kColocationIdNotSet;
-      const auto& backfill_time_opt = (is_index && colocation_id != kColocationIdNotSet)
-                                          ? target_safe_ht
-                                          : HybridTime::kInvalid;
-
-      RETURN_NOT_OK(xcluster_context_.SetSourceTableInfoMappingForCreateTable(
-          {namespace_name_, schema, rel_name}, PgObjectId(source_db_oid, relfile_oid),
-          colocation_id, backfill_time_opt));
-      new_relations.insert({namespace_name_, schema, rel_name});
-    }
+    RETURN_NOT_OK(xcluster_context_.SetSourceTableInfoMappingForCreateTable(
+        {namespace_name_, query_info.schema, rel.relation_name},
+        PgObjectId(source_db_oid, rel.relfile_oid), rel.colocation_id, backfill_time_opt));
+    new_relations.insert({namespace_name_, query_info.schema, rel.relation_name});
   }
 
   return Status::OK();
 }
 
-Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) {
+Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& query_info) {
   std::stringstream setup_query;
   setup_query << "SET ROLE NONE;";
 
@@ -462,7 +461,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
 }
 
 Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
-    const Status& s, const DDLQueryInfo& query_info) {
+    const Status& s, const XClusterDDLQueryInfo& query_info) {
   if (s.ok()) {
     num_fails_for_this_ddl_ = 0;
     last_failed_query_.reset();
@@ -499,7 +498,8 @@ Status XClusterDDLQueueHandler::CheckForFailedQuery() {
   return Status::OK();
 }
 
-Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(const DDLQueryInfo& query_info) {
+Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(
+    const XClusterDDLQueryInfo& query_info) {
   rapidjson::Document doc;
   doc.SetObject();
   doc.AddMember(
@@ -519,7 +519,7 @@ Status XClusterDDLQueueHandler::RunAndLogQuery(const std::string& query) {
   return pg_conn_->Execute(query);
 }
 
-Result<bool> XClusterDDLQueueHandler::CheckIfAlreadyProcessed(const DDLQueryInfo& query_info) {
+Result<bool> XClusterDDLQueueHandler::IsAlreadyProcessed(const XClusterDDLQueryInfo& query_info) {
   return pg_conn_->FetchRow<bool>(Format(
       "EXECUTE $0($1, $2)", kDDLPrepStmtAlreadyProcessed, query_info.ddl_end_time,
       query_info.query_id));
@@ -551,14 +551,10 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
       kDDLReplicatedTableSpecialKey);
   query << Format(
       "PREPARE $0(text) AS INSERT INTO $1 VALUES ($2, $2, $$1::jsonb) "
-      "ON CONFLICT ($3, $4) DO UPDATE SET $5 = EXCLUDED.$5;",  // Replace yb_datawith new values.
+      "ON CONFLICT ($3, $4) DO UPDATE SET $5 = EXCLUDED.$5;",  // Replace yb_data with new values.
       kDDLPrepStmtCommitTimesUpsert, kReplicatedDDLsFullTableName, kDDLReplicatedTableSpecialKey,
       xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn);
-  query << Format(
-      "PREPARE $0 AS DELETE FROM $1 WHERE $2 = $4 AND $3 = $4;", kDDLPrepStmtCommitTimesDelete,
-      kReplicatedDDLsFullTableName, xcluster::kDDLQueueDDLEndTimeColumn,
-      xcluster::kDDLQueueQueryIdColumn, kDDLReplicatedTableSpecialKey);
 
   return pg_conn->Execute(query.str());
 }
@@ -584,17 +580,19 @@ Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
       target_namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
 }
 
+// Fetch all DDL entries from ddl_queue at the specified commit_time that have not yet been
+// processed and inserted into replicated_ddls. Since replicated_ddls is updated when a DDL is
+// executed on the target, and this query is read at commit_time, some rows may still appear
+// even if they have already been processed. Therefore, IsAlreadyProcessed must be called
+// for each row to ensure correctness.
 Result<std::vector<std::tuple<int64, int64, std::string>>>
-XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
+XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
   // Since applies can come out of order, need to read at the apply_safe_time and not latest.
   // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
   // extension tables should not change).
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
       "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time = $0",
-      apply_safe_time.GetPhysicalValueMicros()));
-  // Select all rows that are in ddl_queue but not in replicated_ddls.
-  // Note that this is done at apply_safe_time and rows written to replicated_ddls are done at the
-  // time the DDL is rerun, so this does not filter out all rows (see kDDLPrepStmtAlreadyProcessed).
+      commit_time.GetPhysicalValueMicros()));
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
       "SELECT $0, $1, $2 FROM $3 "
       "WHERE ($0, $1) NOT IN (SELECT $0, $1 FROM $4) "
@@ -604,7 +602,26 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
   // DDLs are blocked when yb_read_time is non-zero, so reset.
   RETURN_NOT_OK(
       pg_conn_->Execute("SET yb_read_time = 0; SET yb_disable_catalog_version_check = 0"));
+
+  VLOG_WITH_FUNC(2) << "Fetched '" << yb::AsString(rows) << "', apply_safe_time "
+                    << commit_time.ToString();
   return rows;
+}
+
+Result<std::vector<XClusterDDLQueryInfo>> XClusterDDLQueueHandler::GetQueriesToProcess(
+    const HybridTime& commit_time) {
+  std::vector<XClusterDDLQueryInfo> query_infos;
+  auto rows = VERIFY_RESULT(GetRowsToProcess(commit_time));
+  for (const auto& [ddl_end_time, query_id, raw_json_data] : rows) {
+    auto query_info = VERIFY_RESULT(GetDDLQueryInfo(raw_json_data, ddl_end_time, query_id));
+
+    if (!VERIFY_RESULT(IsAlreadyProcessed(query_info))) {
+      VLOG_WITH_FUNC(2) << "Query to be processed: " << query_info.ToString();
+      query_infos.push_back(std::move(query_info));
+    }
+  }
+
+  return query_infos;
 }
 
 Result<xcluster::SafeTimeBatch> XClusterDDLQueueHandler::FetchSafeTimeBatchFromReplicatedDdls(
@@ -616,24 +633,38 @@ Result<xcluster::SafeTimeBatch> XClusterDDLQueueHandler::FetchSafeTimeBatchFromR
     return xcluster::SafeTimeBatch();
   }
   const auto& row = rows.front();
+  VLOG_WITH_FUNC(2) << "Fetched safe time batch row: " << row;
   auto doc = VERIFY_RESULT(ParseSerializedJson(row));
 
-  // Fetch the commit times.
-  std::set<HybridTime> commit_times;
-  if (doc.HasMember("commit_times")) {
-    VALIDATE_MEMBER(doc, "commit_times", Array);
-    const auto& commit_times_array = doc["commit_times"].GetArray();
-    for (const auto& commit_time : commit_times_array) {
-      commit_times.insert(HybridTime(commit_time.GetUint64()));
+  xcluster::SafeTimeBatch safe_time_batch;
+
+  auto convert_to_ht = [](uint64_t ht_int64, const char* field_name) -> Result<HybridTime> {
+    HybridTime ht(ht_int64);
+    SCHECK(
+        !ht.is_special(), InternalError, "Found invalid $0: $1 in safe_time_batch", field_name, ht);
+    return ht;
+  };
+
+  if (doc.HasMember(kSafeTimeBatchCommitTimes)) {
+    VALIDATE_MEMBER(doc, kSafeTimeBatchCommitTimes, Array);
+    for (const auto& commit_time : doc[kSafeTimeBatchCommitTimes].GetArray()) {
+      safe_time_batch.commit_times.insert(
+          VERIFY_RESULT(convert_to_ht(commit_time.GetUint64(), "commit_time")));
     }
   }
 
-  xcluster::SafeTimeBatch safe_time_batch;
-  safe_time_batch.commit_times = std::move(commit_times);
-  if (doc.HasMember("apply_safe_time")) {
-    VALIDATE_MEMBER(doc, "apply_safe_time", Int64);
-    safe_time_batch.apply_safe_time = HybridTime(doc["apply_safe_time"].GetInt64());
-  }
+  auto get_ht_if_found = [&doc, &convert_to_ht](const char* field_name) -> Result<HybridTime> {
+    if (!doc.HasMember(field_name)) {
+      return HybridTime::kInvalid;
+    }
+    VALIDATE_MEMBER(doc, field_name, Int64);
+    return convert_to_ht(doc[field_name].GetInt64(), field_name);
+  };
+
+  safe_time_batch.apply_safe_time = VERIFY_RESULT(get_ht_if_found(kSafeTimeBatchApplySafeTime));
+  safe_time_batch.last_commit_time_processed =
+      VERIFY_RESULT(get_ht_if_found(kSafeTimeBatchLastCommitTimeProcessed));
+
   return safe_time_batch;
 }
 
@@ -646,38 +677,30 @@ Status XClusterDDLQueueHandler::ReloadSafeTimeBatchFromTableIfRequired() {
 }
 
 Status XClusterDDLQueueHandler::PersistAndUpdateSafeTimeBatch(
-    const std::set<HybridTime>& new_commit_times, int64_t apply_safe_time) {
-  if (new_commit_times.empty() && apply_safe_time == 0) {
+    const std::set<HybridTime>& new_commit_times, const HybridTime& apply_safe_time) {
+  if (new_commit_times.empty() && !apply_safe_time.is_valid()) {
     // We have nothing new to store or process so return.
     return Status::OK();
   }
 
-  SCHECK(safe_time_batch_, InternalError, "Safe time batch is not initialized");
-  if (safe_time_batch_->IsComplete()) {
-    // We failed to run this batch (eg xCluster safe time has not yet caught up), so process this
-    // batch again. This should be processed before we call GetChanges again, so validate that the
-    // apply_safe_time is the same.
-    RSTATUS_DCHECK_EQ(
-        safe_time_batch_->apply_safe_time, HybridTime::FromPB(apply_safe_time), InternalError,
-        "Found different apply safe times for the same batch");
-
-    // Also verify that new_commit_times is a subset of the commit times we have already have.
-    for (const auto& commit_time : new_commit_times) {
-      RSTATUS_DCHECK(
-          safe_time_batch_->commit_times.find(commit_time) != safe_time_batch_->commit_times.end(),
-          InternalError,
-          Format("Found commit time $0 that is not in the current batch", commit_time.ToString()));
-    }
-    // No need to read/update anything from replicated_ddls.
+  if (safe_time_batch_->commit_times.empty() && new_commit_times.empty()) {
+    // We received an apply safe time, but no commit times to process, so can skip.
     return Status::OK();
   }
 
-  // Combine the new commit times with the existing commit times.
-  std::set<HybridTime> all_commit_times = safe_time_batch_->commit_times;
-  all_commit_times.insert(new_commit_times.begin(), new_commit_times.end());
+  SCHECK(safe_time_batch_, InternalError, "Safe time batch is not initialized");
 
-  if (all_commit_times.empty()) {
-    // Nothing to process for this apply safe time.
+  auto new_safe_time_batch = *safe_time_batch_;
+  // Combine the new commit times with the existing commit times.
+  new_safe_time_batch.commit_times.insert(new_commit_times.begin(), new_commit_times.end());
+  new_safe_time_batch.apply_safe_time = apply_safe_time;
+  return DoPersistAndUpdateSafeTimeBatch(std::move(new_safe_time_batch));
+}
+
+Status XClusterDDLQueueHandler::DoPersistAndUpdateSafeTimeBatch(
+    xcluster::SafeTimeBatch new_safe_time_batch) {
+  if (new_safe_time_batch == safe_time_batch_) {
+    // Nothing to update.
     return Status::OK();
   }
 
@@ -685,39 +708,73 @@ Status XClusterDDLQueueHandler::PersistAndUpdateSafeTimeBatch(
   rapidjson::StringBuffer buffer;
   rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
   writer.StartObject();
-  writer.Key("commit_times");
+  writer.Key(kSafeTimeBatchCommitTimes);
   writer.StartArray();
-  for (const auto& commit_time : all_commit_times) {
+  for (const auto& commit_time : new_safe_time_batch.commit_times) {
     writer.Uint64(commit_time.ToUint64());
   }
   writer.EndArray();
 
-  // Add the apply safe time as well if we have it - used for poller failures during failover.
-  // This also marks the end of a complete batch.
-  if (apply_safe_time != 0) {
-    writer.Key("apply_safe_time");
-    writer.Int64(apply_safe_time);
+  if (new_safe_time_batch.apply_safe_time.is_valid()) {
+    writer.Key(kSafeTimeBatchApplySafeTime);
+    writer.Int64(new_safe_time_batch.apply_safe_time.ToUint64());
+  }
+  if (new_safe_time_batch.last_commit_time_processed.is_valid()) {
+    writer.Key(kSafeTimeBatchLastCommitTimeProcessed);
+    writer.Int64(new_safe_time_batch.last_commit_time_processed.ToUint64());
   }
   writer.EndObject();
 
-  RETURN_NOT_OK(ResetSafeTimeBatchOnFailure(pg_conn_->ExecuteFormat(
-      "EXECUTE $0('$1')", kDDLPrepStmtCommitTimesUpsert, buffer.GetString())));
+  const auto json_str = buffer.GetString();
+  VLOG_WITH_PREFIX(2) << "Persisting safe time batch: " << json_str;
 
-  // Cache this batch of commit times.
-  safe_time_batch_->commit_times = std::move(all_commit_times);
-  if (apply_safe_time != 0) {
-    safe_time_batch_->apply_safe_time = HybridTime::FromPB(apply_safe_time);
-  }
+  RETURN_NOT_OK(ResetSafeTimeBatchOnFailure(
+      pg_conn_->ExecuteFormat("EXECUTE $0('$1')", kDDLPrepStmtCommitTimesUpsert, json_str)));
+
+  safe_time_batch_ = std::move(new_safe_time_batch);
 
   return Status::OK();
 }
 
-Status XClusterDDLQueueHandler::ClearSafeTimeBatch() {
-  RETURN_NOT_OK(ResetSafeTimeBatchOnFailure(
-      pg_conn_->ExecuteFormat("EXECUTE $0", kDDLPrepStmtCommitTimesDelete)));
-  // Don't fully reset the optional field, just clear the fields so that Complete() is false (ie we
-  // are ready to process the next batch).
-  safe_time_batch_ = xcluster::SafeTimeBatch();
+namespace {
+Status VerifyCompleteSafeTimeBatch(
+    const xcluster::SafeTimeBatch& safe_time_batch, const std::set<HybridTime>& new_commit_times,
+    const HybridTime& apply_safe_time) {
+  RSTATUS_DCHECK_EQ(
+      safe_time_batch.apply_safe_time, apply_safe_time, InternalError,
+      "Found different apply safe times for the same batch");
+  // Also verify that new_commit_times is a subset of the commit times we have already have.
+  for (const auto& commit_time : new_commit_times) {
+    RSTATUS_DCHECK(
+        safe_time_batch.commit_times.find(commit_time) != safe_time_batch.commit_times.end(),
+        InternalError,
+        Format(
+            "Found commit time $0 that is not in the current batch $1", commit_time.ToString(),
+            safe_time_batch.ToString()));
+  }
+  return Status::OK();
+}
+}  // namespace
+
+Status XClusterDDLQueueHandler::UpdateSafeTimeBatchAfterProcessing(
+    const HybridTime& last_commit_time_processed) {
+  RSTATUS_DCHECK(safe_time_batch_, InternalError, "Safe time batch is uninitialized");
+
+  auto new_safe_time_batch = *safe_time_batch_;
+  new_safe_time_batch.apply_safe_time = HybridTime::kInvalid;
+  new_safe_time_batch.last_commit_time_processed = last_commit_time_processed;
+
+  // It's possible that we have commit times larger than the apply safe time, we only need to carry
+  // those forward to the next batch.
+  if (new_safe_time_batch.last_commit_time_processed.is_valid()) {
+    std::erase_if(
+        new_safe_time_batch.commit_times, [&new_safe_time_batch](const HybridTime& commit_time) {
+          return commit_time <= new_safe_time_batch.last_commit_time_processed;
+        });
+  }
+
+  // Update the commit times and clear the apply safe time.
+  RETURN_NOT_OK(DoPersistAndUpdateSafeTimeBatch(std::move(new_safe_time_batch)));
   return Status::OK();
 }
 
@@ -749,10 +806,69 @@ Status XClusterDDLQueueHandler::ProcessGetChangesResponse(
 
   // Load/update safe_time_batch_.
   RETURN_NOT_OK(ReloadSafeTimeBatchFromTableIfRequired());
-  RETURN_NOT_OK(PersistAndUpdateSafeTimeBatch(
-      response.ddl_queue_commit_times, response.get_changes_response->safe_hybrid_time()));
 
+  HybridTime apply_safe_time;
+  if (response.get_changes_response->has_safe_hybrid_time()) {
+    apply_safe_time = HybridTime(response.get_changes_response->safe_hybrid_time());
+    SCHECK(
+        !apply_safe_time.is_special(), InternalError,
+        "Found invalid apply safe time $0 for namespace $1", apply_safe_time, target_namespace_id_);
+  } else {
+    apply_safe_time = HybridTime::kInvalid;
+  }
+
+  if (safe_time_batch_->IsComplete()) {
+    // We failed to run this batch (eg xCluster safe time has not yet caught up), so we're
+    // processing this batch again. Verify that it matches with the GetChanges response.
+    RETURN_NOT_OK(VerifyCompleteSafeTimeBatch(
+        *safe_time_batch_, response.ddl_queue_commit_times, apply_safe_time));
+    // No need to update/persist any info in this case since it is the same.
+  } else {
+    // In the beginning/middle of processing a batch.
+    RETURN_NOT_OK(PersistAndUpdateSafeTimeBatch(response.ddl_queue_commit_times, apply_safe_time));
+  }
+
+  // If the batch is complete then this will process all of its DDLs.
   return ExecuteCommittedDDLs();
+}
+
+Status XClusterDDLQueueHandler::UpdateSafeTimeForPause() {
+  RETURN_NOT_OK(InitPGConnection());
+  RETURN_NOT_OK(ReloadSafeTimeBatchFromTableIfRequired());
+
+  auto max_commit_time = safe_time_batch_->last_commit_time_processed;
+
+  for (const auto& commit_time : safe_time_batch_->commit_times) {
+    if (safe_time_batch_->apply_safe_time.is_valid() &&
+        commit_time > safe_time_batch_->apply_safe_time) {
+      // Ignore commit times that are greater than the apply safe time.
+      break;
+    }
+
+    auto queries = VERIFY_RESULT(GetQueriesToProcess(commit_time));
+    if (!queries.empty()) {
+      // Unprocessed DDL found.
+      break;
+    }
+    if (!max_commit_time.is_valid() || commit_time > max_commit_time) {
+      max_commit_time = commit_time;
+    }
+  }
+
+  if (!max_commit_time.is_valid()) {
+    VLOG_WITH_PREFIX(1) << "UpdateSafeTimeForPause: No DDLs were ever processed.";
+    return Status::OK();
+  }
+
+  // During a failover we first pause the replication and make sure a accurate xCluster safe time is
+  // computed.
+  // It is possible that in cases where there is no in-flight DDLs, the apply safe time that we set
+  // in the past was higher than the last DDL commit time. This is safe since only the max time is
+  // propagated and persisted on the safe time table. We just need to ensure this time is higher
+  // than any executed DDL commit times, since DDLs cannot be rolled back in case of failovers.
+  VLOG_WITH_PREFIX(1) << "UpdateSafeTimeForPause: Bumping safe time to " << max_commit_time;
+  update_safe_time_func_(max_commit_time);
+  return Status::OK();
 }
 
 }  // namespace yb::tserver

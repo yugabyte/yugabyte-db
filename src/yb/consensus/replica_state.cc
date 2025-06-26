@@ -46,6 +46,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/casts.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/trace_event.h"
@@ -70,6 +72,9 @@ TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, unsafe);
 TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, hidden);
 
 DEFINE_RUNTIME_bool(enable_lease_revocation, true, "Enables Raft lease revocation mechanism");
+
+DEFINE_test_flag(bool, follower_fail_retryable_register, false,
+                 "Whether the follower will fail on the retryable register");
 
 namespace yb::consensus {
 
@@ -659,7 +664,9 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   last_received_op_id_current_leader_ = OpId();
   next_index_ = new_preceding.index + 1;
 
-  auto abort_status = STATUS(Aborted, "Operation aborted by new leader");
+  auto abort_status = STATUS(
+      Aborted, "Operation aborted by new leader",
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER));
   for (auto it = pending_operations_.end(); it != preceding_op_iter;) {
     const ConsensusRoundPtr& round = *--it;
     auto op_id = OpId::FromPB(round->replicate_msg()->id());
@@ -731,6 +738,10 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
   } else if (op_type == WRITE_OP) {
     // Leader registers an operation with RetryableRequests even before assigning an op id.
     if (mode == OperationMode::kFollower) {
+      if (PREDICT_FALSE(FLAGS_TEST_follower_fail_retryable_register)) {
+        return STATUS(IllegalState, "Rejected: --TEST_follower_fail_retryable_register is true");
+      }
+
       auto result = retryable_requests_.Register(round, tablet::IsLeaderSide::kFalse);
       const auto error_msg = "Cannot register retryable request on follower";
       if (!result.ok()) {

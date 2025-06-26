@@ -807,13 +807,12 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 {
 	HeapTuple	newtup;
 
-	bool		yb_use_regular_txn_block =
-		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
+	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
 
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
-			YBSetDdlState(YB_DDL_MODE_BREAKING_CHANGE);
+			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
 		else
 			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
 	}
@@ -854,13 +853,12 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 							 Int16GetDatum(attnum),
 							 BoolGetDatum(stainherit));
 
-	bool		yb_use_regular_txn_block =
-		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
+	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
 
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
-			YBSetDdlState(YB_DDL_MODE_BREAKING_CHANGE);
+			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
 		else
 			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
 	}

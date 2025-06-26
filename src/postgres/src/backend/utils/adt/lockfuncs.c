@@ -23,6 +23,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 bool
 ShouldAcquireYBAdvisoryLocks()
@@ -62,7 +63,7 @@ HandleStatusIgnoreLockNotFound(YbcStatus status, YbcAdvisoryLockMode mode)
 	return true;
 }
 
-/*  Returns true if lock is acquired, false if lock is skipped. */
+/* Returns true if lock is acquired, false if lock is skipped. */
 bool
 HandleStatusIgnoreSkipLocking(YbcStatus status)
 {
@@ -75,19 +76,34 @@ HandleStatusIgnoreSkipLocking(YbcStatus status)
 	return true;
 }
 
+/*
+ * YB: If Connection Manager is enabled, make the connection sticky for any
+ * locks that were successfully acquired with a session-level scope.
+ */
 #define TryAcquireYBAdvisoryLock(tag, mode, session_level) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
-		PG_RETURN_BOOL(HandleStatusIgnoreSkipLocking(YBCAcquireAdvisoryLock( \
-			GetYBAdvisoryLockId(tag), mode, /* wait= */ false, session_level))); \
+	{ \
+		bool yb_ret_status = HandleStatusIgnoreSkipLocking(YBCAcquireAdvisoryLock( \
+			GetYBAdvisoryLockId(tag), mode, /* wait= */ false, session_level)); \
+		if (yb_ret_status && YbIsClientYsqlConnMgr() && session_level) \
+			yb_ysql_conn_mgr_sticky_locks = true; \
+		PG_RETURN_BOOL(yb_ret_status); \
+	} \
 } while(0)
 
+/*
+ * YB: If Connection Manager is enabled, make the connection sticky for any
+ * locks that were successfully acquired with a session-level scope.
+ */
 #define AcquireYBAdvisoryLock(tag, mode, session_level) \
 do { \
 	if (ShouldAcquireYBAdvisoryLocks()) \
 	{ \
 		HandleYBStatus(YBCAcquireAdvisoryLock( \
 			GetYBAdvisoryLockId(tag), mode, /* wait= */ true, session_level)); \
+		if (YbIsClientYsqlConnMgr() && session_level) \
+			yb_ysql_conn_mgr_sticky_locks = true; \
 		PG_RETURN_VOID(); \
 	} \
 } while(0)

@@ -37,6 +37,7 @@ message ApplyExternalTransactionPB {
   // Defaults to empty string, which is the full key range.
   optional bytes filter_start_key = 4;
   optional bytes filter_end_key = 5;
+  optional bool filter_range_encoded = 6;
 }
 
 message TableSchemaVersionPB {
@@ -98,6 +99,9 @@ message KeyValueWriteBatchPB {
   optional uint64 pg_session_req_version = 15;
 
   optional bytes delete_vector_ids = 17;
+
+  // Used to detect deadlocks between fast path transactions and transactional DDLs.
+  optional TransactionMetadataPB object_locking_txn_meta = 18;
 }
 
 message PerDbFilterPB {

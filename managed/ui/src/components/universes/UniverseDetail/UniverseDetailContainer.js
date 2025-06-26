@@ -13,14 +13,16 @@ import {
   fetchReleasesByProvider,
   fetchReleasesResponse,
   fetchUniverseLbState,
-  fetchUniverseLbStateResponse
+  fetchUniverseLbStateResponse,
+  getUniversePaRegistrationStatus,
+  getUniversePaRegistrationStatusResponse
 } from '../../../actions/universe';
 import {
   abortTask,
   abortTaskResponse,
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure,
+  fetchCustomerTasksFailure
 } from '../../../actions/tasks';
 import {
   fetchRunTimeConfigs,
@@ -100,6 +102,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     showDeleteUniverseModal: () => {
       dispatch(openDialog('deleteUniverseModal'));
+    },
+    showEnablePerfAdvisorModal: () => {
+      dispatch(openDialog('enablePerfAdvisorModal'));
     },
     showForceDeleteUniverseModal: () => {
       dispatch(openDialog('forceDeleteUniverseModal'));
@@ -197,6 +202,11 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(getAlertsFailure(response.payload));
         }
+      });
+    },
+    getUniversePaRegistrationStatus: (paUuid, universeUuid) => {
+      return dispatch(getUniversePaRegistrationStatus(paUuid, universeUuid)).then((response) => {
+        return dispatch(getUniversePaRegistrationStatusResponse(response.payload));
       });
     },
     abortTask: (taskUUID) => {

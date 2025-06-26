@@ -20,21 +20,16 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.minicluster.RocksDBMetrics;
 
-import org.yb.util.BuildTypeUtil;
 import org.yb.YBTestRunner;
 import org.yb.util.RegexMatcher;
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
-import org.yb.YBTestRunner;
 
 import java.math.BigDecimal;
-import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -1615,13 +1610,13 @@ public class TestPgSelect extends BasePgSQLTest {
         // When the same qualifying conditions that fits within 4 byte integers are passed as int
         // and bigint, both ends up being pushed in to docDB since they are both lesser than 4 byte
         // integer values.
-        query = "SELECT * FROM sample WHERE key ";
+        query = "SELECT * FROM sample WHERE key %s ORDER BY key";
 
         // Num requests are 1 as it just searches tablet 1.
-        assertEquals(1, getNumDocdbRequests(statement, query + "< 65534"));
+        assertEquals(1, getNumDocdbRequests(statement, String.format(query, "< 65534")));
 
         // Test 2
-        assertEquals(1, getNumDocdbRequests(statement, query + "< 65534::bigint"));
+        assertEquals(1, getNumDocdbRequests(statement, String.format(query, "< 65534::bigint")));
 
         // Test 3
         // 2147483648 is an actual bigint value. Hence, we end up perfroming a scan on all the
@@ -1629,10 +1624,10 @@ public class TestPgSelect extends BasePgSQLTest {
         // of rows returned are equal when the qualifying condition is 2147483648 as compared to
         // 20999999999, the former condition ends up scanning all the 4 tablets while the later
         // condition scans just 3 tablets.
-        assertEquals(4, getNumDocdbRequests(statement, query + "< 2147483648"));
+        assertEquals(4, getNumDocdbRequests(statement, String.format(query, "< 2147483648")));
 
         // Test 4
-        assertEquals(3, getNumDocdbRequests(statement, query + "< 2099999999"));
+        assertEquals(3, getNumDocdbRequests(statement, String.format(query, "< 2099999999")));
     }
   }
 

@@ -400,6 +400,11 @@ message CDCRecordPB {
   // For intents, what subtransaction, if any, they are part of.
   // Omitted in cases where the subtransaction ID is kMinSubTransactionId.
   optional uint32 subtransaction_id = 12;
+
+  // If transaction_state.status is APPLYING, then encoded_start_key and encoded_end_key will be
+  // populated with the tablets encoded partition key range.
+  optional bytes encoded_start_key = 13;
+  optional bytes encoded_end_key = 14;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info

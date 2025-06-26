@@ -54,6 +54,7 @@
       "loadingText": "Loading ...",
       "sendFeedback": "Send feedback",
       "joinSlack": "Join our Slack community",
+      "visitGithub": "Visit our Github repo",
       "apply": "Apply",
       "multiEntryFieldLabel": "Mutiple entries can be separated by `whitespace` or `,`",
       "multiEntryHitEnter": "Hit enter to confirm.",
@@ -2369,6 +2370,28 @@
       "startTimestamp": "Start Timestamp",
       "startTimestampNotSet": "Timestamp not set",
       "alive": "Alive"
-    }
+    },
+    "popups": {
+      "join_slack": {
+        "message_title": "Join our Open Source Community",
+        "message_text": "Join over 10,000 YugabyteDB open-source community members on Slack and explore the power of distributed Postgres!",
+        "link_text": "Click here"
+      },
+      "github_star": {
+        "message_text": "Check out YugabyteDB on GitHub and bookmark the project to see future updates.",
+        "message_title": "Star YugabyteDB on GitHub",
+        "link_text": "Click here"
+      },
+      "claim_tshirt": {
+        "message_text": "You have earned a limited edition YugabyteDB t-shirt! Click below to claim.",
+        "message_title": "Exclusive YugabyteDB Swag",
+        "link_text": "Click here"
+      },
+      "g2_review": {
+        "message_text": "Discover why users love YugabyteDB and take a few minutes to write a product review on G2.",
+        "message_title": "Review YugabyteDB on G2",
+        "link_text": "Click here"
+      }
+    }    
   }
 }

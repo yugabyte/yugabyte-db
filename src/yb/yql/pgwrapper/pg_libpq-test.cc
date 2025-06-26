@@ -57,6 +57,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
 #include "yb/util/cast.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/os-util.h"
@@ -4339,32 +4340,58 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
+
+  void TestInheritsNegCache(bool minimal_preload) {
+    google::SetVLOGLevel("libpq_utils", 1);
+    auto conn = ASSERT_RESULT(Connect());
+
+    // Prepare schema
+    ASSERT_OK(conn.Execute(
+      "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
+      "PARTITION BY RANGE(r);"
+      "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
+      "CREATE UNIQUE INDEX ON foo (v1, r);"
+      "INSERT INTO foo VALUES (1,1,1,1);"));
+
+    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+    // Run the query on a fresh conn
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto str = conn2.FetchAllAsString(
+        "EXPLAIN (ANALYZE, DIST) INSERT INTO foo VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
+        "v2=foo.v2+1");
+    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+
+    int32_t updated_v2 = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+        "SELECT v2 FROM foo WHERE h=1 AND r=1"));
+    ASSERT_EQ(2, updated_v2);
+
+    // Given we are preloaded, we should not have any cache misses (incl neg misses)
+    // for the query above which should cause lookups for ancestors of a table in pg_inherits
+    if (!minimal_preload)
+      ASSERT_EQ(end_value.value, start_value.value);
+    else
+      ASSERT_GT(end_value.value, start_value.value);
+  }
 };
 
+class PgLibPqPgInheritsNegCacheMinimalPreloadTest : public PgLibPqPgInheritsNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_minimal_catalog_caches_preload=true");
+    PgLibPqPgInheritsNegCacheTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+
 TEST_F_EX(PgLibPqTest, PgInheritsNegCacheTest, PgLibPqPgInheritsNegCacheTest) {
-  auto conn = ASSERT_RESULT(Connect());
+  TestInheritsNegCache(false /*minimal preload*/);
+}
 
-  // Prepare schema
-  ASSERT_OK(conn.Execute(
-    "CREATE TABLE foo (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r))"
-    "PARTITION BY RANGE(r);"
-    "CREATE TABLE foo_part_1 PARTITION OF foo FOR VALUES FROM (1) TO (10);"
-    "CREATE UNIQUE INDEX ON foo (v1, r);"
-    "INSERT INTO FOO VALUES (1,1,1,1);"));
-
-  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
-
-  // Run the query on a fresh conn
-  auto conn2 = ASSERT_RESULT(Connect());
-  auto str = conn2.FetchAllAsString(
-      "EXPLAIN (ANALYZE, DIST) INSERT INTO FOO VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
-      "v2=foo.v2+1");
-
-  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
-
-  // Given we are preloaded, we should not have any cache misses (incl neg misses)
-  // for the query above which should cause lookups for ancestors of a table in pg_inherits
-  ASSERT_EQ(end_value.value, start_value.value);
+TEST_F_EX(PgLibPqTest, PgInheritsNegCacheMinPreloadTest,
+            PgLibPqPgInheritsNegCacheMinimalPreloadTest) {
+  TestInheritsNegCache(true /*minimal preload*/);
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
@@ -4878,6 +4905,54 @@ CREATE TABLE t1_default PARTITION OF t1 DEFAULT;
   result = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t1 ORDER BY region"));
   LOG(INFO) << "test_en_us_x_icu_db result: " << result;
   ASSERT_EQ(result, utf8_expected);
+}
+
+TEST_F(PgLibPqTest, InconsistentIndexRead) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bank (id INT, balance INT)"));
+  // In this test do the following:
+  // (0) Create an index on balance with a partial clause as id>=0
+  // The partial clause is used to generate a secondary index scan on SELECT SUM(balance).
+  ASSERT_OK(conn.Execute("CREATE INDEX balance_idx ON bank(balance) WHERE id >= 0"));
+
+  // (1) Add 10 accounts to the bank account table each with a balance of 1000.
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO bank (id, balance) VALUES ($0, 1000)", i));
+  }
+  auto initial_sum = ASSERT_RESULT(
+      conn.FetchRow<int64_t>("SELECT SUM(balance) FROM bank WHERE id >= 0"));
+
+  TestThreadHolder thread_holder;
+
+  // (2) Start a writer thread that keeps executing a transaction which deletes the smallest id row
+  // and inserts a new id row with the next available id and a balance of 1000.
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()]() {
+    auto writer_conn = ASSERT_RESULT(Connect());
+    int min_id = 0, next_id = 10;
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(writer_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(writer_conn.ExecuteFormat("DELETE FROM bank WHERE id = $0", min_id));
+      min_id++;
+      ASSERT_OK(writer_conn.ExecuteFormat(
+          "INSERT INTO bank (id, balance) VALUES ($0, 1000)", next_id));
+      next_id++;
+      ASSERT_OK(writer_conn.CommitTransaction());
+    }
+  });
+
+  // (3) Start a reader thread that keeps fetching the sum of balances for all id>=0.
+  // Assert that the balance is always 10k.
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), initial_sum]() {
+    auto reader_conn = ASSERT_RESULT(Connect());
+    while (!stop.load(std::memory_order_acquire)) {
+      auto sum_balance = ASSERT_RESULT(reader_conn.FetchRow<int64_t>(
+          "/*+ IndexScan(bank) */ SELECT SUM(balance) FROM bank WHERE id >= 0"));
+      ASSERT_EQ(sum_balance, initial_sum);
+    }
+  });
+
+  thread_holder.WaitAndStop(std::chrono::seconds(30));
 }
 
 } // namespace pgwrapper

@@ -51,8 +51,7 @@ Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
   write_req_->dup_table_id(table_id.GetYbTableId());
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
-  // TODO(#26086): Capture and display metrics in EXPLAIN output
-  write_req_->set_metrics_capture(PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE);
+  write_req_->set_metrics_capture(pg_session_->metrics().metrics_capture());
 
   doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();
@@ -377,14 +376,6 @@ class PackableBindColumn final : public dockv::PackableValue {
   YbcBindColumn* column_;
 };
 
-class EmptyMissingValueProvider : public MissingValueProvider {
- public:
-  Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const final {
-    static const QLValuePB null;
-    return null;
-  }
-};
-
 Status PgDmlWrite::BindRow(uint64_t ybctid, YbcBindColumn* columns, int count) {
   if (packed_) {
     return BindPackedRow(ybctid, columns, count);
@@ -418,10 +409,9 @@ Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YbcBindColumn* columns, int co
     write_req_->add_dup_packed_rows(Slice(value, bytes));
   }
 
-  static EmptyMissingValueProvider missing_value_provider;
   dockv::RowPackerV1 packer(
       bind_->schema_version(), bind_->schema_packing(), std::numeric_limits<ssize_t>::max(),
-      Slice(), missing_value_provider);
+      Slice());
   for (auto it = columns, end = columns + count; it != end; ++it) {
     auto& column_desc = VERIFY_RESULT_REF(bind_.ColumnForAttr(it->attr_num));
     PackableBindColumn packable(it);

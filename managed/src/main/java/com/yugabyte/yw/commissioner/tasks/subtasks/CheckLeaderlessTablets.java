@@ -46,8 +46,6 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
       log.warn("Skipping check for RF1 cluster");
       return;
     }
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
     Duration timeout =
         confGetter.getConfForScope(universe, UniverseConfKeys.leaderlessTabletsTimeout);
     int httpPort = universe.getUniverseDetails().communicationPorts.masterHttpPort;
@@ -60,7 +58,7 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
       timeout = Duration.ofMillis(1);
     }
 
-    try (YBClient client = ybService.getClient(masterAddresses, certificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
       AtomicInteger errorCnt = new AtomicInteger();
       AtomicReference<List<String>> tablets = new AtomicReference<>();
       boolean result =

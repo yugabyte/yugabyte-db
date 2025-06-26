@@ -19,7 +19,7 @@ namespace yb {
 
 class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
  public:
-  YsqlMajorUpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_3_0) {}
+  YsqlMajorUpgradeTestBase() : UpgradeTestBase(kBuild_2024_2_4_0) {}
   virtual ~YsqlMajorUpgradeTestBase() override = default;
 
   void SetUp() override;

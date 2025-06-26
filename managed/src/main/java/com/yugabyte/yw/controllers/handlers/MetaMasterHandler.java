@@ -40,11 +40,9 @@ public class MetaMasterHandler {
 
   public MasterLBStateResponse getMasterLBState(UUID customerUUID, UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    String masterAddresses = universe.getMasterAddresses();
-    String universeCertificate = universe.getCertificateNodetoNode();
     MasterLBStateResponse resp = new MasterLBStateResponse();
 
-    try (YBClient client = ybService.getClient(masterAddresses, universeCertificate)) {
+    try (YBClient client = ybService.getUniverseClient(universe)) {
 
       // Check if the tablet load balancer is actually enabled
       GetLoadBalancerStateResponse masterLBState = client.getLoadBalancerState();

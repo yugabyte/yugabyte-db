@@ -156,8 +156,8 @@ public class ChangeMasterConfig extends UniverseTaskBase {
     }
     ChangeConfigResponse response = null;
     config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
-    YBClient client = ybService.getClientWithConfig(config);
-    try {
+
+    try (YBClient client = ybService.getClientWithConfig(config)) {
       log.info(
           "Starting changeMasterConfig({}:{}, op={}, useHost={})",
           node.cloudInfo.private_ip,
@@ -174,9 +174,8 @@ public class ChangeMasterConfig extends UniverseTaskBase {
               node.nodeName, ipToUse, node.masterRpcPort, e.getMessage());
       log.error(msg, e);
       throw new RuntimeException(msg);
-    } finally {
-      ybService.closeClient(client, masterAddresses);
     }
+
     // If there was an error, throw an exception.
     if (response != null && response.hasError()) {
       String msg =
@@ -200,8 +199,8 @@ public class ChangeMasterConfig extends UniverseTaskBase {
     }
     Duration maxWaitTime =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.changeMasterConfigCheckTimeout);
-    YBClient client = ybService.getClientWithConfig(clientConfig);
-    try {
+
+    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
       AtomicInteger maxErrorCount = new AtomicInteger(WAIT_FOR_CHANGE_COMPLETED_MAX_ERRORS);
       boolean success =
           doWithExponentialTimeout(
@@ -249,8 +248,6 @@ public class ChangeMasterConfig extends UniverseTaskBase {
               clientConfig.getMasterHostPorts(), e.getMessage());
       log.error(msg, e);
       throw new RuntimeException(msg);
-    } finally {
-      ybService.closeClient(client, clientConfig.getMasterHostPorts());
     }
   }
 }

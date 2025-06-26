@@ -125,6 +125,7 @@
 #include "utils/syscache.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
+#include "yb_tcmalloc_utils.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -1262,7 +1263,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&enable_partitionwise_aggregate,
-		false,
+		true,					/* YB: change default from false to true */
 		NULL, NULL, NULL
 	},
 	{
@@ -3067,6 +3068,36 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_ddl_transaction_block_enabled", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("If true, DDL operations in YSQL will execute within "
+						 "the active transaction block instead of their "
+						 "separate transactions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ddl_transaction_block_enabled,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_disable_ddl_transaction_block_for_read_committed", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("If true, DDL operations in READ COMMITTED mode will "
+						 "be executed in a separate DDL transaction instead of "
+						 "the as part of the enclosing transaction block even "
+						 "if ysql_yb_ddl_transaction_block_enabled is true. In "
+						 "other words, for Read Committed, fall back to the "
+						 "mode when ysql_yb_ddl_transaction_block_enabled is "
+						 "false."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_ddl_transaction_block_for_read_committed,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_explain_hide_non_deterministic_fields", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("If set, all fields that vary from run to run are hidden from "
 						 "the output of EXPLAIN"),
@@ -3310,7 +3341,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
 						 "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
-						 "any other method is not allowed."),
+						 "any other method will throw a WARNING message"),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -3409,7 +3440,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_force_early_ddl_serialization", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("If object locking is off (i.e., "
-						 "TEST_enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
+						 "enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
 						 "conflict error on the catalog version increment at the end after doing all the work. "
 						 "Setting this flag enables a fail-fast strategy by locking the catalog version at the "
 						 "start of DDLs, causing conflict errors to occur before useful work is done. This "
@@ -3421,7 +3452,34 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_force_early_ddl_serialization,
-		true,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_speculatively_execute_pl_statements", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If enabled, procedural language statements may be speculatively executed "
+						 "when it is safe to do so without waiting for the successful completion "
+						 "of previous statements. This allows any writes produced by triggers to "
+						 "be batched alongside their parent data-modifying writes such that the "
+						 "number of storages flushes may be minimized."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_speculatively_execute_pl_statements,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_whitelist_extra_statements_for_pl_speculative_execution", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If enabled, additional procedural language constructs are whitelisted "
+						 "for use in speculative execution."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_whitelist_extra_stmts_for_pl_speculative_execution,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -5290,18 +5348,6 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-	{
-		{"yb_major_version_upgrade_compatibility", PGC_SIGHUP, CUSTOM_OPTIONS,
-			gettext_noop("The compatibility level to use during a YSQL Major version upgrade. "
-						 "Allowed values are 0 and 11."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_major_version_upgrade_compatibility,
-		0, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
 	{{"yb_tcmalloc_sample_period", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("TCMalloc sample interval in bytes, i.e. approximately "
 						 "how many bytes between sampling allocation call stacks"), NULL,
@@ -5355,6 +5401,22 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_max_num_invalidation_messages,
 		4096, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_log_heap_snapshot_on_exit_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When a process exits, log a peak heap snapshot showing the "
+						 "approximate memory usage of each malloc call stack if its peak RSS "
+						 "is greater than or equal to this threshold in KB. "
+						 "Set to -1 to disable."),
+			NULL,
+			GUC_UNIT_KB | GUC_NOT_IN_SAMPLE
+		},
+		&yb_log_heap_snapshot_on_exit_threshold,
+		-1,
+		-1,
+		INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -15920,10 +15982,18 @@ yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source)
 	if (source == PGC_S_DEFAULT || source == PGC_S_TEST)
 		return true;
 
+	/*
+	 * YB: This GUC is set by restore scripts generated via ysql_dump. It is used by the auto
+	 * analyze service. However, when using connection manager, the GUC can become part of the
+	 * deploy phase query (SET stmts are executed). So, we throw a warning instead of an error
+	 * if the source is not PGC_S_DATABASE.
+	 */
+
 	if (source != PGC_S_DATABASE)
 	{
-		GUC_check_errmsg("Can only be set on a database level using ALTER DATABASE SET. Current source: %s", GucSource_Names[source]);
-		return false;
+		ereport(WARNING,
+				(errmsg("can only be set on a database level using ALTER DATABASE SET. Current source: %s",
+						GucSource_Names[source])));
 	}
 	return true;
 }

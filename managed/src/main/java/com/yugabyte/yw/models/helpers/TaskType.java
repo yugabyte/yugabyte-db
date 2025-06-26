@@ -670,6 +670,16 @@ public enum TaskType {
       CustomerTask.TaskType.SendUserNotification,
       CustomerTask.TargetType.User),
 
+  ImportUniverse(
+      com.yugabyte.yw.commissioner.tasks.ImportUniverse.class,
+      CustomerTask.TaskType.ImportUniverse,
+      CustomerTask.TargetType.Universe),
+
+  MigrateUniverse(
+      com.yugabyte.yw.commissioner.tasks.upgrade.MigrateUniverse.class,
+      CustomerTask.TaskType.MigrateUniverse,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -1188,7 +1198,9 @@ public enum TaskType {
   ConfigureOOMServiceOnNode(
       com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureOOMServiceOnNode.class),
 
-  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class);
+  CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class),
+
+  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class);
 
   private final Class<? extends ITask> taskClass;
 

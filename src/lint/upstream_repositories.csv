@@ -6,9 +6,11 @@ src/postgres/third-party-extensions/hypopg,,https://github.com/HypoPG/hypopg,970
 src/postgres/third-party-extensions/orafce,,https://github.com/orafce/orafce,6adbd66c429dabb828f10d764d356824efeb8396
 src/postgres/third-party-extensions/pg_cron,,https://github.com/citusdata/pg_cron,TODO
 src/postgres/third-party-extensions/pg_hint_plan,,https://github.com/ossc-db/pg_hint_plan,7a41e7ba94c8769895fefbb282f6943067adac2e
+src/postgres/third-party-extensions/pg_parquet,,https://github.com/CrunchyData/pg_parquet,9092f65678b9fcfc59e8918c74ad25259034c089
 src/postgres/third-party-extensions/pg_partman,,https://github.com/pgpartman/pg_partman,2330063ad29a65d169b1947ac35705a237774fb6
 src/postgres/third-party-extensions/pg_stat_monitor,,https://github.com/percona/pg_stat_monitor,75f86f54b1d332a5effc27aac2ce97768c442856
 src/postgres/third-party-extensions/pgaudit,,https://github.com/pgaudit/pgaudit,8349710fbbe38ca9518ebe753a528b94f5ab2c19
+src/postgres/third-party-extensions/pgrx,,https://github.com/pgcentralfoundation/pgrx,b1868d81b3c09c25e5e30a904e89a40dc702c459
 src/postgres/third-party-extensions/pgtap,,https://github.com/theory/pgtap,b941782fada240afdb7057065eb3261a21e8512c
 src/postgres/third-party-extensions/pgvector,,https://github.com/pgvector/pgvector,2627c5ff775ae6d7aef0c430121ccf857842d2f2
 src/postgres/third-party-extensions/postgresql-hll,,https://github.com/citusdata/postgresql-hll,8b9821c9f7a4674cb64db977a6c89f4381d0c0d0

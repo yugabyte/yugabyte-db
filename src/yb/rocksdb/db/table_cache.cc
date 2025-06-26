@@ -287,10 +287,11 @@ Status TableCache::GetTableReaderForIterator(
 }
 
 InternalIterator* TableCache::NewIterator(
-    const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
-    bool for_compaction, Arena* arena, bool skip_filters) {
+    const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter, bool for_compaction,
+    Arena* arena, bool skip_filters, SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
-  return DoNewIterator(options, trwh, filter, for_compaction, arena, skip_filters);
+  return DoNewIterator(
+      options, trwh, filter, for_compaction, arena, skip_filters, skip_corrupt_data_blocks_unsafe);
 }
 
 namespace {
@@ -309,12 +310,12 @@ void RegisterIteratorCleanup(
 } // namespace
 
 InternalIterator* TableCache::DoNewIterator(
-    const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
-    bool for_compaction, Arena* arena, bool skip_filters) {
+    const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter, bool for_compaction,
+    Arena* arena, bool skip_filters, SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
 
-  InternalIterator* result =
-      trwh->table_reader->NewIterator(options, arena, skip_filters);
+  InternalIterator* result = trwh->table_reader->NewIterator(
+      options, arena, skip_filters, skip_corrupt_data_blocks_unsafe);
 
   RegisterIteratorCleanup(cache_, trwh, result);
 
@@ -352,9 +353,9 @@ DataBlockAwareIndexInternalIterator* TableCache::NewDataBlockAwareIndexIterator(
 
 InternalIterator* TableCache::NewIterator(
     const ReadOptions& options, const EnvOptions& env_options,
-    const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd,
-    Slice filter, TableReader** table_reader_ptr, HistogramImpl* file_read_hist,
-    bool for_compaction, Arena* arena, bool skip_filters) {
+    const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd, Slice filter,
+    TableReader** table_reader_ptr, HistogramImpl* file_read_hist, bool for_compaction,
+    Arena* arena, bool skip_filters, SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
 
   if (table_reader_ptr != nullptr) {
@@ -373,7 +374,7 @@ InternalIterator* TableCache::NewIterator(
   }
 
   InternalIterator* result = DoNewIterator(
-      options, &trwh, filter, for_compaction, arena, skip_filters);
+      options, &trwh, filter, for_compaction, arena, skip_filters, skip_corrupt_data_blocks_unsafe);
 
   return result;
 }

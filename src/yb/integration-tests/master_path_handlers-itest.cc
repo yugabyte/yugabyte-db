@@ -1746,13 +1746,21 @@ TEST_F(MasterPathHandlersItest, TestClusterBalancerWarnings) {
   auto hp = HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr());
   ASSERT_OK(yb_admin_client_->ChangeBlacklist({hp}, true /* add */, false /* blacklist_leader */));
 
-  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms); // Let the load balancer run once
-  auto rows = ASSERT_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
-  ASSERT_EQ(rows.size(), 1);
-  ASSERT_EQ(rows[0].size(), 2);
-  ASSERT_STR_CONTAINS(rows[0][0], "Could not find a valid tserver to host tablet");
-  // 3 user tablets + system tablets
-  auto tablet_count = std::stoi(rows[0][1]);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_reporting_lb_ui_ms) = 500;
+  std::vector<std::string> row;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Warnings Summary"));
+    if (rows.empty()) {
+      return false;
+    }
+    SCHECK_EQ(rows.size(), 1, IllegalState, "Expected one row");
+    row = rows[0];
+    return true;
+  }, 10s /* timeout */, "Waiting for warnings to show up in the Warnings Summary table"));
+
+  ASSERT_EQ(row.size(), 2);
+  ASSERT_STR_CONTAINS(row[0], "Could not find a valid tserver to host tablet");
+  auto tablet_count = std::stoi(row[1]);
   ASSERT_GT(tablet_count, 3);
 }
 
@@ -1763,16 +1771,20 @@ TEST_F(MasterPathHandlersItest, ClusterBalancerTasksSummary) {
   ASSERT_OK(yb_admin_client_->ChangeBlacklist({hp}, true /* add */, true /* blacklist_leader */));
 
   // Test that leader stepdown task is shown in the task summary table, with a description
-  // explaining that the tserver is leader blacklisted.
+  // explaining that the tserver is leader blacklisted. The task summary table might include
+  // other tasks as well, so we just check that the leader stepdown task is present.
   // Wait 500ms before loading the UI so the task has a chance to complete.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_reporting_lb_ui_ms) = 500;
   std::vector<std::string> row;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     auto rows = VERIFY_RESULT(GetHtmlTableRows("/load-distribution", "Tasks Summary"));
-    if (rows.empty()) return false;
-    SCHECK_EQ(rows.size(), 1, IllegalState, "Expected one row");
-    row = rows[0];
-    return true;
+    for (const auto& r : rows) {
+      if (r.size() == 4 && r[0].find("Stepdown Leader RPC for tablet") != std::string::npos) {
+        row = r;
+        return true;
+      }
+    }
+    return false;
   }, 5s, "Leader stepdown task not shown in the table"));
 
   LOG(INFO) << "Got row: " << VectorToString(row);
@@ -1781,7 +1793,6 @@ TEST_F(MasterPathHandlersItest, ClusterBalancerTasksSummary) {
   auto count  = row[2];
   auto status = row[3];
 
-  ASSERT_STR_CONTAINS(desc, "Stepdown Leader RPC for tablet");
   ASSERT_STR_CONTAINS(desc, "Leader is on leader blacklisted tserver");
   ASSERT_EQ(state, "kComplete");
   // 1 user tablet + system tablets

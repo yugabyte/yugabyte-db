@@ -7,6 +7,7 @@ import (
 
 // YbactlRootInstallDir is the install directory of yba-ctl for root installs
 const YbactlRootInstallDir string = "/opt/yba-ctl"
+const InputFileName string = "yba-ctl.yml"
 
 var ycp ybaCtlPaths = newYbaCtlPaths()
 
@@ -67,7 +68,7 @@ func (ycp ybaCtlPaths) LogFile() string {
 
 // InputFile is the config file yba-ctl uses.
 func (ycp ybaCtlPaths) InputFile() string {
-	return filepath.Join(ycp.InstallDir(), "yba-ctl.yml")
+	return filepath.Join(ycp.InstallDir(), InputFileName)
 }
 
 // LicenseFile is the path to the license file.

@@ -383,7 +383,7 @@ TEST_F(PgFKeyTest, MultipleFKConstraintRPCCount) {
     return conn.ExecuteFormat(
       "INSERT INTO $0 VALUES(1, 11, 21, 31), (2, 12, 22, 32), (3, 13, 23, 33)", kFKTable);
   })).perform;
-  ASSERT_EQ(insert_fk_rpc_count, 2);
+  ASSERT_EQ(insert_fk_rpc_count, 1);
 }
 
 // Test checks that insertion into table with large number of foreign keys doesn't fail.

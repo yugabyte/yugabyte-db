@@ -93,7 +93,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
             }));
 
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
     when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
     try {

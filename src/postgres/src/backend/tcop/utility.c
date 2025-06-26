@@ -880,8 +880,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				 * restriction by calling Async_Listen directly, but then it's
 				 * on them to provide some mechanism to process the message
 				 * queue.)  Note there seems no reason to forbid UNLISTEN.
+				 * YB: YB_YSQL_CONN_MGR denotes backend process created by
+				 * connection manager. They should be treated as regular backend
+				 * process, so they can execute LISTEN.
 				 */
-				if (MyBackendType != B_BACKEND)
+				if (MyBackendType != B_BACKEND && MyBackendType != YB_YSQL_CONN_MGR)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					/* translator: %s is name of a SQL command, eg LISTEN */
@@ -1268,32 +1271,28 @@ ProcessUtilitySlow(ParseState *pstate,
 															 secondaryObject,
 															 stmt);
 
-							/* No need for toasting attributes in YB mode */
-							if (!IsYugaByteEnabled())
-							{
-								/*
-								 * Let NewRelationCreateToastTable decide if this
-								 * one needs a secondary relation too.
-								 */
-								CommandCounterIncrement();
+							/*
+							 * Let NewRelationCreateToastTable decide if this
+							 * one needs a secondary relation too.
+							 */
+							CommandCounterIncrement();
 
-								/*
-								 * parse and validate reloptions for the toast
-								 * table
-								 */
-								toast_options = transformRelOptions((Datum) 0,
-																	cstmt->options,
-																	"toast",
-																	validnsps,
-																	true,
-																	false);
-								(void) heap_reloptions(RELKIND_TOASTVALUE,
-													   toast_options,
-													   true);
+							/*
+							 * parse and validate reloptions for the toast
+							 * table
+							 */
+							toast_options = transformRelOptions((Datum) 0,
+																cstmt->options,
+																"toast",
+																validnsps,
+																true,
+																false);
+							(void) heap_reloptions(RELKIND_TOASTVALUE,
+												   toast_options,
+												   true);
 
-								NewRelationCreateToastTable(address.objectId,
-															toast_options);
-							}
+							NewRelationCreateToastTable(address.objectId,
+														toast_options);
 						}
 						else if (IsA(stmt, CreateForeignTableStmt))
 						{

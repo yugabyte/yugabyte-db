@@ -34,6 +34,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
 
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_context.h"
 
@@ -76,7 +77,8 @@ DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
     "If true, do not error out if a release request comes in for an unknown transaction.");
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_int32(send_wait_for_report_interval_ms);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
 namespace master {
@@ -130,6 +132,24 @@ class ObjectLockInfoManager::Impl {
     poller_.Start(
         &catalog_manager_.Scheduler(),
         MonoDelta::FromMilliseconds(FLAGS_object_lock_cleanup_interval_ms));
+    waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
+        master_.client_future(), clock_, master_.permanent_uuid(), lock_manager_thread_pool_.get());
+    waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
+        master_.permanent_uuid(), std::bind(&docdb::LocalWaitingTxnRegistry::SendWaitForGraph,
+        waiting_txn_registry_.get()));
+    tserver::TSLocalLockManagerPtr lock_manager = nullptr;
+    {
+      LockGuard lock(mutex_);
+      object_lock_infos_map_.clear();
+      if (local_lock_manager_) {
+        lock_manager = local_lock_manager_;
+      }
+    }
+    if (lock_manager) {
+      lock_manager->Start(waiting_txn_registry_.get());
+    }
+    waiting_txn_registry_poller_->Start(
+        &master_.messenger()->scheduler(), FLAGS_send_wait_for_report_interval_ms * 1ms);
   }
 
   void Shutdown() {
@@ -144,6 +164,15 @@ class ObjectLockInfoManager::Impl {
     }
     if (lock_manager) {
       lock_manager->Shutdown();
+    }
+    if (waiting_txn_registry_poller_) {
+      waiting_txn_registry_poller_->Shutdown();
+      waiting_txn_registry_poller_.reset();
+    }
+    if (waiting_txn_registry_) {
+      waiting_txn_registry_->StartShutdown();
+      waiting_txn_registry_->CompleteShutdown();
+      waiting_txn_registry_.reset();
     }
   }
 
@@ -268,6 +297,8 @@ class ObjectLockInfoManager::Impl {
   // Only accessed from a single thread for now, so no need for synchronization.
   std::unordered_map<TabletServerId, std::shared_ptr<CountDownLatch>>
       expired_lease_epoch_cleanup_tasks_;
+  std::unique_ptr<docdb::LocalWaitingTxnRegistry> waiting_txn_registry_;
+  std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
 };
 
 template <class Req>
@@ -872,7 +903,7 @@ void ObjectLockInfoManager::Impl::UnlockObject(const TransactionId& txn_id) {
 Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
     const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
     const LeaderEpoch& epoch) {
-  if (!FLAGS_enable_ysql_operation_lease && !FLAGS_TEST_enable_object_locking_for_table_locks) {
+  if (!FLAGS_enable_ysql_operation_lease && !FLAGS_enable_object_locking_for_table_locks) {
     return STATUS(NotSupported, "The ysql lease is currently disabled.");
   }
   if (!req.has_local_request_send_time_ms()) {
@@ -1032,6 +1063,7 @@ void ObjectLockInfoManager::Impl::Clear() {
   }
   local_lock_manager_.reset(new tserver::TSLocalLockManager(
       clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get()));
+  local_lock_manager_->Start(waiting_txn_registry_.get());
 }
 
 std::optional<uint64_t> ObjectLockInfoManager::Impl::GetLeaseEpoch(const std::string& ts_uuid) {
@@ -1270,7 +1302,7 @@ Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
         }
         if (!s.ok()) {
           LOG(WARNING) << "Failed to acquire object locks locally at the master " << s;
-          shared_this->DoCallbackAndRespond(s.CloneAndReplaceCode(Status::kRemoteError));
+          shared_this->DoCallbackAndRespond(s);
           return;
         }
         shared_this->LaunchRpcs();

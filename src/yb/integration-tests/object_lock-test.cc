@@ -54,10 +54,11 @@
 using namespace std::chrono_literals;
 
 DECLARE_bool(TEST_check_broadcast_address);
-DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
 DECLARE_bool(persist_tserver_registry);
+DECLARE_int32(heartbeat_max_failures_before_backoff);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -99,7 +100,7 @@ class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
   ObjectLockTest() {}
 
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
         kDefaultMasterYSQLLeaseTTLMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_lease_refresher_interval_ms) =
@@ -204,6 +205,10 @@ class ObjectLockTest : public MiniClusterTestWithClient<MiniCluster> {
 
   const std::string& TSUuid(size_t ts_idx) const {
     return cluster_->mini_tablet_server(ts_idx)->server()->permanent_uuid();
+  }
+
+  const std::string& MasterUuid(size_t idx) const {
+    return cluster_->mini_master(idx)->master()->permanent_uuid();
   }
 
   void testAcquireObjectLockWaitsOnTServer(bool do_master_failover);
@@ -387,7 +392,8 @@ std::future<Status> AcquireLockGloballyAsync(
       lease_epoch, client->Clock(), opt_deadline);
   auto callback = [promise](const Status& s) { promise->set_value(s); };
   client->AcquireObjectLocksGlobalAsync(
-      req, std::move(callback), ToCoarse(MonoTime::Now() + rpc_timeout));
+      req, std::move(callback), ToCoarse(MonoTime::Now() + rpc_timeout),
+      []() { return Status::OK(); } /* should_retry */);
   return future;
 }
 
@@ -1220,6 +1226,54 @@ TEST_F_EX(ObjectLockTest, AcquireAndReleaseDDLLockAcrossMasterFailover, MultiMas
   }
 }
 
+TEST_F(MultiMasterObjectLockTest, TServerCanAcquireLeaseAfterProlongedPartition) {
+  size_t idx = 0;
+  // Get the leader master to be located with the tserver which we are going to isolate.
+  ASSERT_RESULT(cluster_->StepDownMasterLeader(MasterUuid(idx)));
+  CHECK_EQ(idx, cluster_->LeaderMasterIdx());
+
+  auto kLeaseTimeout = MonoDelta::FromMilliseconds(FLAGS_master_ysql_operation_lease_ttl_ms);
+  ASSERT_OK(
+      WaitForTabletServersToAcquireYSQLLeases(cluster_->mini_tablet_servers(), kLeaseTimeout));
+  LOG(INFO) << "Breaking connectivity to all other tservers from tserver/master" << idx;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (i == idx) {
+      continue;
+    }
+    ASSERT_OK(BreakConnectivity(cluster_.get(), idx, i));
+  }
+
+  // This condition is require to recreate the issue in GH #27479
+  CHECK_GE(
+      kLeaseTimeout * 2, MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_interval_ms) *
+                             FLAGS_heartbeat_max_failures_before_backoff);
+
+  SleepFor(kLeaseTimeout * 2);
+  CHECK_NE(idx, cluster_->LeaderMasterIdx());
+
+  auto ts_uuid = TSUuid(idx);
+  LOG(INFO) << Format("Waiting for tablet server $0 to lose its lease", ts_uuid);
+  ASSERT_OK(WaitForTServerLeaseToExpire(ts_uuid, kLeaseTimeout));
+  LOG(INFO) << Format("tablet server $0 has lost its lease", ts_uuid);
+
+  LOG(INFO) << "Re-establishing connectivity to all other tservers from tserver/master" << idx;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (i == idx) {
+      continue;
+    }
+    ASSERT_OK(SetupConnectivity(cluster_.get(), idx, i, Connectivity::kOn));
+  }
+
+  LOG(INFO) << "Waiting for lease to be established again";
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto lease_info = VERIFY_RESULT(GetTServerLeaseInfo(*cluster_, ts_uuid));
+        return lease_info.is_live();
+      },
+      MonoDelta::FromSeconds(60), "Wait for tserver lease to be live again"));
+  LOG(INFO) << "Lease established again";
+}
+
 TEST_F(ExternalObjectLockTestOneTS, TabletServerKillsSessionsWhenItAcquiresNewLease) {
   constexpr size_t kTSIdx = 0;
   MonoDelta timeout = MonoDelta::FromSeconds(10);
@@ -1587,13 +1641,15 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
   opts.replication_factor = ReplicationFactor();
   opts.enable_ysql = true;
   opts.extra_master_flags = {
-    "--TEST_enable_object_locking_for_table_locks",
-    Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
-    Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
-    "--enable_load_balancing=false",
-    "--TEST_olm_skip_sending_wait_for_probes=false"};
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+      "--enable_object_locking_for_table_locks",
+      Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
+      Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
+      "--enable_load_balancing=false",
+      "--TEST_olm_skip_sending_wait_for_probes=false"};
   opts.extra_tserver_flags = {
-      "--TEST_enable_object_locking_for_table_locks",
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+      "--enable_object_locking_for_table_locks",
       Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
       "--TEST_olm_skip_sending_wait_for_probes=false"};
   return opts;
@@ -1650,14 +1706,16 @@ ExternalObjectLockTestOneTSWithoutLease::MakeExternalMiniClusterOptions() {
   opts.enable_ysql = true;
   opts.wait_for_tservers_to_accept_ysql_connections = false;
   opts.extra_master_flags = {
-      "--TEST_enable_object_locking_for_table_locks",
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+      "--enable_object_locking_for_table_locks",
       Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli),
       Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
       "--enable_load_balancing=false"};
   opts.extra_tserver_flags = {
-    "--TEST_enable_object_locking_for_table_locks",
-    Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
-    "--TEST_tserver_enable_ysql_lease_refresh=false"};
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+      "--enable_object_locking_for_table_locks",
+      Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
+      "--TEST_tserver_enable_ysql_lease_refresh=false"};
   return opts;
 }
 

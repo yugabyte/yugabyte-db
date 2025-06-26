@@ -158,7 +158,7 @@ class PgTableCache::Impl {
   }
 
   void GetTables(
-      const std::span<const TableId>& table_ids,
+      std::span<const TableId> table_ids,
       const PgTableCacheGetOptions& options,
       PgTablesQueryResult& result,
       const PgTablesQueryListenerPtr& listener) {
@@ -323,7 +323,7 @@ Result<client::YBTablePtr> PgTableCache::Get(const TableId& table_id) {
 }
 
 void PgTableCache::GetTables(
-    const std::span<const TableId>& table_ids,
+    std::span<const TableId> table_ids,
     const PgTableCacheGetOptions& options,
     PgTablesQueryResult& result,
     const PgTablesQueryListenerPtr& listener) {

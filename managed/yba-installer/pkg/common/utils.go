@@ -154,25 +154,6 @@ func Create(p string) (*os.File, error) {
 	return os.Create(p)
 }
 
-// CreateSymlink of binary from pkgDir to linkDir.
-/*
-	pkgDir - directory where the binary (file or directory) is located
-	linkDir - directory where you want the link to be created
-	binary - name of file or directory to link. should already exist in pkgDir and will be the same
-*/
-func CreateSymlink(pkgDir string, linkDir string, binary string) error {
-	binaryPath := fmt.Sprintf("%s/%s", pkgDir, binary)
-	linkPath := fmt.Sprintf("%s/%s", linkDir, binary)
-
-	args := []string{"-sf", binaryPath, linkPath}
-	log.Debug(fmt.Sprintf("Creating symlink at %s -> orig %s",
-		linkPath, binaryPath))
-
-	out := shell.Run("ln", args...)
-	out.SucceededOrLog()
-	return out.Error
-}
-
 // Symlink implements a more generic symlink utility.
 func Symlink(src string, dest string) error {
 	if stat, err := os.Lstat(dest); err == nil {
@@ -204,7 +185,7 @@ func ResolveSymlink(source, target string) error {
 	if errors.Is(tErr, fs.ErrNotExist) && errors.Is(sErr, fs.ErrNotExist) {
 		msg := fmt.Sprintf("Neither source %s nor target %s exist", source, target)
 		log.Error(msg)
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 		// Handle only target existing (already resolved)
 	} else if tErr == nil && errors.Is(sErr, fs.ErrNotExist) {
 		log.Debug(fmt.Sprintf("Symlink %s -> %s already resolved", source, target))
@@ -408,6 +389,10 @@ func InitViper() {
 	viper.SetDefault("service_username", DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 
+	viper.SetDefault("prometheus.remoteWrite.enabled", false)
+	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.yugabyte.scheme", "http")
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))

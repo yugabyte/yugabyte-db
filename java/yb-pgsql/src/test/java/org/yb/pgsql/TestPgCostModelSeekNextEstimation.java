@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
+import org.yb.pgsql.ExplainAnalyzeUtils.MetricsCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 import org.yb.util.json.Checkers;
@@ -74,6 +75,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
 
   private static PlanCheckerBuilder makePlanBuilder() {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+  }
+
+  private static MetricsCheckerBuilder makeMetricsBuilder() {
+    return JsonUtil.makeCheckerBuilder(MetricsCheckerBuilder.class, false);
   }
 
   private ValueChecker<Double> expectedSeeksRange(double expected_seeks) {
@@ -184,8 +189,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(expected_index_roundtrips))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
-                  .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-                  .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                  .readMetrics(makeMetricsBuilder()
+                    .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .build())
                   .build())
               .build());
     }
@@ -205,20 +212,25 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       .indexName(index_name)
       .estimatedSeeks(expectedSeeksRange(expected_seeks))
       .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
-      .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-      .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+      .readMetrics(makeMetricsBuilder()
+        .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
+        .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+        .build())
       .build();
   }
 
   private ObjectChecker makeBitmapIndexScanChecker_IgnoreActualResults(
       String index_name,
       double expected_seeks,
-      double expected_nexts) {
+      double expected_nexts,
+      double expected_index_roundtrips) {
     return makePlanBuilder()
       .nodeType(NODE_BITMAP_INDEX_SCAN)
       .indexName(index_name)
       .estimatedSeeks(expectedSeeksRange(expected_seeks))
       .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+      .estimatedTableRoundtrips(JsonUtil.absenceCheckerOnNull(null))
+      .estimatedIndexRoundtrips(expectedRoundtripsRange(expected_index_roundtrips))
       .build();
   }
 
@@ -238,8 +250,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
                   .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
-                  .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-                  .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                  .readMetrics(makeMetricsBuilder()
+                    .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .build())
                   .plans(bitmap_index_checker)
                   .build())
               .build());
@@ -326,8 +340,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(0))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
-                  .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
-                  .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                  .readMetrics(makeMetricsBuilder()
+                    .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
+                    .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
+                    .build())
                   .build())
               .build());
     }
@@ -451,7 +467,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T4_NO_PKEY_NAME, T4_NO_PKEY_NAME));
       // Create a non-colocated table.
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT) "
-        + "WITH (colocated = false)", T5_NAME));
+        + "WITH (colocation = false)", T5_NAME));
       stmt.execute(String.format("CREATE INDEX %s on %s (k1 ASC)",
         T5_K1_INDEX_NAME, T5_NAME));
       stmt.execute(String.format("CREATE INDEX %s on %s (k2 ASC)",
@@ -668,27 +684,27 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k1 = 4",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 21, 20, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 21, 20, 0, 1, 10);
         testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k1 >= 4",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 341, 340, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 341, 340, 0, 1, 10);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k1 IN (4, 8, 12)",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 63, 63, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K1_NAME, 63, 63, 0, 1, 10);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k2 = 4",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 21, 20, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 21, 20, 0, 1, 10);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k2 >= 4",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 341, 340, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 341, 340, 0, 1, 10);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s WHERE k2 IN (4, 8, 12)",
           T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, T2_NO_PKEY_NAME),
-        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 63, 63, 0, 0, 10);
+        T2_NO_PKEY_NAME, T2_NO_PKEY_SINDEX_K2_NAME, 63, 63, 0, 1, 10);
       // Try a non-colocated table with a secondary index.
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         String.format("/*+IndexScan(%s %s)*/ SELECT * FROM %s "
@@ -833,57 +849,80 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         String.format(query, T2_NAME, "k1 IN (4, 8, 12) OR k2 IN (4, 8, 12)"),
         T2_NAME, 111, 333, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 3, 68),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 80, 162)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 3, 68, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 80, 162, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T2_NAME, "k1 < 2 OR k2 < 4"),
         T2_NAME, 77, 231, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 1, 22),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 20, 102)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 1, 22, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T2_INDEX_NAME, 20, 102, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 IN (4, 8, 12) OR k2 IN (4, 8, 12)"),
         T4_NAME, 44400, 133200, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 86, 24000)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 86, 24000, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 IN (4, 8, 12) OR k3 IN (4, 8, 12)"),
         T4_NAME, 44400, 133200, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 1600, 24000)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 1600, 24000, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 IN (4, 8, 12) OR k4 IN (4, 8, 12)"),
         T4_NAME, 44400, 133200, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 32000, 88250)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 10, 24000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 32000, 88250, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 < 2 OR k2 < 4"),
         T4_NAME, 30800, 92400, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 20, 24000)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 20, 24000, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 < 2 OR k3 < 4"),
         T4_NAME, 30800, 92400, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 400, 24000)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 400, 24000, 1)).build());
 
       testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
         String.format(query, T4_NAME, "k1 < 2 OR k4 < 4"),
         T4_NAME, 30800, 92400, 20,
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000),
-          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 8000, 40000)).build());
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000, 1),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 8000, 40000, 1)).build());
+
+      // Secondary index on both colocated and non-colocated table.
+      // Use smaller fetch size to see effects of the pagination estimates.
+      stmt.execute("set yb_fetch_row_limit = 0");
+      stmt.execute("set yb_fetch_size_limit = 512");
+
+      testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
+        String.format(query, T2_NO_PKEY_NAME, "k1 <= 4 OR k2 IN (1, 5, 10, 15, 20)"),
+        T2_NO_PKEY_NAME, 160, 480, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
+          makeBitmapIndexScanChecker_IgnoreActualResults(T2_NO_PKEY_SINDEX_K1_NAME,
+                                                         8, 80, 8),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T2_NO_PKEY_SINDEX_K2_NAME,
+                                                         14, 105, 10)).build());
+
+      testSeekAndNextEstimationBitmapScanHelper_IgnoreActualResults(stmt,
+        String.format(query, T5_NAME, "k1 <= 4 OR k2 IN (1, 5, 10, 15, 20)"),
+        T5_NAME, 160, 480, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
+          makeBitmapIndexScanChecker_IgnoreActualResults(T5_K1_INDEX_NAME,
+                                                         8, 80, 8),
+          makeBitmapIndexScanChecker_IgnoreActualResults(T5_K2_INDEX_NAME,
+                                                         14, 105, 10)).build());
     }
   }
 
@@ -1116,14 +1155,14 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
        */
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(test test_index_k1) */ SELECT * FROM test WHERE k1 > 50000 and v1 > 80000",
-        "test", "test_index_k1", 50000, 50000, 0, 0, 10);
+        "test", "test_index_k1", 50000, 50000, 0, 10, 10);
 
       /* The filter on v1 will be executed on the included column in test_index_k1_v1. As a result,
        * fewer seeks will be needed on the base table.
        */
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+IndexScan(test test_index_k1_v1) */ SELECT * FROM test WHERE k1 > 50000 and v1 > 80000",
-        "test", "test_index_k1_v1", 10000, 50000, 0, 0, 10);
+        "test", "test_index_k1_v1", 10000, 50000, 0, 10, 10);
     }
   }
 
@@ -1200,7 +1239,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         "t_25862", "t_25862_pkey", 1302084.0, 1333333334.0, 1, 0, 2);
       testSeekAndNextEstimationIndexScanHelper_IgnoreActualResults(stmt,
         "/*+ IndexScan(t_25862 t_25862_idx) */ SELECT * FROM t_25862 WHERE v1 > 0",
-        "t_25862", "t_25862_idx", 1334635417.0, 1333333334.0, 0, 0, 2);
+        "t_25862", "t_25862_idx", 1334635417.0, 1333333334.0, 0, 1302084.0, 2);
       testSeekAndNextEstimationIndexOnlyScanHelper_IgnoreActualResults(stmt,
         "/*+ IndexOnlyScan(t_25862 t_25862_idx) */ SELECT v1 FROM t_25862 WHERE v1 > 0",
         "t_25862", "t_25862_idx", 1302084.0, 1333333334.0, 1, 0, 1);

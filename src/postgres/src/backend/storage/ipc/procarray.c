@@ -701,7 +701,7 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		 */
 		Assert(TransactionIdIsValid(proc->xid));
 
-		if (!YbGetPgOpsInCurrentTxn())
+		if (!YbCurrentTxnUsesTempRel())
 			return;
 		/*
 		 * If we can immediately acquire ProcArrayLock, we clear our own XID

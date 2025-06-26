@@ -26,13 +26,11 @@
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/pg_perform_future.h"
+#include "yb/yql/pggate/pg_flush_future.h"
 #include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
 
-class PgDocMetrics;
-class PgSession;
 class PgTableDesc;
 
 class BufferableOperations {
@@ -47,6 +45,9 @@ class BufferableOperations {
   size_t Size() const;
   void MoveTo(PgsqlOps& operations, PgObjectIds& relations) &&;
 
+  friend std::pair<BufferableOperations, BufferableOperations> Split(
+      BufferableOperations&& ops, size_t index);
+
  private:
   PgsqlOps operations_;
   PgObjectIds relations_;
@@ -54,17 +55,13 @@ class BufferableOperations {
 
 class PgOperationBuffer {
  public:
-  using PerformFutureEx = std::pair<PerformFuture, PgSession*>;
-  using OperationsFlusher = std::function<Result<PerformFutureEx>(BufferableOperations&&, bool)>;
+  using Flusher = std::function<Result<FlushFuture>(BufferableOperations&&, bool)>;
 
-  PgOperationBuffer(
-      OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
-      const BufferingSettings& buffering_settings);
+  PgOperationBuffer(Flusher&& flusher, const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
   Status Flush();
-  Result<BufferableOperations> FlushTake(
-      const PgTableDesc& table, const PgsqlOp& op, bool transactional);
+  Result<BufferableOperations> Take(bool transactional);
   size_t Size() const;
   void Clear();
 

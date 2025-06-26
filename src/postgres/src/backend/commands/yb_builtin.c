@@ -47,21 +47,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /*
- * Scale the ru_maxrss value according to the platform.
- * On Linux, the maxrss is in kilobytes.
- * On OSX, the maxrss is in bytes and scale it to kilobytes.
- * https://www.manpagez.com/man/2/getrusage/osx-10.12.3.php
- */
-static long
-scale_rss_to_kb(long maxrss)
-{
-#ifdef __APPLE__
-	maxrss = maxrss / 1024;
-#endif
-	return maxrss;
-}
-
-/*
  * Dump the current connection heap stats, including TCMalloc, PG, and PgGate.
  * The exact definition for the output columns are as followed:
  * total_heap_usage                	-> TCMalloc physical usage
@@ -196,7 +181,7 @@ yb_getrusage(PG_FUNCTION_ARGS)
 }
 
 /*
- * Get memory usage of the current session
+ * Get peak memory usage of the current backend in KB as a string.
  * - The return value RSS value from getrusage().
  * - User command:
  *     SELECT yb_mem_usage_kb();
@@ -204,22 +189,16 @@ yb_getrusage(PG_FUNCTION_ARGS)
 Datum
 yb_mem_usage(PG_FUNCTION_ARGS)
 {
-	struct rusage r;
-	char		a[1024];
-
-	/* Get usage. */
-	getrusage(RUSAGE_SELF, &r);
-	sprintf(a, "Session memory usage = %ld kbs", scale_rss_to_kb(r.ru_maxrss));
+	char a[1024];
+	sprintf(a, "Session memory usage = %ld kbs", YbGetPeakRssKb());
 	PG_RETURN_TEXT_P(cstring_to_text(a));
 }
 
+/* Returns the peak RSS of the current process in KB as a bigint */
 Datum
 yb_mem_usage_kb(PG_FUNCTION_ARGS)
 {
-	struct rusage r;
-
-	getrusage(RUSAGE_SELF, &r);
-	PG_RETURN_INT64(scale_rss_to_kb(r.ru_maxrss));
+	PG_RETURN_INT64(YbGetPeakRssKb());
 }
 
 /*

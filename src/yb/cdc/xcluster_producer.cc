@@ -54,6 +54,9 @@ DEFINE_RUNTIME_uint32(xcluster_consistent_wal_safe_time_frequency_ms, 250,
 DEFINE_RUNTIME_AUTO_bool(xcluster_enable_subtxn_abort_propagation, kExternal, false, true,
     "Enable including information about which subtransactions aborted in CDC changes");
 
+DEFINE_test_flag(int32, xcluster_producer_modify_sent_apply_safe_time_ms, 0,
+    "If set, will modify the apply safe time by this many milliseconds.");
+
 namespace yb {
 namespace cdc {
 
@@ -191,8 +194,20 @@ Status PopulateTransactionRecord(
         VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
     aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
   }
+
   auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
   tablet->metadata()->partition()->ToPB(record->mutable_partition());
+
+  // The partition keys for a hash partitioned table are not encoded, whereas for a range
+  // partitioned table, they are. Encoded keys are encoded in both these cases and provide a uniform
+  // way to compare against the keys of any record.
+  // The consumer will use this information to selectively APPLY only the intents that belong to our
+  // key range. This is important, because in uneven tablet distributions, the consumer will receive
+  // multiple APPLY records for the same transaction from multiple producer tablets.
+  const auto key_bounds = VERIFY_RESULT(tablet->metadata()->MakeEncodedPartitionBounds());
+  *record->mutable_encoded_start_key() = key_bounds.start_key.ToStringBuffer();
+  *record->mutable_encoded_end_key() = key_bounds.end_key.ToStringBuffer();
+
   return Status::OK();
 }
 
@@ -407,6 +422,11 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
     if (stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
       if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
           checkpoint.index >= stream_tablet_metadata->apply_safe_time_checkpoint_op_id_) {
+        if (FLAGS_TEST_xcluster_producer_modify_sent_apply_safe_time_ms != 0) {
+          stream_tablet_metadata->last_apply_safe_time_ =
+              stream_tablet_metadata->last_apply_safe_time_.AddMilliseconds(
+                  FLAGS_TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
+        }
         context.resp->set_safe_hybrid_time(
             stream_tablet_metadata->last_apply_safe_time_.ToUint64());
         // Clear out the checkpoint and recompute it on next call.

@@ -14,11 +14,12 @@ export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
   RESILIENCE_AND_REGIONS = 2,
   NODES_AND_AVAILABILITY = 3,
-  HARDWARE = 4,
+  INSTANCE = 4,
   DATABASE = 5,
   SECURITY = 6,
-  ADVANCED = 7,
-  REVIEW = 8
+  ADVANCED_PROXY = 7,
+  ADVANCED_OTHER = 8,
+  REVIEW = 9
 }
 
 export type createUniverseFormProps = {
@@ -27,7 +28,7 @@ export type createUniverseFormProps = {
 };
 
 export const initialCreateUniverseFormState: createUniverseFormProps = {
-  activeStep: CreateUniverseSteps.GENERAL_SETTINGS
+  activeStep: CreateUniverseSteps.ADVANCED_OTHER
 };
 
 export const CreateUniverseContext = createContext<createUniverseFormProps>(

@@ -129,6 +129,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
             });
     mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     doAnswer(
             inv -> {

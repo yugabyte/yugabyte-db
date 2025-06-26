@@ -399,7 +399,8 @@ pgstat_bestart(void)
 	if (lbeentry.st_backendType == B_BACKEND
 		|| lbeentry.st_backendType == B_WAL_SENDER
 		|| lbeentry.st_backendType == B_BG_WORKER
-		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR)
+		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR
+		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_WAL_SENDER)
 		lbeentry.st_userid = GetSessionUserId();
 	else
 		lbeentry.st_userid = InvalidOid;

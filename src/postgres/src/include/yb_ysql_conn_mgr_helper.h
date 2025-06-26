@@ -65,6 +65,13 @@ extern int	ysql_conn_mgr_sticky_object_count;
 extern bool yb_ysql_conn_mgr_sticky_guc;
 
 /*
+ * `yb_ysql_conn_mgr_sticky_locks` is used to denote stickiness of a connection
+ * due to the setting of session-scoped advisory locks that cannot be directly
+ * supported by Connection Manager.
+ */
+extern bool yb_ysql_conn_mgr_sticky_locks;
+
+/*
  * Check whether the connection is made from Ysql Connection Manager.
  */
 extern bool YbIsClientYsqlConnMgr();

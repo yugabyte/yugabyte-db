@@ -78,6 +78,15 @@
 #define YB_RELCACHE_MSGS (1)
 
 /*
+ * Postgres code uses process-level storage (e.g. static variables) to store
+ * long-lived data in a backend process. During expression pushdown, we may be
+ * reading & writing to the same variable from multiple threads in the same
+ * process, so using process-level storage is not safe. We use thread-local
+ * storage to ensure thread safety for these variables.
+ */
+#define YB_THREAD_LOCAL __thread
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -144,11 +153,11 @@ extern int32_t yb_follower_read_staleness_ms;
 		HeapTuple   pg_db_tuple; \
 		SysScanDesc pg_db_scan = systable_beginscan( \
 			pg_db, \
-			InvalidOid /* indexId */, \
-			false /* indexOK */, \
-			NULL /* snapshot */, \
-			0 /* nkeys */, \
-			NULL /* key */); \
+			InvalidOid /* indexId */ , \
+			false /* indexOK */ , \
+			NULL /* snapshot */ , \
+			0 /* nkeys */ , \
+			NULL /* key */ ); \
 		while (HeapTupleIsValid(pg_db_tuple = systable_getnext(pg_db_scan))) \
 		{ \
 
@@ -760,6 +769,10 @@ typedef struct YBUpdateOptimizationOptions
 /* GUC variables to control the behavior of optimizing update queries. */
 extern YBUpdateOptimizationOptions yb_update_optimization_options;
 
+/* GUC variables to control the speculative executive of PL statements. */
+extern bool yb_speculatively_execute_pl_statements;
+extern bool yb_whitelist_extra_stmts_for_pl_speculative_execution;
+
 extern bool yb_enable_docdb_vector_type;
 
 /*
@@ -815,9 +828,14 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
+extern bool YBIsDdlTransactionBlockEnabled();
 extern int	YBGetDdlNestingLevel();
-extern NodeTag YBGetDdlOriginalNodeTag();
+extern NodeTag YBGetCurrentStmtDdlNodeTag();
+extern bool YBIsCurrentStmtDdl();
+extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern void YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
+											  CommandTag commandTag);
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 extern bool YbTrackPgTxnInvalMessagesForAnalyze();
@@ -834,7 +852,7 @@ typedef enum YbSysCatalogModificationAspect
 	/*
 	 * Indicates if the statement runs in an autonomous transaction when
 	 * transactional DDL support is enabled.
-	 * Always unset if TEST_ysql_yb_ddl_transaction_block_enabled is false.
+	 * Always unset if yb_ddl_transaction_block_enabled is false.
 	 */
 	YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE = 8,
 } YbSysCatalogModificationAspect;
@@ -861,7 +879,7 @@ typedef enum YbDdlMode
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
-extern void YBSetDdlState(YbDdlMode mode);
+extern void YBAddDdlTxnState(YbDdlMode mode);
 extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
@@ -870,6 +888,7 @@ typedef struct YbDdlModeOptional
 	YbDdlMode	value;
 } YbDdlModeOptional;
 
+extern YbDdlMode YBGetCurrentDdlMode();
 extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
 									  ProcessUtilityContext context);
 void		YBAddModificationAspects(YbDdlMode mode);
@@ -1376,5 +1395,7 @@ extern bool YbIsInvalidationMessageEnabled();
 extern bool YbRefreshMatviewInPlace();
 
 extern void YbForceSendInvalMessages();
+
+extern long YbGetPeakRssKb();
 
 #endif							/* PG_YB_UTILS_H */

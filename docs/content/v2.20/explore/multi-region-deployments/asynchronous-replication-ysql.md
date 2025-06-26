@@ -6,7 +6,7 @@ description: Multi-region deployment using asynchronous replication across two o
 headContent: Unidirectional (master-follower) and bidirectional (multi-master) replication
 menu:
   v2.20:
-    identifier: explore-multi-region-deployments-async-replication-1-ysql
+    identifier: asynchronous-replication-ysql
     parent: explore-multi-region-deployments
     weight: 720
 type: docs

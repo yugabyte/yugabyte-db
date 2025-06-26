@@ -100,13 +100,8 @@ public class MultiTableBackup extends UniverseTaskBase {
       universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
 
       try {
-        String masterAddresses = universe.getMasterAddresses();
-        String certificate = universe.getCertificateNodetoNode();
-
-        YBClient client = null;
         Set<UUID> tableSet = new HashSet<>(params().tableUUIDList);
-        try {
-          client = ybService.getClient(masterAddresses, certificate);
+        try (YBClient client = ybService.getUniverseClient(universe)) {
           // If user specified the list of tables, only get info for those tables.
           if (tableSet.size() != 0) {
             for (UUID tableUUID : tableSet) {
@@ -234,8 +229,6 @@ public class MultiTableBackup extends UniverseTaskBase {
           unlockUniverseForUpdate();
           // Do not lose the actual exception thrown.
           Throwables.propagate(e);
-        } finally {
-          ybService.closeClient(client, masterAddresses);
         }
 
         if (tablesToBackup.isEmpty()) {

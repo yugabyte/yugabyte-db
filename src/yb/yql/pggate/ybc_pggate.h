@@ -350,8 +350,7 @@ YbcStatus YBCPgAlterTableDropColumn(YbcPgStatement handle, const char *name);
 
 YbcStatus YBCPgAlterTableSetReplicaIdentity(YbcPgStatement handle, const char identity_type);
 
-YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *db_name,
-                                     const char *newname);
+YbcStatus YBCPgAlterTableRenameTable(YbcPgStatement handle, const char *newname);
 
 YbcStatus YBCPgAlterTableIncrementSchemaVersion(YbcPgStatement handle);
 
@@ -876,8 +875,6 @@ YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache();
 YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
     size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
-YbcPgThreadLocalRegexpMetadata* YBCPgGetThreadLocalRegexpMetadata();
-
 void YBCPgResetCatalogReadTime();
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
@@ -896,6 +893,10 @@ void YBCStartSysTablePrefetching(
     YbcPgSysTablePrefetcherCacheMode cache_mode);
 
 void YBCStopSysTablePrefetching();
+
+void YBCPauseSysTablePrefetching();
+
+void YBCResumeSysTablePrefetching();
 
 bool YBCIsSysTablePrefetchingStarted();
 

@@ -31,16 +31,16 @@ public class TestPgRegressLock extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("enable_ysql_operation_lease", "true");
-    flagMap.put("TEST_enable_object_locking_for_table_locks", "true");
+    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    flagMap.put("enable_object_locking_for_table_locks", "true");
     return flagMap;
   }
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("enable_ysql_operation_lease", "true");
-    flagMap.put("TEST_enable_object_locking_for_table_locks", "true");
+    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    flagMap.put("enable_object_locking_for_table_locks", "true");
     return flagMap;
   }
 

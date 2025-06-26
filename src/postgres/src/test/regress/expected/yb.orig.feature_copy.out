@@ -12,6 +12,7 @@ COPY x (a, b, c, d, e) from stdin;
 COPY x (b, d) from stdin;
 COPY x (b, d) from stdin;
 COPY x (a, b, c, d, e) from stdin;
+-- Note: expect more rows with Connection Manager, pg_stat_progress_copy stores one row per backend
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
  relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 
@@ -294,6 +295,7 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
 COPY t FROM stdin;
 ERROR:  duplicate key value violates unique constraint "t_v_idx"
 CONTEXT:  COPY t, line 5: ""
+-- Note: expect more rows with Connection Manager, pg_stat_progress_copy stores one row per backend
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
  relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded 

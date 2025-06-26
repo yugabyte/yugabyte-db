@@ -424,9 +424,11 @@ typedef struct {
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
   const bool*     ysql_enable_pg_export_snapshot;
-  const bool*     TEST_ysql_yb_ddl_transaction_block_enabled;
-  const bool*     TEST_enable_object_locking_for_table_locks;
+  const bool*     ysql_enable_neghit_full_inheritscache;
+  const bool*     enable_object_locking_for_table_locks;
   const uint32_t* ysql_max_invalidation_message_queue_size;
+  const uint32_t* ysql_max_replication_slots;
+  const uint32_t* yb_max_recursion_depth;
 } YbcPgGFlagsAccessor;
 
 typedef struct {
@@ -515,6 +517,14 @@ typedef struct {
 } YbcPgExecEventMetric;
 
 typedef struct {
+  uint64_t version;
+  uint64_t gauges[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
+  int64_t counters[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
+  YbcPgExecEventMetric
+      events[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+} YbcPgExecStorageMetrics;
+
+typedef struct {
   YbcPgExecReadWriteStats tables;
   YbcPgExecReadWriteStats indices;
   YbcPgExecReadWriteStats catalog;
@@ -522,11 +532,8 @@ typedef struct {
   uint64_t num_flushes;
   uint64_t flush_wait;
 
-  uint64_t storage_metrics_version;
-  uint64_t storage_gauge_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
-  int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
-  YbcPgExecEventMetric
-      storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+  YbcPgExecStorageMetrics read_metrics;
+  YbcPgExecStorageMetrics write_metrics;
 
   uint64_t rows_removed_by_recheck;
 } YbcPgExecStats;
@@ -906,18 +913,11 @@ typedef struct {
 
 // A thread-safe way to cache compiled regexes.
 typedef struct {
-  int num;
   void* array;
 } YbcPgThreadLocalRegexpCache;
 
 typedef void (*YbcPgThreadLocalRegexpCacheCleanup)(YbcPgThreadLocalRegexpCache*);
 
-// A thread-safe way to control the behavior of regex matching.
-typedef struct {
-  int pg_regex_strategy; // PG_Locale_Strategy
-  void* pg_regex_locale; // struct pg_locale_t
-  YbcPgOid pg_regex_collation;
-} YbcPgThreadLocalRegexpMetadata;
 
 typedef struct {
   void *slot;

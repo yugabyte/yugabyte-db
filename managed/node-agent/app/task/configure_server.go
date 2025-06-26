@@ -146,7 +146,7 @@ func (h *ConfigureServerHandler) configureProcess(ctx context.Context, home, pro
 		{
 			"symlink-logs-to-yb-logs",
 			fmt.Sprintf(
-				"unlink %s > /dev/null 2>&1; ln -sf %s %s",
+				"rm -rf %s && ln -sf %s %s",
 				filepath.Join(home, process, "logs"),
 				filepath.Join(mountPoint, "yb-data/", process, "logs"),
 				filepath.Join(home, process, "logs"),
@@ -307,7 +307,7 @@ func (h *ConfigureServerHandler) execShellCommands(
 		{
 			"symlink-cores-to-yb-cores",
 			fmt.Sprintf(
-				"unlink %s > /dev/null 2>&1; ln -sf %s %s",
+				"rm -rf %s && ln -sf %s %s",
 				filepath.Join(home, "cores"),
 				filepath.Join(mountPoint, "cores"),
 				filepath.Join(home, "cores"),

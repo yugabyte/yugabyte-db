@@ -39,6 +39,7 @@ set(PGGATE_SRCS
     pg_explicit_row_lock_buffer.cc
     pg_expr.cc
     pg_fk_reference_cache.cc
+    pg_flush_future.cc
     pg_function.cc
     pg_function_helpers.cc
     pggate.cc

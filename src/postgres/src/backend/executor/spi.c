@@ -2515,7 +2515,7 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 		 */
 		if (plansource->usesPostgresRel)
 		{
-			YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
+			YbSetTxnUsesTempRel();
 		}
 
 		spicallbackarg.query = plansource->query_string;
@@ -2622,8 +2622,20 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 			 * snapshot, replacing any that we pushed in a previous cycle.
 			 * Skip it when doing non-atomic execution, though (we rely
 			 * entirely on the Portal snapshot in that case).
+			 * YB: When batching of writes across queries is requested in Read
+			 * Committed isolation, skip creating a new snapshot (and
+			 * consequently a read point) as this would cause previously
+			 * buffered writes to be flushed. As a result, all the statements in
+			 * the batch share the same snapshot. In case of a serialization
+			 * error, the entire top level statement will be retried and not just
+			 * individual statements in the batch. So, skipping the snapshot does
+			 * not alter the retry logic.
+			 * TODO(kramanathan): Use this as a workaround until we can explicitly
+			 * specify that multiple statements share a read point in RC mode if
+			 * they do not perform any reads.
 			 */
-			if (!options->read_only && !allow_nonatomic)
+			if (!options->read_only && !allow_nonatomic &&
+				!options->yb_reuse_existing_snapshot_in_read_committed)
 			{
 				if (pushed_active_snap)
 					PopActiveSnapshot();

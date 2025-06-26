@@ -510,8 +510,8 @@ YbcWaitEventDescriptor YBCGetWaitEventDescription(size_t index) {
     // is called later from yb_wait_event_desc, it doesn't report YSQLQuery as the class
     // for most cases. It's fine because we don't use the component bits here for
     // anything else.
-    uint32_t code = (((1 << YB_ASH_COMPONENT_BITS) - 1) << YB_ASH_COMPONENT_POSITION) |
-        static_cast<uint32_t>(desc[index].code);
+    uint32_t code = ash::WaitStateInfo::AshNormalizeComponentForTServerEvents(
+      static_cast<uint32_t>(desc[index].code), false);
     return { code, desc[index].description.c_str() };
   }
   return { 0, nullptr };
@@ -525,8 +525,8 @@ const char* YBCGetPggateRPCName(uint32_t pggate_rpc_enum_value) {
   return NoPrefixName(static_cast<ash::PggateRPC>(pggate_rpc_enum_value));
 }
 
-int YBCAshRemoveComponentFromWaitStateCode(uint32_t code) {
-  return ash::WaitStateInfo::AshRemoveComponentFromWaitStateCode(code);
+uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_bits_set) {
+  return ash::WaitStateInfo::AshNormalizeComponentForTServerEvents(code, component_bits_set);
 }
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {

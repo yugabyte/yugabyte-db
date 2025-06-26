@@ -26,7 +26,41 @@ import (
 func GetYamlPathData(text string) string {
 	// TODO: we should validate if we ever send a key that has spaces.
 	pathString := strings.ReplaceAll(text, " ", "")
+	log.DebugLF("Reading from viper: " + pathString)
+	log.DebugLF(fmt.Sprintf("Reading from viper: %s", viper.Get(pathString)))
 	return viper.GetString(pathString)
+}
+
+func ToYaml(path string) string {
+	// Convert the path to a YAML format
+	// This is a simple conversion, you might want to adjust it based on your needs
+	pathString := strings.ReplaceAll(path, " ", "")
+	log.DebugLF("Reading from viper: " + pathString)
+	log.DebugLF(fmt.Sprintf("Reading from viper: %s", viper.Get(pathString)))
+	d := viper.Get(pathString)
+	outB, err := yaml.Marshal(d)
+	if err != nil {
+		log.Fatal("Error: " + err.Error() + ".")
+	}
+
+	o := strings.TrimSuffix(string(outB), "\n")
+	log.DebugLF("YAML output:\n" + o)
+	return o
+}
+
+func indent(spaces int, s string) string {
+	// Indent the given string with the specified number of spaces
+	indentation := strings.Repeat(" ", spaces)
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = indentation + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+func nindent(spaces int, s string) string {
+	i := indent(spaces, s)
+	return "\n" + i
 }
 
 // GetYamlPathSliceData reads the key text from the input file and returns it as a slice of string
@@ -61,6 +95,9 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		"splitInput":        common.SplitInput,
 		"removeQuotes":      common.RemoveQuotes,
 		"systemdLogMethod":  common.SystemdLogMethod,
+		"toYaml":            ToYaml,
+		"indent":            indent,
+		"nindent":           nindent,
 	}
 
 	tmpl, err := template.New(configYmlFileName).
@@ -83,8 +120,10 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 
 func readYAMLtoJSON(createdBytes []byte) (map[string]interface{}, error) {
 
+	log.DebugLF(string(createdBytes))
 	jsonString, jsonStringErr := yaml.YAMLToJSON(createdBytes)
 	if jsonStringErr != nil {
+		log.DebugLF("Error converting YAML to JSON: " + string(jsonString))
 		log.Fatal(fmt.Sprintf("Error: %v.\n", jsonStringErr))
 		return nil, jsonStringErr
 	}

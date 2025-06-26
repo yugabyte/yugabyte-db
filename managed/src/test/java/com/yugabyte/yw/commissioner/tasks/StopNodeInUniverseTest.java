@@ -139,6 +139,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
         new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
     try {
+      when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
       when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);

@@ -183,6 +183,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockYBClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
+    when(mockService.getUniverseClient(any())).thenReturn(mockYBClient);
     when(mockService.getClient(any(), any())).thenReturn(mockYBClient);
     doNothing().when(mockSwamperHelper).writeUniverseTargetJson(mainUniverse);
   }
@@ -217,12 +218,8 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     }
     createXClusterRequestParams.putArray("tables").addAll(tables);
 
-    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
-    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     YBClient mockClient = mock(YBClient.class);
-    when(mockService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate))
-        .thenReturn(mockClient);
-
+    when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
             0,

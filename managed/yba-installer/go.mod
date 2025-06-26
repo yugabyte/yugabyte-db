@@ -1,12 +1,11 @@
 module github.com/yugabyte/yugabyte-db/managed/yba-installer
 
-go 1.22.0
-
-toolchain go1.22.3
+go 1.24
 
 require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fluxcd/pkg/tar v0.7.0
+	github.com/goccy/go-yaml v1.17.1
 	github.com/lib/pq v1.10.9
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.0
@@ -22,6 +21,7 @@ require (
 )
 
 require (
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
@@ -31,6 +31,7 @@ require (
 )
 
 require (
+	github.com/aws/aws-sdk-go v1.55.7
 	github.com/cyphar/filepath-securejoin v0.2.5 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect

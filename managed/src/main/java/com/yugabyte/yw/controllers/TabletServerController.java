@@ -84,11 +84,9 @@ public class TabletServerController extends AuthenticatedController {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     JsonNode tabletServersAPIResp;
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
 
     final String masterLeaderIPAddr = universe.getMasterLeaderHostText();
-    if (masterLeaderIPAddr.isEmpty() || masterAddresses.isEmpty()) {
+    if (masterLeaderIPAddr.isEmpty() || universe.getMasterAddresses().isEmpty()) {
       final String errMsg = "Could not find the master leader address in universe " + universeUUID;
       LOG.error(errMsg);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
@@ -103,7 +101,7 @@ public class TabletServerController extends AuthenticatedController {
       tabletServersAPIResp = apiHelper.getRequest(masterLeaderUrl);
 
       if (tabletServersAPIResp != null && tabletServersAPIResp.size() > 0) {
-        try (YBClient client = ybService.getClient(masterAddresses, certificate)) {
+        try (YBClient client = ybService.getUniverseClient(universe)) {
           ListTabletServersResponse listTServerResp = client.listTabletServers();
           Iterator<Entry<String, JsonNode>> iter = tabletServersAPIResp.fields();
           while (iter.hasNext()) {

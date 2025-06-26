@@ -381,7 +381,7 @@ void DocRowwiseIteratorTest::InsertPackedRow(
     std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns) {
   dockv::RowPackerV1 packer(
       version, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
-      /* value_control_fields= */ Slice(), doc_read_context().schema());
+      /* value_control_fields= */ Slice());
 
   for (auto &column : columns) {
     ASSERT_OK(packer.AddValue(column.first, column.second));

@@ -66,6 +66,8 @@ func NewPlatform(version string) Platform {
 	}
 }
 
+func (Platform) IsReplicated() bool { return true }
+
 func (plat Platform) devopsDir() string {
 	return plat.PlatformPackages + "/devops"
 }
@@ -313,11 +315,11 @@ func (plat Platform) copyNodeAgentPackages() error {
 func (plat Platform) renameAndCreateSymlinks() error {
 
 	ybPlat := common.GetSoftwareRoot() + "/yb-platform"
-	if err := common.CreateSymlink(plat.PlatformPackages, ybPlat, "yugaware"); err != nil {
+	if err := common.Symlink(fmt.Sprintf("%s/yugaware", plat.PlatformPackages), fmt.Sprintf("%s/yugaware", ybPlat)); err != nil {
 		log.Error("failed to create soft link for yugaware directory")
 		return err
 	}
-	if err := common.CreateSymlink(plat.PlatformPackages, ybPlat, "devops"); err != nil {
+	if err := common.Symlink(fmt.Sprintf("%s/devops", plat.PlatformPackages), fmt.Sprintf("%s/devops", ybPlat)); err != nil {
 		log.Error("failed to create soft link for devops directory")
 		return err
 	}
@@ -690,4 +692,13 @@ func (plat Platform) pemFromDocker() (string, error) {
 		return "", fmt.Errorf("failed to get pem file from container: %w", out.Error)
 	}
 	return out.StdoutString(), nil
+}
+
+func (plat Platform) Reconfigure() error {
+	log.Info("Reconfiguring platform")
+	if err := config.GenerateTemplate(plat); err != nil {
+		return fmt.Errorf("failed to generate template: %w", err)
+	}
+	log.Info("Platform reconfigured")
+	return nil
 }

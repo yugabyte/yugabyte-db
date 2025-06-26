@@ -273,11 +273,6 @@ void PeerMessageQueue::SetNonLeaderMode() {
       << queue_state_.ToString();
 }
 
-void PeerMessageQueue::TrackPeer(const string& uuid) {
-  LockGuard lock(queue_lock_);
-  TrackPeerUnlocked(uuid);
-}
-
 void PeerMessageQueue::TrackPeer(const RaftPeerPB& raft_peer_pb) {
   LockGuard lock(queue_lock_);
   TrackPeerUnlocked(raft_peer_pb);
@@ -301,14 +296,6 @@ PeerMessageQueue::TrackedPeer* PeerMessageQueue::SetupNewTrackedPeerUnlocked(
   // MinimumOpId. We'll advance it when we know how far along the peer is.
   queue_state_.all_replicated_op_id = OpId::Min();
   return tracked_peer_raw_ptr;
-}
-
-PeerMessageQueue::TrackedPeer* PeerMessageQueue::TrackPeerUnlocked(const string& uuid) {
-  CHECK(!uuid.empty()) << "Got request to track peer with empty UUID";
-  DCHECK_EQ(queue_state_.state, State::kQueueOpen);
-
-  std::unique_ptr<TrackedPeer> tracked_peer = std::make_unique<TrackedPeer>(uuid);
-  return SetupNewTrackedPeerUnlocked(std::move(tracked_peer));
 }
 
 PeerMessageQueue::TrackedPeer* PeerMessageQueue::TrackPeerUnlocked(const RaftPeerPB& raft_peer_pb) {
@@ -1907,23 +1894,26 @@ OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {
   return peer->last_received;
 }
 
-string PeerMessageQueue::GetUpToDatePeer() const {
+string PeerMessageQueue::FindBestNewLeader() const {
   OpId highest_op_id = OpId::Min();
   std::vector<std::string> candidates;
 
   {
     std::lock_guard lock(queue_lock_);
-    for (const PeersMap::value_type& entry : peers_map_) {
-      if (local_peer_uuid_ == entry.first) {
+    for (const auto& [peer_uuid, peer] : peers_map_) {
+      if (local_peer_uuid_ == peer_uuid) {
         continue;
       }
-      if (highest_op_id > entry.second->last_received) {
+      if (peer->member_type != VOTER) {
         continue;
-      } else if (highest_op_id == entry.second->last_received) {
-        candidates.push_back(entry.first);
+      }
+      if (highest_op_id > peer->last_received) {
+        continue;
+      } else if (highest_op_id == peer->last_received) {
+        candidates.push_back(peer_uuid);
       } else {
-        candidates = {entry.first};
-        highest_op_id = entry.second->last_received;
+        candidates = {peer_uuid};
+        highest_op_id = peer->last_received;
       }
     }
   }
@@ -1931,12 +1921,8 @@ string PeerMessageQueue::GetUpToDatePeer() const {
   if (candidates.empty()) {
     return string();
   }
-  size_t index = 0;
-  if (candidates.size() > 1) {
-    // choose randomly among candidates at the same opid
-    index = RandomUniformInt<size_t>(0, candidates.size() - 1);
-  }
-  return candidates[index];
+  // Choose randomly among candidates at the same op id.
+  return RandomElement(candidates);
 }
 
 PeerMessageQueue::~PeerMessageQueue() {

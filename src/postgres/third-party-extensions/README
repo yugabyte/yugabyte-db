@@ -1,5 +1,7 @@
 This directory contains extensions that are maintained by third-party sources.
 
+This directory also contains `pgrx` which is a framework used by rust based extensions.
+
 See also
 
 - ../contrib

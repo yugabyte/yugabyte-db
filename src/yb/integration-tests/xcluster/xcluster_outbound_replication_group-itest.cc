@@ -18,7 +18,10 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/consensus/log.h"
+
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
@@ -59,7 +62,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
   Result<NamespaceId> CreateYsqlNamespace(const NamespaceName& ns_name) {
     CreateNamespaceResponsePB resp;
     RETURN_NOT_OK(CreateDatabase(&producer_cluster_, ns_name));
-    return GetNamespaceId(client_, ns_name);
+    return XClusterTestUtils::GetNamespaceId(*client_, ns_name);
   }
 
   Result<TableId> CreateYsqlTable(

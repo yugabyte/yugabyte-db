@@ -147,8 +147,6 @@ class ProvisionCommand(Command):
             module = self._module_registry.get(key)
             if module is None:
                 continue
-            if key == 'InstallConfigureEarlyoom':
-                continue  # Skipping for now.
             if specific_module is not None and key != specific_module:
                 print(f"Skipping {key} because requested specific module {specific_module}")
                 continue
@@ -165,6 +163,10 @@ class ProvisionCommand(Command):
                     self.config[key].get('configure_clockbound', 'False') == 'False':
                 print(f"Skipping {key} because {key}.configure_clockbound is "
                       f"{self.config[key].get('configure_clockbound')}")
+                continue
+            if key == 'ConfigureSudoers' and \
+                    not self.config[key].get('sudoers_commands', None):
+                print(f"Skipping {key} because {key}.sudoers_commands is not set")
                 continue
             context = self.config[key]
 

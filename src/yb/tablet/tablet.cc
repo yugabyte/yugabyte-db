@@ -732,7 +732,8 @@ Tablet::Tablet(const TabletInitData& data)
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
       this,
       data.vector_index_thread_pool_provider,
-      data.vector_index_priority_thread_pool_provider);
+      data.vector_index_priority_thread_pool_provider,
+      data.vector_index_block_cache);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 
@@ -1387,6 +1388,8 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
+  tablet::VectorIndexList{ vector_indexes().List() }.EnableAutoCompactions();
+
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
       { "level0_slowdown_writes_trigger"s,
@@ -2925,8 +2928,13 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   auto result = conn->Fetch(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
-    LOG(WARNING) << "libpq query \"" << query << "\" returned "
-                 << result.status() << ": " << libpq_error_msg;
+    LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
+                 << libpq_error_msg;
+    // The 2 spaces after ERROR: is necessary to match the error message.
+    constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
+    if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
+      return STATUS(TryAgain, libpq_error_msg);
+    }
     return STATUS(IllegalState, libpq_error_msg);
   }
   auto& res = result.get();
@@ -4074,10 +4082,12 @@ Status Tablet::ForceManualRocksDBCompact(docdb::SkipFlush skip_flush) {
 }
 
 Status Tablet::ForceRocksDBCompact(
-    rocksdb::CompactionReason compaction_reason, docdb::SkipFlush skip_flush) {
+    rocksdb::CompactionReason compaction_reason, docdb::SkipFlush skip_flush,
+    rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   rocksdb::CompactRangeOptions options;
   options.skip_flush = skip_flush;
   options.compaction_reason = compaction_reason;
+  options.skip_corrupt_data_blocks_unsafe = skip_corrupt_data_blocks_unsafe;
   if (compaction_reason != rocksdb::CompactionReason::kPostSplitCompaction) {
     options.exclusive_manual_compaction = FLAGS_tablet_exclusive_full_compaction;
     return ForceRocksDBCompact(options, options);
@@ -4622,16 +4632,18 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& 
   }
 
   return admin_full_compaction_task_pool_token_->SubmitFunc([this, options]() {
-    // TODO(vector_index): since full vector index compaction is not optimizaed and may take a
-    // significat amount of time, let's trigger it separately from regular manual compaction.
+    // TODO(vector_index): since full vector index compaction is not optimized and may take a
+    // significant amount of time, let's trigger it separately from regular manual compaction.
     // This logic should be revised later.
+    Status status;
     if (options.vector_index_ids) {
       TriggerVectorIndexCompactionSync(*options.vector_index_ids);
     } else {
-      TriggerManualCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
+      status = TriggerManualCompactionSyncUnsafe(
+          rocksdb::CompactionReason::kAdminCompaction, options.skip_corrupt_data_blocks_unsafe);
     }
     if (options.compaction_completion_callback) {
-      options.compaction_completion_callback();
+      options.compaction_completion_callback(status);
     }
   });
 }
@@ -4641,11 +4653,16 @@ void Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) 
   tablet::VectorIndexList{ vector_indexes().Collect(vector_index_ids) }.Compact();
 }
 
-void Tablet::TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
+Status Tablet::TriggerManualCompactionSyncUnsafe(
+    rocksdb::CompactionReason reason,
+    rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_full_compaction);
+  auto status =
+      ForceRocksDBCompact(reason, docdb::SkipFlush::kFalse, skip_corrupt_data_blocks_unsafe);
   WARN_WITH_PREFIX_NOT_OK(
-      ForceRocksDBCompact(reason),
+      status,
       Format("$0: Failed tablet full compaction ($1)", log_prefix_suffix_, ToString(reason)));
+  return status;
 }
 
 bool Tablet::HasActiveTTLFileExpiration() {

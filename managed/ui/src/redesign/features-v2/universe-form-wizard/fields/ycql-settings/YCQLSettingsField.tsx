@@ -8,13 +8,7 @@
  */
 
 import { ReactElement } from 'react';
-import {
-  YBInputFieldProps,
-  yba,
-  mui,
-  YBToggleField,
-  YBPasswordField
-} from '@yugabyte-ui-library/core';
+import { mui, YBToggleField, YBPasswordField } from '@yugabyte-ui-library/core';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 
@@ -55,9 +49,8 @@ export const YCQLFIELD = ({ disabled }: YCQLProps): ReactElement => {
         sx={{ display: 'flex', flexDirection: 'row', padding: '16px 24px', alignItems: 'center' }}
       >
         <Box sx={{ marginBottom: '-5px', mr: 1 }}>
-          <YBToggleField name={YCQL_FIELD} control={control} />
+          <YBToggleField name={YCQL_FIELD} control={control} label="Enable YCQL End Point" />
         </Box>
-        <Typography variant="body2">Enable YCQL End Point</Typography>
       </Box>
       {ycqlEnabled && (
         <Box
@@ -71,9 +64,12 @@ export const YCQLFIELD = ({ disabled }: YCQLProps): ReactElement => {
           <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
             <NextLineIcon />
             <Box sx={{ marginBottom: '-5px', mr: 1, ml: 2 }}>
-              <YBToggleField name={YCQL_AUTH_FIELD} control={control} />
+              <YBToggleField
+                name={YCQL_AUTH_FIELD}
+                control={control}
+                label="Enable YCQL Authentication"
+              />
             </Box>
-            <Typography variant="body2">Enable YCQL Authentication</Typography>
           </Box>
           {ycqlAuthEnabled && (
             <Box sx={{ display: 'flex', flexDirection: 'column', mt: 4, pl: 5 }}>

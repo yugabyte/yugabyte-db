@@ -220,6 +220,9 @@
         "earlyoomConfig" : {
           "$ref" : "#/definitions/EarlyoomConfig",
           "description" : "Configuration for earlyoom service."
+        },
+        "earlyoomEnabled" : {
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -869,6 +872,7 @@
             "CLIENT_TO_NODE_CA_CERT_EXPIRY",
             "CLIENT_TO_NODE_CERT_EXPIRY",
             "ENCRYPTION_AT_REST_CONFIG_EXPIRY",
+            "UNIVERSE_KMS_KEY_STATUS",
             "SSH_KEY_EXPIRY",
             "SSH_KEY_ROTATION_FAILURE",
             "PITR_CONFIG_FAILURE",
@@ -907,7 +911,9 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },
@@ -1045,6 +1051,7 @@
             "CLIENT_TO_NODE_CA_CERT_EXPIRY",
             "CLIENT_TO_NODE_CERT_EXPIRY",
             "ENCRYPTION_AT_REST_CONFIG_EXPIRY",
+            "UNIVERSE_KMS_KEY_STATUS",
             "SSH_KEY_EXPIRY",
             "SSH_KEY_ROTATION_FAILURE",
             "PITR_CONFIG_FAILURE",
@@ -1083,7 +1090,9 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },
@@ -1317,6 +1326,7 @@
             "CLIENT_TO_NODE_CA_CERT_EXPIRY",
             "CLIENT_TO_NODE_CERT_EXPIRY",
             "ENCRYPTION_AT_REST_CONFIG_EXPIRY",
+            "UNIVERSE_KMS_KEY_STATUS",
             "SSH_KEY_EXPIRY",
             "SSH_KEY_ROTATION_FAILURE",
             "PITR_CONFIG_FAILURE",
@@ -1355,7 +1365,9 @@
             "UNIVERSE_UNEXPECTED_MASTERS_RUNNING",
             "UNIVERSE_UNEXPECTED_TSERVERS_RUNNING",
             "SAFETIME_LAG",
-            "CONTINUOUS_BACKUPS_STATUS"
+            "CONTINUOUS_BACKUPS_STATUS",
+            "THP_RSS_ISSUE",
+            "THP_INCORRECT_SETTINGS"
           ],
           "type" : "string"
         },
@@ -2577,6 +2589,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2789,7 +2803,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -5245,6 +5260,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5457,7 +5474,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -6156,6 +6174,9 @@
         "certPath" : {
           "type" : "string"
         },
+        "compressor" : {
+          "type" : "string"
+        },
         "offloadable" : {
           "type" : "boolean"
         },
@@ -6168,6 +6189,7 @@
       },
       "required" : [
         "certPath",
+        "compressor",
         "offloadable",
         "serverCert",
         "serverKey"
@@ -7647,9 +7669,6 @@
           "format" : "int32",
           "type" : "integer"
         },
-        "enabled" : {
-          "type" : "boolean"
-        },
         "preferPattern" : {
           "type" : "string"
         },
@@ -8235,6 +8254,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8447,7 +8468,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -9012,6 +9034,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9224,7 +9248,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -10407,6 +10432,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -10619,7 +10646,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -13626,7 +13654,8 @@
             "UPDATE_ROLE_BINDINGS",
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
-            "XCLUSTER"
+            "XCLUSTER",
+            "DEBUG"
           ],
           "type" : "string"
         },
@@ -13668,7 +13697,8 @@
             "UPDATE_ROLE_BINDINGS",
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
-            "XCLUSTER"
+            "XCLUSTER",
+            "DEBUG"
           ],
           "type" : "string"
         },
@@ -14619,6 +14649,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -14831,7 +14863,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -15612,6 +15645,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -15824,7 +15859,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -16416,6 +16452,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -16628,7 +16666,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -17909,6 +17948,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18121,7 +18162,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -18445,6 +18487,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18657,7 +18701,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -18823,6 +18868,8 @@
               "TlsToggleKubernetes",
               "UpdateOOMServiceState",
               "SendUserNotification",
+              "ImportUniverse",
+              "MigrateUniverse",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -19035,7 +19082,8 @@
               "SetupYNP",
               "YNPProvisioning",
               "ConfigureOOMServiceOnNode",
-              "CheckSshConnection"
+              "CheckSshConnection",
+              "FetchServerConf"
             ],
             "type" : "string"
           },
@@ -19622,6 +19670,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19834,7 +19884,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -20691,6 +20742,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20903,7 +20956,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -21433,7 +21487,9 @@
               "Decommission",
               "CloneNamespace",
               "UpdateOOMServiceState",
-              "SendUserNotification"
+              "SendUserNotification",
+              "ImportUniverse",
+              "MigrateUniverse"
             ],
             "type" : "string"
           },
@@ -21962,6 +22018,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22174,7 +22232,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -22609,6 +22668,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22821,7 +22882,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -23511,6 +23573,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23723,7 +23787,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -24122,6 +24187,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24334,7 +24401,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -24733,6 +24801,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24945,7 +25015,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -25746,6 +25817,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25958,7 +26031,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -26396,7 +26470,7 @@
           "type" : "boolean"
         },
         "role" : {
-          "description" : "User role",
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2.19.3.0.</b> Use  getRoleBindings instead.",
           "enum" : [
             "ConnectOnly",
             "ReadOnly",
@@ -26404,6 +26478,7 @@
             "Admin",
             "SuperAdmin"
           ],
+          "example" : "Admin",
           "type" : "string"
         },
         "timezone" : {
@@ -26481,7 +26556,7 @@
           "type" : "boolean"
         },
         "role" : {
-          "description" : "User role",
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2.19.3.0.</b> Use  getRoleBindings instead.",
           "enum" : [
             "ConnectOnly",
             "ReadOnly",
@@ -26489,6 +26564,7 @@
             "Admin",
             "SuperAdmin"
           ],
+          "example" : "Admin",
           "type" : "string"
         },
         "timezone" : {
@@ -26912,6 +26988,8 @@
             "TlsToggleKubernetes",
             "UpdateOOMServiceState",
             "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -27124,7 +27202,8 @@
             "SetupYNP",
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
-            "CheckSshConnection"
+            "CheckSshConnection",
+            "FetchServerConf"
           ],
           "type" : "string"
         },
@@ -27292,6 +27371,10 @@
     "XClusterConfig" : {
       "description" : "xcluster config object",
       "properties" : {
+        "automaticDdlMode" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "createTime" : {
           "description" : "Create time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",
@@ -27582,6 +27665,10 @@
     "XClusterConfigGetResp" : {
       "description" : "xcluster get response",
       "properties" : {
+        "automaticDdlMode" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "createTime" : {
           "description" : "Create time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",
@@ -44315,6 +44402,14 @@
             "in" : "path",
             "name" : "cUUID",
             "required" : true,
+            "type" : "string"
+          },
+          {
+            "default" : "null",
+            "description" : "Optional email to filter user list",
+            "in" : "query",
+            "name" : "email",
+            "required" : false,
             "type" : "string"
           }
         ],

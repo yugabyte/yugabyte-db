@@ -360,11 +360,9 @@ public class AWSUtil implements CloudUtil {
         nextContinuationToken = result.isTruncated() ? result.getNextContinuationToken() : null;
         for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
           String key = objectSummary.getKey();
-          if (key.endsWith(YBA_BACKUP_MARKER)) {
-            String[] dirs = key.split("/");
-            if (dirs.length >= 2) {
-              backupDirs.add(dirs[dirs.length - 2]);
-            }
+          String backupDir = extractBackupDirFromKey(key, stripSlash(cLInfo.cloudPath));
+          if (StringUtils.isNotBlank(backupDir)) {
+            backupDirs.add(backupDir);
           }
         }
       } while (nextContinuationToken != null);
@@ -451,7 +449,7 @@ public class AWSUtil implements CloudUtil {
         // Parse out release version from result
         List<S3ObjectSummary> releases = listObjectsResult.getObjectSummaries();
         for (S3ObjectSummary release : releases) {
-          String version = extractReleaseVersion(release.getKey(), backupDir);
+          String version = extractReleaseVersion(release.getKey(), backupDir, cLInfo.cloudPath);
           if (version != null) {
             releaseVersions.add(version);
           }

@@ -613,9 +613,7 @@ public class CustomerTaskController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result getTaskStatusWithDetails(UUID customerUUID, UUID taskUUID) {

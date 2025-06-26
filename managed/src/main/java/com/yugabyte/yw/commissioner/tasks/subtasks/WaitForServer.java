@@ -66,11 +66,9 @@ public class WaitForServer extends ServerSubTaskBase {
             ? Universe.getOrBadRequest(taskParams().getUniverseUUID())
             : taskParams().currentUniverseState;
     boolean ret;
-    YBClient client = null;
     long startMs = System.currentTimeMillis();
-    try {
+    try (YBClient client = getClient()) {
       HostAndPort hp = getHostPort();
-      client = getClient();
       if (taskParams().serverType == ServerType.MASTER) {
         // This first calls waitForServer followed by availability check of master UUID.
         // Check for master UUID retries until timeout.
@@ -108,9 +106,8 @@ public class WaitForServer extends ServerSubTaskBase {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
-    } finally {
-      closeClient(client);
     }
+
     if (!ret) {
       throw new RuntimeException(getName() + " did not respond in the set time.");
     }

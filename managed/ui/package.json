@@ -20,6 +20,15 @@
     "build-storybook": "storybook build -s public",
     "generateV2JSApiClient": "[ -f ../src/main/resources/openapi.yaml ] && orval --config ./v2Api.config.ts"
   },
+  "jest": {
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(vis-timeline)/)"
+    ],
+    "moduleNameMapper": {
+      "\\.(css|less|scss)$": "<rootDir>/__mocks__/styleMock.js",
+      "\\.css\\?inline$": "<rootDir>/__mocks__/styleMock.js"
+    }
+  },
   "engines": {
     "node": ">=16.10.x",
     "npm": ">=7.24.x"
@@ -78,9 +87,8 @@
     "@types/react-select": "3.0.19",
     "@types/redux-form": "8.3.1",
     "@types/yup": "0.29.11",
-    "@yugabyte-ui-library/core": "^1.3.0",
-    "@yugabyte-ui-library/yba": "^1.3.0",
-    "@yugabytedb/troubleshoot-ui": "2.0.73",
+    "@yugabytedb/perf-advisor-ui": "1.0.14",
+    "@yugabyte-ui-library/core": "1.5.0",
     "ace-builds": "1.4.12",
     "axios": "0.21.3",
     "bootstrap": "3.4.1",
@@ -153,6 +161,7 @@
     "unique-names-generator": "4.7.1",
     "vite-plugin-dynamic-import": "^1.4.1",
     "vite-plugin-svgr": "^3.2.0",
+    "vis-timeline": "7.7.3",
     "yup": "0.30.0"
   },
   "browserslist": {

@@ -35,11 +35,13 @@
 using namespace std::literals;
 DECLARE_bool(dump_lock_keys);
 
-DEFINE_RUNTIME_int64(olm_poll_interval_ms, 100,
+DEFINE_NON_RUNTIME_int64(olm_poll_interval_ms, 100,
     "Poll interval for Object lock Manager. Waiting requests that are unblocked by other release "
     "requests are independent of this interval since the release schedules unblocking of potential "
     "waiters. Yet this might help release timedout requests soon and also avoid probable issues "
     "with the signaling mechanism if any.");
+
+DECLARE_uint64(refresh_waiter_timeout_ms);
 
 namespace yb::tserver {
 
@@ -307,7 +309,9 @@ class TSLocalLockManager::Impl {
     object_lock_manager_.Lock(
       docdb::LockData{
           .key_to_lock = std::move(keys_to_lock),
-          .deadline = deadline,
+          .deadline = std::min(
+              deadline,
+              (CoarseTimePoint) (CoarseMonoClock::Now() + FLAGS_refresh_waiter_timeout_ms * 1ms)),
           .object_lock_owner = std::move(object_lock_owner),
           .status_tablet = req.status_tablet(),
           .start_time = MonoTime::FromUint64(req.propagated_hybrid_time()),
@@ -377,10 +381,7 @@ class TSLocalLockManager::Impl {
     if (req.has_db_catalog_version_data()) {
       server_->SetYsqlDBCatalogVersions(req.db_catalog_version_data());
     }
-    Status abort_status = req.has_abort_status() && req.abort_status().code() != AppStatusPB::OK
-        ? StatusFromPB(req.abort_status())
-        : Status::OK();
-    object_lock_manager_.Unlock(object_lock_owner, abort_status);
+    object_lock_manager_.Unlock(object_lock_owner);
     auto tracker_status = lock_tracker_.UntrackAllLocks(txn, req.subtxn_id());
     DCHECK_OK(tracker_status);
     return Status::OK();

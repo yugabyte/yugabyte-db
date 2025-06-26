@@ -43,6 +43,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     public String nodeIP = null;
     // Flag, indicating OpenTelemetry Collector is installed on the DB node.
     public boolean otelCollectorInstalled = false;
+    // Skip changing node state after destroy if it is explicitly set.
+    public boolean skipUpdateNodeState = false;
   }
 
   @Override
@@ -159,9 +161,11 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         }
       }
     }
-    // Update the node state to Terminated to mark that instance has been terminated. This is a
-    // short-lived state as either the node is deleted or the state is changed to Decommissioned.
-    setNodeState(NodeDetails.NodeState.Terminated);
+    if (!taskParams().skipUpdateNodeState) {
+      // Update the node state to Terminated to mark that instance has been terminated. This is a
+      // short-lived state as either the node is deleted or the state is changed to Decommissioned.
+      setNodeState(NodeDetails.NodeState.Terminated);
+    }
     if (taskParams().deleteNode) {
       removeNodeFromUniverse(taskParams().nodeName);
     }
