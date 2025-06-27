@@ -116,6 +116,9 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 
 ## Auth Methods
 
+The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager.
+It highlights which methods are supported or not when using the connection manager for user authentication.
+
 | Authentication Method     | Description                                                                                                                                               | Supported with Connection Manager             |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------|
 | Ident Authentication      | Server contacts client's OS to verify username that initiated connection, trusting OS-level identity.                                                    | ❌ Not Supported                               |
