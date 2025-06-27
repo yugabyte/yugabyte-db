@@ -1685,6 +1685,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable compression for message sent over node agent channel.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeAgentDisableBgInstallPostMigration =
+      new ConfKeyInfo<>(
+          "yb.node_agent.disable_bg_install_post_migration",
+          ScopeType.GLOBAL,
+          "Disable Node Agent Background Installation After Migration",
+          "Install node agent synchronously during a task instead after migration if it is true.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
       new ConfKeyInfo<>(
           "yb.task.enable_task_runtime_info_on_retry",

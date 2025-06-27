@@ -50,13 +50,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class NodeAgentEnablerTest extends FakeDBApplication {
   private Customer customer1;
   private Customer customer2;
@@ -699,5 +701,74 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
     nodeAgentEnabler.updateMissingNodeAgents(customer1.getUuid(), universeUuid1);
     universe = Universe.getOrBadRequest(universeUuid1);
     assertEquals(true, universe.getUniverseDetails().nodeAgentMissing);
+  }
+
+  @Test
+  @Parameters({"false", "true"})
+  @TestCaseName("testShouldSkipInstallAndMarkUniverseWhenDisableBgInstallPostMigration:{0}")
+  public void testShouldSkipInstallAndMarkUniverse(boolean disableBgInstallPostMigration)
+      throws Exception {
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.nodeAgentEnablerRunInstaller.getKey(), String.valueOf(true));
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(
+            GlobalConfKeys.nodeAgentDisableBgInstallPostMigration.getKey(),
+            String.valueOf(disableBgInstallPostMigration));
+    // Make install successful.
+    when(mockNodeAgentInstaller.install(any(), any(), any())).thenReturn(true);
+    // Make migration successful.
+    doAnswer(
+            inv -> {
+              Object[] objects = inv.getArguments();
+              UUID universeUuid = (UUID) objects[1];
+              Universe universe = Universe.getOrBadRequest(universeUuid);
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              universeDetails.installNodeAgent = false;
+              universe.setUniverseDetails(universeDetails);
+              universe.save();
+              return true;
+            })
+        .when(mockNodeAgentInstaller)
+        .migrate(any(), any());
+    // Old provider.
+    provider1.getDetails().setEnableNodeAgent(false);
+    provider1.save();
+    // New provider.
+    provider2.getDetails().setEnableNodeAgent(true);
+    provider2.save();
+    Universe universe1 = Universe.getOrBadRequest(universeUuid1);
+    Universe universe01 = Universe.getOrBadRequest(universeUuid01);
+    Universe universe2 = Universe.getOrBadRequest(universeUuid2);
+    nodeAgentEnabler.markUniverses();
+    universe1 = Universe.getOrBadRequest(universeUuid1);
+    universe01 = Universe.getOrBadRequest(universeUuid01);
+    universe2 = Universe.getOrBadRequest(universeUuid2);
+    assertEquals(true, universe1.getUniverseDetails().installNodeAgent);
+    assertEquals(true, universe01.getUniverseDetails().installNodeAgent);
+    assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
+    // Pending migration for universe1 and universe02.
+    assertEquals(true, nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe1));
+    assertEquals(true, nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe01));
+    // No pending migration.
+    assertEquals(false, nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe2));
+    // Run migrations for the eligible universes.
+    scanUniverses(true);
+    universe1 = Universe.getOrBadRequest(universeUuid1);
+    universe01 = Universe.getOrBadRequest(universeUuid01);
+    universe2 = Universe.getOrBadRequest(universeUuid2);
+    // No pending migration.
+    assertEquals(false, universe1.getUniverseDetails().installNodeAgent);
+    assertEquals(false, universe01.getUniverseDetails().installNodeAgent);
+    assertEquals(false, universe2.getUniverseDetails().installNodeAgent);
+    // Must not skip if background installer is disabled after migration.
+    assertEquals(
+        !disableBgInstallPostMigration,
+        nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe1));
+    assertEquals(
+        !disableBgInstallPostMigration,
+        nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe01));
+    assertEquals(false, nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe2));
   }
 }
