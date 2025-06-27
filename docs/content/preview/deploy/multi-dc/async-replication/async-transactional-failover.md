@@ -201,7 +201,9 @@ Restore the database to the `safe_time`:
 
 ### Fix up sequences and serial columns
 
+{{< note >}}
 Skip this step if you are using xCluster replication automatic mode.
+{{< /note >}}
 
 xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually adjust the sequence next values on universe B after failover to ensure consistency with the tables using them.
 

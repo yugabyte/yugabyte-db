@@ -32,7 +32,7 @@ Assuming universe A is the Primary and universe B is the Standby, use the follow
 
 {{< warning title="Automatic mode requirements" >}}
 
-If you are performing a switchover in automatic mode, you must not run any DDLs while the switchover is being done.  Stop submitting any DDLs and wait for any previously submitted DLLs to be replicated before proceeding.  Checking xCluster safe time (see [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/)) will tell you the latest time up to which DDLs have been replicated.
+If you are performing a switchover in automatic mode, you must not run any DDLs while the switchover is being done.  Stop submitting any DDLs and wait for any previously submitted DLLs to be replicated before proceeding.  Checking xCluster safe time (see [Monitor xCluster](../../../../launch-and-manage/monitor-and-alert/xcluster-monitor/)) will tell you the latest time up to which DDLs have been replicated. See {{<issue 26028>}}.
 
 {{< /warning >}}
 
@@ -60,7 +60,9 @@ The lag and skew values might be non-zero as they are estimates based on the las
 
 ### Fix up sequences and serial columns
 
+{{< note >}}
 Skip this step if you are using xCluster replication automatic mode.
+{{< /note >}}
 
 xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
 

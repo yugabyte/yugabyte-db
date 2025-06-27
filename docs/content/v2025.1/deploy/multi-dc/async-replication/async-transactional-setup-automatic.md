@@ -69,18 +69,13 @@ For information on monitoring xCluster replication, refer to [Monitor xCluster](
 {{< warning title="Warning" >}}
 
 If you want the databases being removed from replication on the target
-to be fully usable after dropping replication, you need to stop your
-workload (including performing DDLs) to them and wait for the
-replication lag to reach zero before dropping the replication group.
+to be usable after dropping replication, you need to stop your workload
+(including performing DDLs) to them and wait for the replication lag to
+reach zero before dropping the replication group.
 
-If you stop only running DDLs but not the rest of your workload and wait
-for the DDLs to drain, then the target databases will be usable but each
-tablet may be stale by a different amount.  This contrasts with the
-stopping and waiting fully case where all the tables will be up-to-date.
-
-Finally, if you take no precautions then the target databases may
-contain unreadable rows; we recommend dropping such databases rather
-than attempting to use them.
+If you take no precautions then the target databases may be unusable; we
+strongly recommend dropping such databases rather than attempting to use
+them.
 
 {{< /warning >}}
 
@@ -90,19 +85,17 @@ than attempting to use them.
 
 {{< warning title="Be careful using this outside of the switchover or failover workflows" >}}
 
-If you want the databases being replicated to on the target to be fully
-usable after dropping replication, you need to stop your workload
-(including performing DDLs) and wait for the replication lag to reach
-zero before dropping the replication group.
+If you want the databases being replicated to on the target to be usable
+after dropping replication, you need to stop your workload (including
+performing DDLs) and wait for the replication lag to reach zero before
+dropping the replication group.
 
-If you stop only running DDLs but not the rest of your workload and wait
-for the DDLs to drain, then the target databases will be usable but each
-tablet may be stale by a different amount.  This contrasts with the
-stopping and waiting fully case where all the tables will be up-to-date.
+Alternatively, you can follow the failover workflow to ensure the target
+cuts over to a consistent time.
 
-Finally, if you take no precautions then the target databases may
-contain unreadable rows; we recommend dropping such databases rather
-than attempting to use them.
+If you take no precautions then the target databases may be unusable; we
+strongly recommend dropping such databases rather than attempting to use
+them.
 
 {{< /warning >}}
 
