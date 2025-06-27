@@ -1125,9 +1125,17 @@ Status TabletServer::GetTserverCatalogMessageLists(
     auto max_version = *current_versions.rbegin();
     auto min_version = *current_versions.begin();
     if (max_version - min_version + 1 > current_versions.size()) {
-      // There are holes from min_version to max_version. Print the entire list
-      // of versions to allow one to find out the holes.
-      current_versions_str = yb::ToString(current_versions);
+      // There are holes from min_version to max_version. Printing the entire list
+      // of versions can cause too long log lines. Skip the early versions less than
+      // ysql_catalog_version. This shortens the log line but still allows one to
+      // find out holes that are relevant for this request.
+      auto it = std::lower_bound(current_versions.begin(), current_versions.end(),
+                                 ysql_catalog_version);
+      if (it == current_versions.end() ||
+          (it != current_versions.begin() && *it > ysql_catalog_version)) {
+        --it;
+      }
+      current_versions_str = yb::RangeToString(it, current_versions.end());
     } else {
       // There are no holes from min_version to max_version. Print a shorthand
       // rather than the entire list of versions.
@@ -1175,13 +1183,41 @@ Status TabletServer::SetTserverCatalogMessageList(
     }
   });
 
-  // First, update catalog version.
+  // Check all the cases when we should make this call a no-op.
   auto it = ysql_db_catalog_version_map_.find(db_oid);
   if (it == ysql_db_catalog_version_map_.end()) {
     // If db_oid does not already have an existing entry in ysql_db_catalog_version_map_,
     // we will not have a way to find out the breaking version, bail out.
-    return Status::OK();
+    return STATUS_FORMAT(TryAgain, "db oid $0 not found in db catalog version map", db_oid);
   }
+  auto it2 = ysql_db_invalidation_messages_map_.find(db_oid);
+  if (it2 == ysql_db_invalidation_messages_map_.end()) {
+    // If db_oid does not have an entry yet, bail out. The creation of the entry for
+    // db_oid is managed by heartbeat response.
+    return STATUS_FORMAT(TryAgain, "db oid $0 not found in db inval messages map", db_oid);
+  }
+  const auto cutoff_catalog_version = it2->second.cutoff_catalog_version;
+  if (new_catalog_version <= cutoff_catalog_version) {
+    // This is possible in theory: if the DDL backend that generated the new_catalog_version
+    // has exited after sending out the call to SetTserverCatalogMessageList, and background
+    // task has advanced cutoff_catalog_version forward.
+    return STATUS_FORMAT(TryAgain,
+                         "new catalog version $0 is stale due to cut off catalog version $1",
+                         new_catalog_version, cutoff_catalog_version);
+  }
+  db_message_lists = &it2->second.queue;
+  if (!db_message_lists->empty() &&
+      std::get<0>(*db_message_lists->rbegin()) + 1 < new_catalog_version) {
+    // There is at least a hole between the  existing max catalog version and
+    // the new version. If we appended the new version and its messages, we would
+    // have created a hole that can lead to full catalog cache refresh. In this
+    // case let's wait for the heartbeat to propagate the missing versions.
+    return STATUS_FORMAT(TryAgain,
+                         "new catalog version $0 has a gap from $1",
+                         new_catalog_version, std::get<0>(*db_message_lists->rbegin()));
+  }
+
+  // First, update catalog version.
   auto& existing_entry = it->second;
   // Only update the existing entry if new_catalog_version is newer.
   if (new_catalog_version > existing_entry.current_version) {
@@ -1205,20 +1241,6 @@ Status TabletServer::SetTserverCatalogMessageList(
   }
 
   // Second, insert the new pair into ysql_db_invalidation_messages_map_[db_oid].
-  auto it2 = ysql_db_invalidation_messages_map_.find(db_oid);
-  if (it2 == ysql_db_invalidation_messages_map_.end()) {
-    // If db_oid does not have an entry yet, bail out. The creation of the entry for
-    // db_oid is managed by heartbeat response.
-    return Status::OK();
-  }
-  const auto cutoff_catalog_version = it2->second.cutoff_catalog_version;
-  if (new_catalog_version <= cutoff_catalog_version) {
-    // This is possible in theory: if the DDL backend that generated the new_catalog_version
-    // has exited after sending out the call to SetTserverCatalogMessageList, and background
-    // task has advanced cutoff_catalog_version forward.
-    return Status::OK();
-  }
-  db_message_lists = &it2->second.queue;
 
   CoarseTimePoint now = CoarseMonoClock::Now();
   // Insert the new pair to the right position. Because db_message_lists is sorted, we can use

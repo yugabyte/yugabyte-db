@@ -2815,10 +2815,20 @@ YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 
 	if (yb_test_delay_set_local_tserver_inval_message_ms > 0)
 		pg_usleep(yb_test_delay_set_local_tserver_inval_message_ms * 1000L);
-	HandleYBStatus(YBCPgSetTserverCatalogMessageList(MyDatabaseId,
-													 is_breaking_change,
-													 new_version,
-													 &message_list));
+	YbcStatus	status = YBCPgSetTserverCatalogMessageList(MyDatabaseId,
+														   is_breaking_change,
+														   new_version,
+														   &message_list);
+	if (YBCStatusIsTryAgain(status))
+	{
+		const char *reason = YBCStatusMessageBegin(status);
+		elog(LOG, "failed to set local tserver catalog message list, "
+				  "waiting for heartbeats instead: %s", reason);
+		YBCFreeStatus(status);
+		YbWaitForSharedCatalogVersionToCatchup(new_version);
+	}
+	else
+		HandleYBStatus(status);
 }
 
 static int
