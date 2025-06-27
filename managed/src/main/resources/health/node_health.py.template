@@ -2317,9 +2317,25 @@ class NodeChecker():
 
     def check_clockbound_sync_status(self):
         e = self._new_entry("Clockbound status check")
+        metric = Metric.from_definition(YB_NODE_CLOCKBOUND_STATUS)
+        # Check clockbound service running
+        if not is_service_running("clockbound.service"):
+            has_errors = True
+            errors = ["Service not running"]
+            metric.add_value(0 if has_errors else 1)
+            return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
+        # Check errors in journal logs
+        journal_cmd = ('journalctl --since "1 minutes ago" -u clockbound --no-pager | '
+                       'grep -iE "ERROR|FATAL" | wc -l')
+        res = self._check_output(journal_cmd).strip()
+        if res.isdigit() and int(res) > 0:
+            has_errors = True
+            errors = ["Errors in journal logs"]
+            metric.add_value(0 if has_errors else 1)
+            return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
+        # Check clockbound clock status
         check_cmd = "clockbound-check"
         output = self._check_output(check_cmd).strip()
-        metric = Metric.from_definition(YB_NODE_CLOCKBOUND_STATUS)
         has_errors = False
         if "Synchronized" not in output:
             has_errors = True
