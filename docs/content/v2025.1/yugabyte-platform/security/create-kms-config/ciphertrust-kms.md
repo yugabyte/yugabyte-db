@@ -68,7 +68,7 @@ To create a KMS configuration, you need either the credenials of a CipherTrust u
 
   For more information on managing users, refer to the [CipherTrust Administration](https://thalesdocs.com/ctp/cm/latest/admin/cm_admin/authentication/users/index.html) documentation.
 
-- If you use refresh tokens to authenticate, you need to manually ensure the keys are rotated when the token expires in the KMS configuration. For information on using authentication tokens, refer to [Authentication tokens](https://thalesdocs.com/ctp/cm/latest/admin/cm_admin/authentication/tokens/index.html#refresh-tokens) in the CipherTrust documentation.
+- If you use refresh tokens to authenticate, when the token expires you need to manually update the KMS configuration with the new token. For information on using authentication tokens, refer to [Authentication tokens](https://thalesdocs.com/ctp/cm/latest/admin/cm_admin/authentication/tokens/index.html#refresh-tokens) in the CipherTrust documentation.
 
 To use a pre-existing CipherTrust key, the key must have the following properties:
 
