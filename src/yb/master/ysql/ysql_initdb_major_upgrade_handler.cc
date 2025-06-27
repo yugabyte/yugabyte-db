@@ -500,6 +500,10 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
 
   RETURN_NOT_OK(PgWrapper::RunPgUpgrade(pg_upgrade_params));
 
+  pg_supervisor.Stop();
+
+  // We only want to clean up the upgrade data if it was successful. Otherwise,
+  // we want to keep the data directory for debugging purposes.
   RETURN_NOT_OK(PgWrapper::CleanupPgData(pg_upgrade_data_dir));
 
   return Status::OK();
