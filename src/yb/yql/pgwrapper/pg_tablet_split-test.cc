@@ -73,6 +73,8 @@ DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_int32(ysql_select_parallelism);
+DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
 DECLARE_bool(TEST_pause_before_full_compaction);
@@ -774,6 +776,47 @@ TEST_F(PgTabletSplitTest, TestMetaCacheLookupsPostSplit) {
   // the partition map cache.
   remote_child = ASSERT_RESULT(LookupTabletByKey(table, ""));
   ASSERT_NE(remote_child->tablet_id(), parent_tablet_id);
+}
+
+class PgManyTabletsSelect : public PgTabletSplitTest {
+ protected:
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_select_parallelism) = 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = 1_MB;
+
+    PgTabletSplitTest::SetUp();
+  }
+};
+
+TEST_F(PgManyTabletsSelect, AnalyzeTableWithLargeRows) {
+  const auto table_name = "big_table";
+  const auto rows = 1000;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(wide TEXT) SPLIT INTO $1 TABLETS",
+      table_name, FLAGS_ysql_select_parallelism));
+
+  for (int i = 0; i < FLAGS_ysql_select_parallelism; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT repeat('a', 1100) FROM generate_series(1, $1)",
+      table_name, rows / FLAGS_ysql_select_parallelism));
+  }
+  // 1100 bytes per row * 1000 rows ~= 1.1 MB total size.
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_fetch_row_limit = 0"));
+
+  const auto explain_str = ASSERT_RESULT(conn.FetchAllAsString(Format(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM $0 WHERE wide = wide", table_name)));
+  LOG(INFO) << "Explain output: " << explain_str;
+
+  rapidjson::Document explain_json;
+  explain_json.Parse(explain_str.c_str());
+
+  // The response is too large to fit in one request (RPC_MAX_SIZE_LIMIT), so it is split into two
+  ASSERT_EQ(explain_json[0]["Storage Read Requests"].GetInt(), 2);
+  ASSERT_EQ(explain_json[0]["Plan"]["Actual Rows"].GetInt(), rows);
 }
 
 class PgPartitioningVersionTest :
