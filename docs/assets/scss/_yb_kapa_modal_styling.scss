@@ -9,6 +9,7 @@
 	padding: 4px 12px 4px 8px;
 	align-items: center;
 	height: 24px;
+	gap: 4px;
 }
 
 .mantine-Image-imageWrapper img {
@@ -69,4 +70,8 @@
 	line-height: 16px;
 	display: flex;
 	gap: 4px
+}
+
+.mantine-SegmentedControl-control:last-child label {
+  padding: 4px 12px;
 }
