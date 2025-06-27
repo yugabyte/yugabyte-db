@@ -1293,8 +1293,7 @@ Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
   // Update Local State.
   launched_ = true;
   local_lock_manager->AcquireObjectLocksAsync(
-      req_, GetClientDeadline(),
-      [shared_this = shared_from_this()](Status s) {
+      req_, GetClientDeadline(), [shared_this = shared_from_this()](Status s) {
         if (s.ok()) {
           s = shared_this->DoPersistRequest();
         }
@@ -1304,7 +1303,7 @@ Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
           return;
         }
         shared_this->LaunchRpcs();
-      }, tserver::WaitForBootstrap::kFalse);
+      });
   return Status::OK();
 }
 
