@@ -242,7 +242,7 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
 - Truncate
 
-  The TRUNCATE command is not supported.
+  The TRUNCATE command is not supported. See {{<issue 23958>}} for supporting it in automatic mode.
   
 - Backups
 
