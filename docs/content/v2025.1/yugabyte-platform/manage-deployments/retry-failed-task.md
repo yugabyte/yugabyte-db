@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-You can view the status and details of tasks performed on your YugabyteDB Anywhere universes including, create universe and more specific ones like edit universe, software upgrades, GFlags upgrades, and more using the universe **Tasks** page. You can also manage these tasks by retrying failed ones or aborting those still in progress.
+You can view the status and details of tasks performed on your YugabyteDB Anywhere universes, including create universe, edit universe, software upgrades, GFlags upgrades, and more using the universe **Tasks** page. You can also manage these tasks by retrying failed ones or aborting those still in progress.
 
 You view task details by navigating to **Universes > Universe-Name > Tasks**, as shown in the following illustration:
 
@@ -21,9 +21,11 @@ You view task details by navigating to **Universes > Universe-Name > Tasks**, as
 For a detailed task view, navigate to the **Tasks** page, and click the task you want to inspect. The detailed task view provides a granular breakdown of how the task executed. From this view, you can:
 
 - Monitor subtask progress: Check the status and progress of the individual subtasks.
-- Access Yugaware Logs: Click the **Yugaware Log** button. This takes you directly to the relevant logs page for in-depth troubleshooting.
+- Access Yugaware Logs: Click **Yugaware Log**. This takes you directly to the relevant logs page for in-depth troubleshooting.
+- Retry failed tasks: Click **Retry**.
+- Abort in progress tasks: Click **Abort**.
 
-### View specific task changes
+## View what was changed
 
 For certain tasks that modify your universe, you'll find dedicated buttons in the detailed view that show you the exact changes:
 
@@ -35,29 +37,27 @@ For certain tasks that modify your universe, you'll find dedicated buttons in th
 
 ## Manage tasks
 
-From the detailed task view, you can also manage tasks that are running such as aborting an in-progress operation or retrying a failed task.
+From the detailed task view, you can also manage tasks that are running, including aborting an in-progress operation or retrying a failed task.
 
 ### Abort a running task
 
 If a task is currently running and supports interruption, you can abort it:
 
-1. From the **Tasks** page, click the **View Details** button for the running task you want to abort.
+1. From the **Tasks** page, click the task to display its details, or click **View Details** in the progress bar for the running task you want to abort.
 
-1. From the detailed task view, click the **Abort** button.
+1. From the detailed task view, click **Abort**.
 
 ### Retry a failed task
 
-In case of most task failures in YugabyteDB Anywhere (YBA) universes (VMs or Kubernetes), you can retry the tasks from the YBA UI or via an [equivalent API](https://api-docs.yugabyte.com/docs/yugabyte-platform/68aaf7829e04f-retry-a-universe-task).
+In case of most task failures in YugabyteDB Anywhere universes (VMs or Kubernetes), you can retry the tasks from YugabyteDB Anywhere or via an [equivalent API](https://api-docs.yugabyte.com/docs/yugabyte-platform/68aaf7829e04f-retry-a-universe-task).
 
 To retry a failed task, do one of the following:
 
-- Navigate to **Universes**, select your universe, and click **Retry task** as per the following illustration:
+- Navigate to your universe, and click **Retry task** as per the following illustration:
 
     ![Retry task](/images/yp/retry-task1.png)
 
-- Navigate to **Tasks**, click **View Details** corresponding to the failed universe task, and click **Retry Task**.
-
-    ![Retry task](/images/yp/retry-task2.png)
+- From the **Tasks** page, click the task to display its details, and click **Retry**.
 
 A retry of the original task reruns the individual steps of the task in an idempotent fashion. This should resolve a failure if it was caused by a temporary issue.
 
