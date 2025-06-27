@@ -4421,9 +4421,10 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
 			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
-				 "updating local catalog version from %" PRIu64 " to %" PRIu64,
+				 "updating local catalog version from %" PRIu64 " to %" PRIu64
+				 " for database %u",
 				 message_lists.num_lists,
-				 local_catalog_version, shared_catalog_version);
+				 local_catalog_version, shared_catalog_version, MyDatabaseId);
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
@@ -4440,10 +4441,11 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		/* must have a reason for doing full catalog cache refresh. */
 		Assert(reason > 0);
 	ereport(enable_inval_messages ? LOG : DEBUG1,
-			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d",
+			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d"
+					" for database %u",
 					message_lists.num_lists, local_catalog_version,
 					shared_catalog_version, catalog_master_version,
-					num_catalog_versions, is_retry, reason)));
+					num_catalog_versions, is_retry, reason, MyDatabaseId)));
 	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
 	YBRefreshCache();
 }
@@ -4986,6 +4988,29 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		const char *retry_err = ("query layer retries aren't supported when "
 								 "executing non-first statement in batch, "
 								 "will be unable to replay earlier commands");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
+	/*
+	 * In READ COMMITTED isolation, if the current statement is a DDL, then we
+	 * don't support retrying it, if transactional DDL is enabled. This is
+	 * because we don't support savepoint rollback for DDLs, so we can't rely
+	 * on that mechanism to perform statement level retries.
+	 */
+	if (IsYBReadCommitted() &&
+		YBIsDdlTransactionBlockEnabled() &&
+		YBIsCurrentStmtDdl())
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "retrying DDL statements are not supported in "
+								 "READ COMMITTED isolation level when "
+								 "transactional DDL is enabled. If object "
+								 "locking is enabled, kConflict and "
+								 "kReadRestart errors won't occur.");
 
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)

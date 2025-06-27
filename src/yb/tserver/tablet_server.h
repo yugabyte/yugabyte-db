@@ -259,16 +259,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) EXCLUDES(lock_);
   void SetYsqlDBCatalogVersionsUnlocked(
-      const tserver::DBCatalogVersionDataPB& db_catalog_version_data)
+      const tserver::DBCatalogVersionDataPB& db_catalog_version_data, uint64_t debug_id)
       REQUIRES(lock_);
   void SetYsqlDBCatalogVersions(const tserver::DBCatalogVersionDataPB& db_catalog_version_data)
       EXCLUDES(lock_) override {
     std::lock_guard l(lock_);
-    SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data);
+    SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data, 0UL /* debug_id */);
   }
   void SetYsqlDBCatalogInvalMessagesUnlocked(
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
-      REQUIRES(lock_);
+      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      uint64_t debug_id) REQUIRES(lock_);
   void SetYsqlDBCatalogVersionsWithInvalMessages(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
@@ -331,7 +331,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status GetTserverCatalogMessageLists(
       const tserver::GetTserverCatalogMessageListsRequestPB& req,
-      tserver::GetTserverCatalogMessageListsResponsePB* resp) const override;
+      tserver::GetTserverCatalogMessageListsResponsePB* resp) const EXCLUDES(lock_) override;
 
   Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
@@ -536,8 +536,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<uint32_t> oid_cache_invalidations_count_ = 0;
 
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
-  uint64_t ysql_catalog_version_ = 0;
-  uint64_t ysql_last_breaking_catalog_version_ = 0;
+  uint64_t ysql_catalog_version_ GUARDED_BY(lock_) = 0;
+  uint64_t ysql_last_breaking_catalog_version_ GUARDED_BY(lock_) = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
 
   // This map represents an extended history of pg_yb_invalidation_messages except message_time
@@ -548,7 +548,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // a SQL null value, but treats an empty string as a noop because an empty string represents
   // that there is no invalidation message. There is nothing in the PG catalog cache that can
   // be invalidated by an empty string.
-  using InvalidationMessagesQueue = std::deque<std::pair<uint64_t, std::optional<std::string>>>;
+  using InvalidationMessagesQueue =
+      std::deque<std::tuple<uint64_t, std::optional<std::string>, CoarseTimePoint>>;
   // If cutoff_catalog_version > 0, we can garbage collect any slots that have catalog version
   // <= cutoff_catalog_version because no backends on this node will ever need those invalidation
   // messages in order to support incremental catalog cache refresh. A backend will need at least
@@ -561,7 +562,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   DbOidToInvalidationMessagesMap ysql_db_invalidation_messages_map_ GUARDED_BY(lock_);
 
   // See same variable comments in CatalogManager.
-  std::optional<bool> catalog_version_table_in_perdb_mode_{std::nullopt};
+  std::optional<bool> catalog_version_table_in_perdb_mode_ GUARDED_BY(lock_) {std::nullopt};
 
   // Fingerprint of the catalog versions map.
   std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;
@@ -569,11 +570,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // If shared memory array db_catalog_versions_ slot is used by a database OID, the
   // corresponding slot in this boolean array is set to true.
   std::unique_ptr<std::array<bool, kYBCMaxNumDbCatalogVersions>>
-    ysql_db_catalog_version_index_used_;
+    ysql_db_catalog_version_index_used_ GUARDED_BY(lock_);
 
   // When searching for a free slot in the shared memory array db_catalog_versions_, we start
   // from this index.
-  int search_starting_index_ = 0;
+  int search_starting_index_ GUARDED_BY(lock_) = 0;
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
@@ -607,20 +608,24 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       const std::map<uint32_t, std::vector<uint64_t>>& db_local_catalog_versions_map,
       std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions,
       std::map<uint32_t, uint64_t> *db_cutoff_catalog_versions);
-  void ClearInvalidationMessageQueueUnlocked(
+  void MaybeClearInvalidationMessageQueueUnlocked(
+      uint32_t db_oid,
       const std::vector<uint64_t>& local_catalog_versions,
+      std::map<uint32_t, std::vector<uint64_t>> *garbage_collected_db_versions,
       InvalidationMessagesInfo *info) REQUIRES(lock_);
   void MergeInvalMessagesIntoQueueUnlocked(
       uint32_t db_oid,
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       int start_index,
-      int end_index) REQUIRES(lock_);
+      int end_index,
+      uint64_t debug_id) REQUIRES(lock_);
   void DoMergeInvalMessagesIntoQueueUnlocked(
       uint32_t db_oid,
       const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       int start_index,
       int end_index,
-      InvalidationMessagesQueue *db_message_lists) REQUIRES(lock_);
+      InvalidationMessagesQueue *db_message_lists,
+      uint64_t debug_id) REQUIRES(lock_);
 
   std::string log_prefix_;
 

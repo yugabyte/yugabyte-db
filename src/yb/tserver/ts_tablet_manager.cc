@@ -80,6 +80,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
@@ -813,6 +815,14 @@ Status TSTabletManager::Init() {
   waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::PollWaitingTxnRegistry, this));
 
+  vector_index_block_cache_ = std::make_shared<hnsw::BlockCache>(
+      *tablet_options_.env,
+      server_->mem_tracker(),
+      server_->metric_entity(),
+      GetTargetBlockCacheSize(kDefaultTserverBlockCacheSizePercentage),
+      GetDbBlockCacheNumShardBits()
+  );
+
   return Status::OK();
 }
 
@@ -1225,14 +1235,11 @@ Status TSTabletManager::ApplyTabletSplit(
     fs_manager_->SetTabletPathByDataPath(tcmeta.tablet_id, data_root_dir);
   }
 
-  bool successfully_completed = false;
-  auto se = ScopeExit([&] {
-    if (!successfully_completed) {
+  CancelableScopeExit unregister_wal_se{[&] {
       for (const auto& tcmeta : tcmetas) {
         UnregisterDataWalDir(table_id, tcmeta.tablet_id, data_root_dir, wal_root_dir);
       }
-    }
-  });
+  }};
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
       fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
@@ -1293,7 +1300,7 @@ Status TSTabletManager::ApplyTabletSplit(
         tcmeta.transition_deleter)));
   }
 
-  successfully_completed = true;
+  unregister_wal_se.Cancel();
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation has been applied";
   ts_split_op_apply_->Increment();
   return Status::OK();
@@ -1375,12 +1382,9 @@ Status TSTabletManager::DoApplyCloneTablet(
       fs_manager_, target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
   fs_manager_->SetTabletPathByDataPath(target_tablet_id, data_root_dir);
 
-  bool successfully_created_target = false;
-  auto se = ScopeExit([&] {
-    if (!successfully_created_target) {
-      UnregisterDataWalDir(target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
-    }
-  });
+  CancelableScopeExit unregister_wal_se{[&] {
+    UnregisterDataWalDir(target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
+  }};
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
       fs_manager_, target_tablet_id, fs_manager_->uuid(), *committed_raft_config,
@@ -1468,7 +1472,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
   RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
       &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result)));
-  successfully_created_target = true;
+  unregister_wal_se.Cancel();
 
   return Status::OK();
 }
@@ -2122,6 +2126,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .vector_index_priority_thread_pool_provider = [this](auto type) {
           return VectorIndexPriorityThreadPool(type);
         },
+        .vector_index_block_cache = vector_index_block_cache_,
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

@@ -266,15 +266,11 @@ bool IsIndexChunkFileName(std::string file_name) {
 } // namespace
 
 Status LogIndex::Init() {
-  DIR* const d = opendir(base_dir_.c_str());
-  auto se = ScopeExit([d] {
-    if (d) {
-      closedir(d);
-    }
-  });
-  if (d == nullptr) {
+  auto* d = opendir(base_dir_.c_str());
+  if (!d) {
     return STATUS_FROM_ERRNO_SPECIAL_EIO_HANDLING(base_dir_, errno);
   }
+  ScopeExit se{[d] { closedir(d); }};
 
   struct dirent* entry;
   // Delete existing index chunk files, because they are not durable (see description for LogIndex

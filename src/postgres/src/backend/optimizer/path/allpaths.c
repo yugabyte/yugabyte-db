@@ -3623,35 +3623,22 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 				Assert(IS_JOIN_REL(ybRel));
 
-				bool		ybIsJoinPath;
-
 				/*
-				 * Could we have a non-join path type here (e.g., an Append)?
-				 * Check that we have a join path.
+				 * Assuming that only join paths exist in the space
+				 * of enumerated joins.
 				 */
 				switch (ybRel->cheapest_total_path->type)
 				{
 					case T_NestPath:
-						ybIsJoinPath = true;
-						break;
 					case T_MergePath:
-						ybIsJoinPath = true;
-						break;
 					case T_HashPath:
-						ybIsJoinPath = true;
 						break;
 					default:
-						ybIsJoinPath = false;
+						ereport(ERROR,
+							(errmsg("expected a join path (%u)",
+									ybRel->cheapest_total_path->ybUniqueId)));
 						break;
 				}
-
-				/*
-				 * Assuming that only join paths exist in the space
-				 * of enumerated joins. If this is found to not be the case,
-				 * the next 2 IFs need to check for a join path, and a non-join
-				 * path, respectively.
-				 */
-				Assert(ybIsJoinPath);
 
 				if (ybRel->cheapest_total_path->ybIsHinted ||
 					ybRel->cheapest_total_path->ybHasHintedUid)

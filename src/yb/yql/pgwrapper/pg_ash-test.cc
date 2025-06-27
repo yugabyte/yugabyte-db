@@ -601,6 +601,13 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
   ASSERT_TRUE(yb_events.empty());
 }
 
+TEST_F(PgAshSingleNode, UniqueWaitEvents) {
+  const auto rows = ASSERT_RESULT(conn_->FetchRows<std::string>(
+    "SELECT wait_event_code  FROM yb_wait_event_desc GROUP BY "
+    " wait_event_code HAVING count(*) > 1"));
+  ASSERT_EQ(rows.empty(), true);
+}
+
 TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
   static constexpr auto kColocatedDB = "cdb";
   static constexpr auto kTableName = "test";

@@ -27,7 +27,7 @@
   {{ $startNow = .Site.Menus.start_now }}
 {{- end -}}
 
-<nav id="nav_bar" class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column td-navbar">
+<nav id="nav_bar" class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column td-navbar"{{- if (and .File .File.Path) }} data-file="{{ .File.Path }}"{{ end -}}>
   <div class="container-fluid top-nav">
     {{- if .Site.Params.ui.navbar_logo -}}
       {{- if .Site.Params.yb.navbar_logo.url -}}

@@ -389,17 +389,24 @@ IsYBSystemColumn(int attrNum)
 }
 
 AttrNumber
-YBGetFirstLowInvalidAttrNumber(bool is_yb_relation)
-{
-	return (is_yb_relation ?
-			YBFirstLowInvalidAttributeNumber :
-			FirstLowInvalidHeapAttributeNumber);
-}
-
-AttrNumber
 YBGetFirstLowInvalidAttributeNumber(Relation relation)
 {
-	return (IsYBRelation(relation) ?
+	/*
+	 * Foreign tables contain a superset of columns that a foreign server is
+	 * allowed to populate. These are usually user defined columns. With
+	 * postgres_fdw (a foreign data wrapper that points to a server that speaks
+	 * the postgres wire protocol), a foreign server may be yet another
+	 * YugabyteDB instance. In this case, the foreign table (param: relation)
+	 * is simply a pointer to a YugabyteDB table on the foreign cluster, which
+	 * of course has a ybctid system column. The ybctid column is used
+	 * extensively by postgres_fdw implicitly to perform updates and deletes.
+	 * It is not very convenient to check what FDW a foreign table belongs to.
+	 * Furthermore, all foreign tables (irrespective of FDW) are currently
+	 * created with a ybctid column. Therefore, assume that that all foreign
+	 * tables have a ybctid column and return the YB-specific offset.
+	 */
+	return (IsYBRelation(relation) ||
+			relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE ?
 			YBFirstLowInvalidAttributeNumber :
 			FirstLowInvalidHeapAttributeNumber);
 }
@@ -1212,8 +1219,10 @@ typedef struct
 	MemoryContext mem_context;
 	YbCatalogModificationAspects catalog_modification_aspects;
 	bool		is_global_ddl;
-	NodeTag		original_node_tag;
-	const char *original_ddl_command_tag;
+	/* set to true if the current statement being executed is a DDL */
+	bool		is_top_level_ddl_active;
+	NodeTag		current_stmt_node_tag;
+	CommandTag	current_stmt_ddl_command_tag;
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
@@ -1221,7 +1230,7 @@ typedef struct
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
 	 *
-	 * Set to false if FLAGS_TEST_yb_ddl_transaction_block_enabled is false.
+	 * Set to false if yb_ddl_transaction_block_enabled is false.
 	 *
 	 * This is also false for online schema changes as they are a class of DDLs
 	 * that split a single DDL into several steps. Each of these steps is a
@@ -1237,7 +1246,7 @@ typedef struct
 	 * block. This is used to invalidate the cache of the altered tables upon
 	 * rollback of the transaction.
 	 *
-	 * When FLAGS_TEST_yb_ddl_transaction_block_enabled is false, this list just
+	 * When yb_ddl_transaction_block_enabled is false, this list just
 	 * contains the tables that have been altered as part of the current ALTER
 	 * TABLE statement. Otherwise, it includes all the tables that have been
 	 * altered in the transaction block i.e. could be from multiple alter table
@@ -1282,7 +1291,7 @@ YBCCommitTransaction()
 
 	/*
 	 * use_regular_txn_block is only true if
-	 * FLAGS_TEST_yb_ddl_transaction_block_enabled is true. So no need to check the
+	 * yb_ddl_transaction_block_enabled is true. So no need to check the
 	 * flag separately.
 	 */
 	if (ddl_transaction_state.use_regular_txn_block)
@@ -2397,6 +2406,21 @@ YBResetDdlState()
 	HandleYBStatus(status);
 }
 
+bool
+YBIsDdlTransactionBlockEnabled()
+{
+	bool enabled = yb_ddl_transaction_block_enabled;
+
+	if (!IsYBReadCommitted())
+		return enabled;
+
+	/*
+	 * For READ COMMITTED isolation, also check if DDL transaction support has
+	 * been explicitly disabled.
+	 */
+	return enabled && !yb_disable_ddl_transaction_block_for_read_committed;
+}
+
 int
 YBGetDdlNestingLevel()
 {
@@ -2404,15 +2428,35 @@ YBGetDdlNestingLevel()
 }
 
 NodeTag
-YBGetDdlOriginalNodeTag()
+YBGetCurrentStmtDdlNodeTag()
 {
-	return ddl_transaction_state.original_node_tag;
+	return ddl_transaction_state.current_stmt_node_tag;
+}
+
+CommandTag
+YBGetCurrentStmtDdlCommandTag()
+{
+	return ddl_transaction_state.current_stmt_ddl_command_tag;
+}
+
+bool
+YBIsCurrentStmtDdl()
+{
+	return ddl_transaction_state.is_top_level_ddl_active;
 }
 
 bool
 YBGetDdlUseRegularTransactionBlock()
 {
 	return ddl_transaction_state.use_regular_txn_block;
+}
+
+void
+YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
+								  CommandTag commandTag)
+{
+	ddl_transaction_state.current_stmt_node_tag = nodeTag;
+	ddl_transaction_state.current_stmt_ddl_command_tag = commandTag;
 }
 
 void
@@ -2424,10 +2468,11 @@ YbSetIsGlobalDDL()
 static bool
 CheckIsAnalyzeDDL()
 {
-	if (ddl_transaction_state.original_node_tag == T_VacuumStmt)
+	if (ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
 	{
-		Assert(ddl_transaction_state.original_ddl_command_tag);
-		return !strcmp(ddl_transaction_state.original_ddl_command_tag, "ANALYZE");
+		CommandTag cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
+		Assert(cmdtag);
+		return cmdtag == CMDTAG_ANALYZE;
 	}
 	return false;
 }
@@ -2480,9 +2525,9 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 }
 
 void
-YBSetDdlState(YbDdlMode mode)
+YBAddDdlTxnState(YbDdlMode mode)
 {
-	Assert(*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
+	Assert(yb_ddl_transaction_block_enabled);
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
@@ -2550,6 +2595,16 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 	}
 	Assert(false);
 	return YB_DDL_MODE_BREAKING_CHANGE;
+}
+
+YbDdlMode
+YBGetCurrentDdlMode()
+{
+	uint64_t combined_aspects =
+		ddl_transaction_state.catalog_modification_aspects.applied |
+		ddl_transaction_state.catalog_modification_aspects.pending;
+
+	return YbCatalogModificationAspectsToDdlMode(combined_aspects);
 }
 
 bool
@@ -2971,6 +3026,17 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
+		/*
+		 * Only log the command_tag_name if transactional DDL is disabled. When
+		 * transactional DDL is enabled, multiple DDLs could contribute to the
+		 * catalog version increment. Hence, it is misleading to only log the
+		 * last DDL as the contributing command.
+		 */
+		const char *command_tag_name =
+			(YBIsDdlTransactionBlockEnabled()) ?
+				NULL :
+				GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
+
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 		/*
 		 * We can skip incrementing catalog version if nmsgs is 0.
@@ -2980,7 +3046,7 @@ YBCommitTransactionContainingDDL()
 			(!enable_inval_msgs || nmsgs > 0) &&
 			YbIncrementMasterCatalogVersionTableEntry(is_breaking_change,
 													  ddl_transaction_state.is_global_ddl,
-													  ddl_transaction_state.original_ddl_command_tag,
+													  command_tag_name,
 													  currentInvalMessages, nmsgs);
 
 		is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
@@ -3164,6 +3230,14 @@ YbShouldIncrementLogicalClientVersion(PlannedStmt *pstmt)
 	return false;
 }
 
+static bool
+YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
+{
+	return context == PROCESS_UTILITY_TOPLEVEL ||
+					 (context == PROCESS_UTILITY_QUERY &&
+					  ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
+}
+
 YbDdlModeOptional
 YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 {
@@ -3200,9 +3274,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	 * SPI), and the current original node tag is T_RefreshMatViewStmt, do
 	 * not update the original node tag.
 	 */
-	if (context == PROCESS_UTILITY_TOPLEVEL ||
-		(context == PROCESS_UTILITY_QUERY &&
-		 ddl_transaction_state.original_node_tag != T_RefreshMatViewStmt))
+	if (YbIsTopLevelOrAtomicStatement(context))
 	{
 		/*
 		 * The node tag from the top-level or atomic process utility must
@@ -3210,16 +3282,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 		 * subcommands can determine whether catalog version should
 		 * be incremented.
 		 */
-		ddl_transaction_state.original_node_tag = node_tag;
-		ddl_transaction_state.original_ddl_command_tag =
-			GetCommandTagName(CreateCommandTag(parsetree));
+		ddl_transaction_state.current_stmt_node_tag = node_tag;
+		ddl_transaction_state.current_stmt_ddl_command_tag =
+			CreateCommandTag(parsetree);
 	}
 	else
 	{
 		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
 			   context == PROCESS_UTILITY_QUERY_NONATOMIC ||
 			   (context == PROCESS_UTILITY_QUERY &&
-				ddl_transaction_state.original_node_tag ==
+				ddl_transaction_state.current_stmt_node_tag ==
 				T_RefreshMatViewStmt));
 
 		is_version_increment = false;
@@ -3476,7 +3548,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
 				 * tables, and do not need to increment catalog version.
 				 */
-				if (ddl_transaction_state.original_node_tag == T_RefreshMatViewStmt)
+				if (ddl_transaction_state.current_stmt_node_tag == T_RefreshMatViewStmt)
 					is_version_increment = false;
 				else
 				{
@@ -3627,7 +3699,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 */
 				if ((context == PROCESS_UTILITY_SUBCOMMAND ||
 					 context == PROCESS_UTILITY_QUERY_NONATOMIC) &&
-					ddl_transaction_state.original_node_tag == T_CreateStmt &&
+					ddl_transaction_state.current_stmt_node_tag == T_CreateStmt &&
 					node_tag == T_AlterTableStmt)
 				{
 					ListCell   *lcmd;
@@ -3706,7 +3778,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			 * Increment catalog version for ANALYZE statement to force catalog cache refresh
 			 * to pick up latest table statistics.
 			 */
-			if (is_ddl && ddl_transaction_state.original_node_tag == T_VacuumStmt)
+			if (is_ddl && ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
 				is_version_increment = true;
 			break;
 
@@ -3793,7 +3865,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 				 * When we have ddl transaction block support, we do not need
 				 * this special case code for YSQL upgrade.
 				 */
-					!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+					!YBIsDdlTransactionBlockEnabled())
 				{
 					/*
 					 * We assume YSQL upgrade only makes simple use of COMMIT
@@ -3814,6 +3886,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 			is_ddl = false;
 			break;
 	}
+
+	if (YbIsTopLevelOrAtomicStatement(context))
+		ddl_transaction_state.is_top_level_ddl_active = is_ddl;
 
 	if (!is_ddl)
 	{
@@ -3867,7 +3942,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 	 * transaction.
 	 * Find a better place to return this.
 	 */
-	if (*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+	if (YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction)
 		aspects |= YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE;
 
@@ -3960,14 +4035,14 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 
 	/*
 	 * Start a separate DDL transaction if
-	 * - FLAGS_TEST_yb_ddl_transaction_block_enabled is false or
+	 * - yb_ddl_transaction_block_enabled is false or
 	 * - If we were asked to by YbGetDdlMode. Currently, only done for
 	 * CREATE INDEX outside of explicit transaction block.
 	 */
 	const bool	use_separate_ddl_transaction =
 		is_ddl &&
 		(ddl_mode.value == YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT ||
-		 !*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled);
+		 !YBIsDdlTransactionBlockEnabled());
 
 	elog(DEBUG3, "is_ddl %d", is_ddl);
 	PG_TRY();
@@ -4012,7 +4087,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
 									 " React with thumbs up to raise its priority.")));
 
-				YBSetDdlState(ddl_mode.value);
+				YBAddDdlTxnState(ddl_mode.value);
 				YbMaybeLockMasterCatalogVersion(ddl_mode.value);
 			}
 
@@ -4037,6 +4112,17 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 
 			if (use_separate_ddl_transaction)
 				YBDecrementDdlNestingLevel();
+
+			/*
+			 * Reset the is_top_level_ddl_active for this statement as it is
+			 * done executing. This field is set in YbGetDdlMode when we detect
+			 * a DDL statement. We need to the unset it after the DDL statement
+			 * is done and cannot wait for it to be unset upon receiving the
+			 * next statement. This is because not all statements (for eg. DMLs)
+			 * call YBTxnDdlProcessUtility and hence YbGetDdlMode.
+			 */
+			if (YbIsTopLevelOrAtomicStatement(context))
+				ddl_transaction_state.is_top_level_ddl_active = false;
 		}
 	}
 	PG_CATCH();
@@ -4077,7 +4163,7 @@ void
 YbInvalidateTableCacheForAlteredTables()
 {
 	if ((YbDdlRollbackEnabled() ||
-		 YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled) &&
+		YBIsDdlTransactionBlockEnabled()) &&
 		ddl_transaction_state.altered_table_ids)
 	{
 		/*
@@ -6482,6 +6568,36 @@ YBCheckServerAccessIsAllowed()
 }
 
 static void
+aggregateRpcMetrics(YbcPgExecStorageMetrics **instr_metrics,
+					const YbcPgExecStorageMetrics *exec_stats_metrics)
+{
+	uint64_t	instr_version = (*instr_metrics) ? (*instr_metrics)->version
+												 : 0;
+
+	if (exec_stats_metrics->version == instr_version)
+		return;
+
+	if (!(*instr_metrics))
+		*instr_metrics = (YbcPgExecStorageMetrics *) palloc0(sizeof(YbcPgExecStorageMetrics));
+
+	(*instr_metrics)->version = exec_stats_metrics->version;
+
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
+		(*instr_metrics)->gauges[i] += exec_stats_metrics->gauges[i];
+
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
+		(*instr_metrics)->counters[i] += exec_stats_metrics->counters[i];
+
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
+	{
+		const YbcPgExecEventMetric *val = &exec_stats_metrics->events[i];
+		YbcPgExecEventMetric *agg = &(*instr_metrics)->events[i];
+		agg->sum += val->sum;
+		agg->count += val->count;
+	}
+}
+
+static void
 aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 {
 	/* User Table stats */
@@ -6506,26 +6622,8 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	instr->write_flushes.count += exec_stats->num_flushes;
 	instr->write_flushes.wait_time += exec_stats->flush_wait;
 
-	if (exec_stats->storage_metrics_version != instr->storage_metrics_version)
-	{
-		instr->storage_metrics_version = exec_stats->storage_metrics_version;
-		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
-		{
-			instr->storage_gauge_metrics[i] += exec_stats->storage_gauge_metrics[i];
-		}
-		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
-		{
-			instr->storage_counter_metrics[i] += exec_stats->storage_counter_metrics[i];
-		}
-		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
-		{
-			YbPgEventMetric *agg = &instr->storage_event_metrics[i];
-			const YbcPgExecEventMetric *val = &exec_stats->storage_event_metrics[i];
-
-			agg->sum += val->sum;
-			agg->count += val->count;
-		}
-	}
+	aggregateRpcMetrics(&instr->read_metrics, &exec_stats->read_metrics);
+	aggregateRpcMetrics(&instr->write_metrics, &exec_stats->write_metrics);
 
 	instr->rows_removed_by_recheck += exec_stats->rows_removed_by_recheck;
 }
@@ -6544,6 +6642,35 @@ getDiffReadWriteStats(const YbcPgExecReadWriteStats *current,
 }
 
 static void
+calculateStorageMetricsDiff(YbcPgExecStorageMetrics *result,
+							const YbcPgExecStorageMetrics *current,
+							const YbcPgExecStorageMetrics *old)
+{
+	if (old->version == current->version)
+		return;
+
+	result->version = current->version;
+
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
+		result->gauges[i] =
+			current->gauges[i] - old->gauges[i];
+
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
+		result->counters[i] =
+			current->counters[i] - old->counters[i];
+
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
+	{
+		YbcPgExecEventMetric *result_metric = &result->events[i];
+		const YbcPgExecEventMetric *current_metric = &current->events[i];
+		const YbcPgExecEventMetric *old_metric = &old->events[i];
+
+		result_metric->sum = current_metric->sum - old_metric->sum;
+		result_metric->count = current_metric->count - old_metric->count;
+	}
+}
+
+static void
 calculateExecStatsDiff(const YbSessionStats *stats, YbcPgExecStats *result)
 {
 	const YbcPgExecStats *current = &stats->current_state.stats;
@@ -6556,29 +6683,8 @@ calculateExecStatsDiff(const YbSessionStats *stats, YbcPgExecStats *result)
 	result->num_flushes = current->num_flushes - old->num_flushes;
 	result->flush_wait = current->flush_wait - old->flush_wait;
 
-	result->storage_metrics_version = current->storage_metrics_version;
-	if (old->storage_metrics_version != current->storage_metrics_version)
-	{
-		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
-		{
-			result->storage_gauge_metrics[i] =
-				current->storage_gauge_metrics[i] - old->storage_gauge_metrics[i];
-		}
-		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
-		{
-			result->storage_counter_metrics[i] =
-				current->storage_counter_metrics[i] - old->storage_counter_metrics[i];
-		}
-		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
-		{
-			YbcPgExecEventMetric *result_metric = &result->storage_event_metrics[i];
-			const YbcPgExecEventMetric *current_metric = &current->storage_event_metrics[i];
-			const YbcPgExecEventMetric *old_metric = &old->storage_event_metrics[i];
-
-			result_metric->sum = current_metric->sum - old_metric->sum;
-			result_metric->count = current_metric->count - old_metric->count;
-		}
-	}
+	calculateStorageMetricsDiff(&result->read_metrics, &current->read_metrics, &old->read_metrics);
+	calculateStorageMetricsDiff(&result->write_metrics, &current->write_metrics, &old->write_metrics);
 
 	result->rows_removed_by_recheck = current->rows_removed_by_recheck - old->rows_removed_by_recheck;
 }
@@ -6600,23 +6706,8 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 
 	if (yb_session_stats.current_state.metrics_capture)
 	{
-		old->storage_metrics_version = current->storage_metrics_version;
-		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
-		{
-			old->storage_gauge_metrics[i] = current->storage_gauge_metrics[i];
-		}
-		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
-		{
-			old->storage_counter_metrics[i] = current->storage_counter_metrics[i];
-		}
-		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
-		{
-			YbcPgExecEventMetric *old_metric = &old->storage_event_metrics[i];
-			const YbcPgExecEventMetric *current_metric = &current->storage_event_metrics[i];
-
-			old_metric->sum = current_metric->sum;
-			old_metric->count = current_metric->count;
-		}
+		memcpy(&old->read_metrics, &current->read_metrics, sizeof(old->read_metrics));
+		memcpy(&old->write_metrics, &current->write_metrics, sizeof(old->write_metrics));
 	}
 
 	old->rows_removed_by_recheck = current->rows_removed_by_recheck;
@@ -6889,6 +6980,12 @@ bool		yb_ysql_conn_mgr_sticky_guc = false;
  */
 bool		yb_ysql_conn_mgr_superuser_existed = false;
 
+/*
+ * `yb_ysql_conn_mgr_sticky_locks` denotes whether any session-scoped locks
+ * are/were held by the current session.
+ */
+bool		yb_ysql_conn_mgr_sticky_locks = false;
+
 bool
 YbIsSuperuserConnSticky()
 {
@@ -6932,7 +7029,9 @@ YbIsStickyConnection(int *change)
 	ysql_conn_mgr_sticky_object_count += *change;
 	*change = 0;				/* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
-	return (ysql_conn_mgr_sticky_object_count > 0) || YbIsConnectionMadeStickyUsingGUC();
+	return (ysql_conn_mgr_sticky_object_count > 0) ||
+			YbIsConnectionMadeStickyUsingGUC() ||
+			yb_ysql_conn_mgr_sticky_locks;
 }
 
 void	  **
@@ -7363,7 +7462,8 @@ bool
 YbIsReadCommittedTxn()
 {
 	return IsYBReadCommitted() &&
-		!(YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet());
+		   !((YBCPgIsDdlMode() && !YBIsDdlTransactionBlockEnabled()) ||
+			 YBCIsInitDbModeEnvVarSet());
 }
 
 static YbOptionalReadPointHandle
@@ -7652,7 +7752,7 @@ static bool
 YbHasDdlMadeChanges()
 {
 	return YBCPgHasWriteOperationsInDdlTxnMode() ||
-		ddl_transaction_state.original_node_tag == T_TransactionStmt ||
+		ddl_transaction_state.current_stmt_node_tag == T_TransactionStmt ||
 		ddl_transaction_state.force_send_inval_messages;
 }
 

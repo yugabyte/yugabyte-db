@@ -350,6 +350,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
       "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, $0) i) t2;", kNumRows));
 
   ASSERT_OK(cluster_->FlushTablets());
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_ms) =
       narrow_cast<int32_t>(ToMilliseconds(kScanAfterSplitDuration + 60s) / kNumRows);
@@ -364,8 +365,6 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
     LOG(INFO) << "Rows count: " << *rows_count_result;
     ASSERT_EQ(kNumRows, *rows_count_result);
   });
-
-  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
 
   // Wait for test tablet scan start. It could be delayed, because FLAGS_TEST_fetch_next_delay_ms
   // impacts master perf as well.

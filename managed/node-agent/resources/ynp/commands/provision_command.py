@@ -147,8 +147,6 @@ class ProvisionCommand(Command):
             module = self._module_registry.get(key)
             if module is None:
                 continue
-            if key == 'InstallConfigureEarlyoom':
-                continue  # Skipping for now.
             if specific_module is not None and key != specific_module:
                 print(f"Skipping {key} because requested specific module {specific_module}")
                 continue

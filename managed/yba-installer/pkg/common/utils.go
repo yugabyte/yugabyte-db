@@ -185,7 +185,7 @@ func ResolveSymlink(source, target string) error {
 	if errors.Is(tErr, fs.ErrNotExist) && errors.Is(sErr, fs.ErrNotExist) {
 		msg := fmt.Sprintf("Neither source %s nor target %s exist", source, target)
 		log.Error(msg)
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 		// Handle only target existing (already resolved)
 	} else if tErr == nil && errors.Is(sErr, fs.ErrNotExist) {
 		log.Debug(fmt.Sprintf("Symlink %s -> %s already resolved", source, target))
@@ -389,6 +389,10 @@ func InitViper() {
 	viper.SetDefault("service_username", DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 
+	viper.SetDefault("prometheus.remoteWrite.enabled", false)
+	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")
+	viper.SetDefault("prometheus.scrapeConfig.yugabyte.scheme", "http")
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))

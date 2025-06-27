@@ -49,7 +49,7 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
-  private static final String DEFAULT_CONFIGURE_USER = "yugabyte";
+  public static final String DEFAULT_CONFIGURE_USER = "yugabyte";
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
 
   @Inject
@@ -167,10 +167,10 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         taskParams().resetMasterState);
     taskParams().resetMasterState = resetMasterState;
     Optional<NodeAgent> optional =
-        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)
-            ? nodeUniverseManager.maybeGetNodeAgent(
-                getUniverse(), nodeDetails, true /*check feature flag*/)
-            : Optional.empty();
+        confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
+            ? Optional.empty()
+            : nodeUniverseManager.maybeGetNodeAgent(
+                getUniverse(), nodeDetails, true /*check feature flag*/);
     taskParams().skipDownloadSoftware = optional.isPresent();
     if (optional.isPresent()
         && (taskParams().type == UpgradeTaskType.GFlags
@@ -185,6 +185,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         getNodeManager()
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
+    String taskSubType = taskParams().getProperty("taskSubType");
     if (optional.isPresent()
         && (taskParams().type == UpgradeTaskType.Everything
             || taskParams().type == UpgradeTaskType.Software)) {
@@ -194,7 +195,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
           nodeAgentRpcPayload.setUpConfigureServerBits(
               universe, nodeDetails, taskParams(), optional.get()),
           DEFAULT_CONFIGURE_USER);
-      String taskSubType = taskParams().getProperty("taskSubType");
       if (taskParams().type == UpgradeTaskType.Software) {
         if (taskSubType == null) {
           throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
@@ -251,6 +251,19 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             nodeAgentRpcPayload.setupSetupCGroupBits(
                 universe, nodeDetails, taskParams(), optional.get()),
             DEFAULT_CONFIGURE_USER);
+      }
+    }
+    if (optional.isPresent() && taskParams().type == UpgradeTaskType.ToggleTls) {
+      if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(taskSubType)
+          || UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(taskSubType)
+          || UpgradeTaskParams.UpgradeTaskSubType.YbcGflagsUpdate.name().equals(taskSubType)) {
+        log.info(
+            "Updating toggle TLS gflags using node agent {} for taskSubType {}",
+            optional.get(),
+            taskSubType);
+        nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
+            optional.get(), universe, nodeDetails, taskParams());
+        return;
       }
     }
 

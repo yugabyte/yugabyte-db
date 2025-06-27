@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -34,6 +36,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -43,6 +46,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -57,6 +61,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final LocalNodeManager localNodeManager;
   private final AuditService auditService;
+  private final NodeAgentRpcPayload nodeAgentRpcPayload;
 
   private static final String PG_UPGRADE_CHECK_LOG_FILE = "pg_upgrade_check.log";
 
@@ -76,13 +81,15 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       NodeManager nodeManager,
       KubernetesManagerFactory kubernetesManagerFactory,
       LocalNodeManager localNodeManager,
-      AuditService auditService) {
+      AuditService auditService,
+      NodeAgentRpcPayload nodeAgentRpcPayload) {
     super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeManager = nodeManager;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.localNodeManager = localNodeManager;
     this.auditService = auditService;
+    this.nodeAgentRpcPayload = nodeAgentRpcPayload;
   }
 
   @Override
@@ -226,10 +233,21 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
           .executeCommandInPodContainer(
               zoneConfig, namespace, podName, "yb-tserver", extractPackageCommand);
     } else {
+      Optional<NodeAgent> optional =
+          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
+              ? Optional.empty()
+              : nodeUniverseManager.maybeGetNodeAgent(universe, node, true /*check feature flag*/);
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParamsToDownloadSoftware(
               universe, node, taskParams().ybSoftwareVersion);
-      nodeManager.nodeCommand(NodeCommandType.Configure, params).processErrors();
+      if (!optional.isPresent()) {
+        nodeManager.nodeCommand(NodeCommandType.Configure, params).processErrors();
+      } else {
+        nodeAgentClient.runDownloadSoftware(
+            optional.get(),
+            nodeAgentRpcPayload.setupDownloadSoftwareBits(universe, node, params, optional.get()),
+            AnsibleConfigureServers.DEFAULT_CONFIGURE_USER);
+      }
     }
   }
 

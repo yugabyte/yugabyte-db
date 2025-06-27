@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -97,6 +98,14 @@ public class NodeAgentRpcPayload {
     this.nodeAgentClient = nodeAgentClient;
     this.nodeUniverseManager = nodeUniverseManager;
     this.nodeManager = nodeManager;
+  }
+
+  private static Map<String, String> filterCertsAndTlsGFlags(
+      AnsibleConfigureServers.Params taskParam, Universe universe, List<String> flags) {
+    Map<String, String> result =
+        new HashMap<>(GFlagsUtil.getCertsAndTlsGFlags(taskParam, universe));
+    result.keySet().retainAll(flags);
+    return result;
   }
 
   private List<String> getMountPoints(NodeTaskParams params) {
@@ -231,7 +240,53 @@ public class NodeAgentRpcPayload {
           customTmpDirectory + "/" + Paths.get(ybServerPackage).getFileName().toString());
     }
     downloadSoftwareInputBuilder.setRemoteTmp(customTmpDirectory);
+    downloadSoftwareInputBuilder.setYbHomeDir(provider.getYbHome());
+    int numReleasesToKeep =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybNumReleasesToKeepDefault);
+    if (!appConfig.getBoolean("yb.cloud.enabled")) {
+      numReleasesToKeep =
+          confGetter.getConfForScope(universe, UniverseConfKeys.ybNumReleasesToKeepCloud);
+    }
+    downloadSoftwareInputBuilder.setNumReleasesToKeep(numReleasesToKeep);
     return downloadSoftwareInputBuilder;
+  }
+
+  private Map<String, String> populateTLSRotateFlags(
+      Universe universe,
+      AnsibleConfigureServers.Params taskParams,
+      String taskSubType,
+      Map<String, String> gflags) {
+    // Populate gFlags based on the rotation round.
+    final List<String> tlsGflagsToReplace =
+        Arrays.asList(
+            GFlagsUtil.USE_NODE_TO_NODE_ENCRYPTION,
+            GFlagsUtil.USE_CLIENT_TO_SERVER_ENCRYPTION,
+            GFlagsUtil.ALLOW_INSECURE_CONNECTIONS,
+            GFlagsUtil.CERTS_DIR,
+            GFlagsUtil.CERTS_FOR_CLIENT_DIR);
+    if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name().equals(taskSubType)) {
+      if (taskParams.nodeToNodeChange > 0) {
+        gflags.putAll(filterCertsAndTlsGFlags(taskParams, universe, tlsGflagsToReplace));
+        gflags.put(GFlagsUtil.ALLOW_INSECURE_CONNECTIONS, "true");
+      } else if (taskParams.nodeToNodeChange < 0) {
+        gflags.put(GFlagsUtil.ALLOW_INSECURE_CONNECTIONS, "true");
+      } else {
+        gflags.putAll(filterCertsAndTlsGFlags(taskParams, universe, tlsGflagsToReplace));
+      }
+    } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name().equals(taskSubType)) {
+      if (taskParams.nodeToNodeChange > 0) {
+        gflags.putAll(
+            filterCertsAndTlsGFlags(
+                taskParams,
+                universe,
+                Collections.singletonList(GFlagsUtil.ALLOW_INSECURE_CONNECTIONS)));
+      } else if (taskParams.nodeToNodeChange < 0) {
+        gflags.putAll(filterCertsAndTlsGFlags(taskParams, universe, tlsGflagsToReplace));
+      } else {
+        log.warn("Round2 upgrade not required when there is no change in node-to-node");
+      }
+    }
+    return gflags;
   }
 
   public InstallSoftwareInput setupInstallSoftwareBits(
@@ -286,7 +341,6 @@ public class NodeAgentRpcPayload {
             downloadSoftwareInputBuilder,
             nodeAgent,
             customTmpDirectory);
-
     return downloadSoftwareInputBuilder.build();
   }
 
@@ -511,6 +565,7 @@ public class NodeAgentRpcPayload {
     if (nodeTaskParams instanceof AnsibleConfigureServers.Params) {
       taskParams = (AnsibleConfigureServers.Params) nodeTaskParams;
     }
+    String taskSubType = taskParams.getProperty("taskSubType");
     UserIntent userIntent = nodeManager.getUserIntentFromParams(universe, taskParams);
     ServerGFlagsInput.Builder builder =
         ServerGFlagsInput.newBuilder()
@@ -552,6 +607,7 @@ public class NodeAgentRpcPayload {
         builder.setResetMasterState(true);
       }
     }
+    gflags = populateTLSRotateFlags(universe, taskParams, taskSubType, gflags);
     ServerGFlagsInput input = builder.putAllGflags(gflags).build();
     log.debug("Setting gflags using node agent: {}", input.getGflagsMap());
     nodeAgentClient.runServerGFlags(nodeAgent, input, DEFAULT_CONFIGURE_USER);

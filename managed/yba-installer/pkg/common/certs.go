@@ -31,6 +31,9 @@ const (
 	serverCertTimeout time.Duration = 4 * 365 * 24 * time.Hour  // about 4 years
 )
 
+// Allow integrationtests.testutils.cert to create its own certs
+var SelfSignedOrg string = "Yugabyte Self-Signed CA"
+
 type ServerCertPaths struct {
 	KeyPath  string
 	CertPath string
@@ -100,7 +103,7 @@ func generateCert(
 		IsCA:         isCA,
 	}
 	if isCA {
-		resultCert.Subject.Organization = []string{"Yugabyte Self-Signed CA"}
+		resultCert.Subject.Organization = []string{SelfSignedOrg}
 		resultCert.BasicConstraintsValid = true
 	} else {
 		hosts := strings.Split(host, ",")

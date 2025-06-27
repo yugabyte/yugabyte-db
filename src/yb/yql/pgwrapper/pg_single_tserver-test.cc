@@ -56,6 +56,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -1248,7 +1249,7 @@ class PgFastBackwardScanOnlyTest
     // A helper to parse some metrics from explain (analyze, dist, debug) output.
     static const auto read_request_pattern = "Storage Read Requests"s;
     auto parse_metrics = [](const std::string& explain_result) {
-      static const auto metric_pattern = "Metric rocksdb_number_db_"s;
+      static const auto metric_pattern = "  Metric rocksdb_number_db_"s;
       std::vector<std::string> metric_lines = strings::Split(
           explain_result, DefaultRowSeparator(),
           [](GStringPiece sp) {
@@ -2011,6 +2012,53 @@ TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
     std::this_thread::sleep_for(1s);
     ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
     std::this_thread::sleep_for(1s);
+  }
+}
+
+TEST_F(PgSingleTServerTest, IterKeyInvalidationDuringBackwardScan) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = false;
+
+  constexpr size_t kNumKeys = 200;
+  const auto kKeys = std::views::iota(0ULL, kNumKeys);
+
+  use_colocation_ = false;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (h INT, r TEXT, v INT, PRIMARY KEY ((h) HASH, r DESC)) "
+      "SPLIT INTO 1 TABLETS"));
+  std::mt19937_64 rng(42);
+  std::vector<std::string> rs(kNumKeys);
+  for (auto i : kKeys) {
+    // Here we need "magic" key length. So with doc hybrid time this key is encoded as 64 bytes.
+    // But if key is written as a part of transaction, i.e. hybrid time has non-zero write time.
+    // Then it is encoded as 65 bytes, which is causing KeyBuffer relocation.
+    rs[i] = RandomHumanReadableString(RandomUniformInt(37, 42), &rng);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '$1', 0)", i, rs[i]));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+  for (auto i : kKeys) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE h = $0 AND r = '$1'", i, rs[i]));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '$1', 1)", i, rs[i]));
+    ASSERT_OK(conn.CommitTransaction());
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (auto i : kKeys) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '{', 0)", i));
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  for (auto i : kKeys) {
+    LOG(INFO) << "Query key: " << i;
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
+        "SELECT h, v FROM test WHERE h = $0 ORDER BY r LIMIT 1", i)));
+    LOG(INFO) << "Rows: " << rows;
+    ASSERT_EQ(rows, Format("$0, 1", i));
   }
 }
 

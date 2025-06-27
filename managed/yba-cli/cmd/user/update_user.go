@@ -111,6 +111,12 @@ var updateUserCmd = &cobra.Command{
 		}
 		r = append(r, updatedUser)
 
+		fetchRoleBindingsForListing(
+			r[0].GetUuid(),
+			authAPI,
+			"Update",
+		)
+
 		userCtx := formatter.Context{
 			Command: "update",
 			Output:  os.Stdout,

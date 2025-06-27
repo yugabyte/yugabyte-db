@@ -1094,8 +1094,8 @@ void AsyncRemoveTableFromTablet::HandleResponse(int attempt) {
     return;
   }
   if (resp_.has_error()) {
-    LOG_WITH_PREFIX(WARNING) << "RemoveTableFromTablet() responded with error code "
-                             << TabletServerErrorPB_Code_Name(resp_.error().code());
+    LOG_WITH_PREFIX(WARNING)
+        << "RemoveTableFromTablet responded with error: " << AsString(resp_.error());
     switch (resp_.error().code()) {
       case TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE: FALLTHROUGH_INTENDED;
       case TabletServerErrorPB::NOT_THE_LEADER:

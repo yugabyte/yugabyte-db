@@ -124,6 +124,11 @@ class MessengerBuilder {
     return *this;
   }
 
+  MessengerBuilder& UseLocalHostOutboundIpBaseInTests() {
+    use_local_host_outbound_ip_base_in_tests_ = true;
+    return *this;
+  }
+
   Result<std::unique_ptr<Messenger>> Build();
 
   CoarseMonoClock::Duration connection_keepalive_time() const {
@@ -168,6 +173,7 @@ class MessengerBuilder {
   size_t workers_limit_;
   int num_connections_to_server_;
   std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
+  bool use_local_host_outbound_ip_base_in_tests_ = false;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -325,7 +331,13 @@ class Messenger : public ProxyContext {
 
   bool TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote);
 
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
   const std::string name_;
+
+  const std::string log_prefix_;
 
   ConnectionContextFactoryPtr connection_context_factory_;
 

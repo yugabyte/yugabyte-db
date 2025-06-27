@@ -119,6 +119,9 @@ DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_wait_timeout_ms, 10000,
   "sending/receiving the packets at the socket in ysql connection manager. It is seen"
   " asan builds requires large wait timeout than other builds");
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 1,
+  "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
+
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
@@ -168,7 +171,7 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     " right away without incurring a master lookup");
 
 DEFINE_RUNTIME_PG_FLAG(
-    bool, yb_force_early_ddl_serialization, true,
+    bool, yb_force_early_ddl_serialization, false,
     "If object locking is off (i.e., enable_object_locking_for_table_locks=false), concurrent "
     "DDLs might face a conflict error on the catalog version increment at the end after doing all "
     "the work. Setting this flag enables a fail-fast strategy by locking the catalog version at "
@@ -180,10 +183,10 @@ DEFINE_RUNTIME_PG_FLAG(
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
+DECLARE_uint32(max_replication_slots);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -2283,12 +2286,14 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .ysql_enable_neghit_full_inheritscache =
         &FLAGS_ysql_enable_neghit_full_inheritscache,
-      .TEST_ysql_yb_ddl_transaction_block_enabled =
-          &FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
       .ysql_max_invalidation_message_queue_size =
-          &FLAGS_ysql_max_invalidation_message_queue_size
+          &FLAGS_ysql_max_invalidation_message_queue_size,
+      .ysql_max_replication_slots = &FLAGS_max_replication_slots,
+      .yb_max_recursion_depth = &FLAGS_yb_max_recursion_depth,
+      .ysql_conn_mgr_stats_interval =
+          &FLAGS_ysql_conn_mgr_stats_interval
   };
   // clang-format on
   return &accessor;
@@ -2399,6 +2404,15 @@ void YBCPgSetThreadLocalYbExpressionVersion(int yb_expr_version) {
   PgSetThreadLocalYbExpressionVersion(yb_expr_version);
 }
 
+YbcPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
+  return PgGetThreadLocalRegexpCache();
+}
+
+YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
+    size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup) {
+  return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
+}
+
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {
   return PgSetThreadLocalJumpBuffer(new_buffer);
 }
@@ -2431,6 +2445,14 @@ void YBCStartSysTablePrefetching(
 
 void YBCStopSysTablePrefetching() {
   pgapi->StopSysTablePrefetching();
+}
+
+void YBCPauseSysTablePrefetching() {
+  pgapi->PauseSysTablePrefetching();
+}
+
+void YBCResumeSysTablePrefetching() {
+  pgapi->ResumeSysTablePrefetching();
 }
 
 bool YBCIsSysTablePrefetchingStarted() {

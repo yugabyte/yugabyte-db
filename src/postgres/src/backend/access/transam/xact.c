@@ -3267,6 +3267,40 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 	MemoryContextSwitchTo(CurTransactionContext);
 }
 
+void
+YbCommitTransactionCommandIntermediate(void)
+{
+	NodeTag yb_node_tag;
+	CommandTag yb_command_tag;
+	bool is_ddl_mode = YBCPgIsDdlMode();
+	YbDdlMode ddl_mode;
+
+	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
+
+	/*
+	 * Remember the NodeTag and the CommandTag of the DDL currently being
+	 * executed so that we can set it into the next transaction.
+	 */
+	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	{
+		yb_node_tag = YBGetCurrentStmtDdlNodeTag();
+		yb_command_tag = YBGetCurrentStmtDdlCommandTag();
+		ddl_mode = YBGetCurrentDdlMode();
+	}
+
+	if (ActiveSnapshotSet())
+		PopActiveSnapshot();
+
+	CommitTransactionCommand();
+	StartTransactionCommand();
+
+	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
+	{
+		YBAddDdlTxnState(ddl_mode);
+		YBSetDdlOriginalNodeAndCommandTag(yb_node_tag, yb_command_tag);
+	}
+}
+
 /*
  *	StartTransactionCommand
  */

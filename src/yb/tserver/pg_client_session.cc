@@ -117,7 +117,7 @@ DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
-DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
 DECLARE_string(ysql_sequence_cache_method);
@@ -1062,6 +1062,10 @@ class TransactionProvider {
     return txn_meta_for_release;
   }
 
+  bool HasNextTxnForPlain() const {
+    return next_plain_ != nullptr;
+  }
+
  private:
   struct BuildStrategy {
     bool is_ddl = false;
@@ -1102,23 +1106,20 @@ class TransactionProvider {
   client::YBTransactionPtr next_plain_;
 };
 
-Result<PgClientSessionOperations> PrepareOperations(
+Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperations(
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
     const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
     bool has_distributed_txn, CoarseTimePoint deadline,
-    TransactionProvider& transaction_provider) {
+    TransactionProvider& transaction_provider,
+    bool is_object_locking_enabled) {
   auto write_time = HybridTime::FromPB(req->write_time());
-  PgClientSessionOperations ops;
+  std::pair<PgClientSessionOperations, VectorIndexQueryPtr> result;
+  auto& ops = result.first;
   ops.reserve(req->ops().size());
   client::YBTablePtr table;
-  bool finished = false;
-  auto se = ScopeExit([&finished, session] {
-    if (!finished) {
-      session->Abort();
-    }
-  });
+  CancelableScopeExit abort_se{[session] { session->Abort(); }};
   const auto read_from_followers = req->options().read_from_followers();
-  bool set_object_locking_txn = false;
+  bool has_write_ops = false;
   for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
       auto& read = *op.mutable_read();
@@ -1135,7 +1136,8 @@ Result<PgClientSessionOperations> PrepareOperations(
             !vector_index_query->IsContinuation(read.index_request().paging_state())) {
           vector_index_query = std::make_shared<VectorIndexQuery>();
         }
-        vector_index_query->Prepare(read, table, ops);
+        result.second = vector_index_query;
+        result.second->Prepare(read, table, ops);
       } else {
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
         if (read_from_followers) {
@@ -1157,22 +1159,20 @@ Result<PgClientSessionOperations> PrepareOperations(
         .op = std::move(write_op),
         .vector_index_read_request = nullptr,
       });
-      set_object_locking_txn = true;
+      has_write_ops = true;
     }
   }
 
   for (const auto& pg_client_session_operation : ops) {
     session->Apply(pg_client_session_operation.op);
   }
-  set_object_locking_txn = set_object_locking_txn && !has_distributed_txn &&
-                           GetAtomicFlag(&FLAGS_enable_object_locking_for_table_locks);
-  if (set_object_locking_txn) {
+  if (has_write_ops && !has_distributed_txn && is_object_locking_enabled) {
     session->SetObjectLockingTxnMeta(
         VERIFY_RESULT(transaction_provider.NextTxnMetaForPlain(deadline)));
   }
 
-  finished = true;
-  return ops;
+  abort_se.Cancel();
+  return result;
 }
 
 struct RpcPerformQuery : public PerformData {
@@ -1715,15 +1715,6 @@ class PgClientSession::Impl {
         subtxn_id, kMinSubTransactionId,
         InvalidArgument,
         Format("Expected sub_transaction_id to be >= $0", kMinSubTransactionId));
-    // TODO(#3109): This check fails during transaction rollback in case of READ COMMITTED
-    // isolation if the txn contains at least one DDL. This happens even if there was no explicit
-    // SAVEPOINT statement. This is because each statement in RC isolation is a sub-transaction.
-    // Hence, this check needs to be revisited in a follow-up revision.
-    RSTATUS_DCHECK(
-        !req.options().ddl_mode() || !req.options().ddl_use_regular_transaction_block(),
-        NotSupported,
-        "Savepoints are not supported with DDL operations in regular transaction blocks."
-        "Track the support at https://github.com/yugabyte/yugabyte-db/issues/26298");
 
     /*
     * Currently we do not support a transaction block that has both DDL and DML statements (we
@@ -1808,6 +1799,7 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     saved_priority_.reset();
     const bool is_ddl = req.has_ddl_mode();
+    const bool is_commit = req.commit();
     const bool ddl_use_regular_transaction_block =
         is_ddl && req.ddl_mode().use_regular_transaction_block();
     const auto kind = GetSessionKindBasedOnDDLOptions(is_ddl, ddl_use_regular_transaction_block);
@@ -1815,10 +1807,19 @@ class PgClientSession::Impl {
     auto& txn = GetSessionData(kind).transaction;
     if (!txn) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "ddl: " << is_ddl
+          << "ddl: " << is_ddl << ", " << (is_commit ? "commit" : "abort")
           << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
           << ", no running distributed transaction";
-      return ReleaseObjectLocksIfNecessary(txn, kind, deadline);
+      if (is_commit || is_ddl || !IsObjectLockingEnabled()) {
+        return ReleaseObjectLocksIfNecessary(txn, kind, deadline);
+      }
+      // When object locking is enabled, prevent re-use of plain docdb txn is case of abort.
+      if (!transaction_provider_.HasNextTxnForPlain()) {
+        return Status::OK();
+      }
+      txn = transaction_provider_.Take<PgClientSessionKind::kPlain>(
+          client::ForceGlobalTransaction::kFalse, deadline).first;
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Consuming re-usable kPlain txn " << txn->id();
     }
 
     client::YBTransactionPtr txn_value;
@@ -1842,7 +1843,6 @@ class PgClientSession::Impl {
   Status Perform(
       PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
       const PgTablesQueryResult& tables) {
-    VLOG(5) << "Perform rpc: " << req->ShortDebugString();
     auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache(), req, resp, context);
     auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context, tables);
     if (!status.ok()) {
@@ -1982,30 +1982,27 @@ class PgClientSession::Impl {
     using pggate::PgDocData;
     using pggate::PgWireDataHeader;
 
-    const int64_t inc_by = req.inc_by();
-    const bool use_sequence_cache = FLAGS_ysql_sequence_cache_method == "server";
-    std::shared_ptr<PgSequenceCache::Entry> entry;
-    // On exit we should notify a waiter for this sequence id that it is available.
-    auto se = ScopeExit([&entry, use_sequence_cache] {
-      if (use_sequence_cache && entry) {
-        entry->NotifyWaiter();
-      }
-    });
-    if (use_sequence_cache) {
+    const auto inc_by = req.inc_by();
+    std::shared_ptr<PgSequenceCache::Entry> cache_entry;
+    if (FLAGS_ysql_sequence_cache_method == "server") {
       const PgObjectId sequence_id(
           narrow_cast<uint32_t>(req.db_oid()), narrow_cast<uint32_t>(req.seq_oid()));
-      entry = VERIFY_RESULT(
+      cache_entry = VERIFY_RESULT(
           sequence_cache().GetWhenAvailable(sequence_id, ToSteady(context->GetClientDeadline())));
+      DCHECK(cache_entry);
+    }
+    // On exit we should notify a waiter for this sequence id that it is available.
+    auto se = cache_entry
+        ? MakeOptionalScopeExit([&cache_entry] { cache_entry->NotifyWaiter(); }) : std::nullopt;
 
-      // If the cache has a value, return immediately.
-      std::optional<int64_t> sequence_value = entry->GetValueIfCached(inc_by);
-      if (sequence_value.has_value()) {
-        // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the
-        // first and last value are the same.
-        resp->set_first_value(*sequence_value);
-        resp->set_last_value(*sequence_value);
-        return Status::OK();
-      }
+    // If the cache has a value, return immediately.
+    if (auto sequence_value = cache_entry ? cache_entry->GetValueIfCached(inc_by) : std::nullopt;
+        sequence_value) {
+      // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the
+      // first and last value are the same.
+      resp->set_first_value(*sequence_value);
+      resp->set_last_value(*sequence_value);
+      return Status::OK();
     }
 
     PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
@@ -2063,9 +2060,9 @@ class PgClientSession::Impl {
     }
     auto last_value = PgDocData::ReadNumber<int64_t>(&cursor);
 
-    if (use_sequence_cache) {
-      entry->SetRange(first_value, last_value);
-      std::optional<int64_t> optional_sequence_value = entry->GetValueIfCached(inc_by);
+    if (cache_entry) {
+      cache_entry->SetRange(first_value, last_value);
+      auto optional_sequence_value = cache_entry->GetValueIfCached(inc_by);
 
       RSTATUS_DCHECK(
           optional_sequence_value.has_value(), InternalError,
@@ -2566,6 +2563,7 @@ class PgClientSession::Impl {
   Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context,
                    const PgTablesQueryResult& tables) {
     auto& options = *data->req.mutable_options();
+    VLOG(5) << "Perform request: " << data->req.ShortDebugString();
     TryUpdateAshWaitState(options);
     if (!(options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed()) &&
         xcluster_context() &&
@@ -2642,10 +2640,10 @@ class PgClientSession::Impl {
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
     data->subtxn_id = options.active_sub_transaction_id();
 
-    data->ops = VERIFY_RESULT(PrepareOperations(
+    std::tie(data->ops, data->vector_index_query) = VERIFY_RESULT(PrepareOperations(
         &data->req, session, &data->sidecars, tables, vector_index_query_data_,
-        transaction ? true : false /* has_distributed_txn */, deadline, transaction_provider_));
-    data->vector_index_query = vector_index_query_data_;
+        data->transaction != nullptr /* has_distributed_txn */, deadline, transaction_provider_,
+        IsObjectLockingEnabled()));
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3021,7 +3019,7 @@ class PgClientSession::Impl {
       use_regular_transaction_block ? PgClientSessionKind::kPlain : PgClientSessionKind::kDdl;
     auto& txn = GetSessionData(kSessionKind).transaction;
     if (use_regular_transaction_block) {
-      RSTATUS_DCHECK(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled, IllegalState,
+      RSTATUS_DCHECK(FLAGS_ysql_yb_ddl_transaction_block_enabled, IllegalState,
                      "Received DDL request in regular transaction block, but DDL transaction block "
                      "support is disabled");
       // Since this DDL is being executed in the regular transaction block, we should never need to
@@ -3305,7 +3303,7 @@ class PgClientSession::Impl {
       return Status::OK();
     }
     if (!txn && kind != PgClientSessionKind::kPlain) {
-      // Release of object locks would be handled by master's ddl verification task.
+      // kDdl might not have a txn when this function is invoked on Shutdown.
       return Status::OK();
     }
 

@@ -76,7 +76,7 @@ export const DBLbState = ({ universeLbState, updateInProgress }: UniverseLbState
             </span>
             {updateInProgress && <LoadingIcon className={clsx(classes.icon)} />}
             {isNonEmptyObject(universeLbState) &&
-              (universeLbState.isEnabled ? (
+              (universeLbState?.isEnabled ? (
                 <span className={clsx(classes.textLight, classes.textGreen, classes.textMargin)}>
                   <i className={'fa fa-check'} />
                 </span>
@@ -86,14 +86,14 @@ export const DBLbState = ({ universeLbState, updateInProgress }: UniverseLbState
                 </span>
               ))}
           </Typography>
-          {universeLbState.isEnabled && (
+          {universeLbState?.isEnabled && (
             <Typography variant="body1" className={classes.loadBalancedText}>
               <span className={classes.textMargin}>
-                {universeLbState.isIdle
+                {universeLbState?.isIdle
                   ? t('universeActions.lbState.loadIsBalanced')
                   : t('universeActions.lbState.loadBalanceInProgress')}
               </span>
-              {universeLbState.isIdle ? (
+              {universeLbState?.isIdle ? (
                 <span className={clsx(classes.textLight, classes.textGreen, classes.textMargin)}>
                   <i className={'fa fa-check'} />
                 </span>

@@ -26,6 +26,7 @@
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 
@@ -39,17 +40,20 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_uint32(ysql_oid_cache_prefetch_size);
-DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 DECLARE_int32(ysql_sequence_cache_minval);
+DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_uint32(ysql_oid_cache_prefetch_size);
 
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
+DECLARE_int32(TEST_xcluster_simulated_lag_ms);
+DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 
 using namespace std::chrono_literals;
 
@@ -82,6 +86,11 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
         bootstrap_required, IllegalState, "Bootstrap should always be required for Automatic mode");
 
     return AddNamespaceToXClusterReplication(source_db_id, target_db_id);
+  }
+
+  Result<HybridTime> GetXClusterSafeTime() {
+    return consumer_client()->GetXClusterSafeTimeForNamespace(
+        VERIFY_RESULT(GetNamespaceId(consumer_client())), master::XClusterSafeTimeFilter::NONE);
   }
 };
 
@@ -135,6 +144,26 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   // Extension should no longer exist on either side.
   ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name));
   ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name2));
+}
+
+// We have a temporary fix for this test that we are applying only in non-debug builds.  We do this
+// so we will catch other tests that need the same permanent fix.  See #27622.
+TEST_F(XClusterDDLReplicationTest, YB_NEVER_DEBUG_TEST(CheckpointMultipleDatabases)) {
+  ASSERT_OK(SetUpClusters());
+
+  std::vector<NamespaceName> namespaces{namespace_name};
+  for (int i = 0; i < base::NumCPUs() * 2; i++) {
+    auto name = Format("db_$0", i);
+    ASSERT_OK(CreateDatabase(&producer_cluster_, name, false));
+    auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(name));
+    ASSERT_OK(conn.Execute("CREATE TABLE tbl2(a int)"));
+    namespaces.push_back(name);
+  }
+
+  google::SetVLOGLevel("catalog_manager", 2);
+  google::SetVLOGLevel("async_rpc_tests", 1);
+  google::SetVLOGLevel("async_rpc_tests_base", 4);
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces));
 }
 
 TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {
@@ -1825,6 +1854,98 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {
 
   SetReplicationDirection(ReplicationDirection::BToA);
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
+using XClusterDDLReplicationFailoverTest = XClusterDDLReplicationSwitchoverTest;
+
+TEST_F(XClusterDDLReplicationFailoverTest, FailoverWithPendingAlterDDLs) {
+  // Set up replication from A to B.
+  ASSERT_OK(SetUpClustersAndCheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  auto& sync_point = *SyncPoint::GetInstance();
+  sync_point.LoadDependency(
+      {{"XClusterDDLQueueHandler::DDLQueryProcessed",
+        "FailoverWithPendingAlterDDLs::WaitForDDLToExecute"}});
+
+  ASSERT_OK(EnablePITROnClusters());
+
+  auto ddl_queue_table_A = ASSERT_RESULT(GetYsqlTable(
+      cluster_A_, namespace_name, xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName));
+  auto ddl_queue_table_B = ASSERT_RESULT(GetYsqlTable(
+      cluster_B_, namespace_name, xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName));
+
+  LOG(INFO) << "===== Create table and write rows";
+  auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+  ASSERT_OK(conn_A.ExecuteFormat("CREATE TABLE my_table (key int primary key)"));
+  ASSERT_OK(
+      conn_A.ExecuteFormat("INSERT INTO my_table SELECT i FROM generate_series(1, 100) as i"));
+  const auto initial_data =
+      ASSERT_RESULT(conn_A.FetchAllAsString("SELECT * FROM my_table ORDER BY key"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  LOG(INFO) << "===== Pausing DDL queue poller";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
+      ddl_queue_table_A.table_id();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  // Wait for inflight GetChanges calls to complete.
+  SleepFor(3s);
+
+  LOG(INFO) << "===== Running some more DDLs to add pending DDLs to the queue";
+  ASSERT_OK(conn_A.ExecuteFormat("ALTER TABLE my_table RENAME TO my_table2"));
+  ASSERT_OK(conn_A.ExecuteFormat("CREATE TYPE my_enum AS ENUM ('a', 'b')"));
+  ASSERT_OK(conn_A.ExecuteFormat("ALTER TABLE my_table2 ADD COLUMN a my_enum DEFAULT 'a'"));
+
+  ASSERT_OK(conn_A.ExecuteFormat(
+      "INSERT INTO my_table2 SELECT i,'b' FROM generate_series(101, 200) as i"));
+
+  LOG(INFO) << "===== Resuming DDL queue poller";
+  sync_point.EnableProcessing();
+  // We will only process the first DDL in the batch (rename) then fail before running the rest.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump) = true;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  TEST_SYNC_POINT("FailoverWithPendingAlterDDLs::WaitForDDLToExecute");
+  sync_point.DisableProcessing();
+
+  const auto initial_safe_time = ASSERT_RESULT(GetXClusterSafeTime());
+  LOG(INFO) << "===== xCluster safe time before pause: " << initial_safe_time;
+
+  LOG(INFO) << "===== Failover: Pausing Replication";
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+
+  const auto safe_time = ASSERT_RESULT(GetXClusterSafeTime());
+  LOG(INFO) << "===== xCluster safe time after pause: " << safe_time;
+  // Safe time must be greater since we would have bumped it up to the commit time of the table
+  // rename before pausing the ddl_queue poller.
+  ASSERT_GT(safe_time, initial_safe_time);
+
+  LOG(INFO) << "===== Failover: Restoring B to xCluster safe time";
+  ASSERT_OK(PerformPITROnConsumerCluster(safe_time));
+
+  LOG(INFO) << "===== Failover: Deleting replication from A to B";
+  ASSERT_OK(DeleteUniverseReplication(
+      kReplicationGroupId, consumer_client(), consumer_cluster_.mini_cluster_.get()));
+  auto namespace_id_B =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*cluster_B_->client_, namespace_name));
+  ASSERT_OK(WaitForInValidSafeTimeOnAllTServers(namespace_id_B));
+
+  LOG(INFO) << "===== Failover: Verifying table on B";
+  auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+
+  ASSERT_NOK_STR_CONTAINS(
+      conn_B.FetchAllAsString("SELECT * FROM my_table ORDER BY key"), "does not exist");
+
+  auto result = ASSERT_RESULT(conn_B.FetchAllAsString("SELECT * FROM my_table2 ORDER BY key"));
+
+  ASSERT_EQ(initial_data, result);
 }
 
 using XClusterDDLReplicationSetupTest = XClusterDDLReplicationSwitchoverTest;

@@ -2150,7 +2150,7 @@ ExecuteTruncateGuts(List *explicit_rels,
 	 * check early and report error if necessary.
 	 */
 	if (IsYugaByteEnabled() &&
-		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled &&
+		YBIsDdlTransactionBlockEnabled() &&
 		IsInTransactionBlock(yb_is_top_level))
 	{
 		foreach(cell, rels)
@@ -4901,7 +4901,7 @@ ATController(AlterTableStmt *parsetree,
 		 * enabled, then the invalidation will be taken care of during the Abort
 		 * of the transaction.
 		 */
-		if (!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+		if (!YBIsDdlTransactionBlockEnabled())
 			YbInvalidateTableCacheForAlteredTables();
 		PG_RE_THROW();
 	}
@@ -4938,7 +4938,7 @@ ATController(AlterTableStmt *parsetree,
 		 * enabled, then the invalidation will be taken care of during the Abort
 		 * of the transaction.
 		 */
-		if (!*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled)
+		if (!YBIsDdlTransactionBlockEnabled())
 			YbInvalidateTableCacheForAlteredTables();
 		PG_RE_THROW();
 	}
@@ -9371,8 +9371,9 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 				 */
 				if (childatt->attinhcount == 1 && !childatt->attislocal)
 				{
+					AlteredTableInfo *yb_childtab = ATGetQueueEntry(wqueue, childrel);
 					/* Time to delete this child column, too */
-					ATExecDropColumn(wqueue, yb_tab, childrel, colName,
+					ATExecDropColumn(wqueue, yb_childtab, childrel, colName,
 									 behavior, true, true,
 									 false, lockmode, addrs);
 				}
@@ -20113,11 +20114,17 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		table_close(rel, NoLock);
 		tab->rel = NULL;
 
-		/* Make updated catalog entry visible */
-		PopActiveSnapshot();
-		CommitTransactionCommand();
+		/* commit the transaction and start new txn with the same ddl state. */
+		if (IsYugaByteEnabled())
+			YbCommitTransactionCommandIntermediate();
+		else
+		{
+			/* Make updated catalog entry visible */
+			PopActiveSnapshot();
+			CommitTransactionCommand();
 
-		StartTransactionCommand();
+			StartTransactionCommand();
+		}
 
 		/*
 		 * Now wait.  This ensures that all queries that were planned

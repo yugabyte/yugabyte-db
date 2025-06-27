@@ -213,7 +213,7 @@ The minimum level to log messages. Values are: `0` (INFO), `1`, `2`, `3` (FATAL)
 {{% tags/wrap %}}
 
 
-Default: `2`
+Default: `3`
 {{% /tags/wrap %}}
 
 Log messages at, or above, this level are copied to `stderr` in addition to log files.
@@ -951,126 +951,6 @@ This value must match on all yb-master and yb-tserver configurations of a Yugaby
 
 {{< /note >}}
 
-##### --post_split_trigger_compaction_pool_max_threads
-
-{{% tags/wrap %}}{{<tags/feature/deprecated>}}{{% /tags/wrap %}}
-
-Deprecated. Use `full_compaction_pool_max_threads`.
-
-##### --post_split_trigger_compaction_pool_max_queue_size
-
-{{% tags/wrap %}}{{<tags/feature/deprecated>}}{{% /tags/wrap %}}
-
-Deprecated. Use `full_compaction_pool_max_queue_size`.
-
-##### --full_compaction_pool_max_threads
-
-{{% tags/wrap %}}
-
-
-Default: `1`
-{{% /tags/wrap %}}
-
-The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
-
-##### --full_compaction_pool_max_queue_size
-
-{{% tags/wrap %}}
-
-
-Default: `200`
-{{% /tags/wrap %}}
-
-The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
-
-##### --auto_compact_check_interval_sec
-
-{{% tags/wrap %}}
-
-
-Default: `60`
-{{% /tags/wrap %}}
-
-The interval at which the full compaction task will check for tablets eligible for compaction (both for the statistics-based full compaction and scheduled full compaction features). `0` indicates that the statistics-based full compactions feature is disabled.
-
-##### --auto_compact_stat_window_seconds
-
-{{% tags/wrap %}}
-
-
-Default: `300`
-{{% /tags/wrap %}}
-
-Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both `auto_compact_percent_obsolete` and `auto_compact_min_obsolete_keys_found` are evaluated over this period of time.
-
-`auto_compact_stat_window_seconds` must be evaluated as a multiple of `auto_compact_check_interval_sec`, and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
-
-##### --auto_compact_percent_obsolete
-
-{{% tags/wrap %}}
-
-
-Default: `99`
-{{% /tags/wrap %}}
-
-The percentage of obsolete keys (over total keys) read over the `auto_compact_stat_window_seconds` window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
-
-For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
-
-##### --auto_compact_min_obsolete_keys_found
-
-{{% tags/wrap %}}
-
-
-Default: `10000`
-{{% /tags/wrap %}}
-
-Minimum number of keys that must be read over the last `auto_compact_stat_window_seconds` to trigger a statistics-based full compaction.
-
-##### --auto_compact_min_wait_between_seconds
-
-{{% tags/wrap %}}
-
-
-Default: `0`
-{{% /tags/wrap %}}
-
-Minimum wait time between statistics-based and scheduled full compactions. To be used if statistics-based compactions are triggering too frequently.
-
-##### --scheduled_full_compaction_frequency_hours
-
-{{% tags/wrap %}}
-
-
-Default: `0`
-{{% /tags/wrap %}}
-
-The frequency with which full compactions should be scheduled on tablets. `0` indicates that the feature is disabled. Recommended value: `720` hours or greater (that is, 30 days).
-
-##### --scheduled_full_compaction_jitter_factor_percentage
-
-{{% tags/wrap %}}
-
-
-Default: `33`
-{{% /tags/wrap %}}
-
-Percentage of `scheduled_full_compaction_frequency_hours` to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
-
-Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
-
-Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
-
-##### --automatic_compaction_extra_priority
-
-{{% tags/wrap %}}
-
-
-Default: `50`
-{{% /tags/wrap %}}
-
-Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
-
 ##### --ysql_colocate_database_by_default
 
 {{% tags/wrap %}}
@@ -1182,7 +1062,7 @@ The rate at which CDC state's checkpoint is updated.
 {{% tags/wrap %}}
 
 
-Default: `1000`
+Default: `1680`
 {{% /tags/wrap %}}
 
 Maximum number of intent records allowed in a single CDC batch.
@@ -1332,7 +1212,7 @@ Default: `4194304` (4MB)
 
 Maximum size (in bytes) of changes from a tablet sent from the CDC service to the gRPC connector when using the gRPC replication protocol.
 
-Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol. 
+Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication) (VWAL) to the Walsender process when using the PostgreSQL replication protocol.
 
 ##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
 
@@ -1373,6 +1253,15 @@ Default: `14400` (4 hours)
 {{% /tags/wrap %}}
 
 Timeout after which it is inferred that a particular tablet is not of interest for CDC. To indicate that a particular tablet is of interest for CDC, it should be polled at least once within this interval of stream / slot creation.
+
+##### --timestamp_syscatalog_history_retention_interval_sec
+
+{{% tags/wrap %}}
+
+Default: `4 * 3600` (4 hours)
+{{% /tags/wrap %}}
+
+The time interval, in seconds, to retain history/older versions of the system catalog.
 
 ### File expiration based on TTL flags
 
@@ -1484,7 +1373,7 @@ Packed Row for YSQL can be used from version 2.16.4 in production environments i
 {{% tags/wrap %}}
 
 
-Default: `false`
+Default: `true`
 {{% /tags/wrap %}}
 
 Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
@@ -1522,7 +1411,7 @@ Packed row size limit for YCQL. The default value is 0 (use block size as limit)
 
 ### Catalog flags
 
-Catalog flags are {{<tags/feature/ea>}}.
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### --ysql_catalog_preload_additional_table_list
 
@@ -1596,9 +1485,11 @@ To minimize performance impact when enabling this flag, set it to 2KB or higher.
 
 These flags are used to determine how the RAM of a node is split between the [TServer](../../../architecture/key-concepts/#tserver) and other processes, including the PostgreSQL processes and a [Master](../../../architecture/key-concepts/#master-server) process if present, as well as how to split memory inside of a TServer between various internal components like the RocksDB block cache.
 
-{{< warning title="Warning" >}}
+{{< warning title="Do not oversubscribe memory" >}}
 
-Ensure you do not _oversubscribe memory_ when changing these flags: make sure the amount of memory reserved for TServer and Master (if present) leaves enough memory on the node for PostgreSQL and any required other processes like monitoring agents, plus the memory needed by the kernel.
+Ensure you do not oversubscribe memory when changing these flags.
+
+When reserving memory for TServer and Master (if present), you must leave enough memory on the node for PostgreSQL, any required other processes like monitoring agents, and the memory needed by the kernel.
 
 {{< /warning >}}
 
@@ -1615,31 +1506,9 @@ Default: `false`
 
 When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
-If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL.  If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
+If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL. If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
-If this flag is true then the memory division flag defaults change to provide much more memory for PostgreSQL; furthermore, they optimize for the node size.
-
-If these defaults are used for both TServer and Master, then a node's available memory is partitioned as follows:
-
-| node RAM GiB (_M_): | _M_ &nbsp;&le;&nbsp; 4 | 4 < _M_ &nbsp;&le;&nbsp; 8 | 8 < _M_ &nbsp;&le;&nbsp; 16 | 16 < _M_ |
-| :--- | ---: | ---: | ---: | ---: |
-| TServer %  | 45% | 48% | 57% | 60% |
-| Master %   | 20% | 15% | 10% | 10% |
-| PostgreSQL % | 25% | 27% | 28% | 27% |
-| other %    | 10% | 10% |  5% |  3% |
-
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for Masters. The PostgreSQL and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and Master take their cut.  There is currently no distinction between PostgreSQL and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the PostgreSQL memory.
-
-For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, Master 10%, PostgreSQL 0%, and other 5%.
-
-The defaults for [flags controlling memory division in a TServer](#flags-controlling-the-split-of-memory-within-a-tserver) when `--use_memory_defaults_optimized_for_ysql` is `true` do not depend on the node size, and are described in the following table:
-
-| flag | default |
-| :--- | :--- |
-| --db_block_cache_size_percentage | 32 |
-| --tablet_overhead_size_percentage | 10 |
-
-The default value of [--db_block_cache_size_percentage](#db_block_cache_size_percentage) here has been picked to avoid oversubscribing memory on the assumption that 10% of memory is reserved for per-tablet overhead.  (Other TServer components and overhead from TCMalloc consume the remaining 58%.)
+For information on how defaults for other memory division flags are set, and how memory is divided among processes when this flag is set, refer to [Memory division defaults](../../configuration/smart-defaults/).
 
 #### Flags controlling the split of memory among processes
 
@@ -1666,6 +1535,8 @@ The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memo
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
 #### Flags controlling the split of memory within a TServer
+
+These settings control the division of memory available to the TServer process.
 
 ##### --db_block_cache_size_bytes
 
@@ -1890,16 +1761,6 @@ Default: `900` (15 minutes)
 
 The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
 
-##### --timestamp_syscatalog_history_retention_interval_sec
-
-{{% tags/wrap %}}
-
-
-Default: `4 * 3600` (4 hours)
-{{% /tags/wrap %}}
-
-The time interval, in seconds, to retain history/older versions of the system catalog.
-
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
 {{% tags/wrap %}}
@@ -1951,6 +1812,115 @@ Default: `-1`
 Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{< /note >}}
+
+
+##### --full_compaction_pool_max_threads
+
+{{% tags/wrap %}}
+
+
+Default: `1`
+{{% /tags/wrap %}}
+
+The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+##### --full_compaction_pool_max_queue_size
+
+{{% tags/wrap %}}
+
+
+Default: `500`
+{{% /tags/wrap %}}
+
+The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+##### --auto_compact_check_interval_sec
+
+{{% tags/wrap %}}
+
+
+Default: `60`
+{{% /tags/wrap %}}
+
+The interval at which the full compaction task will check for tablets eligible for compaction (both for the statistics-based full compaction and scheduled full compaction features). `0` indicates that the statistics-based full compactions feature is disabled.
+
+##### --auto_compact_stat_window_seconds
+
+{{% tags/wrap %}}
+
+
+Default: `300`
+{{% /tags/wrap %}}
+
+Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both [auto_compact_percent_obsolete](#auto-compact-percent-obsolete) and [auto_compact_min_obsolete_keys_found](#auto-compact-min-obsolete-keys-found) are evaluated over this period of time.
+
+`auto_compact_stat_window_seconds` must be evaluated as a multiple of [auto_compact_check_interval_sec](#auto-compact-check-interval-sec), and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
+
+##### --auto_compact_percent_obsolete
+
+{{% tags/wrap %}}
+
+
+Default: `99`
+{{% /tags/wrap %}}
+
+The percentage of obsolete keys (over total keys) read over the [auto_compact_stat_window_seconds](#auto-compact-stat-window-seconds) window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+
+For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
+
+##### --auto_compact_min_obsolete_keys_found
+
+{{% tags/wrap %}}
+
+
+Default: `10000`
+{{% /tags/wrap %}}
+
+Minimum number of keys that must be read over the last [auto_compact_stat_window_seconds](#auto-compact-stat-window-seconds) to trigger a statistics-based full compaction.
+
+##### --auto_compact_min_wait_between_seconds
+
+{{% tags/wrap %}}
+
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Minimum wait time between statistics-based and scheduled full compactions. To be used if statistics-based compactions are triggering too frequently.
+
+##### --scheduled_full_compaction_frequency_hours
+
+{{% tags/wrap %}}
+
+
+Default: `0`
+{{% /tags/wrap %}}
+
+The frequency with which full compactions should be scheduled on tablets. `0` indicates that the feature is disabled. Recommended value: `720` hours or greater (that is, 30 days).
+
+##### --scheduled_full_compaction_jitter_factor_percentage
+
+{{% tags/wrap %}}
+
+
+Default: `33`
+{{% /tags/wrap %}}
+
+Percentage of [scheduled_full_compaction_frequency_hours](#scheduled-full-compaction-frequency-hours) to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
+
+Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
+
+Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
+
+##### --automatic_compaction_extra_priority
+
+{{% tags/wrap %}}
+
+
+Default: `50`
+{{% /tags/wrap %}}
+
+Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
 ### Concurrency control flags
 
@@ -2399,7 +2369,7 @@ Specifies the time zone for displaying and interpreting timestamps.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: Uses the YSQL display format.
+Default: Uses the ISO, MDY display format.
 {{% /tags/wrap %}}
 
 Specifies the display format for data and time values.

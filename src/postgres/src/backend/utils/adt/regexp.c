@@ -110,8 +110,63 @@ typedef struct cached_re_str
 } cached_re_str;
 
 static YB_THREAD_LOCAL int	num_res = 0;		/* # of cached re's */
-static YB_THREAD_LOCAL cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
 
+/*
+ * YB: A single static cache works in Postgres, but is not safe in a
+ * multi-threaded environment when we pushdown regex filters to the tserver.
+ * The following infrastructure is necessary to create a thread local cache
+ * for regex compilation.
+ */
+typedef struct YbReCacheInfo
+{
+	cached_re_str *array;
+} YbReCacheInfo;
+
+static void
+YbFreeRe(cached_re_str *re)
+{
+	pg_regfree(&re->cre_re);
+	free(re->cre_pat);
+}
+
+static void
+YbFreeReCache(YbcPgThreadLocalRegexpCache *cache)
+{
+	Assert(cache && cache->array);
+	cached_re_str *re = cache->array;
+
+	for (cached_re_str *re_end = re + num_res; re != re_end; ++re)
+		YbFreeRe(re);
+}
+
+static YbReCacheInfo
+YbGetReCacheInfo()
+{
+	if (IsMultiThreadedMode())
+	{
+		YbcPgThreadLocalRegexpCache *cache = YBCPgGetThreadLocalRegexpCache();
+
+		if (!cache)
+		{
+			cache = YBCPgInitThreadLocalRegexpCache((sizeof(cached_re_str) *
+													 MAX_CACHED_RES),
+													&YbFreeReCache);
+			Assert(cache && cache->array);
+		}
+
+		return (YbReCacheInfo)
+		{
+			.array = (cached_re_str *) cache->array,
+		};
+	}
+
+	static cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
+
+	return (YbReCacheInfo)
+	{
+			.array = re_array,
+	};
+}
 
 /* Local functions */
 static regexp_matches_ctx *setup_regexp_matches(text *orig_str, text *pattern,
@@ -148,6 +203,7 @@ RE_compile_and_cache(text *text_re, int cflags, Oid collation)
 	int			regcomp_result;
 	cached_re_str re_temp;
 	char		errMsg[100];
+	cached_re_str *re_array = YbGetReCacheInfo().array;
 
 	/*
 	 * Look for a match among previously compiled REs.  Since the data

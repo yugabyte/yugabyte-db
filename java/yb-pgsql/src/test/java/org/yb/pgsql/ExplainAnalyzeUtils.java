@@ -118,7 +118,7 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder estimatedNextsAndPrevs(ValueChecker<Double> checker);
 
     // Roundtrips Estimation
-    PlanCheckerBuilder estimatedTableRoundtrips(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedTableRoundtrips(Checker checker);
     PlanCheckerBuilder estimatedIndexRoundtrips(ValueChecker<Double> checker);
 
     // Estimated Docdb Result Width
@@ -129,7 +129,11 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder workersLaunched(ValueChecker<Long> checker);
 
     // DocDB Metric
-    PlanCheckerBuilder metric(String key, ValueChecker<Double> checker);
+    PlanCheckerBuilder readMetrics(ObjectChecker checker);
+  }
+
+  public interface MetricsCheckerBuilder extends ObjectCheckerBuilder {
+    MetricsCheckerBuilder metric(String key, ValueChecker<Double> checker);
   }
 
   public static final class ExplainAnalyzeOptionsBuilder {

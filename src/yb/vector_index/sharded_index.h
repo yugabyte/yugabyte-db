@@ -30,7 +30,7 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
                      size_t num_shards)
       : indexes_(num_shards), round_robin_counter_(0) {
     for (auto& index : indexes_) {
-      index = factory();
+      index = factory(FactoryMode::kCreate);
     }
   }
 
@@ -111,7 +111,7 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return all_results;
   }
 
-  Status SaveToFile(const std::string& path) override {
+  Result<VectorIndexIfPtr<Vector, DistanceResult>> SaveToFile(const std::string& path) override {
     return STATUS(NotSupported, "Saving to file is not implemented for ShardedVectorIndex");
   }
 

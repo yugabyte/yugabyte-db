@@ -31,6 +31,19 @@
   },
   {
     "resourceType": "UNIVERSE",
+    "action": "DEBUG",
+    "name": "Debug Universe",
+    "description": "Allows user to Debug a universe. User can create support bundles, reset slow queries, run perf advisor, etc.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "UNIVERSE",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "UNIVERSE",
     "action": "UPDATE",
     "name": "Update Universe",
     "description": "Allows user to update a universe.",
@@ -39,6 +52,10 @@
       {
         "resourceType": "UNIVERSE",
         "action": "READ"
+      },
+      {
+        "resourceType": "UNIVERSE",
+        "action": "DEBUG"
       }
     ]
   },

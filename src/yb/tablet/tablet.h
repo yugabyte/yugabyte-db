@@ -527,12 +527,13 @@ class Tablet : public AbstractTablet,
   const scoped_refptr<MetricEntity>& GetTableMetricsEntity() const {
     return table_metrics_entity_;
   }
+
   const scoped_refptr<MetricEntity>& GetTabletMetricsEntity() const {
     return tablet_metrics_entity_;
   }
 
   // Returns a reference to this tablet's memory tracker.
-  const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
+  const MemTrackerPtr& mem_tracker() const { return mem_tracker_; }
 
   TableType table_type() const override { return table_type_; }
 

@@ -144,12 +144,6 @@
  */
 #define UUID_YBCTID_WIDTH 33
 
-/*
- * This multiplier is a temporary way to disincentivize bitmap scans unless they
- * are a very obvious choice.
- */
-#define YB_BITMAP_DISCOURAGE_MODIFIER 3
-
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
 double		random_page_cost = DEFAULT_RANDOM_PAGE_COST;
 double		cpu_tuple_cost = DEFAULT_CPU_TUPLE_COST;
@@ -1163,9 +1157,7 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	run_cost += path->pathtarget->cost.per_tuple * path->rows;
 
 	path->startup_cost = startup_cost;
-	path->total_cost = (IsYugaByteEnabled() && baserel->is_yb_relation)
-		? (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER
-		: startup_cost + run_cost;
+	path->total_cost = startup_cost + run_cost;
 }
 
 /*
@@ -7393,6 +7385,9 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
 	path->yb_plan_info.estimated_num_table_result_pages = num_result_pages;
 	path->yb_plan_info.estimated_num_index_result_pages = 0;
+	path->yb_plan_info.estimated_num_bmscan_nexts_prevs = 0;
+	path->yb_plan_info.estimated_num_bmscan_seeks = 0;
+	path->yb_plan_info.estimated_num_bmscan_result_pages = 0;
 
 	run_cost += (num_seeks * per_seek_cost) + (num_nexts * per_next_cost);
 
@@ -7917,8 +7912,9 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
  *		estimates of caching behavior.
  *
  * In addition to rows, startup_cost and total_cost, yb_cost_index() sets the
- * path's indextotalcost and indexselectivity fields.  These values will be
- * needed if the IndexPath is used in a BitmapIndexScan.
+ * path's indextotalcost and indexselectivity fields, and yb_plan_info's
+ * estimated_num_bmscan_* fields.  These values will be needed if the IndexPath
+ * is used in a BitmapIndexScan.
  *
  * NOTE: path->indexquals must contain only clauses usable as index
  * restrictions.  Any additional quals evaluated as qpquals may reduce the
@@ -7970,8 +7966,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/* TODO: Plug here the actual number of SST files for this index */
 	int			num_sst_files_baserel = YB_DEFAULT_NUM_SST_FILES_PER_TABLE;
 	Cost		per_next_cost;
-	double		num_seeks;
-	double		num_nexts_prevs;
 	QualCost	qual_cost;
 	List	   *base_table_pushed_down_filters = NIL;
 	List	   *base_table_colrefs = NIL;
@@ -8156,8 +8150,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * Estimate number of seeks and only the number of nexts caused by hybrid
 	 * scan.
 	 */
-	num_seeks = 0;
-	num_nexts_prevs = 0;
+	double		num_seeks = 0;
+	double		num_nexts_prevs = 0;
+	double		num_bmscan_seeks = 0;
+	double		num_bmscan_nexts_prevs = 0;
 	if (yb_exist_conditions_on_all_hash_keys_)
 	{
 		yb_estimate_seeks_nexts_in_index_scan(root, index, baserel, baserel_oid,
@@ -8370,16 +8366,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			run_cost += num_docdb_blocks_fetched * yb_random_block_cost;
 	}
 
+	int			index_ybctid_width = yb_get_ybctid_width(baserel_oid, baserel,
+														 index, false);
 	{
 		/*
-		 * In case of bitmap scan, ybctids from multiple indexes will be
-		 * fetched. The results will be combined and tuples in the result
-		 * set will be fetched from the base table. Here we have to estimate
-		 * the cost of fetching the ybctids for this index, and cache it in
-		 * path->indextotalcost for use in bitmap scan planning.
+		 * If this path is used in a BitmapIndexScan, ybctids from multiple
+		 * indexes will be fetched.  The results will be combined and tuples
+		 * in the result set will be fetched from the base table by the
+		 * YbBitmapTableScan.  Here we have to estimate the cost of fetching
+		 * ybctids for this index, and cache it in path->indextotalcost for
+		 * use in bitmap scan planning.
 		 */
-		int			index_ybctid_width = yb_get_ybctid_width(baserel_oid, baserel,
-															 index, false);
 		Cost		index_ybctid_transfer_cost = yb_compute_result_transfer_cost(num_index_tuples_matched,
 																				 index_ybctid_width,
 																				 index_roundtrip_cost,
@@ -8393,11 +8390,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		Cost		index_ybctid_paging_seek_next_costs = (index_ybctid_num_paging_seeks *
 														   index_per_seek_cost);
 
+		num_bmscan_seeks = num_seeks + index_ybctid_num_paging_seeks;
+		num_bmscan_nexts_prevs = num_nexts_prevs;
 		path->indextotalcost =
 			index_roundtrip_cost + startup_cost + run_cost +
 			index_ybctid_transfer_cost + index_ybctid_paging_seek_next_costs;
 		path->indexselectivity = index_selectivity;
 		path->ybctid_width = index_ybctid_width;
+		path->yb_plan_info.estimated_num_bmscan_result_pages = index_ybctid_num_result_pages;
+		path->yb_plan_info.estimated_num_bmscan_nexts_prevs = num_bmscan_nexts_prevs;
+		path->yb_plan_info.estimated_num_bmscan_seeks = num_bmscan_seeks;
 	}
 
 	docdb_result_width = yb_get_docdb_result_width(&path->path, root,
@@ -8451,10 +8453,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			 * In case of secondady index only, we get the ybctid of the base
 			 * table from the index.
 			 */
-			index_result_width = yb_get_ybctid_width(baserel_oid,
-													 baserel,
-													 index,
-													 false);
+			index_result_width = index_ybctid_width;
 		}
 
 		Cost		baserel_ybctid_transfer_cost;
@@ -8933,9 +8932,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	num_seeks = tuples_scanned;
 	num_nexts = (max_nexts_to_avoid_seek + 1) * tuples_scanned;
 
-	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
-	path->yb_plan_info.estimated_num_seeks = num_seeks;
-
 	/*
 	 * Initialize to -1 to indicate the values are not set.
 	 *
@@ -8945,6 +8941,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	 */
 	path->yb_plan_info.estimated_num_table_result_pages = -1;
 	path->yb_plan_info.estimated_num_index_result_pages = -1;
+	path->yb_plan_info.estimated_num_bmscan_result_pages = -1;
 
 	run_cost += (num_seeks * per_seek_cost) + (num_nexts * per_next_cost);
 
@@ -8971,8 +8968,10 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * tuples_fetched;
 
-	path->startup_cost = startup_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
-	path->total_cost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
+	path->startup_cost = startup_cost;
+	path->total_cost = startup_cost + run_cost;
 	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
+	path->yb_plan_info.estimated_num_bmscan_nexts_prevs = 0;
+	path->yb_plan_info.estimated_num_bmscan_seeks = 0;
 }

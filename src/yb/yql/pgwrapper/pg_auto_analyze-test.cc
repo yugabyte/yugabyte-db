@@ -56,6 +56,7 @@ DECLARE_int32(TEST_simulate_analyze_deleted_table_secs);
 DECLARE_string(vmodule);
 DECLARE_int64(TEST_delay_after_table_analyze_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_force_early_ddl_serialization);
 
 using namespace std::chrono_literals;
 
@@ -83,6 +84,8 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 10;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 10;
     google::SetVLOGLevel("pg_auto_analyze_service", 2);
+    // To ensure that auto-analyze doesn't preempt other DDLs.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_force_early_ddl_serialization) = true;
 
     PgMiniTestBase::SetUp();
 
@@ -1037,6 +1040,64 @@ TEST_F(PgAutoAnalyzeTest, DDLsInParallelWithAutoAnalyze) {
 
   thread_holder.Stop();
   thread_holder.JoinAll();
+}
+
+TEST_F(PgAutoAnalyzeTest, AutoAnalyzeAfterTableRewrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const std::string table_name = "test_tbl";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (h1 INT, PRIMARY KEY(h1))", table_name));
+
+  // INSERT multiple rows and truncate table
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 50)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", table_name));
+
+  // Check if auto analyze can analyze the table after table rewrite operation
+  auto table_id = ASSERT_RESULT(GetTableId(table_name));
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+    [&conn, table_name] {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 1000)",
+                                    table_name));
+    },
+    {{table_id, 1000}}));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 1000));
+
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", table_name));
+  table_id = ASSERT_RESULT(GetTableId(table_name));
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+    [&conn, table_name] {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 2000)",
+                                    table_name));
+    },
+    {{table_id, 2000}}));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 2000));
+}
+
+// Make sure auto analyze can run ANALYZEs on mapped relations. This implies auto analyze can query
+// their reltuples entries using OID successfully.
+TEST_F(PgAutoAnalyzeTest, AutoAnalyzeForMappedRelations) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+
+  const std::string pg_class_name = "pg_class";
+  const std::string table_creation_stmt = "CREATE TABLE table_$0 (h1 INT)";
+  auto conn = ASSERT_RESULT(Connect());
+  int initial_count = static_cast<int>(ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+    Format("SELECT count(*) FROM $0", pg_class_name))));
+  const int num1_tables = 5;
+  for (int i = 0; i < num1_tables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, i));
+  }
+  ASSERT_OK(WaitForTableReltuples(conn, pg_class_name, initial_count + num1_tables));
+
+  const int num2_tables = 8;
+  for (int i = 0; i < num2_tables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, num1_tables + i));
+  }
+  ASSERT_OK(WaitForTableReltuples(conn, pg_class_name, initial_count + num1_tables + num2_tables));
 }
 
 } // namespace pgwrapper

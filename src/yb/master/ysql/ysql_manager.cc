@@ -19,7 +19,9 @@
 #include "yb/common/schema_pbutil.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
 #include "yb/tserver/ysql_advisory_lock_table.h"
@@ -243,6 +245,80 @@ Status YsqlManager::ValidateWriteToCatalogTableAllowed(
 
 Status YsqlManager::ValidateTServerVersion(const VersionInfoPB& version) const {
   return ysql_initdb_and_major_upgrade_helper_->ValidateTServerVersion(version);
+}
+
+Result<uint32_t> YsqlManager::GetYqlTableOid(
+    const TableId& table_id, const PersistentTableInfo& table_info) const {
+  RSTATUS_DCHECK_EQ(table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Invalid table type of table $0", table_id));
+
+  // YB_TODO: Review & simplify the code below.
+  //          Or describe in details when & why the simple implementation
+  //              pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id))
+  //          does not work.
+  //          GHI: https://github.com/yugabyte/yugabyte-db/issues/27590
+  const auto relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+  const auto pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
+
+  // If this is a rewritten table, confirm that the relfilenode oid of pg_class entry with
+  // OID pg_table_oid is table_oid.
+  if (pg_table_oid != relfilenode_oid) {
+    const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+    const auto pg_class_relfilenode_oid = VERIFY_RESULT(
+        sys_catalog_.ReadPgClassColumnWithOidValue(
+            database_oid,
+            pg_table_oid,
+            kPgClassRelFileNodeColumnName));
+    if (pg_class_relfilenode_oid != relfilenode_oid) {
+      // This must be an orphaned table from a failed rewrite.
+      return STATUS_FORMAT(NotFound, "$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid);
+    }
+  }
+
+  return pg_table_oid;
+}
+
+Result<std::string> YsqlManager::GetCachedPgSchemaName(
+    const TableId& table_id, const PersistentTableInfo& table_info,
+    PgDbRelNamespaceMap& cache) const {
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+  const auto pg_table_oid = VERIFY_RESULT(GetYqlTableOid(table_id, table_info));
+
+  const PgRelNamespaceData* nsp_data_ptr = FindOrNull(cache, database_oid);
+  if (nsp_data_ptr == nullptr) {
+    PgRelNamespaceData nsp_data;
+    // Load the maps for this PG database.
+    nsp_data.rel_nsp_name_map = VERIFY_RESULT(sys_catalog_.ReadPgNamespaceNspnameMap(
+        database_oid));
+    nsp_data.rel_nsp_oid_map = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValueMap(
+        database_oid, kPgClassRelNamespaceColumnName));
+    nsp_data_ptr = &(cache.insert(std::make_pair(std::move(database_oid),
+                                                 std::move(nsp_data))).first->second);
+  }
+
+  const PgOid* const nsp_oid_ptr =
+      FindOrNull(DCHECK_NOTNULL(nsp_data_ptr)->rel_nsp_oid_map, pg_table_oid);
+  const PgOid relnamespace_oid = (nsp_oid_ptr ? *nsp_oid_ptr : kPgInvalidOid);
+  SCHECK_NE(relnamespace_oid, kPgInvalidOid, NotFound,
+      Format("$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid));
+
+  const std::string* const pg_schema_name_ptr =
+      FindOrNull(nsp_data_ptr->rel_nsp_name_map, relnamespace_oid);
+  // Return NotFound error if this relnamespace OID is not found in the pg_namespace table.
+  SCHECK_NE(pg_schema_name_ptr, nullptr, NotFound,
+      Format("Cannot find nspname for relnamespace oid $0", relnamespace_oid));
+  return *pg_schema_name_ptr;
+}
+
+Result<std::string> YsqlManager::GetPgSchemaName(
+    const TableId& table_id, const PersistentTableInfo& table_info) const {
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+  const auto pg_table_oid = VERIFY_RESULT(GetYqlTableOid(table_id, table_info));
+  const auto relnamespace_oid = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValue(
+      database_oid, pg_table_oid, kPgClassRelNamespaceColumnName));
+  SCHECK_FORMAT(relnamespace_oid != kPgInvalidOid, NotFound,
+      "$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid);
+  return sys_catalog_.ReadPgNamespaceNspname(database_oid, relnamespace_oid);
 }
 
 }  // namespace yb::master

@@ -127,6 +127,8 @@ var createUserCmd = &cobra.Command{
 
 		r = append(r, rCreate)
 
+		fetchRoleBindingsForListing(rCreate.GetUuid(), authAPI, "Create")
+
 		usersCtx := formatter.Context{
 			Command: "create",
 			Output:  os.Stdout,

@@ -737,11 +737,12 @@ public class HealthChecker {
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
       boolean earlyoomEnabled =
           details.additionalServicesStateData != null
-              && details.additionalServicesStateData.getEarlyoomConfig() != null
-              && details.additionalServicesStateData.getEarlyoomConfig().isEnabled();
+              && details.additionalServicesStateData.isEarlyoomEnabled();
       int topKOtherProcesses =
           confGetter.getConfForScope(
               params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesCount);
+      boolean checkTHP =
+          confGetter.getConfForScope(params.universe, UniverseConfKeys.healthCheckTHPSettings);
       int topKMemThresholdPercent =
           confGetter.getConfForScope(
               params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesMemThreshold);
@@ -775,6 +776,7 @@ public class HealthChecker {
                 .setEarlyoomEnabled(earlyoomEnabled)
                 .setTopKOtherProcesses(topKOtherProcesses)
                 .setTopKMemThresholdPercent(topKMemThresholdPercent)
+                .setCheckTHP(checkTHP)
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
           nodeInfo
@@ -1324,6 +1326,7 @@ public class HealthChecker {
 
     private int topKOtherProcesses;
     private int topKMemThresholdPercent;
+    private boolean checkTHP;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
     private boolean earlyoomEnabled = false;
   }

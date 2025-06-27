@@ -111,6 +111,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_yb_ash_sample_size);
+DECLARE_uint32(yb_max_recursion_depth);
 
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -173,6 +174,11 @@ Status IsReplicaIdentityPopulatedInTabletPeers(
 
 class PgMiniTest : public PgMiniTestBase {
  protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_max_recursion_depth) = 1500; // for RegexRecursionLimit
+    PgMiniTestBase::SetUp();
+  }
+
   // Have several threads doing updates and several threads doing large scans in parallel.
   // If deferrable is true, then the scans are in deferrable transactions, so no read restarts are
   // expected.
@@ -2557,6 +2563,23 @@ TEST_F_EX(PgMiniTest, RegexPushdown, PgMiniTestSingleNode) {
         "SELECT COUNT(*) FROM test_texticregex WHERE texticregexeq(t, t)"));
     ASSERT_EQ(count, ('z' - 'a' + 1) * kMaxRepeats);
   }
+}
+
+TEST_F_EX(PgMiniTest, RegexRecursionLimit, PgMiniTestSingleNode) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_regexp_count (c0 text)"));
+  ASSERT_OK(conn.ExecuteFormat(
+    "INSERT INTO test_regexp_count VALUES (repeat('a', 4)), (repeat('a', 10))"));
+
+  auto query = "select count(*) from test_regexp_count where regexp_count(c0, repeat('a', $0)) > 0";
+  auto too_complex_error = "regular expression is too complex";
+
+  ASSERT_NOK_STR_CONTAINS(conn.ExecuteFormat(query, 10000), too_complex_error);
+  ASSERT_NOK_STR_CONTAINS(conn.ExecuteFormat(query, 1800), too_complex_error);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(Format(query, 500))), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(Format(query, 10))), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(Format(query, 3))), 2);
 }
 
 TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {

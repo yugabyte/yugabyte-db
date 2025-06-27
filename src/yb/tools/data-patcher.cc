@@ -375,12 +375,7 @@ Status AddDeltaToSstFile(
       builder->Add(k, v);
     };
 
-    bool done = false;
-    auto se = ScopeExit([&builder, &done] {
-      if (!done) {
-        builder->Abandon();
-      }
-    });
+    CancelableScopeExit abandon_se{[&builder] { builder->Abandon(); }};
 
     DeltaData delta_data(delta, bound_time, max_num_old_wal_entries);
     std::vector<char> buffer(0x100);
@@ -534,7 +529,7 @@ Status AddDeltaToSstFile(
       RETURN_NOT_OK(iterator->status());
 
       if (is_final_pass) {
-        done = true;
+        abandon_se.Cancel();
         RETURN_NOT_OK(builder->Finish());
         num_entries = builder->NumEntries();
         total_file_size = builder->TotalFileSize();

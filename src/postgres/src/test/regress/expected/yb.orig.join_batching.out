@@ -1791,26 +1791,35 @@ DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
 -- GHI #25917
-/*+NestLoop(con pka) SeqScan(con) IndexScan(pka) Leading((pos (con pka))) Set(yb_bnl_batch_size 1024)*/
+create table names (namespace_id int, name_id smallint, name_value text);
+create index on names(name_id);
+create table name_refs (namespace_id int, ref_names smallint[], ref_comment text);
+insert into names values
+  (1, 1, 'One'), (1, 3, 'Three'), (1, 5, 'Five'), (1, 7, 'Seven'), (1, 9, 'Nine'),
+  (10, 1, 'Eleven'), (10, 4, 'Fourteen'), (10, 7, 'Seventeen');
+insert into name_refs values
+  (1, '{3, 7, 1}', 'All found'), (1, '{9, 2}', 'Some found'), (1, '{0, 2, 8, 4}', 'None found'),
+  (10, '{3, 7, 1}', 'Other namespace'), (10, '{}', 'Empty refs');
+/*+ NestLoop(r n) Leading((pos (r n))) IndexScan(n) Set(yb_bnl_batch_size 1024) */
 explain (analyze, costs off, timing off, summary off)
-SELECT 1
-FROM
-pg_catalog.pg_attribute pka,
-pg_catalog.pg_constraint con,
-pg_catalog.generate_series(1, 32) pos(n)
-WHERE pka.attnum = con.confkey[pos.n] and con.connamespace = pka.attnum;
-                                                               QUERY PLAN                                                                
------------------------------------------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join (actual rows=0 loops=1)
-   Join Filter: (con.confkey[pos.n] = pka.attnum)
+SELECT r.ref_comment, n.name_value
+FROM names n, name_refs r, generate_series(1, 32) pos(i)
+WHERE n.namespace_id = r.namespace_id AND n.name_id = r.ref_names[pos.i];
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=6 loops=1)
+   Join Filter: (r.ref_names[pos.i] = n.name_id)
+   Rows Removed by Join Filter: 186
    ->  Function Scan on generate_series pos (actual rows=32 loops=1)
-   ->  Nested Loop (actual rows=0 loops=1)
-         ->  Seq Scan on pg_constraint con (actual rows=2 loops=1)
-         ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute pka (actual rows=0 loops=2)
-               Index Cond: (attnum = ANY (ARRAY[(con.confkey)[pos.n], (con.confkey)[$1], (con.confkey)[$2], ..., (con.confkey)[$1023]]))
-               Storage Filter: (con.connamespace = (attnum)::oid)
-(8 rows)
+   ->  Nested Loop (actual rows=6 loops=1)
+         ->  Seq Scan on name_refs r (actual rows=5 loops=1)
+         ->  Index Scan using names_name_id_idx on names n (actual rows=1 loops=5)
+               Index Cond: (name_id = ANY (ARRAY[(r.ref_names)[pos.i], (r.ref_names)[$1], (r.ref_names)[$2], ..., (r.ref_names)[$1023]]))
+               Storage Filter: (r.namespace_id = namespace_id)
+(9 rows)
 
+drop table names;
+drop table name_refs;
 create table ss1(a int, primary key(a asc));
 insert into ss1 select generate_series(1,5);
 create table ss2(a int, b int, primary key(a asc, b asc));

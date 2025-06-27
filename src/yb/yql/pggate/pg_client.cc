@@ -173,8 +173,13 @@ struct PerformData : public FetchBigDataCallback {
   bool fetching_big_data GUARDED_BY(exchange_mutex) = false;
   rpc::CallData big_call_data GUARDED_BY(exchange_mutex);
 
-  PerformData(ThreadSafeArena* arena, PgsqlOps&& operations_, const PerformCallback& callback_)
-      : operations(std::move(operations_)), resp(arena), callback(callback_) {
+  PgDocMetrics& metrics;
+
+  PerformData(
+      ThreadSafeArena* arena, PgsqlOps&& operations_,
+      const PerformCallback& callback_, PgDocMetrics& metrics_)
+      : operations(std::move(operations_)), resp(arena),
+        callback(callback_), metrics(metrics_) {
   }
 
   void SetupExchange(
@@ -290,6 +295,7 @@ struct PerformData : public FetchBigDataCallback {
       } else {
         operations[i]->set_response(&op_response);
       }
+      metrics.RecordRequestMetrics(op_response.metrics(), operations[i]->is_read());
       ++i;
     }
     return Status::OK();
@@ -756,7 +762,8 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations) {
+  PerformResultFuture PerformAsync(
+      tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
     auto& arena = operations.front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
     AshMetadataToPB(*options);
@@ -769,7 +776,8 @@ class PgClient::Impl : public BigDataFetcher {
       promise->set_value(result);
     };
 
-    auto data = std::make_shared<PerformData>(&arena, std::move(operations), callback);
+    auto data = std::make_shared<PerformData>(
+        &arena, std::move(operations), callback, metrics);
     if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
       constexpr size_t kHeaderSize = sizeof(uint64_t);
       auto& exchange = session_shared_mem_->exchange();
@@ -1770,8 +1778,8 @@ Status PgClient::DeleteDBSequences(int64_t db_oid) {
 }
 
 PerformResultFuture PgClient::PerformAsync(
-    tserver::PgPerformOptionsPB* options, PgsqlOps&& operations) {
-  return impl_->PerformAsync(options, std::move(operations));
+    tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
+  return impl_->PerformAsync(options, std::move(operations), metrics);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {

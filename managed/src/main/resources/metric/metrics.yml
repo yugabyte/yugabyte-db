@@ -1160,9 +1160,15 @@ total_ysql_ycql_ops_per_sec:
   group_by: "service_method"
   panel_group: "Tablet Server"
   layout:
-    title: "Total Ops / Sec (YSQL + YCQL)"
+    title: "Total Ops / Sec"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
 
 total_ysql_ycql_ops_latency:
   metric: "rpc_latency.avg"
@@ -1176,11 +1182,17 @@ total_ysql_ycql_ops_latency:
   group_by: "service_method"
   panel_group: "Tablet Server"
   layout:
-    title: "Average Latency (YSQL + YCQL)"
+    title: "Average Latency"
     xaxis:
       type: "date"
     yaxis:
       ticksuffix: "&nbsp;\u00B5s"
+      yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
 
 tserver_rpcs_per_sec_per_node:
   metric: "rpc_irate_rps"
@@ -2339,13 +2351,22 @@ tserver_rpc_queue_size_master:
       type: "date"
     yaxis:
       alias:
-        "rpcs_in_queue_yb_master_MasterService": "Master RPC"
+        "rpcs_in_queue_yb_master_MasterAdmin": "MasterAdmin"
+        "rpcs_in_queue_yb_master_MasterClient": "MasterClient"
+        "rpcs_in_queue_yb_master_MasterCluster": "MasterCluster"
+        "rpcs_in_queue_yb_master_MasterDcl": "MasterDcL"
+        "rpcs_in_queue_yb_master_MasterDdl": "MasterDdL"
+        "rpcs_in_queue_yb_master_MasterEncryption": "MasterEncryption"
+        "rpcs_in_queue_yb_master_MasterHeartbeat": "MasterHeartbeat"
+        "rpcs_in_queue_yb_master_MasterReplication": "MasterReplication"
         "rpcs_in_queue_yb_master_MasterBackup": "MasterBackup"
         "rpcs_in_queue_yb_consensus_ConsensusService": "Consensus"
         "rpcs_in_queue_yb_server_GenericService": "Generic"
         "rpcs_in_queue_yb_tserver_RemoteBootstrapService": "RemoteBootstrap"
         "rpcs_in_queue_yb_tserver_TabletServerService": "TS RPC"
         "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
+        # Old version of rpcs_in_queue_yb_master_*
+        "rpcs_in_queue_yb_master_MasterService": "Master RPC"
 
 # Note that the aliases here encode all the possible services, because we're using a simple regex
 # for the saved_name filter.

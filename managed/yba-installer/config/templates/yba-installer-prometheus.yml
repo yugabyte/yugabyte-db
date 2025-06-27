@@ -14,6 +14,10 @@
         # external systems (federation, remote storage, Alertmanager).
         external_labels:
           monitor: 'swamper'
+      {{- if eq (yamlPath "prometheus.remoteWrite.enabled") "true" }}
+      remote_write:
+      {{- toYaml "prometheus.remoteWrite.configs" | nindent 6}}
+      {{- end }}
 
       rule_files:
       - '{{ .DataDir }}/swamper_rules/yugaware.ad.*.yml'
@@ -49,12 +53,14 @@
 
       - job_name: 'node-agent'
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        scheme: {{ yamlPath "prometheus.scrapeConfig.node-agent.scheme" }}
         metrics_path: "/metrics"
         file_sd_configs:
           - files:
             - '{{ .DataDir }}/swamper_targets/node-agent.*.json'
 
       - job_name: "node"
+        scheme: {{ yamlPath "prometheus.scrapeConfig.node.scheme" }}
         file_sd_configs:
           - files:
             - '{{ .DataDir }}/swamper_targets/node.*.json'
@@ -143,6 +149,7 @@
           replacement: "$1"
 
       - job_name: "yugabyte"
+        scheme: {{ yamlPath "prometheus.scrapeConfig.yugabyte.scheme" }}
         tls_config:
             insecure_skip_verify: true
         metrics_path: "/prometheus-metrics"
