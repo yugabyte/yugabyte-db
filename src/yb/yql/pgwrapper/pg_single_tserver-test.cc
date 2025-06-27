@@ -36,6 +36,7 @@ DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int32(rocksdb_max_write_buffer_number);
@@ -842,6 +843,51 @@ TEST_F(PgSingleTServerTest, BackwardScanOnIndexDescendingColumn) {
 
   const auto result = ASSERT_RESULT(conn.FetchAllAsString(stmt));
   ASSERT_STR_EQ(ToUpperCase(result), "NULL");
+}
+
+TEST_F(PgSingleTServerTest, IterKeyInvalidationDuringBackwardScan) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  constexpr size_t kNumKeys = 200;
+  const auto kKeys = Range<size_t>(0ULL, kNumKeys);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (h INT, r TEXT, v INT, PRIMARY KEY ((h) HASH, r DESC)) "
+      "SPLIT INTO 1 TABLETS"));
+  std::mt19937_64 rng(42);
+  std::vector<std::string> rs(kNumKeys);
+  for (auto i : kKeys) {
+    // Here we need "magic" key length. So with doc hybrid time this key is encoded as 64 bytes.
+    // But if key is written as a part of transaction, i.e. hybrid time has non-zero write time.
+    // Then it is encoded as 65 bytes, which is causing KeyBuffer relocation.
+    rs[i] = RandomHumanReadableString(RandomUniformInt(37, 42), &rng);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '$1', 0)", i, rs[i]));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+  for (auto i : kKeys) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE h = $0 AND r = '$1'", i, rs[i]));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '$1', 1)", i, rs[i]));
+    ASSERT_OK(conn.CommitTransaction());
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (auto i : kKeys) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '{', 0)", i));
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  for (auto i : kKeys) {
+    LOG(INFO) << "Query key: " << i;
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
+        "SELECT h, v FROM test WHERE h = $0 ORDER BY r LIMIT 1", i)));
+    LOG(INFO) << "Rows: " << rows;
+    ASSERT_EQ(rows, Format("$0, 1", i));
+  }
 }
 
 }  // namespace yb::pgwrapper
