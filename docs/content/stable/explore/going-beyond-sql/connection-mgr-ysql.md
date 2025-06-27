@@ -127,7 +127,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information.                     | ✅ Supported                                   |
 | LDAP Authentication       | Verifies users against a centralized directory service using Lightweight Directory Access Protocol (LDAP).                                                | ✅ Supported                                   |
 | GSS API or Kerberos       | Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords.         | ❌ Not Supported (This feature is not well tested with Yugabyte). |
-| SCRAM-sha256              | A secure password-based authentication that protects credentials using hashing, salting and challenge-response.                                           | ✅ Supported (On 2.27.0.0)                |
+| SCRAM-sha256              | A secure password-based authentication that protects credentials using hashing, salting and challenge-response.                                           | ✅ Supported                 |
 | MD5                       | Any password of a user is by default stored as md5 encryption format in the database.                                                                     | ✅ Supported                                   |
 | Cert                      | Cert based authentication requires the client to provide certificates to the server over TLS connection for authentication.                               | ❌ Not Supported                               |
 
