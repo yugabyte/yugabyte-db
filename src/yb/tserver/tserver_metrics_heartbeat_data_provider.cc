@@ -74,7 +74,7 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
 
   for (const auto& tablet_peer : server().tablet_manager()->GetTabletPeers()) {
     if (tablet_peer) {
-      auto tablet = tablet_peer->shared_tablet();
+      auto tablet = tablet_peer->shared_tablet_maybe_null();
       if (tablet) {
         auto sizes = tablet->GetCurrentVersionSstFilesAllSizes();
         total_file_sizes += sizes.first;

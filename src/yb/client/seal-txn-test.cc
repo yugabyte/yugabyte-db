@@ -61,7 +61,11 @@ void SealTxnTest::TestNumBatches(bool restart) {
     size_t num_non_empty = 0;
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
-      auto txn_participant = peer->tablet()->transaction_participant();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto txn_participant = tablet->transaction_participant();
       if (!txn_participant) {
         continue;
       }

@@ -369,7 +369,7 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
     CreateMetricsEntityIfNotFound create,
     const std::optional<std::string>& slot_name = std::nullopt) {
   const auto tablet_id = tablet_peer.tablet_id();
-  auto tablet = VERIFY_RESULT(tablet_peer.shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer.shared_tablet());
 
   const auto key = GetXreplMetricsKey(stream_id);
   auto metrics_raw = tablet->GetAdditionalMetadata(key);
@@ -632,7 +632,7 @@ class CDCServiceImpl::Impl {
     if (it->mem_tracker) {
       return it->mem_tracker;
     }
-    auto tablet_ptr = tablet_peer->shared_tablet();
+    auto tablet_ptr = tablet_peer->shared_tablet_maybe_null();
     if (!tablet_ptr) {
       return nullptr;
     }
@@ -1796,8 +1796,7 @@ void CDCServiceImpl::GetChanges(
     auto cached_schema_details = impl_->GetOrAddSchema(producer_tablet, req->need_schema_info());
 
     auto tablet_ptr = RPC_VERIFY_RESULT(
-        tablet_peer->shared_tablet_safe(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
-        context);
+        tablet_peer->shared_tablet(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
     auto schema_packing_storages = impl_->GetSchemaPackingStorages(
         tablet_peer->tablet_metadata()->GetAllColocatedTables(), tablet_ptr->table_type());
@@ -4659,7 +4658,7 @@ void CDCServiceImpl::RemoveXReplTabletMetrics(
     LOG_WITH_FUNC(WARNING) << "Received null tablet peer pointer.";
     return;
   }
-  auto tablet = tablet_peer->shared_tablet();
+  auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (tablet == nullptr) {
     LOG_WITH_FUNC(WARNING) << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
     return;
@@ -5034,7 +5033,7 @@ void CDCServiceImpl::GetLagMetrics(
     return;
   }
 
-  auto tablet = tablet_peer->shared_tablet();
+  auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (!tablet) {
     resp->set_lag_metric(-1);
     context.RespondSuccess();

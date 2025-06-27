@@ -288,11 +288,15 @@ bool TransactionTestBase<MiniCluster>::HasTransactions() {
       if (!consensus_result) {
         return true;  // Report true, since we could have transactions on this non ready peer.
       }
-        if (consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER &&
-            peer->tablet()->transaction_coordinator() &&
-            peer->tablet()->transaction_coordinator()->test_count_transactions()) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      if (consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER &&
+          tablet->transaction_coordinator() &&
+          tablet->transaction_coordinator()->test_count_transactions()) {
         return true;
-        }
+      }
     }
   }
   return false;

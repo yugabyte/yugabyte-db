@@ -821,7 +821,8 @@ TEST_F_EX(PgCatalogPerfTest,
 
   {
     // Cutoff catalog history for current time to avoid reading with old read time
-    auto* tablet = cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->tablet();
+    auto tablet = ASSERT_RESULT(
+        cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->shared_tablet());
     auto* policy = tablet->RetentionPolicy();
     auto cutoff = policy->GetRetentionDirective().history_cutoff;
     cutoff.primary_cutoff_ht = HybridTime::FromMicros(

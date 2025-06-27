@@ -289,7 +289,7 @@ Status ReadQuery::DoPerform() {
     // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
     RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
-    abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet_safe());
+    abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet());
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
         req_->tablet_id(), std::move(peer_tablet.tablet_peer),

@@ -130,7 +130,11 @@ class PgSingleTServerTest : public PgMiniTestBase {
 
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : peers) {
-      auto tp = peer->tablet()->transaction_participant();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto tp = tablet->transaction_participant();
       if (tp) {
         const auto count_intents_result = tp->TEST_CountIntents();
         const auto count_intents =
@@ -1883,7 +1887,11 @@ TEST_F(PgSingleTServerTest, BootstrapReplayTruncate) {
   // Rollover and flush the WAL, so that the truncate will be replayed during next restart.
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    if (peer->tablet()->transaction_participant()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    if (tablet->transaction_participant()) {
       ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
     }
   }

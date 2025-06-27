@@ -85,7 +85,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     return WaitFor([this]() -> Result<bool> {
       auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
       for (const auto& peer : peers) {
-        auto db = peer->tablet()->regular_db();
+        auto db = VERIFY_RESULT(peer->shared_tablet())->regular_db();
         if (!db) {
           continue;
         }
@@ -212,14 +212,18 @@ TEST_F(BackupTxnTest, PointInTimeRestoreBeforeHistoryCutoff) {
     for (const auto& peer : peers) {
       // History cutoff is not moved for tablets w/o writes after current history cutoff.
       // So just ignore such tablets.
-      if (peer->tablet()->mvcc_manager()->LastReplicatedHybridTime() < hybrid_time) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      if (tablet->mvcc_manager()->LastReplicatedHybridTime() < hybrid_time) {
         continue;
       }
       // Check that history cutoff is after hybrid_time.
       auto read_operation = tablet::ScopedReadOperation::Create(
-          peer->tablet(), tablet::RequireLease::kTrue, ReadHybridTime::SingleTime(hybrid_time));
+          tablet.get(), tablet::RequireLease::kTrue, ReadHybridTime::SingleTime(hybrid_time));
       if (read_operation.ok()) {
-        auto policy = peer->tablet()->RetentionPolicy();
+        auto policy = tablet->RetentionPolicy();
         LOG(INFO) << "Pending history cutoff, tablet: " << peer->tablet_id()
                   << ", current: "
                   << policy->GetRetentionDirective().history_cutoff
@@ -264,7 +268,8 @@ TEST_F(BackupTxnTest, Persistence) {
   LOG(INFO) << "Flush";
 
   auto tablet_peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
-  ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "Second restart";
 
@@ -284,7 +289,8 @@ void BackupTxnTest::TestDeleteSnapshot(bool compact_and_restart) {
   ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
   if (compact_and_restart) {
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-      ASSERT_OK(cluster_->mini_master(i)->tablet_peer()->tablet()->ForceManualRocksDBCompact());
+      ASSERT_OK(ASSERT_RESULT(cluster_->mini_master(i)->tablet_peer()->shared_tablet())
+                    ->ForceManualRocksDBCompact());
     }
     ASSERT_OK(cluster_->RestartSync());
   }
@@ -447,7 +453,8 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
 
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     auto tablet_peer = cluster_->mini_master(i)->tablet_peer();
-    ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
+    auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   }
 
   ShutdownAllTServers(cluster_.get());

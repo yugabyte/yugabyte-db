@@ -317,7 +317,7 @@ Status SyncReplicateChangeMetadataOperation(
     TabletPeer* tablet_peer,
     int64_t term) {
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      VERIFY_RESULT(tablet_peer->shared_tablet_safe()), tablet_peer->log());
+      VERIFY_RESULT(tablet_peer->shared_tablet()), tablet_peer->log());
   operation->AllocateRequest()->CopyFrom(*req);
 
   Synchronizer synchronizer;

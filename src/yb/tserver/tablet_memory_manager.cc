@@ -351,7 +351,7 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
     auto flush_tick = rocksdb::FlushTick();
     tablet::TabletPeerPtr peer_to_flush = TabletToFlush();
     if (peer_to_flush) {
-      auto tablet_to_flush = peer_to_flush->shared_tablet();
+      auto tablet_to_flush = peer_to_flush->shared_tablet_maybe_null();
       // TODO(bojanserafimov): If peer_to_flush flushes now because of other reasons,
       // we will schedule a second flush, which will unnecessarily stall writes for a short time.
       // This will not happen often, but should be fixed.
@@ -384,7 +384,7 @@ tablet::TabletPeerPtr TabletMemoryManager::TabletToFlush() {
   HybridTime oldest_write_in_memstores = HybridTime::kMax;
   tablet::TabletPeerPtr tablet_to_flush;
   for (const tablet::TabletPeerPtr& peer : peers_fn_()) {
-    const auto tablet = peer->shared_tablet();
+    const auto tablet = peer->shared_tablet_maybe_null();
     if (tablet) {
       const auto ht = tablet->OldestMutableMemtableWriteHybridTime();
       if (ht.ok()) {

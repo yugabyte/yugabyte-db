@@ -68,8 +68,12 @@ class PgReadTimeTest : public PgMiniTestBase {
     for (const auto& mini_tablet_server : cluster_->mini_tablet_servers()) {
       auto peers = mini_tablet_server->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
-        auto counter = METRIC_picked_read_time_on_docdb.Instantiate(
-            peer->tablet()->GetTabletMetricsEntity());
+        auto tablet = peer->shared_tablet_maybe_null();
+        if (!tablet) {
+          continue;
+        }
+        auto counter =
+            METRIC_picked_read_time_on_docdb.Instantiate(tablet->GetTabletMetricsEntity());
         num_pick_read_time_on_docdb += counter->value();
       }
     }

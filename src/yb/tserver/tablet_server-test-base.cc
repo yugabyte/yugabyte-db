@@ -206,7 +206,7 @@ void TabletServerTestBase::ResetClientProxies() {
 
 // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
 void TabletServerTestBase::InsertTestRowsDirect(int32_t start_row, int32_t num_rows) {
-  tablet::LocalTabletWriter writer(CHECK_RESULT(tablet_peer_->shared_tablet_safe()));
+  tablet::LocalTabletWriter writer(CHECK_RESULT(tablet_peer_->shared_tablet()));
   QLWriteRequestPB req;
   for (int i = 0; i < num_rows; i++) {
     BuildTestRow(start_row + i, &req);
@@ -365,7 +365,8 @@ void TabletServerTestBase::VerifyRows(
   if (!tablet_peer) {
     tablet_peer = tablet_peer_;
   }
-  auto iter = (*tablet_peer)->tablet()->NewRowIterator(projection);
+  auto tablet = ASSERT_RESULT((*tablet_peer)->shared_tablet());
+  auto iter = tablet->NewRowIterator(projection);
   ASSERT_OK(iter);
 
   int count = 0;
