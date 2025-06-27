@@ -89,7 +89,7 @@ User=prometheus
 Group={{ yb_user }}
 
 ExecStart=/opt/prometheus/$node_exported_package_name/node_exporter  \
---web.listen-address=:9300 \
+--web.listen-address=:{{ node_exporter_port }} \
 --collector.textfile.directory={{ yb_home_dir }}/metrics
 EOL
 

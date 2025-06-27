@@ -4,7 +4,7 @@ ynp:
   # NTP servers for the node
   chrony_servers: ["0.pool.ntp.org", "1.pool.ntp.org"]
   yb_user_id: 994
-
+  no_proxy_list: []
   # Indicates if the node is in an air-gapped environment (no internet access).
   # Set to 'true' if the node cannot access external networks.
   # Airgapped
@@ -16,6 +16,17 @@ ynp:
   # Install node_agent as part of provisioning.
   is_install_node_agent: true
   configure_thp_settings: true
+
+  # node_agent_port defaults to 9070
+  # needs to also be updated in YBA using runtime config.
+  # Validate all nodes are consistent for this port
+  node_agent_port: 9070
+
+  # node_exporter_port defaults to 9300
+  # needs to also be updated in YBA during universe port mapping as well.
+  # Validate all nodes are consistent for this port
+  node_exporter_port: 9300
+
 yba:
   url: <url>
   customer_uuid: <customer_uuid>

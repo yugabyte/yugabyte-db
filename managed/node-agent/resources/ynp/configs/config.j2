@@ -32,6 +32,13 @@ tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 {% if ynp_config['yba'].instance_type.mount_points %}
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
+# empty is null in ini, hence that syntax
+{% if not ynp_config['ynp'].no_proxy_list %}
+no_proxy =
+{% else %}
+no_proxy = "{{ ynp_config['ynp'].no_proxy_list| join(', ') }}"
+{% endif %}
+node_exporter_port = {{ ynp_config['ynp'].node_exporter_port|default(9300) }}
 
 [Preprovision]
 
@@ -85,5 +92,6 @@ ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
 {{ render_section(ynp_config['yba']) -}}
 node_ip = {{ ynp_config['yba'].node_external_fqdn }}
 bind_ip = {{ ynp_config['ynp'].node_ip }}
+node_agent_port = {{ ynp_config['ynp'].node_agent_port|default(9070) }}
 
 [RebootNode]
