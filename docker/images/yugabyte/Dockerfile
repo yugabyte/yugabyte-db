@@ -75,24 +75,6 @@ RUN set -x; \
   && rm -rf ~/.cache \
   && yum clean all && rm -rf /var/cache/yum
 
-# Install required python packages first
-# this should leave us with python3.8 as the default python3
-# We need to explicitly remove the old pip wheel file to avoid tripping vulnerability scans
-RUN set -x ; \
-   $yum_install  \
-      python38-devel \
-      python38-pip \
-      python38-psutil \
-    && pip3 install --upgrade pip \
-    && pip3 install --upgrade lxml \
-    && pip3 install --upgrade s3cmd \
-    && if [[ "$(uname -m)" == "x86_64" ]]; then \
-      pip3 install --upgrade psutil; \
-    fi \
-    && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
-    && rm -rf ~/.cache \
-    && yum clean all && rm -rf /var/cache/yum
-
 # Install required packages that are universal across RHEL versions
 RUN $yum_install -y \
       bind-utils \
@@ -111,11 +93,28 @@ RUN $yum_install -y \
       redhat-rpm-config \
       rsync \
       procps \
+      python38-devel \
+      python38-pip \
+      python38-psutil \
       sysstat \
       tcpdump \
       which \
+    && if [[ "$(uname -m)" == "aarch64" ]]; then \
+      $yum_install \
+        gcc \
+        libxml2-devel \
+        libxslt-devel; \
+    fi \
     && alternatives --set python3 /usr/bin/python3.8 \
     && alternatives --set python /usr/bin/python3.8 \
+    && pip3 install --upgrade pip \
+    && pip3 install --upgrade lxml \
+    && pip3 install --upgrade s3cmd \
+    && if [[ "$(uname -m)" == "x86_64" ]]; then \
+      pip3 install --upgrade psutil; \
+    fi \
+    && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
+    && rm -rf ~/.cache \
     && yum clean all && rm -rf /var/cache/yum
 
 RUN set -x; \
