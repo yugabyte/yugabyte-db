@@ -716,7 +716,17 @@ A `delete` change event record provides a consumer with the information it needs
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
 
-{{< tip title="Suppressing tombstone events" >}}
+If the downstream consumer from the topic relies on tombstone events to process deletions and uses the [YBExtractNewRecordState transformer](../transformers/#ybextractnewrecordstate) (SMT), it is recommended to set the `delete.to.tombstone` SMT configuration property to `true`. This ensures that the connector converts the delete records to tombstone events and drops the tombstone events.
+
+To set the property, follow the SMT configuration conventions. For example:
+
+```json
+"transforms": "flatten",
+"transforms.flatten.type": "io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState",
+"transforms.flatten.delete.to.tombstone": "true"
+```
+
+##### Suppress tombstone events
 
 You can configure whether a connector emits tombstone events using its `tombstones.on.delete` property.
 
@@ -725,8 +735,6 @@ Whether you enable the connector to emit tombstones depends on how topics are co
 By default, a connector's `tombstones.on.delete` property is set to `true` so that the connector generates a tombstone after each delete event.
 
 If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the **absence of tombstone records might lead to unintended consequences if your sink is not designed to handle it properly**. For example, Kafka relies on tombstones during log compaction to remove records related to deleted keys.
-
-{{< /tip >}}
 
 ## Datatype mappings
 
