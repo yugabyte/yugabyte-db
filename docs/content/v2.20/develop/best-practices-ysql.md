@@ -248,10 +248,6 @@ For large or batch `SELECT`s or `DELETE`s that have to scan all tablets, you can
 For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
 {{</tip>}}
 
-## Single availability zone (AZ) deployments
-
-In single AZ deployments, you need to set the [yb-tserver](../../reference/configuration/yb-tserver) flag `--durable_wal_write=true` to not lose data if the whole data center goes down (For example, power failure).
-
 ## Row size limit
 
 Big columns add up when you select full or multiple rows. For consistent latency or performance, it is recommended keeping the size under 10MB or less, and a maximum of 32MB.
@@ -292,13 +288,3 @@ You can try one of the following methods to reduce the number of tablets:
 - Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag.
 - Use [`SPLIT INTO`](../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
 - Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/).
-
-## Settings for CI and CD integration tests
-
-You can set certain flags to increase performance using YugabyteDB in CI and CD automated test scenarios as follows:
-
-- Point the flags `--fs_data_dirs`, and `--fs_wal_dirs` to a RAMDisk directory to make DML, DDL, cluster creation, and cluster deletion faster, ensuring that data is not written to disk.
-- Set the flag `--yb_num_shards_per_tserver=1`. Reducing the number of shards lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
-- Use colocated databases in YSQL. Colocation lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
-- Set the flag `--replication_factor=1` for test scenarios, as keeping the data three way replicated (default) is not necessary. Reducing that to 1 reduces space usage and increases performance.
-- Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE`, and `DROP TABLE` between test cases.
