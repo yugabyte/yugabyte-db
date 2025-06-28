@@ -124,9 +124,9 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_optimized_extended_query_protocol | Enables optimization of the [extended-query protocol](https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-QUERY-CONCEPTS) for improved performance. Note that while this optimization is enabled, schema changes to objects referenced in prepared statements may result in retryable errors (for example, due to stale cached plans). When set to false, extended-query protocol handling avoids such errors by disabling plan caching optimizations. | true |
 | ysql_conn_mgr_optimized_session_parameters | Optimize usage of session parameters in YSQL Connection Manager. If set to false, all applied session parameters are replayed at transaction boundaries for each logical connection. | true |
 
-## Auth Methods
+## Authentication methods
 
-The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager whenn connection matches a hba record.
+The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager when a connection matches an HBA (Host-Based Authentication) record.
 
 | | Auth Method | Description |
 |:--| :---------------------| :------------ | :---- |
@@ -139,6 +139,7 @@ The following table outlines the various authentication methods supported by Yug
 | {{<icon/yes>}} | SCRAM-sha256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
 | {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
 | {{<icon/no>}} | Cert  | Certificate-based authentication requires the client to provide certificates to the server over a TLS connection for authentication. |
+
 
 ## Sticky connections
 

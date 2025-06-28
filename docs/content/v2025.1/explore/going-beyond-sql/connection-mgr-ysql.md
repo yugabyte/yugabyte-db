@@ -118,9 +118,9 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_optimized_extended_query_protocol | Enables optimization of [extended-query protocol](https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-QUERY-CONCEPTS) to provide better performance; note that while optimization is enabled, you may have correctness issues if you alter the schema of objects used in prepared statements. If set to false, extended-query protocol handling is always fully correct but unoptimized. | true |
 | ysql_conn_mgr_optimized_session_parameters | Optimize usage of session parameters in YSQL Connection Manager. If set to false, all applied session parameters are replayed at transaction boundaries for each logical connection. | true |
 
-## Auth Methods
+## Authentication methods
 
-The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager whenn connection matches a hba record.
+The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager when a connection matches an HBA (Host-Based Authentication) record.
 
 | | Auth Method | Description |
 |:--| :---------------------| :------------ | :---- |
