@@ -841,7 +841,7 @@ Enable the per database catalog version mode. A DDL statement that
 affects the current database can only increment catalog version for
 that database.
 
-Default: `true`
+Default: `false`
 
 {{< note title="Important" >}}
 
@@ -854,32 +854,6 @@ connections only need to refresh their catalog caches if they are connected to
 the same database as that of a DDL statement. It is recommended to keep the default value of this flag because per database catalog version mode helps to avoid unnecessary cross-database catalog cache refresh which is considered as an expensive operation.
 {{< /note >}}
 
-If you encounter any issues caused by per database catalog version mode, you can disable per database catalog version mode using the following steps:
-
-1. Shut down the cluster.
-
-1. Start the cluster with `--ysql_enable_db_catalog_version_mode=false`.
-
-1. Execute the following YSQL statements:
-
-    ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(false);
-    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
-    ```
-
-To re-enable the per database catalog version mode, use the following steps:
-
-1. Execute the following YSQL statements:
-
-    ```sql
-    SET yb_non_ddl_txn_for_sys_tables_allowed=true;
-    SELECT yb_fix_catalog_version_table(true);
-    SET yb_non_ddl_txn_for_sys_tables_allowed=false;
-    ```
-
-1. Shut down the cluster.
-1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
 ##### --enable_heartbeat_pg_catalog_versions_cache
 

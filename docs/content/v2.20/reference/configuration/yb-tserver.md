@@ -1290,7 +1290,7 @@ If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional
 
 Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
 
-Default: `true`
+Default: `false`
 
 ##### ysql_minimal_catalog_caches_preload
 
@@ -1298,19 +1298,6 @@ Defines what part of the catalog gets cached and preloaded by default. As a rule
 
 Default: `false`
 
-##### ysql_use_relcache_file
-
-Controls whether to use the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only this minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduces first query latency.
-
-Default: `true`
-
-##### ysql_yb_toast_catcache_threshold
-
-Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
-
-To minimize performance impact when enabling this flag, set it to 2KB or higher.
-
-Default: -1 (disabled). Minimum: 128 bytes.
 
 ## Advanced flags
 

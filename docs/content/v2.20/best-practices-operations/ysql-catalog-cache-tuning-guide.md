@@ -491,7 +491,6 @@ When there is significant connection churn, the warm up of catalog caches on eac
 
 To set up connection pooling, explore the following approaches:
 
-- [Server-side connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/) using YSQL Connection Manager ({{<tags/feature/ea idea="1368">}} in v2024.2).
 - [Client-side connection pooling](../../drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
 - [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like PgBouncer and Odyssey.
 
@@ -505,10 +504,7 @@ To preload system tables, set the [YB-TServer flag](../../reference/configuratio
 - pg_amproc
 - pg_cast
 - pg_inherits
-- pg_policy
-- pg_proc
 - pg_tablespace
-- pg_trigger
 
 To customize preloading in a more granular way, refer to [Identify the specific tables to preload](#identify-the-specific-tables-to-be-preloaded).
 
