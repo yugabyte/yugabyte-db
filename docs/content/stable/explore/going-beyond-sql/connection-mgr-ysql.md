@@ -128,17 +128,17 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 
 The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager whenn connection matches a hba record.
 
-| Authentication Method     | Description                                                                                                                                               | Supported with Connection Manager             |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------|
-| Ident Authentication      | Server contacts client's OS to verify username that initiated connection, trusting OS-level identity.                                                    | ❌ Not Supported                               |
-| Peer Authentication       | For local/unix socket connections, server checks that the connecting UNIX user matches the requested database user, relying on OS user identity.                      | ❌ Not Supported                               |
-| Plain/Clear Text Password | Standard password-based authentication, though storing passwords in plain text is not encouraged.                                                         | ✅ Supported                                   |
-| JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information.                     | ✅ Supported                                   |
-| LDAP Authentication       | Verifies users against a centralized directory service using Lightweight Directory Access Protocol (LDAP).                                                | ✅ Supported                                   |
-| GSS API or Kerberos       | Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords.         | ❌ Not Supported (This feature is not well tested with Yugabyte). |
-| SCRAM-sha256              | A secure password-based authentication that protects credentials using hashing, salting and challenge-response.                                           | ✅ Supported                 |
-| MD5                       | Any password of a user is by default stored as md5 encryption format in the database.                                                                     | ✅ Supported                                   |
-| Cert                      | Cert based authentication requires the client to provide certificates to the server over TLS connection for authentication.                               | ❌ Not Supported                               |
+| | Auth Method | Description |
+|:--| :---------------------| :------------ | :---- |
+| {{<icon/no>}} | Ident Authentication | Server contacts client's OS to verify username that initiated connection, trusting OS-level identity.|
+| {{<icon/no>}} | Peer Authentication | For local/Unix socket connections, server checks that the connecting UNIX user matches the requested database user, relying on OS user identity. |
+| {{<icon/yes>}} | Plain/Clear Text Password | Standard password-based authentication, though storing passwords in plain text is not recommended. |
+| {{<icon/yes>}} | JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information. |
+| {{<icon/yes>}} | LDAP Authentication | Verifies users against a centralized directory service using Lightweight Directory Access Protocol (LDAP). |
+| {{<icon/no>}} | GSS API or Kerberos| Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords. <br> **Note**: This feature is not well tested with YugabyteDB.|
+| {{<icon/yes>}} | SCRAM-sha256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
+| {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
+| {{<icon/no>}} | Cert  | Certificate-based authentication requires the client to provide certificates to the server over a TLS connection for authentication. |
 
 ## Sticky connections
 
