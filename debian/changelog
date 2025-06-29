@@ -1,3 +1,9 @@
+hypopg (1.4.2-1) unstable; urgency=medium
+
+  * New upstream version.
+
+ -- Julien Rouhaud <rjuju123@gmail.com>  Sun, 29 Jun 2025 16:09:43 +0800
+
 hypopg (1.4.1-1) unstable; urgency=medium
 
   * New upstream version.

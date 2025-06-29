@@ -1,6 +1,15 @@
 Changelog
 =========
 
+2025-06-29 version 1.4.2:
+-------------------------
+
+  **Miscellaneous**:
+
+  - Fix compatibility with PostgreSQL 18 (Georgy Shelkovy)
+  - Comment and adjust index size estimation (Stefan Halfpap)
+  - Documentation proofreading (Matthew D'Angelo)
+
 2024-04-28 version 1.4.1:
 -------------------------
 
