@@ -200,7 +200,7 @@ curl 'http://<platform-url>/api/v1/customers/:cUUID/restore' \
   }'
 ```-->
 
-{{<tags/feature/ea>}}You can restore entire backups with or without PITR. To enable the feature in YugabyteDB Anywhere, set the **Option for Off-Cluster PITR based Backup Schedule** Global Runtime Configuration option (config key `yb.ui.feature_flags.off_cluster_pitr_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+{{<tags/feature/ea idea="989">}}You can restore entire backups with or without PITR. To enable the feature in YugabyteDB Anywhere, set the **Option for Off-Cluster PITR based Backup Schedule** Global Runtime Configuration option (config key `yb.ui.feature_flags.off_cluster_pitr_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 If you created backups using a [scheduled backup policy with PITR](../schedule-data-backups/#create-a-scheduled-backup-policy-with-pitr), you can restore YugabyteDB universe data from a backup as follows:
 
@@ -215,6 +215,8 @@ If you created backups using a [scheduled backup policy with PITR](../schedule-d
 1. You can select time to restore to based on the backup time or to an earlier point in time. Select the **An earlier point in time** option to show the available restore window (start and end times) for the restoration.
 
     For YCQL backups, you can select a subset of tables to restore. If a table is not available in the specified restore window, an error message is displayed.
+
+    Note that you cannot restore to a point in time earlier than the most recent DDL change.
 
 1. When finished, click **Next**.
 

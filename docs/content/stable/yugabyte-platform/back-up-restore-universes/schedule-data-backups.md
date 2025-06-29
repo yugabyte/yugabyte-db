@@ -114,6 +114,8 @@ Before scheduling a backup of your universe data, create a policy, as follows:
     - **Standard backup** (without PITR support), or
     - **Backup with ability to restore to point-in-time**
 
+    Note that, with point-in-time enabled backups, you cannot restore to a point in time earlier than the most recent DDL change. To restore to a time prior to the DDL change, you need a backup that was performed prior to the change.
+
     Specify the interval between backups or select **Use cron expression (UTC)**.
 
     Enable **Take incremental backups within full backup intervals** to instruct the schedule policy to take full backups periodically and incremental backups between those full backups (supported in YugabyteDB Anywhere v2.16 or later, and YugabyteDB v2.16 or later only). The incremental backup intervals must be shorter than the full scheduled backup frequency.
