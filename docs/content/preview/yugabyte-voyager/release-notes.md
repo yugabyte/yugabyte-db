@@ -21,7 +21,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New feature
 
-- [Configuration files](../reference/configuration-file/) can now be used for the [import-data-file](../reference/bulk-data-load/import-data-file/) command in the [bulk data load](../migrate/bulk-data-load/) from files workflow.
+- You can now use [configuration files](../reference/configuration-file/) with the [import-data-file](../reference/bulk-data-load/import-data-file/) command for [bulk data load](../migrate/bulk-data-load/) from files.
 
 ### Enhancements
 
