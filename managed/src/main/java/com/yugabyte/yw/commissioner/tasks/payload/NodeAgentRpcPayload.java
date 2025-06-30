@@ -6,9 +6,11 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.FileHelperService;
@@ -26,6 +28,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -47,6 +50,8 @@ import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
+import com.yugabyte.yw.nodeagent.ServerControlInput;
+import com.yugabyte.yw.nodeagent.ServerControlType;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
 import com.yugabyte.yw.nodeagent.SetupCGroupInput;
 import java.io.File;
@@ -536,6 +541,38 @@ public class NodeAgentRpcPayload {
     }
 
     return installOtelCollectorInputBuilder.build();
+  }
+
+  public ServerControlInput setupServerControlBits(
+      Universe universe, NodeDetails nodeDetails, NodeTaskParams nodeTaskParams) {
+    AnsibleClusterServerCtl.Params taskParams = null;
+    if (nodeTaskParams instanceof AnsibleClusterServerCtl.Params) {
+      taskParams = (AnsibleClusterServerCtl.Params) nodeTaskParams;
+    }
+    String serverName = "yb-" + taskParams.process;
+    String serverHome =
+        Paths.get(nodeUniverseManager.getYbHomeDir(nodeDetails, universe), taskParams.process)
+            .toString();
+    ServerControlType controlType =
+        taskParams.command.equals("start") ? ServerControlType.START : ServerControlType.STOP;
+    ServerControlInput.Builder serverControlInputBuilder =
+        ServerControlInput.newBuilder()
+            .setControlType(controlType)
+            .setServerName(serverName)
+            .setServerHome(serverHome)
+            .setDeconfigure(taskParams.deconfigure);
+    if (taskParams.checkVolumesAttached) {
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(taskParams.placementUuid);
+      NodeDetails node = universe.getNode(taskParams.nodeName);
+      if (node != null
+          && cluster != null
+          && cluster.userIntent.getDeviceInfoForNode(node) != null
+          && cluster.userIntent.providerType != CloudType.onprem) {
+        serverControlInputBuilder.setNumVolumes(
+            cluster.userIntent.getDeviceInfoForNode(node).numVolumes);
+      }
+    }
+    return serverControlInputBuilder.build();
   }
 
   public void runServerGFlagsWithNodeAgent(
