@@ -91,7 +91,7 @@ You can create a KMS configuration that uses CipherTrust, as follows:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **CipherTrust KMS**.
-    - **CipherTrust Manager URL** — Enter the URL of your CipherTrust Manager deployment.
+    - **CipherTrust Manager URL** — Enter the URL of your CipherTrust Manager deployment. This URL must be accessible to your YugabyteDB Anywhere instance.
     - **Authentication type** — Choose **User Credentials** to provide a username and password, or **Refresh Token** to provide a token.
     - **Key Name** — Enter the name of the key. If a key with the same name already exists, the existing key is used; otherwise, a new key is created automatically using the specified algorithm and size.
     - **Key Algorithm** — Choose the encryption algorithm to use to create a new key.
