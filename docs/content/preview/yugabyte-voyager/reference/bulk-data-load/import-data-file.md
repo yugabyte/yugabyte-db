@@ -281,7 +281,7 @@ target:
 
 | Path to a file containing SSL certificate authority (CA) certificate(s). |
 
-| --file-opts | — | **[Deprecated]** Comma-separated string options for CSV file format. <br>Options:<ul><li>`escape_char` - escape character</li><li>`quote_char` - character used to quote the values</li></ul>Default: double quotes (") for both escape and quote characters<br>**Note** that escape_char and quote_char are only valid and required for CSV file format.<br>Example: `--file-opts "escape_char \",quote_char \""` or `--file-opts 'escape_char ",quote_char "'` |
+| --file-opts | — | **[Deprecated]** Comma-separated string options for CSV file format. <br>Options:<ul><li>`escape_char` - escape character</li><li>`quote_char` - character used to quote the values</li></ul>Default: double quotes (") for both escape and quote characters<br>**Note** that escape_char and quote_char are only valid and required for CSV file format.<br>Example: `--file-opts "escape_char \\",quote_char \\""` or `--file-opts 'escape_char ",quote_char "'` |
 
 |  --skip-replication-checks | — |  It is NOT recommended to have any form of replication (CDC/xCluster) running on the target YugabyteDB cluster during data import as it may lead to a rapid increase in disk use. If detected, data import is aborted. Use this flag to turn off the checks and continue importing data. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 

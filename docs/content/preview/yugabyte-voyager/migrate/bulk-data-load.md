@@ -67,11 +67,11 @@ You need to provide the full path to your export directory in the `export-dir` p
 
 The export directory has the following sub-directories and files:
 
-- `reports` directory contains the generated _Schema Analysis Report_.
-- `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
-- `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
-- `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
-- `logs` directory contains the log files for each command.
+* `reports` contains the generated _Schema Analysis Report_.
+* `schema` contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
+* `data` contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
+* `metainfo` and `temp` are used by yb-voyager for internal bookkeeping.
+* `logs` contains the log files for each command.
 
 ## Set up a configuration file
 
@@ -225,169 +225,121 @@ Refer to [import data status](../../reference/data-migration/import-data/#import
 
 ### Load multiple files into the same table
 
-The import data file command also supports importing multiple files to the same table by providing the `file-table-map` configuration key or the `--file-table-map` flag with a `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name. For example, `fileName1:tableName,fileName2:tableName` or `fileName*:tableName`.
+The import data file command also supports importing multiple files to the same table by providing the `file-table-map` configuration parameter or the `--file-table-map` flag with a `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name. For example, `fileName1:tableName,fileName2:tableName` or `fileName*:tableName`.
 
 ### Incremental data loading
 
-You can also import files to the same table across multiple runs. For example, you could import `orders1.csv` as follows:
+You can also import files to the same table across multiple runs. For example:
 
 {{< tabpane text=true >}}
 
   {{% tab header="Config file" lang="config" %}}
 
-Make the following change in the configuration file:
+1. Import `orders1.csv` by modifying the configuration file and running the `import data file` command as follows:
 
-```conf
-...
-import-data-file:
-  ...
-  file-table-map: 'orders1.csv:orders'
-  ...
-...
-```
+    ```conf
+    ...
+    import-data-file:
+      ...
+      file-table-map: 'orders1.csv:orders'
+      ...
+    ...
+    ```
 
-Run the command as follows:
+    ```sh
+    yb-voyager import data file –config-file <path_to_config_file>
+    ```
 
-```sh
-yb-voyager import data file –config-file <PATH_TO_CONFIG_FILE>
-```
+1. Next, import `orders2.csv` to the same table by modifying the configuration file and running the `import data file` command as follows:
 
-You can specify additional `import data file` parameters in the `import-data-status` section of the configuration file. For more details, refer to the [bulk-data-load.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/bulk-data-load.yaml) template.
+    ```conf
+    ...
+    import-data-file:
+      ...
+      file-table-map: 'orders2.csv:orders'
+      ...
+    ...
+    ```
 
-  {{% /tab %}}
+    ```sh
+    yb-voyager import data file –config-file <path_to_config_file>
+    ```
 
-  {{% tab header="CLI" lang="cli" %}}
+1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. Make the following change in the configuration file and run the `import data file` command as follows:
 
-```sh
-yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
-```
+    ```conf
+    ...
+    import-data-file:
+      ...
+      data-dir: /dir/data-dir
+      file-table-map: 'orders.csv:orders'
+      ...
+    ...
+    ```
 
-  {{% /tab %}}
+    ```sh
+    yb-voyager import data file –config-file <path_to_config_file>
+    ```
 
-{{< /tabpane >}}
+1. After new rows are added to `orders.csv`, make the following change in the configuration file and run the `import data file` following command to load them with the flags `--start-clean` and `enable-upsert` configuration file parameter as true or  `--enable-upsert` CLI flag as true.
 
-And then subsequently import `orders2.csv` to the same table as follows:
+    **Note**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using configuration parameter `enable-upsert: true`  or the flag `–enable-upsert true` may lead to corruption of the indexes.
 
-{{< tabpane text=true >}}
+    ```conf
+    ...
+    import-data-file:
+      ...
+      data-dir: /dir/data-dir
+      file-table-map: 'orders.csv:orders'
+      enable-upsert: true
+      ...
+    ...
+    ```
 
-  {{% tab header="Config file" lang="config" %}}
+    ```sh
+    yb-voyager import data file –config-file <path_to_config_file>
+    ```
 
-Make the following change in the configuration file:
-
-```conf
-...
-import-data-file:
-  ...
-  file-table-map: 'orders2.csv:orders'
-  ...
-...
-```
-
-Run the command as follows:
-
-```sh
-yb-voyager import data file –config-file <PATH_TO_CONFIG_FILE>
-```
-
-You can specify additional `import data file` parameters in the `import-data-status` section of the configuration file. For more details, refer to the [bulk-data-load.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/bulk-data-load.yaml) template.
-
-  {{% /tab %}}
-
-  {{% tab header="CLI" lang="cli" %}}
-
-```sh
-yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
-```
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. For example:
-
-{{< tabpane text=true >}}
-
-  {{% tab header="Config file" lang="config" %}}
-
-Make the following change in the configuration file:
-
-```conf
-...
-import-data-file:
-  ...
-  data-dir: /dir/data-dir
-  file-table-map: 'orders.csv:orders'
-  ...
-...
-```
-
-Run the command as follows:
-
-```sh
-yb-voyager import data file –config-file <PATH_TO_CONFIG_FILE>
-```
-
-You can specify additional `import data file` parameters in the `import-data-status` section of the configuration file. For more details, refer to the [bulk-data-load.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/bulk-data-load.yaml) template.
+  You can specify additional `import data file` parameters in the `import-data-file` section of the configuration file. For more details, refer to the [bulk-data-load.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/bulk-data-load.yaml) template.
 
   {{% /tab %}}
 
   {{% tab header="CLI" lang="cli" %}}
 
-```sh
-yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
-```
+1. Import `orders1.csv` by running the `import data file` command as follows:
 
-  {{% /tab %}}
+    ```sh
+    yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
+    ```
 
-{{< /tabpane >}}
+1. Next, import `orders2.csv` to the same table by modifying the configuration file and running the `import data file` command as follows:
 
-After new rows are added to `orders.csv`, use the following command to load them with the flags `--start-clean` and `enable-upsert` configuration file parameter as true or  `--enable-upsert` CLI flag as true.
+    ```sh
+    yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
+    ```
 
-{{<warning title="Note">}}
-Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using configuration parameter `enable-upsert: true`  or the flag `–enable-upsert true` may lead to corruption of the indexes.
-{{</warning>}}
+1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. Run the `import data file` command as follows:
 
-{{< tabpane text=true >}}
+    ```sh
+    yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
 
-  {{% tab header="Config file" lang="config" %}}
 
-Make the following change in the configuration file:
+1. After new rows are added to `orders.csv`, run the `import data file` following command to load them with the flags `--start-clean` and `enable-upsert` configuration file parameter as true or  `--enable-upsert` CLI flag as true.
 
-```conf
-...
-import-data-file:
-  ...
-  data-dir: /dir/data-dir
-  file-table-map: 'orders.csv:orders'
-  enable-upsert: true
-  ...
-...
-```
+    **Note**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using configuration parameter `enable-upsert: true`  or the flag `–enable-upsert true` may lead to corruption of the indexes.
 
-Run the command as follows:
-
-```sh
-yb-voyager import data file –config-file <PATH_TO_CONFIG_FILE>
-```
-
-You can specify additional `import data file` parameters in the `import-data-status` section of the configuration file. For more details, refer to the [bulk-data-load.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/bulk-data-load.yaml) template.
-
-  {{% /tab %}}
-
-  {{% tab header="CLI" lang="cli" %}}
-
-```sh
-yb-voyager import data file --data-dir /dir/data-dir \
-        --file-table-map 'orders.csv:orders' \
-        --start-clean true \
-        --enable-upsert true
-```
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
+    ```sh
+    yb-voyager import data file --data-dir /dir/data-dir \
+            --file-table-map 'orders.csv:orders' \
+            --start-clean true \
+            --enable-upsert true
+    ```
 
 For details about the argument, refer to the [arguments table](../../reference/bulk-data-load/import-data-file/#arguments).
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Import data files from cloud storage
 
@@ -420,7 +372,7 @@ If you are using a configuration file, do the following instead:
 1. Run the command as follows:
 
     ```sh
-    yb-voyager import data file –config-file <PATH_TO_CONFIG_FILE>
+    yb-voyager import data file –config-file <path_to_config_file>
     ```
 
 The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI. Refer to [Configure the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for additional details on setting up your S3 bucket.
@@ -451,7 +403,7 @@ If you are using a configuration file, do the following instead:
 1. Run the command as follows:
 
     ```sh
-    yb-voyager import data file –config-file <PATH_TO_CONFIG_FILE>
+    yb-voyager import data file –config-file <path_to_config_file>
     ```
 
 The authentication mechanism for accessing a GCS bucket using yb-voyager is the Application Default Credentials (ADC) strategy for GCS. Refer to [Set up Application Default Credentials](https://cloud.google.com/docs/authentication/provide-credentials-adc) for additional details on setting up your GCS buckets.
@@ -482,7 +434,7 @@ If you are using a configuration file, do the following instead:
 1. Run the command as follows:
 
     ```sh
-    yb-voyager import data file –config-file <PATH_TO_CONFIG_FILE>
+    yb-voyager import data file –config-file <path_to_config_file>
     ```
 
 The authentication mechanism for accessing blobs using yb-voyager is the same as that used by the Azure CLI. The Azure storage account used for the import should at least have the [Storage Blob Data Reader](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#storage-blob-data-reader) role assigned to it.
