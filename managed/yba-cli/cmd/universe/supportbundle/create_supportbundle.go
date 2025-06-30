@@ -44,23 +44,6 @@ var createSupportBundleUniverseCmd = &cobra.Command{
 				),
 			)
 		}
-		promQueriesString, err := cmd.Flags().GetString("prom-queries")
-		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if len(strings.TrimSpace(promQueriesString)) == 0 {
-			filePath, err := cmd.Flags().GetString("prom-queries-file-path")
-			if err != nil {
-				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			if len(strings.TrimSpace(filePath)) == 0 {
-				logrus.Fatalln(
-					formatter.Colorize(
-						"No specific gflags found to upgrade. "+
-							"Provide prom-queries or prom-queries-file-path\n",
-						formatter.RedColor))
-			}
-		}
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -197,6 +180,8 @@ var createSupportBundleUniverseCmd = &cobra.Command{
 						"Error unmarshaling prometheus queries: "+err.Error()+"\n",
 						formatter.RedColor))
 			}
+		} else {
+			promQueriesMap = make(map[string]string, 0)
 		}
 
 		requestBody := ybaclient.SupportBundleFormData{
