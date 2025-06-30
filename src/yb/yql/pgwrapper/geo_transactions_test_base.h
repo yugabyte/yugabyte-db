@@ -60,7 +60,7 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void CreateMultiRegionTransactionTable();
 
-  void SetupTablespaces();
+  virtual void SetupTablespaces();
 
   virtual void SetupTables(size_t tables_per_region);
 

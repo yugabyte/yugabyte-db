@@ -191,10 +191,20 @@ bool CatalogManagerUtil::IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInf
           lhs.placement_zone() == rhs.placement_zone());
 }
 
+bool CatalogManagerUtil::DoesCloudInfoContainCloudInfo(const CloudInfoPB& lhs,
+                                                       const CloudInfoPB& rhs) {
+  if (!lhs.has_placement_cloud()) return true;
+  if (lhs.placement_cloud() != rhs.placement_cloud()) return false;
+  if (!lhs.has_placement_region()) return true;
+  if (lhs.placement_region() != rhs.placement_region()) return false;
+  if (!lhs.has_placement_zone()) return true;
+  return lhs.placement_zone() == rhs.placement_zone();
+}
+
 bool CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
                                                            const CloudInfoPB& cloud_info) {
   for (const auto& placement_block : placement_info.placement_blocks()) {
-    if (IsCloudInfoEqual(placement_block.cloud_info(), cloud_info)) {
+    if (DoesCloudInfoContainCloudInfo(placement_block.cloud_info(), cloud_info)) {
       return true;
     }
   }
