@@ -247,7 +247,7 @@ You can also import files to the same table across multiple runs. For example:
     yb-voyager import data file –config-file <path_to_config_file>
     ```
 
-1. Next, import `orders2.csv` to the same table by modifying the configuration file and running the `import data file` command as follows:
+1. Import a different file, for example `orders2.csv`, to the same table by modifying the configuration file and running the `import data file` command as follows:
 
     ```conf
     ...
@@ -279,9 +279,9 @@ For example, importing `orders.csv` under `data-dir` to the `orders` table, it i
     yb-voyager import data file –config-file <path_to_config_file>
     ```
 
-1. After new rows are added to `orders.csv`, make the following change in the configuration file and run the `import data file` following command to load them with the flags `--start-clean` and `enable-upsert` configuration file parameter as true or  `--enable-upsert` CLI flag as true.
+1. After adding new rows to `orders.csv`, make the following change in the configuration file and run the `import data file` command again:
 
-    **Note**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using configuration parameter `enable-upsert: true`  or the flag `–enable-upsert true` may lead to corruption of the indexes.
+    **Warning**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using `enable-upsert: true` may corrupt the indexes.
 
     ```conf
     ...
@@ -311,7 +311,7 @@ For example, importing `orders.csv` under `data-dir` to the `orders` table, it i
     yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
     ```
 
-1. Next, import `orders2.csv` to the same table by modifying the configuration file and running the `import data file` command as follows:
+1. Import a different file, for example `orders2.csv`, to the same table by modifying the configuration file and running the `import data file` command as follows:
 
     ```sh
     yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
@@ -323,9 +323,9 @@ For example, importing `orders.csv` under `data-dir` to the `orders` table, it i
     yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
     ```
 
-1. After new rows are added to `orders.csv`, run the `import data file` following command to load them with the flags `--start-clean` and `enable-upsert` configuration file parameter as true or  `--enable-upsert` CLI flag as true.
+1. After adding new rows to `orders.csv`, run the `import data file` again as follows:
 
-    **Note**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using configuration parameter `enable-upsert: true`  or the flag `–enable-upsert true` may lead to corruption of the indexes.
+    **Warning**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using the `–enable-upsert true` flag may corrupt the indexes.
 
     ```sh
     yb-voyager import data file --data-dir /dir/data-dir \

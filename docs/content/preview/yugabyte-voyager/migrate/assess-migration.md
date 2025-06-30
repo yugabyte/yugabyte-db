@@ -141,7 +141,7 @@ For the most accurate migration assessment, the source database must be actively
 
 1. View the assessment report.
 
-    Use the YugabyteDB UI to review the assessment report, which includes migration strategies, complexity, and effort estimates.
+    Use the yugabyted UI to review the assessment report, which includes migration strategies, complexity, and effort estimates.
 
     After generating the report, navigate to the **Migrations** tab in the yugabyted UI at <http://127.0.0.1:15433> to see the available migrations.
 
