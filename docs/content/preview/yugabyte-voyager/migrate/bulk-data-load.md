@@ -263,7 +263,7 @@ You can also import files to the same table across multiple runs. For example:
     ```
 
 1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. 
-For example, here is an `import data file` example where we are importing `orders.csv` under `data-dir`, it is the same file which keeps on updating:
+For example, importing `orders.csv` under `data-dir` to the `orders` table, it is the same file which keeps on updating:
 
     ```conf
     ...
@@ -318,7 +318,7 @@ For example, here is an `import data file` example where we are importing `order
     ```
 
 1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode.
-For example, here is an `import data file` example where we are importing `orders.csv` under `data-dir` is a same file which keeps on updating:
+For example, importing `orders.csv` under `data-dir` to the `orders` table, it is the same file which keeps on updating:
     ```sh
     yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
     ```
