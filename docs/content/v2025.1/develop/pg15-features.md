@@ -4,8 +4,6 @@ headerTitle: PostgreSQL 15 features
 linkTitle: PG15 features
 description: Use PostgreSQL 15 features in your applications
 headContent: Use PostgreSQL 15 features in your applications
-tags:
-  feature: tech-preview
 menu:
   v2025.1:
     identifier: yb-postgresql-15
@@ -24,12 +22,12 @@ Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yu
 
 ## Try it out
 
-PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 preview release.
+PostgreSQL 15 support is GA and included with the YugabyteDB 2.25 preview release.
 
 | Product | To try it out |
 | :--- | :--- |
 | YugabyteDB | Follow the instructions in [Quick Start](/preview/tutorials/quick-start/macos/).<br>For information on upgrading a PostgreSQL 11-based universe (v2024.2 and earlier) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../manage/ysql-major-upgrade-yugabyted/). |
-| YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
+| YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using Database version 2.25.0.0 or later. |
 | YugabyteDB Aeon| [Create a Sandbox cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) with the Database version set to Preview Track (v2.25). |
 
 ## What's new
