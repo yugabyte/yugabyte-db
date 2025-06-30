@@ -283,11 +283,31 @@ target:
 
 | --file-opts | — | **[Deprecated]** Comma-separated string options for CSV file format. <br>Options:<ul><li>`escape_char` - escape character</li><li>`quote_char` - character used to quote the values</li></ul>Default: double quotes (") for both escape and quote characters<br>**Note** that escape_char and quote_char are only valid and required for CSV file format.<br>Example: `--file-opts "escape_char \\",quote_char \\""` or `--file-opts 'escape_char ",quote_char "'` |
 
-|  --skip-replication-checks | — |  It is NOT recommended to have any form of replication (CDC/xCluster) running on the target YugabyteDB cluster during data import as it may lead to a rapid increase in disk use. If detected, data import is aborted. Use this flag to turn off the checks and continue importing data. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+|  --skip-replication-checks | 
 
-| --send-diagnostics | — | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+```yaml{.nocopy}
+import-data-file:
+  skip-replication-checks:
+```
 
-| --truncate-tables | — | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
+|  It is NOT recommended to have any form of replication (CDC/xCluster) running on the target YugabyteDB cluster during data import as it may lead to a rapid increase in disk use. If detected, data import is aborted. Use this flag to turn off the checks and continue importing data. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| --send-diagnostics |
+
+```yaml{.nocopy}
+send-diagnostics:
+```
+
+| Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| --truncate-tables |
+
+```yaml{.nocopy}
+import-data-file:
+  truncate-tables:
+```
+
+| Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
 
 | --start-clean | — | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag.<br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help. |

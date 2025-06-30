@@ -67,15 +67,12 @@ You need to provide the full path to your export directory in the `export-dir` p
 
 The export directory has the following sub-directories and files:
 
-* `reports` contains the generated _Schema Analysis Report_.
-* `schema` contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
-* `data` contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
 * `metainfo` and `temp` are used by yb-voyager for internal bookkeeping.
 * `logs` contains the log files for each command.
 
 ## Set up a configuration file
 
-You can use a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.6.2 or later).
+You can use a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.7.1 or later).
 
 To get started, copy the `bulk-data-load.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):
 
@@ -95,7 +92,7 @@ To get started, copy the `bulk-data-load.yaml` template configuration file from 
 $(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/bulk-data-load.yaml
 ```
 
-Replace `<voyager-version>` with your installed Voyager version, for example, `2025.5.2`.
+Replace `<voyager-version>` with your installed Voyager version, for example, `2025.7.1`.
 
   {{% /tab %}}
 
@@ -265,7 +262,8 @@ You can also import files to the same table across multiple runs. For example:
     yb-voyager import data file –config-file <path_to_config_file>
     ```
 
-1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. Make the following change in the configuration file and run the `import data file` command as follows:
+1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. 
+For example, here is an `import data file` example where we are importing `orders.csv` under `data-dir`, it is the same file which keeps on updating:
 
     ```conf
     ...
@@ -292,6 +290,7 @@ You can also import files to the same table across multiple runs. For example:
       data-dir: /dir/data-dir
       file-table-map: 'orders.csv:orders'
       enable-upsert: true
+      start-clean: true
       ...
     ...
     ```
@@ -318,11 +317,11 @@ You can also import files to the same table across multiple runs. For example:
     yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
     ```
 
-1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. Run the `import data file` command as follows:
-
+1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode.
+For example, here is an `import data file` example where we are importing `orders.csv` under `data-dir` is a same file which keeps on updating:
     ```sh
     yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
-
+    ```
 
 1. After new rows are added to `orders.csv`, run the `import data file` following command to load them with the flags `--start-clean` and `enable-upsert` configuration file parameter as true or  `--enable-upsert` CLI flag as true.
 
