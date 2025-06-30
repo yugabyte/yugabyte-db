@@ -130,7 +130,7 @@ The following table outlines the various authentication methods supported by Yug
 | {{<icon/yes>}} | JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information. |
 | {{<icon/yes>}} | LDAP Authentication | Verifies users against a centralized directory service using Lightweight Directory Access Protocol (LDAP). |
 | {{<icon/no>}} | GSS API or Kerberos| Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords. <br> **Note**: This feature is not well tested with YugabyteDB.|
-| {{<icon/yes>}} | SCRAM-sha256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
+| {{<icon/no>}} | SCRAM-sha256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
 | {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
 | {{<icon/no>}} | Cert  | Certificate-based authentication requires the client to provide certificates to the server over a TLS connection for authentication. |
 
@@ -168,4 +168,5 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - YSQL Connection Manager does not yet support IPv6 connections. [#24765](https://github.com/yugabyte/yugabyte-db/issues/24765)
 - Currently, [auth-method](https://docs.yugabyte.com/preview/secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. [#20658](https://github.com/yugabyte/yugabyte-db/issues/20658)
 - Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate logical connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact the YSQL Connection Manager Development team before setting `ysql_conn_mgr_use_auth_backend` to false. [#25313](https://github.com/yugabyte/yugabyte-db/issues/25313)
+- Salted Challenge Response Authentication Mechanism ([SCRAM](https://docs.yugabyte.com/preview/secure/authentication/password-authentication/#scram-sha-256)) is not supported with YSQL Connection Manager. [#25870](https://github.com/yugabyte/yugabyte-db/issues/25870)
 - Unix socket connections to YSQL Connection Manager are not supported. [#20048](https://github.com/yugabyte/yugabyte-db/issues/20048)
