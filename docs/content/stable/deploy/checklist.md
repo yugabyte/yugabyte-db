@@ -146,7 +146,7 @@ cat /proc/cpuinfo | grep sse4.2
 
 - SSDs (solid state disks) are required.
 
-  - GCP Hyperdisk support: When creating a YugabyteDB Anywhere universe on Google Cloud Platform, Google Cloud Hyperdisks (specifically, the Balanced and Extreme options) are a supported disk type.
+  - YugabyteDB Anywhere additionally supports the use of GCP Hyperdisks when deploying universes on GCP (specifically, the Balanced and Extreme options).
 
     Note: These disk types are only available in some GCP regions.
 
@@ -173,8 +173,6 @@ YugabyteDB uses per-tablet [size tiered compaction](../../architecture/yb-tserve
 YugabyteDB stores data compressed by default. The effectiveness of compression depends on the data set. For example, if the data has already been compressed, then the additional compression at the storage layer of YugabyteDB will not be very effective.
 
 It is recommended to plan for about 20% headroom on each node to allow space for miscellaneous overheads such as temporary additional space needed for compactions, metadata overheads, and so on.
-
-*GCP hyperdisk support* - When creating a Universe, Google Cloud Hyperdisks (specifically, the Balanced and Extreme options) are now a supported option for disk type on Google Cloud Platform.  Note: these disk types are only available in some GCP regions
 
 ## Network
 

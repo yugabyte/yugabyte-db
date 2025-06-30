@@ -146,7 +146,7 @@ cat /proc/cpuinfo | grep sse4.2
 
 - SSDs (solid state disks) are required.
 
-  - GCP Hyperdisk support: When creating a YugabyteDB Anywhere universe on Google Cloud Platform, Google Cloud Hyperdisks (specifically, the Balanced and Extreme options) are a supported disk type.
+  - YugabyteDB Anywhere additionally supports the use of GCP Hyperdisks when deploying universes on GCP (specifically, the Balanced and Extreme options).
 
     Note: These disk types are only available in some GCP regions.
 
