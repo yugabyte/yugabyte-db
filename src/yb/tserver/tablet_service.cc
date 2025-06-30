@@ -2293,6 +2293,12 @@ void TabletServiceAdminImpl::UpgradeYsql(
     const UpgradeYsqlRequestPB* req,
     UpgradeYsqlResponsePB* resp,
     rpc::RpcContext context) {
+  if (!FLAGS_enable_ysql) {
+    LOG(INFO) << "YSQL is not enabled. Skipping YSQL upgrade.";
+    context.RespondSuccess();
+    return;
+  }
+
   LOG(INFO) << "Starting YSQL upgrade";
 
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
