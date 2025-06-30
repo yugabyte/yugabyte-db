@@ -303,7 +303,7 @@ def download_file(url, dest_path):
                 remote_file.close()
     except:  # noqa
         if os.path.exists(dest_path):
-            logging.warn("Deleting the unfinished download: %s", dest_path)
+            logging.warning("Deleting the unfinished download: %s", dest_path)
             os.remove(dest_path)
         raise
 

@@ -51,7 +51,7 @@ def main() -> None:
 
         match = PS_OUTPUT_LINE_RE.match(line)
         if not match:
-            logging.warn("Could not parse ps output line: %s", line)
+            logging.warning("Could not parse ps output line: %s", line)
             continue
 
         num_processes_found += 1

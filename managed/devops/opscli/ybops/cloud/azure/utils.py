@@ -740,7 +740,7 @@ class AzureCloudAdmin():
             disk_del.wait()
             logging.info("[app] Deleted disk {}".format(disk_name))
 
-        logging.info("[app] Sucessfully destroyed orphaned resources for {}".format(vm_name))
+        logging.info("[app] Successfully destroyed orphaned resources for {}".format(vm_name))
 
     def change_instance_type(self, vm_name, instance_type, cloud_instance_types=[]):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
@@ -811,7 +811,7 @@ class AzureCloudAdmin():
             disk_del.wait()
             logging.info("[app] Deleted disk {}".format(disk_name))
 
-        logging.info("[app] Sucessfully destroyed instance {}".format(vm_name))
+        logging.info("[app] Successfully destroyed instance {}".format(vm_name))
 
     def get_subnet_id(self, vnet, subnet):
         # subnet URN can be used directly
@@ -947,7 +947,7 @@ class AzureCloudAdmin():
                         "name": image_identifier["sku"],
                     }
             if plan is None:
-                logging.warn("Plan info absent from the following VM image: " + str(image))
+                logging.warning("Plan info absent from the following VM image: " + str(image))
         else:
             # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
             pub, offer, sku, version = image.split(':')
