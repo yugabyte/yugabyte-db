@@ -7,19 +7,21 @@ menu:
     identifier: advanced-features-inheritance
     parent: advanced-features
     weight: 400
+tags:
+  feature: tech-preview
 type: docs
 ---
 
 
 ## Overview
 
-[BETA] YSQL supports table inheritance, which is a [PostgreSQL feature](https://www.postgresql.org/docs/current/ddl-inherit.html) that allows users to create child tables that inherit columns and certain constraints from one or more parent tables.  
+YSQL supports table inheritance using the INHERITS keyword, which is a [PostgreSQL feature](https://www.postgresql.org/docs/current/ddl-inherit.html) that allows you to create child tables that inherit columns and certain constraints from one or more parent tables.
 
-### Example
+## Example
 
-To illustrate with a simple example,
+To illustrate with a basic example, create the following tables:
 
-```
+```sql
 -- Columns common to all account types
 CREATE TABLE accounts (
     account_id INTEGER PRIMARY KEY,
@@ -40,8 +42,13 @@ CREATE TABLE savings_accounts (
     CHECK (balance >= 100),
     PRIMARY KEY (account_id) 
 ) INHERITS (accounts);
+```
 
+```sql
 testdb=# \d investment_accounts
+```
+
+```output
              Table "public.investment_accounts"
      Column      |  Type   | Collation | Nullable | Default
 -----------------+---------+-----------+----------+---------
@@ -58,25 +65,26 @@ Check constraints:
 Inherits: accounts
 ```
 
-This schema allows for certain queries to be performed over all accounts while still preserving features unique to each account type. For example,
+This schema allows for certain queries to be performed over all accounts while still preserving features unique to each account type. For example:
 
-```
+```sql
 SELECT SUM(balance) FROM accounts WHERE account_id = 10;
 ```
 
-Any columns added to/dropped from the parent `accounts` table are propagated to child tables so that such queries on the parent accounts table are always well formed. 
+Any columns added to or dropped from the parent `accounts` table are propagated to child tables so that such queries on the parent accounts table are always well formed.
 
-However, there are certain caveats to keep in mind here.
+However, there are certain caveats to keep in mind:
+
 1. The parent table `accounts` may have its own rows that are not part of any child tables.
-2. The primary key for account_id on the parent `accounts` table does not propagate to children and has to be redefined for each child table. This is also the behavior for foreign key constraints and non-primary key unique constaints. Special care has to be taken to maintain such constraints across parent-child hierarchies.
+1. The primary key for `account_id` on the parent `accounts` table does not propagate to children and has to be redefined for each child table. This is also the behavior for foreign key constraints and non-primary key unique constaints. You need to take special care to maintain such constraints across parent-child hierarchies.
 
 Table inheritance can lead to complex hierarchies similar to class inheritance in object-oriented programming because a specific table can inherit from multiple parent tables and can itself be a parent table for other child tables.
 
 ### Queries and updates on data
 
-SELECT and UPDATE queries on the parent table operate on a union of the parent and all child tables in the hierarchy. To restrict queries to just the specific table, the `ONLY` keyword can be used.
+SELECT and UPDATE queries on the parent table operate on a union of the parent and all child tables in the hierarchy. To restrict queries to just the specific table, use the ONLY keyword:
 
-```
+```sql
 SELECT SUM(balance) FROM ONLY accounts WHERE account_id = 10;
 
 UPDATE ONLY accounts SET balance = balance + 100 WHERE account_id = 1;
@@ -88,13 +96,12 @@ UPDATE ONLY accounts SET balance = balance + 100 WHERE account_id = 1;
 2. Adding or dropping certain kinds of constraints propagates to all children in the hierarchy. The exceptions are primary key constrains, unique constraints and foreign key constraints. For more details, consult the [PostgreSQL documentation](https://www.postgresql.org/docs/current/ddl-inherit.html).
 3. For certain schema changes, the `ONLY` keyword can be used to restrict the schema change to just the parent table. For example, `ALTER TABLE ONLY accounts DROP COLUMN profit` drops the column from the parent table alone while leaving it on the child tables.
 
-
 ## Limitations
 
+Table inheritance is {{<tags/feature/tp idea="2158">}} - report any issues encountered at {{<issue 5956>}}.
 
-https://github.com/yugabyte/yugabyte-db/issues/26094
+- Dropping or adding a column to a parent fails when "local" column on child table exists. ({{<issue 26094>}})
+- Crash while obtaining a row lock on a parent inheritance table with a child file_fdw table. ({{<issue 27105>}})
 https://github.com/yugabyte/yugabyte-db/issues/27105
 
-For a more up to date list, see https://github.com/yugabyte/yugabyte-db/issues/5956.
-
-Note that table inheritance is a [BETA] feature. Please report any issues encountered at https://github.com/yugabyte/yugabyte-db/issues/5956.
+For an up-to-date list, see {{<issue 5956>}}.

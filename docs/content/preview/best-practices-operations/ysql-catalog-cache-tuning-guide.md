@@ -443,7 +443,7 @@ By default, YSQL backends do not preload any catalog entries.
 
 On most schema changes, running backends invalidate their caches incrementally and refresh such invalidated entries directly from the leader yb-master. This can result in a slight effect on the latency and memory usage of running queries but it should not be significant in most cases.
 
-In rare cases, a full catalog refresh may be needed (this typically happens through an intermediate response cache on the local YB-TServer to minimize load on the yb-master). Such a rare full refresh may cause a more pronounced latency effect on running queries as well as a noticeable spike in memory consumption. If you encounter such cases commonly, report these at https://github.com/yugabyte/yugabyte-db/issues/23785.
+In rare cases, a full catalog refresh may be needed (this typically happens through an intermediate response cache on the local YB-TServer to minimize load on the yb-master). Such a rare full refresh may cause a more pronounced latency effect on running queries as well as a noticeable spike in memory consumption. If you encounter such cases commonly, report these at {{<issue 23785>}}.
 
 ## Problem scenarios and recommendations
 
