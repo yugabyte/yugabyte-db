@@ -102,8 +102,9 @@ COMMIT;
 
 Note:
 
-1. The previous example uses a READ `COMMITTED` transaction. It reduces the possibility of running into `SNAPSHOT TOO OLD` error by picking a new snapshot for each index.
-2. In YugabyteDB, there is no separate storage for PK indexes. Consequently, `pg_table_size()` returns null for them and hence, it is not included in the above output. Moreover, PK indexes will always be consistent because the base relation itself acts as the PK index.
+- This example uses a `READ COMMITTED` transaction. This reduces the possibility of running into `SNAPSHOT TOO OLD` error by picking a new snapshot for each index.
+
+- In YugabyteDB, there is no separate storage for PK indexes. Consequently, `pg_table_size()` returns null for them, they are not included in the above output. Moreover, PK indexes will always be consistent because the base relation itself acts as the PK index.
 
 Perform consistency check on all the indexes in the current database whose  `pg_table_size() < 1GB`:
 
@@ -170,9 +171,9 @@ This error should not surface while running `yb_index_check()` after issue {{<is
 
 ### Snapshot too old
 
-Any operation that takes more time than `timestamp_history_retention_interval_sec` (tserver GFlag with default value of 900\) is susceptible to `Snapshot Too Old` error.
+Any operation that takes more time than `timestamp_history_retention_interval_sec` (TServer flag with default value of 900) is susceptible to `Snapshot Too Old` error.
 
-If yb\_index\_check() runs into it:
+If `yb_index_check()` runs into it:
 
 1. Ensure that GUC `yb_bnl_batch_size` is set to 1024 or larger. `yb_index_check()` internally uses batched nested loop join and hence, uses this parameter.
 2. If the issue still persists, try increasing the runtime updatable GFlag `timestamp_history_retention_interval_sec`. It is important to reset the flag value after the index check completes. Not doing so will impact the system's performance and resources. `yb_index_check()` on an index with `pg_table_size()` of 3GB took 700 seconds in a single region, multi-AZ 3-node cluster. This can be used as a benchmark to estimate the flag's value.

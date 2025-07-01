@@ -17,15 +17,15 @@ It performs checks to detect spurious, missing, and inconsistent index rows. It 
 
 If executed on a partitioned index, it will recursively execute on all the child partitions. It does not yet support vector and ybgin indexes.
 
-### Functional Interface
+## Function interface
 
 `yb_index_check(index regclass) returns void`
 
-### Example usages
+## Examples
 
-Setup
+Set tables as follows:
 
-```
+```sql
 CREATE TABLE abcd(a int primary key, b int, c int, d int);
 CREATE INDEX abcd_b_c_d_idx ON abcd (b ASC) INCLUDE (c, d);
 CREATE INDEX abcd_b_c_idx ON abcd(b) INCLUDE (c) WHERE d > 50;
@@ -33,29 +33,35 @@ CREATE INDEX abcd_expr_expr1_d_idx ON abcd ((2*c) ASC, (2*b) ASC) INCLUDE (d);
 INSERT INTO abcd SELECT i, i, i, i FROM generate_series(1, 10) i;
 ```
 
-Perform consistency check on index `'abcd_b_c_d_idx'`
+Perform consistency check on index `'abcd_b_c_d_idx'`:
 
-```
+```sql
 yugabyte=# SELECT yb_index_check('abcd_b_c_d_idx'::regclass);
+```
+
+```output
  yb_index_check 
 ----------------
  
 (1 row)
 ```
 
-Perform consistency check on an index with oid \= 16906
+Perform consistency check on an index with oid \= 16906:
 
-```
+```sql
 yugabyte=# SELECT yb_index_check(16906);
+```
+
+```output
  yb_index_check 
 ----------------
  
 (1 row)
 ```
 
-Perform consistency check on all the indexes of relation `'abcd'` whose `pg_table_size() < 1GB`
+Perform consistency check on all the indexes of relation `'abcd'` where `pg_table_size() < 1GB`:
 
-```
+```sql
 CREATE OR REPLACE FUNCTION check_all_indexes_in_table(table_oid regclass)
 RETURNS TABLE(indexname NAME, yb_index_check TEXT)
 LANGUAGE plpgsql
@@ -79,24 +85,30 @@ $$;
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
 SELECT * FROM check_all_indexes_in_table('abcd'::regclass);
+```
+
+```output
        indexname       | yb_index_check 
 -----------------------+----------------
  abcd_b_c_d_idx        | OK
  abcd_b_c_idx          | OK
  abcd_expr_expr1_d_idx | OK
 (3 rows)
+```
 
+```sql
 COMMIT;
 ```
 
 Note:
 
-1. The above example uses a READ `COMMITTED` transaction. It reduces the possibility of running into `SNAPSHOT TOO OLD` error by picking a new snapshot for each index.  
-2. In YugabyteDB, there is no separate storage for PK indexes. Consequently, `pg_table_size()` returns null for them and hence, it is not included in the above output. Moreover, PK indexes will always be consistent because the base relation itself acts as the PK index. 
+- This example uses a `READ COMMITTED` transaction. This reduces the possibility of running into `SNAPSHOT TOO OLD` error by picking a new snapshot for each index.
 
-Perform consistency check on all the indexes in the current database whose  `pg_table_size() < 1GB`
+- In YugabyteDB, there is no separate storage for PK indexes. Consequently, `pg_table_size()` returns null for them, they are not included in the above output. Moreover, PK indexes will always be consistent because the base relation itself acts as the PK index.
 
-```
+Perform consistency check on all the indexes in the current database whose  `pg_table_size() < 1GB`:
+
+```sql
 CREATE OR REPLACE FUNCTION check_all_indexes_in_db()
 RETURNS TABLE(indexname NAME, yb_index_check TEXT)
 LANGUAGE plpgsql
@@ -120,48 +132,50 @@ $$;
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
 SELECT * FROM check_all_indexes_in_db();
+```
+
+```output
        indexname       | yb_index_check 
 -----------------------+----------------
  abcd_b_c_d_idx        | OK
  abcd_b_c_idx          | OK
  abcd_expr_expr1_d_idx | OK
 (3 rows)
+```
 
+```output
 COMMIT;
 ```
 
-### Reporting Issues
+## Reporting issues
 
 An error with the `ERRCODE_INDEX_CORRUPTED` error code is thrown if an index consistency issue is encountered. If no issues are found, the function returns void.
 
-### Repairing Corruption
+## Repairing corruption
 
 There is no general method of repairing problems that `yb_index_check()` detects. It is best to drop and recreate inconsistent indexes.
 
-### Troubleshooting
+## Troubleshooting
 
-#### Read restart error
+### Read restart error
 
 `yb_index_check()` is not concerned with read-after-commit-visibility. It picks up a read time (and an associated snapshot) and uses it to scan both the index and base relation. If a write operation that was committed before the picked read time, did not make it to the snapshot due to clock skew, then that’s fine too because its effect would be absent from both index and the base relation scan result.
 
-If [`Restart read required error`](https://docs.yugabyte.com/preview/architecture/transactions/read-restart-error/) is encountered while running `yb_index_check()`, set the following GUC and then re-run `yb_index_check()`:
+If [`Restart read required error`](https://docs.yugabyte.com/preview/architecture/transactions/read-restart-error/) is encountered while running `yb_index_check()`, set the following parameter and then re-run `yb_index_check()`:
 
-```
+```sql
 SET yb_read_after_commit_visibility=relaxed;
 ```
 
-This error should not surface while running `yb_index_check()` after GHI\#[27288](https://github.com/yugabyte/yugabyte-db/issues/27288).
+This error should not surface while running `yb_index_check()` after issue {{<issue 27288>}}.
 
-#### Snapshot too old
+### Snapshot too old
 
-Any operation that takes more time than `timestamp_history_retention_interval_sec` (tserver GFlag with default value of 900\) is susceptible to `Snapshot Too Old` error.
+Any operation that takes more time than `timestamp_history_retention_interval_sec` (TServer flag with default value of 900) is susceptible to `Snapshot Too Old` error.
 
-If yb\_index\_check() runs into it:
+If `yb_index_check()` runs into it:
 
-1. Ensure that GUC `yb_bnl_batch_size` is set to 1024 or larger. `yb_index_check()` internally uses batched nested loop join and hence, uses this GUC.  
-2. If the issue still persists, try increasing the runtime updatable GFlag `timestamp_history_retention_interval_sec`. It is important to reset the flag value once the index check completes. Not doing so will impact the system’s performance and resources. `yb_index_check()` on an index with `pg_table_size()` of 3GB took 700 seconds in a single region, multi-AZ 3-node cluster. This can be used as a benchmark to estimate the GFlag’s value.
+1. Ensure that GUC `yb_bnl_batch_size` is set to 1024 or larger. `yb_index_check()` internally uses batched nested loop join and hence, uses this parameter.
+2. If the issue still persists, try increasing the runtime updatable GFlag `timestamp_history_retention_interval_sec`. It is important to reset the flag value after the index check completes. Not doing so will impact the system's performance and resources. `yb_index_check()` on an index with `pg_table_size()` of 3GB took 700 seconds in a single region, multi-AZ 3-node cluster. This can be used as a benchmark to estimate the flag's value.
 
-This error should not surface while running `yb_index_check()` after GHI\#[26283](https://github.com/yugabyte/yugabyte-db/issues/26283).
-
-### 
-
+This error should not surface while running `yb_index_check()` after issue {{<issue 26283>}}.
