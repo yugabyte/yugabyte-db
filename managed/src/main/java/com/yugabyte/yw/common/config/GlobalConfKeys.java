@@ -1643,4 +1643,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Duration to start notifying about expiry before node agent server cert actually expires",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> gcpBlobDeleteRetryCount =
+      new ConfKeyInfo<>(
+          "yb.gcp.blob_delete_retry_count",
+          ScopeType.GLOBAL,
+          "GCP Blob Delete Retry Count",
+          "Number of times to retry deleting blobs in GCP. This is used to handle the case where"
+              + " the blob deletion fails due to some transient error.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
