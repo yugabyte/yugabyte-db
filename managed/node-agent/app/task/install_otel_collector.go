@@ -49,17 +49,14 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	util.FileLogger().Infof(ctx, "Starting otel collector installation")
 
 	// 1) figure out home dir
-	home := ""
-	if h.param.GetYbHomeDir() != "" {
-		home = h.param.GetYbHomeDir()
-	} else {
+	if h.param.GetYbHomeDir() == "" {
 		err := errors.New("ybHomeDir is required")
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
 
 	// 2) Put & setup the otel collector.
-	err := h.execOtelCollectorSetupSteps(ctx, home)
+	err := h.execOtelCollectorSetupSteps(ctx, h.param.GetYbHomeDir())
 	if err != nil {
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
@@ -68,7 +65,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	// 3) Place the otel-collector.service at desired location.
 	otelCollectorServiceContext := map[string]any{
 		"user_name":   h.username,
-		"yb_home_dir": home,
+		"yb_home_dir": h.param.GetYbHomeDir(),
 	}
 
 	// Copy otel-collector.service
@@ -76,7 +73,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		ctx,
 		otelCollectorServiceContext,
 		filepath.Join(ServerTemplateSubpath, OtelCollectorService),
-		filepath.Join(home, SystemdUnitPath, OtelCollectorService),
+		filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, OtelCollectorService),
 		fs.FileMode(0755),
 		h.username,
 	)
@@ -86,26 +83,21 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	}
 
 	// 4) stop the systemd-unit if it's running.
-	stopCmd := module.StopSystemdUnit(h.username, OtelCollectorService)
-	h.logOut.WriteLine("Running otel-collector server phase: %s", stopCmd)
-	if _, err := module.RunShellCmd(ctx, h.username, "stop-otel-collector", stopCmd, h.logOut); err != nil {
+	if err := module.StopSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
 		return nil, err
 	}
 
 	// 5) Configure the otel-collector service.
-	err = h.configureOtelCollector(ctx, home)
+	err = h.configureOtelCollector(ctx, h.param.GetYbHomeDir())
 	if err != nil {
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
 
 	// 6) Start and enable the otel-collector service.
-	startCmd := module.StartSystemdUnit(h.username, OtelCollectorService)
-	h.logOut.WriteLine("Running otel-collector phase: %s", startCmd)
-	if _, err = module.RunShellCmd(ctx, h.username, "start-otel-collector", startCmd, h.logOut); err != nil {
+	if err = module.StartSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
 		return nil, err
 	}
-
 	return nil, nil
 }
 

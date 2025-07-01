@@ -81,7 +81,8 @@ public class DrConfigWebhookCallTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             storageParams,
             pitrParams,
-            new HashSet<>(Set.of("000000000000", "11111111")));
+            new HashSet<>(Set.of("000000000000", "11111111")),
+            false);
   }
 
   private void addWebhooks(List<String> webhookUrls) {

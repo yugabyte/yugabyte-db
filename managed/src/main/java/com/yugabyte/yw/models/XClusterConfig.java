@@ -216,6 +216,19 @@ public class XClusterConfig extends Model {
     }
   }
 
+  @ApiModelProperty(
+      value = "Whether the db-scoped xCluster config is in automatic DDL replication mode")
+  @JsonIgnore
+  private boolean automaticDdlMode;
+
+  @JsonProperty
+  public Boolean isAutomaticDdlMode() {
+    if (this.type != ConfigType.Db) {
+      return null; // Only db scoped xCluster configs can have automatic DDL mode.
+    }
+    return automaticDdlMode;
+  }
+
   @ApiModelProperty(value = "Whether the config is basic, txn, or db scoped xCluster")
   private ConfigType type;
 

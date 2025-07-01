@@ -429,7 +429,7 @@ kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses y
 kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 upgrade_ysql
 ```
 
-The `upgrade_ysql` command is only needed if YSQL is enabled.
+The `upgrade_ysql` command is only needed if YSQL is enabled. Note that `promote_auto_flags` and `upgrade_ysql` are cluster-level operations; you don't need to run them on every node.
 
 ## Update the configuration of YugabyteDB pods
 

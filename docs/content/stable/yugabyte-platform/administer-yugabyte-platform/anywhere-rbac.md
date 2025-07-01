@@ -181,5 +181,4 @@ To view the users that have been assigned a role, navigate to **Admin > Access M
 - Retrying and aborting a task can require different permissions than executing it the first time.
 - Currently, when creating a user, you can select **Include Future Universes** only when you have selected all current universes.
 - You may need to refresh your browser after creating a universe to apply the permissions for the newly created universe.
-- Currently, LDAP group mapping is not supported for custom roles. Only built-in roles are supported for LDAP users.
 - The View Resource permission provides view access to all logs, task logs, and so on.

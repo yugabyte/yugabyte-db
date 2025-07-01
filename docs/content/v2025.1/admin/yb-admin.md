@@ -2273,11 +2273,11 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *replication-group-id*: The replication group identifier.
 * *namespace_names*: Comma-separated list of namespaces.
-* `automatic_ddl_mode`: Use Automatic xCluster mode.
+* `automatic_ddl_mode`: Use Automatic xCluster mode. {{<tags/feature/ea idea="2176">}}
 
 #### is_xcluster_bootstrap_required
 
-Checks if the databases of a previously checkpointed replication group requires a bootstrap(backup/restore) of the database to the target universe.
+Checks if the databases of a previously checkpointed replication group requires a bootstrap (backup/restore) of the database to the target universe.
 
 **Syntax**
 
@@ -2719,6 +2719,8 @@ promoted_flags {
 
 After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
+Note that `promote_auto_flags` is a cluster-level operation; you don't need to run it on every node.
+
 **Syntax**
 
 ```sh
@@ -2794,7 +2796,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
     upgrade_ysql
 ```
 
-Running this command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+Running `upgrade_ysql` is an online operation and doesn't require stopping a running cluster. `upgrade_ysql` is also a cluster-level operation; you don't need to run it on every node.
 
 {{< note title="Note" >}}
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
@@ -2802,7 +2804,7 @@ Concurrent operations in a cluster can lead to various transactional conflicts, 
 
 #### finalize_upgrade
 
-Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). You can run this command from any node in the cluster.
+Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
 **Syntax**
 

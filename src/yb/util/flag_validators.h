@@ -129,7 +129,7 @@ namespace yb {
 #define FLAG_DELAYED_OK_VALIDATOR(expr) FLAG_OK_VALIDATOR_HELPER(expr, true)
 
 #define FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, cmp, cmp_desc) \
-    FLAG_COND_VALIDATOR( \
+    FLAG_DELAYED_COND_VALIDATOR( \
       cmp(_value, BOOST_PP_CAT(FLAGS_, other_flag)), \
       "Must be " cmp_desc " " #other_flag ": " << BOOST_PP_CAT(FLAGS_, other_flag))
 
@@ -145,6 +145,16 @@ namespace yb {
     FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::cmp_greater, "greater than")
 #define FLAG_GE_FLAG_VALIDATOR(other_flag) \
     FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::cmp_greater_equal, "greater than or equal to")
+
+#define FLAG_REQUIRES_FLAG_VALIDATOR(required_flag) \
+    FLAG_DELAYED_COND_VALIDATOR( \
+      !_value || BOOST_PP_CAT(FLAGS_, required_flag), \
+      "Requires " #required_flag " to be true")
+
+#define FLAG_REQUIRED_BY_FLAG_VALIDATOR(required_by_flag) \
+    FLAG_DELAYED_COND_VALIDATOR( \
+      _value || !BOOST_PP_CAT(FLAGS_, required_by_flag), \
+      "Required by " #required_by_flag " to be true")
 
 #define FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, cmp, cmp_desc) \
     FLAG_COND_VALIDATOR(cmp(_value, (cmp_value)), "Must be " cmp_desc " " #cmp_value)

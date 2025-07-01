@@ -55,7 +55,8 @@ public class PitrConfigTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             backupRequestParams,
             new PitrParams(),
-            sourceDbIds);
+            sourceDbIds,
+            false);
     XClusterConfig xClusterConfig1 = drConfig1.getActiveXClusterConfig();
 
     CreatePitrConfigParams createPitrConfigParams = new CreatePitrConfigParams();
@@ -85,7 +86,8 @@ public class PitrConfigTest extends FakeDBApplication {
             secondTargetUniverse.getUniverseUUID(),
             backupRequestParams,
             new PitrParams(),
-            sourceDbIds);
+            sourceDbIds,
+            false);
     XClusterConfig xClusterConfig2 = drConfig2.getActiveXClusterConfig();
     xClusterConfig2.addPitrConfig(pitrConfig);
 

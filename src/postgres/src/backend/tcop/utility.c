@@ -880,8 +880,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				 * restriction by calling Async_Listen directly, but then it's
 				 * on them to provide some mechanism to process the message
 				 * queue.)  Note there seems no reason to forbid UNLISTEN.
+				 * YB: YB_YSQL_CONN_MGR denotes backend process created by
+				 * connection manager. They should be treated as regular backend
+				 * process, so they can execute LISTEN.
 				 */
-				if (MyBackendType != B_BACKEND)
+				if (MyBackendType != B_BACKEND && MyBackendType != YB_YSQL_CONN_MGR)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					/* translator: %s is name of a SQL command, eg LISTEN */

@@ -107,6 +107,7 @@ Version refers to the latest tested version of the integration.
 | :------ | :------ | :------ | :------- |
 | Hashicorp Vault      | 1.0.0  | Full | [Hashicorp Vault](hashicorp-vault/) |
 | WSO2 Identity Server | 5.11.0 | Full | [WSO2 Identity Server](wso2/) |
+| Keycloak | 26.2.5 | Full | [Keycloak](keycloak/) |
 
 ### Applications powered by YugabyteDB
 

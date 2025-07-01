@@ -13,12 +13,12 @@
 
 #pragma once
 
-#include <concepts>
-#include <functional>
 #include <optional>
 #include <utility>
 
 #include "yb/gutil/macros.h"
+
+#include "yb/util/concepts.h"
 
 namespace yb {
 
@@ -39,7 +39,7 @@ namespace yb {
 //    se.Cancel();
 //    return Status::OK();
 //  }
-template <std::convertible_to<std::function<void()>> F>
+template <InvocableAs<void()> F>
 class [[nodiscard]] CancelableScopeExit { // NOLINT
  public:
   explicit CancelableScopeExit(const F& f) : f_(f) {}
@@ -64,7 +64,7 @@ class [[nodiscard]] CancelableScopeExit { // NOLINT
 
 // Execute the lambda when object goes out of scope.
 // Unlike CancelableScopeExit execution can't be dismissed (no Cancel method)
-template <std::convertible_to<std::function<void()>> F>
+template <InvocableAs<void()> F>
 class [[nodiscard]] ScopeExit { // NOLINT
  public:
   explicit ScopeExit(const F& f) : impl_(f) {}
@@ -74,5 +74,10 @@ class [[nodiscard]] ScopeExit { // NOLINT
  private:
   CancelableScopeExit<F> impl_;
 };
+
+template <InvocableAs<void()> F>
+auto MakeOptionalScopeExit(F&& f) {
+  return std::optional<ScopeExit<std::decay_t<F>>>{std::forward<F>(f)};
+}
 
 } // namespace yb

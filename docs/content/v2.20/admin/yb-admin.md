@@ -2501,6 +2501,8 @@ Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about
 
 [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
+Note that `promote_auto_flags` is a cluster-level operation; you don't need to run it on every node.
+
 **Syntax**
 
 ```sh
@@ -2574,7 +2576,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
     upgrade_ysql
 ```
 
-Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+Running `upgrade_ysql` is an online operation and doesn't require stopping a running cluster. `upgrade_ysql` is also a cluster-level operation; you don't need to run it on every node.
 
 {{< note title="Note" >}}
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.

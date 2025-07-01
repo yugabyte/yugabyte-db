@@ -1043,8 +1043,8 @@ stmt:
 			| AlterEnumStmt
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
-			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
-			| AlterForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterFdwStmt
+			| AlterForeignServerStmt
 			| AlterFunctionStmt
 			| AlterGroupStmt
 			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1065,7 +1065,7 @@ stmt:
 			| AlterStatsStmt
 			| AlterTSConfigurationStmt { parser_ybc_beta_feature(@1, "alter text search configuration", false); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
+			| AlterUserMappingStmt
 			| AnalyzeStmt
 			| CallStmt
 			| CheckPointStmt { parser_ybc_beta_feature(@1, "checkpoint", false); }
@@ -1081,9 +1081,9 @@ stmt:
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateDomainStmt
 			| CreateExtensionStmt
-			| CreateFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateForeignServerStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
-			| CreateForeignTableStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateFdwStmt
+			| CreateForeignServerStmt
+			| CreateForeignTableStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
 			| CreateMatViewStmt
@@ -1104,7 +1104,7 @@ stmt:
 			| CreateEventTrigStmt
 			| CreateRoleStmt
 			| CreateUserStmt
-			| CreateUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| CreateUserMappingStmt
 			| CreatedbStmt
 			| DeallocateStmt
 			| DeclareCursorStmt
@@ -1121,7 +1121,7 @@ stmt:
 			| DropTableSpaceStmt
 			| DropTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropRoleStmt
-			| DropUserMappingStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
+			| DropUserMappingStmt
 			| DropdbStmt
 			| ExecuteStmt
 			| ExplainStmt

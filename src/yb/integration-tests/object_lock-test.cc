@@ -415,21 +415,42 @@ Request ReleaseRequestFor(
   return req;
 }
 
+std::future<Result<tserver::ReleaseObjectLockResponsePB>> ReleaseLockAtAsync(
+    tserver::TabletServerServiceProxy* proxy, const std::string& session_host_uuid,
+    const docdb::ObjectLockOwner& owner, uint64_t lease_epoch = kLeaseEpoch,
+    server::ClockPtr clock = nullptr, std::optional<HybridTime> apply_after = std::nullopt,
+    MonoDelta rpc_timeout = kTimeout) {
+  auto resp = std::make_shared<tserver::ReleaseObjectLockResponsePB>();
+  auto controller = std::make_shared<rpc::RpcController>();
+  controller->set_timeout(rpc_timeout);
+  auto req = ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
+      session_host_uuid, owner, lease_epoch, clock, apply_after);
+  auto promise = std::make_shared<std::promise<Result<tserver::ReleaseObjectLockResponsePB>>>();
+  auto callback = [promise, controller, resp]() {
+    if (!controller->status().ok()) {
+      promise->set_value(controller->status());
+    } else if (resp->has_error()) {
+      promise->set_value(ResponseStatus(*resp));
+    } else {
+      promise->set_value(*resp);
+    }
+  };
+  proxy->ReleaseObjectLocksAsync(req, resp.get(), controller.get(), std::move(callback));
+  return promise->get_future();
+}
+
 Status ReleaseLockAt(
     tserver::TabletServerServiceProxy* proxy, const std::string& session_host_uuid,
     const docdb::ObjectLockOwner& owner, uint64_t lease_epoch = kLeaseEpoch,
     server::ClockPtr clock = nullptr, std::optional<HybridTime> apply_after = std::nullopt,
     MonoDelta rpc_timeout = kTimeout) {
-  tserver::ReleaseObjectLockResponsePB resp;
-  rpc::RpcController controller = RpcController();
-  controller.set_timeout(rpc_timeout);
-  auto req = ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
-      session_host_uuid, owner, lease_epoch, clock, apply_after);
-  auto ret = proxy->ReleaseObjectLocks(req, &resp, &controller);
-  if (clock && ret.ok() && resp.has_propagated_hybrid_time()) {
-    clock->Update(HybridTime(resp.propagated_hybrid_time()));
+  auto result = ReleaseLockAtAsync(
+                    proxy, session_host_uuid, owner, lease_epoch, clock, apply_after, rpc_timeout)
+                    .get();
+  if (clock && result.ok() && result->has_propagated_hybrid_time()) {
+    clock->Update(HybridTime(result->propagated_hybrid_time()));
   }
-  return ret;
+  return ResultToStatus(result);
 }
 
 Status ReleaseLockGloballyAt(
@@ -1377,6 +1398,42 @@ TEST_F(ExternalObjectLockTestOneTSWithoutLease, TServerRefusesPGSessionsWithoutL
         return result.ok();
       },
       timeout, "Wait for tserver to accept new pg sessions"));
+}
+
+TEST_F(ExternalObjectLockTestOneTS, ReleaseBlocksUntilBootstrap) {
+  //   1. acquire a lock globally.
+  //   2. start up a tserver that won't acquire a ysql lease.
+  //   3. call release on this new tserver. we expect this to block.
+  //   4. start the new tserver's ysql lease poller.
+  //   5. the new tserver should acquire a lease and process the release.
+  //   6. verify by acquiring a local lock on the same object.
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  auto ts = cluster_->tablet_server(0);
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, ts->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch, nullptr,
+      std::nullopt, kTimeout));
+  ASSERT_OK(cluster_->AddTabletServer(
+      false, {"--TEST_tserver_enable_ysql_lease_refresh=false"}, -1, false));
+
+  auto added_ts = cluster_->tablet_server(1);
+  auto added_ts_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(1);
+  auto future = ReleaseLockAtAsync(
+      &added_ts_proxy, ts->uuid(), kTxn1, kLeaseEpoch, /* clock */ nullptr,
+      /* apply_after */ std::nullopt, MonoDelta::FromSeconds(10));
+  ASSERT_OK(LogWaiter(added_ts, "Waiting until object lock manager is bootstrapped")
+                .WaitFor(MonoDelta::FromSeconds(2)));
+  ASSERT_EQ(future.wait_for(0s), std::future_status::timeout)
+      << "Expected release request to block at tserver that has not acquired a lease yet";
+
+  // enable the ysql lease poller on the new ts.
+  ASSERT_OK(cluster_->SetFlag(added_ts, kTServerYsqlLeaseRefreshFlagName, "true"));
+  ASSERT_RESULT(future.get());
+
+  // The lock should be released at the tserver, and we should be able to acquire a conflicting
+  // lock.
+  ASSERT_OK(AcquireLockAt(
+      &added_ts_proxy, added_ts->uuid(), kTxn2, kDatabaseID, kRelationId, kLeaseEpoch, nullptr,
+      std::nullopt, kTimeout));
 }
 
 class MultiMasterObjectLockTestWithFailover : public MultiMasterObjectLockTest,

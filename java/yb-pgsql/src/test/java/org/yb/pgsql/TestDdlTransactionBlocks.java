@@ -33,9 +33,9 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
     builder.addCommonTServerFlag("ysql_log_statement", "all");
-    builder.addCommonTServerFlag("TEST_ysql_yb_ddl_transaction_block_enabled", "true");
-    builder.addCommonTServerFlag(
-        "allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
+    builder.addCommonTServerFlag("allowed_preview_flags_csv",
+        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
     builder.addCommonTServerFlag("enable_object_locking_for_table_locks", "true");
     builder.addMasterFlag(
         "allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
@@ -44,6 +44,11 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
 
   @Test
   public void yb_ddl_txn_block_tests() throws Exception {
+    // GH-27235 - There are issues with schema invalidation on other backends
+    // for rolled back transactional DDLs, causing the test to fail with
+    // Connection Mangaer enabled. Force the test to operate on one physical
+    // connection until this issue is resolved.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_ddl_txn_block_schedule");
   }
 }

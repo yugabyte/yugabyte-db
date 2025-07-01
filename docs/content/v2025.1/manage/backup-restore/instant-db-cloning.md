@@ -150,7 +150,7 @@ The following example demonstrates how to use a database clone to recover from a
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --master_flags "allowed_preview_flags_csv={enable_db_clone},enable_db_clone=true" \
+        --master_flags "enable_db_clone=true" \
         --tserver_flags "ysql_hba_conf_csv={host all all 0.0.0.0/0 trust,local all all trust}"
     ```
 

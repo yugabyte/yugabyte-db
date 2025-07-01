@@ -377,8 +377,7 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
     opts_.replication_factor > 0 ? opts_.replication_factor : narrow_cast<int>(opts_.num_masters);
 
   if (messenger == nullptr) {
-    rpc::MessengerBuilder builder("minicluster-messenger");
-    builder.set_num_reactors(1);
+    auto builder = CreateMiniClusterMessengerBuilder();
     messenger_holder_ = VERIFY_RESULT_PREPEND(
         builder.Build(), "Failed to start Messenger for minicluster");
     messenger_ = messenger_holder_.get();
@@ -2828,11 +2827,10 @@ void StartSecure(
     std::unique_ptr<rpc::SecureContext>* secure_context,
     std::unique_ptr<rpc::Messenger>* messenger,
     bool enable_ysql) {
-  rpc::MessengerBuilder messenger_builder("test_client");
+  auto messenger_builder = CreateMiniClusterMessengerBuilder();
   *secure_context = ASSERT_RESULT(rpc::SetupSecureContext(
       /*root_dir=*/"", "127.0.0.100", rpc::SecureContextType::kInternal, &messenger_builder));
   *messenger = ASSERT_RESULT(messenger_builder.Build());
-  (**messenger).TEST_SetOutboundIpBase(ASSERT_RESULT(HostToAddress("127.0.0.1")));
 
   ExternalMiniClusterOptions opts;
   opts.extra_tserver_flags = {

@@ -8,6 +8,7 @@ menu:
   v2.20:
     identifier: deploy
     parent: launch-and-manage
+    weight: 10
 type: indexpage
 ---
 

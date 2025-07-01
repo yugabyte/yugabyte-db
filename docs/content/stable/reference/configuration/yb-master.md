@@ -13,6 +13,12 @@ type: docs
 
 Use the yb-master binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The yb-master executable file is located in the `bin` directory of YugabyteDB home.
 
+{{< note title="Setting flags in YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere, set flags using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+{{< /note >}}
+
 ## Syntax
 
 ```sh
@@ -982,6 +988,8 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
+
 ##### --ysql_enable_db_catalog_version_mode
 
 Enable the per database catalog version mode. A DDL statement that
@@ -1058,9 +1066,17 @@ Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/r
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
-{{<warning>}}
-Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+{{</note>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms
 

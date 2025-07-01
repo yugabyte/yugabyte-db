@@ -462,16 +462,17 @@ Status CatalogManager::RepackSnapshotsForBackup(
     ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
-
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
     auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode) &&
                                   include_ddl_in_progress_tables
                               ? kUseRelfilenodeFormatVersion
                               : kUseBackupRowEntryFormatVersion;
+
     snapshot.set_format_version(format_version);
 
     SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
+    auto snapshot_hybrid_time = ReadHybridTime::FromUint64(sys_entry.snapshot_hybrid_time());
     snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
 
     unordered_set<TableId> tables_to_skip;
@@ -506,18 +507,29 @@ Status CatalogManager::RepackSnapshotsForBackup(
         }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-          const auto res = GetYsqlManager().GetPgSchemaName(table_info->id(), l.data());
+          // Determine if this DocDB table is committed as of snapshot_hybrid_time.
+          // A committed DocDB table corresponds to a committed pg_table whose relfilenode maps to
+          // this DocDB table.
+          // Uncommitted DocDB tables can include:
+          // - Orphaned tables: dropped in YSQL but still present in DocDB.
+          // - Temporary tables: created during an ongoing DDL operation when the snapshot was
+          // taken.
+          const auto res =
+              GetYsqlManager().GetPgSchemaName(table_info->id(), l.data(), snapshot_hybrid_time);
           if (!res.ok()) {
-            // Check for the scenario where the table is dropped by YSQL but not docdb - this can
-            // happen due to a bug with the async nature of drops in PG with docdb.
-            // If this occurs don't block the entire backup, instead skip this table(see gh #13361).
+            // Handle the case where the table was dropped in YSQL but not in DocDB.
+            // This can occur in two scenarios:
+            // - Before DDL atomicity was implemented, where PG and DocDB drops were not always in
+            // sync.
+            // - A snapshot is being exported in the middle of a DDL operation.
+            // If this occurs don't block the entire backup. Instead, skip exporting this table.
             if (res.status().IsNotFound() &&
-                res.status().message().ToBuffer().find(kRelnamespaceNotFoundErrorStr)
-                    != string::npos) {
+                MasterError(res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
               snapshot.mutable_backup_entries()->RemoveLast();
-              // Keep track of table so we skip its tablets as well. Note, since tablets always
-              // follow their table in sys_entry, we don't need to check previous tablet entries.
+              // Keep track of table so we skip its tablets as well. Note, since tablets
+              // always follow their table in sys_entry, we don't need to check previous
+              // tablet entries.
               tables_to_skip.insert(table_info->id());
               continue;
             }

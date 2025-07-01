@@ -455,7 +455,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   private void checkAttachDetachEnabled() {
     boolean attachDetachEnabled = confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled);
     if (!attachDetachEnabled) {
-      throw new PlatformServiceException(BAD_REQUEST, "Attach/Detach feature is not enabled");
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Attach/Detach feature is not enabled. Please set the runtime flag"
+              + " 'yb.attach_detach.enabled' to true.");
     }
   }
 }

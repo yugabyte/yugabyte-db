@@ -52,7 +52,7 @@ DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
-DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb {
 
@@ -483,7 +483,7 @@ class DeadlockDetectionWithTxnPromotionTest : public GeoPartitionedDeadlockTest 
 class GeoTransactionsPromotionWithDdlTest : public GeoTransactionsPromotionTest {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     GeoTransactionsPromotionTest::SetUp();
   }
 

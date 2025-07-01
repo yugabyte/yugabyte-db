@@ -364,7 +364,11 @@ Status TabletPeer::InitTabletPeer(
 
 Result<FixedHybridTimeLease> TabletPeer::HybridTimeLease(
     HybridTime min_allowed, CoarseTimePoint deadline) {
-  auto time = VERIFY_RESULT(WaitUntil(clock_.get(), min_allowed, deadline));
+  HybridTime time;
+  {
+    SCOPED_WAIT_STATUS(WaitForReadTime);
+    time = VERIFY_RESULT(WaitUntil(clock_.get(), min_allowed, deadline));
+  }
   // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
   // the resulting ht_lease is at least min_allowed.
   auto min_allowed_micros = min_allowed.CeilPhysicalValueMicros();
@@ -1233,7 +1237,8 @@ OpId TabletPeer::GetLatestCheckPoint() {
 }
 
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
-  auto namespace_id = tablet()->metadata()->namespace_id();
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  auto namespace_id = tablet->metadata()->namespace_id();
   if (!namespace_id.empty()) {
     return namespace_id;
   }
@@ -1241,7 +1246,6 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   // fetch it from the client and populate the tablet metadata.
   auto* client = client_future().get();
   master::GetNamespaceInfoResponsePB resp;
-  auto tablet = VERIFY_RESULT(shared_tablet_safe());
   auto* metadata = tablet->metadata();
   auto namespace_name = metadata->namespace_name();
   auto db_type = YQL_DATABASE_CQL;

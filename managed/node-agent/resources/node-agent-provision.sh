@@ -159,8 +159,6 @@ setup_virtualenv() {
     fi
 
     if source "$VENV_PATH/bin/activate"; then
-        USER_NAME=$(logname 2>/dev/null || echo "$SUDO_USER" || whoami)
-        chown -R $USER_NAME:$USER_NAME $VENV_PATH
         echo "Virtual environment activated."
     else
         echo "Failed to activate virtual environment. Continuing without it..."

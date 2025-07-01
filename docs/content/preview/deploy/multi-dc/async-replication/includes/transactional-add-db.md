@@ -44,7 +44,7 @@ The database should have at least one table in order to be added to replication.
     Create equivalent YSQL objects (schemas, tables, indexes, ...) for the database in the standby universe
     ```
 
-1. If needed, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty, it must be bootstrapped, even if the output suggests otherwise. This applies even if it contains only empty tables, unused types, or enums (#24030).
+1. If bootstrapping is required, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty or you are using automatic mode, it must be bootstrapped.
 
 1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
 
@@ -90,7 +90,7 @@ The database should have at least one table in order to be added to replication.
     Create equivalent YSQL objects (schemas, tables, indexes, ...) for the database in the standby universe
     ```
 
-1. If needed, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty, it must be bootstrapped, even if the output suggests otherwise. This applies even if it contains only empty tables, unused types, or enums (#24030).
+1. If bootstrapping is required, perform a full copy of the database(s) on the Primary to the Standby using distributed [backup](../../../../reference/configuration/yugabyted/#backup) and [restore](../../../../reference/configuration/yugabyted/#restore). If your source database is not empty or you are using automatic mode, it must be bootstrapped.
 
 1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
 

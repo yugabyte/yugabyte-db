@@ -305,7 +305,11 @@ func createBackupCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 
 			outputPath := args[0]
-			if plat, ok := services["yb-platform"].(Platform); ok {
+			s := serviceManager.ServiceByName("yb-platform")
+			if s == nil {
+				log.Fatal("yb-platform service not found. Cannot create backup.")
+			}
+			if plat, ok := s.(Platform); ok {
 				CreateBackupScript(outputPath, dataDir, excludePrometheus, excludeReleases, restart,
 					disableVersion, verbose, plat)
 			} else {
@@ -362,7 +366,11 @@ func restoreBackupCmd() *cobra.Command {
 			inputPath := args[0]
 
 			// TODO: backupScript is the only reason we need to have this cast. Should probably refactor.
-			if plat, ok := services["yb-platform"].(Platform); ok {
+			s := serviceManager.ServiceByName("yb-platform")
+			if s == nil {
+				log.Fatal("yb-platform service not found. Cannot restore backup.")
+			}
+			if plat, ok := s.(Platform); ok {
 				// Drop the yugaware database.
 				if migration && !skipYugawareDrop {
 					prompt := "Restoring previous YBA will drop the existing yugaware database. Continue?"

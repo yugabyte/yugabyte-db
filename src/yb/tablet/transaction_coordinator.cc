@@ -1392,11 +1392,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     std::vector<HybridTime> write_hybrid_times(expected_tablet_batches.size());
     {
       lock->unlock();
-      auto scope_exit = ScopeExit([lock] {
-        if (lock) {
-          lock->lock();
-        }
-      });
+      ScopeExit scope_exit{[lock] { lock->lock(); }};
       size_t idx = 0;
       for (const auto& p : expected_tablet_batches) {
         tserver::GetTransactionStatusAtParticipantRequestPB req;

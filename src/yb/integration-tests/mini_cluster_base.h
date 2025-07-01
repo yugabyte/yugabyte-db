@@ -86,4 +86,6 @@ class MiniClusterBase {
   virtual Result<HostPort> DoGetLeaderMasterBoundRpcAddr() = 0;
 };
 
+rpc::MessengerBuilder CreateMiniClusterMessengerBuilder();
+
 }  // namespace yb

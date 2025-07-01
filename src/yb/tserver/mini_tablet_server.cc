@@ -190,12 +190,7 @@ Status MiniTabletServer::Reconnect() {
   }
 
   tunnel_ = std::make_unique<Tunnel>(&server_->messenger()->io_service());
-  auto started_tunnel = false;
-  auto se = ScopeExit([this, &started_tunnel] {
-    if (!started_tunnel) {
-      tunnel_->Shutdown();
-    }
-  });
+  CancelableScopeExit shutdown_se{[this] {tunnel_->Shutdown(); }};
 
   std::vector<Endpoint> local;
   RETURN_NOT_OK(opts_.broadcast_addresses[0].ResolveAddresses(&local));
@@ -204,7 +199,7 @@ Status MiniTabletServer::Reconnect() {
       local.front(), remote, [messenger = server_->messenger()](const IpAddress& address) {
     return !messenger->TEST_ShouldArtificiallyRejectIncomingCallsFrom(address);
   }));
-  started_tunnel = true;
+  shutdown_se.Cancel();
   return Status::OK();
 }
 
