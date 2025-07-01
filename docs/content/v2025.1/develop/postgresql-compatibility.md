@@ -63,8 +63,6 @@ For information on configuring CBO, refer to [Enable cost-based optimizer](../..
 
 When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
-When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
-
 {{<lead link="../../architecture/query-layer/planner-optimizer/">}}
 To learn how CBO works, see [Query Planner / CBO](../../architecture/query-layer/planner-optimizer/)
 {{</lead>}}
@@ -140,8 +138,6 @@ For example, from your YugabyteDB home directory, run the following command:
 ```sh
 ./bin/yugabyted start --enable_pg_parity_early_access
 ```
-
-Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
 
 ### YugabyteDB Anywhere
 

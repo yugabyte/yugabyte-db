@@ -451,8 +451,6 @@ Default: `false`
 
 Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
-When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
-
 Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 
 ##### yb_enable_optimizer_statistics
