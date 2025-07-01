@@ -1,3 +1,15 @@
+---
+title: yb_index_check() function [YSQL]
+headerTitle: yb_index_check()
+linkTitle: yb_index_check()
+description: Checks if the given index is consistent with its base relation.
+menu:
+  preview_api:
+    identifier: api-ysql-exprs-yb_index_check
+    parent: api-ysql-exprs
+type: docs
+---
+
 `yb_index_check()` is a utility function that checks if an index is consistent with its base relation. It is useful to detect inconsistencies that can creep in due to faulty storage, faulty RAM, data files being overwritten or modified by unrelated software, or hypothetical undiscovered bugs in YugabytedDB.
 
 It performs checks to detect spurious, missing, and inconsistent index rows. It also validates uniqueness on unique indexes.

@@ -17,6 +17,7 @@ YSQL supports all PostgreSQL-compatible built-in functions and operators. The fo
 | Statement | Description |
 |-----------|-------------|
 | [yb_hash_code()](func_yb_hash_code) | Returns the partition hash code for a given set of expressions |
+| [yb_index_check()](func_yb_index_check) | Checks if the given index is consistent with its base relation |
 | [gen_random_uuid()](func_gen_random_uuid) | Returns a random UUID |
 | [Sequence functions](sequence_functions/) | Functions operating on sequences |
 | [Geo-partitioning helper functions](./geo_partitioning_helper_functions/) | Detailed list of geo-partitioning helper functions |
