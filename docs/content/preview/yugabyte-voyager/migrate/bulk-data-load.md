@@ -262,9 +262,9 @@ You can also import files to the same table across multiple runs. For example:
     yb-voyager import data file –config-file <path_to_config_file>
     ```
 
-To import an updated version of the same file (that is, having the same file name and data-dir), use the `start-clean` parameter and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. 
+    To import an updated version of the same file (that is, having the same file name and data-dir), use the `start-clean` parameter and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode.
 
-For example, importing `orders.csv` under `data-dir` to the `orders` table updates the same file:
+    For example, importing `orders.csv` under `data-dir` to the `orders` table updates the same file:
 
     ```conf
     ...
@@ -280,7 +280,7 @@ For example, importing `orders.csv` under `data-dir` to the `orders` table updat
     yb-voyager import data file –config-file <path_to_config_file>
     ```
 
-After adding new rows to `orders.csv`, make the following change in the configuration file and run the `import data file` command again:
+    After adding new rows to `orders.csv`, make the following change in the configuration file and run the `import data file` command again:
 
     **Warning**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using `enable-upsert: true` may corrupt the indexes.
 
