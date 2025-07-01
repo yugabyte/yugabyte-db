@@ -257,6 +257,7 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              'NULL' |
                              'CHECK' '(' expression ')' |
                              'DEFAULT' expression |
+                             'GENERATED' 'ALWAYS' 'AS' '(' expression ')' 'STORED' |
                              'UNIQUE' index_parameters |
                              'PRIMARY' 'KEY' |
                              references_clause )
