@@ -35,10 +35,6 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
 
 ## Before you begin
 
-{{< warning >}}
-v2.25 is a preview release that is only meant for evaluation purposes and should not be used in production.
-{{< /warning >}}
-
 - All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
 - Upgrade client drivers.
 
@@ -48,7 +44,8 @@ v2.25 is a preview release that is only meant for evaluation purposes and should
     If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
 
 - If your cluster has dedicated YB-Master nodes (that is, nodes with YB-Master service only and no YB-TServer), you must create a superuser named `yugabyte_upgrade` and add its credentials to the `.pgpass` file on each YB-Master node. You can safely remove this user after the upgrade process is complete.
-    ```
+
+    ```sql
     CREATE USER yugabyte_upgrade WITH SUPERUSER PASSWORD '<strong_password>';
     ```
 
