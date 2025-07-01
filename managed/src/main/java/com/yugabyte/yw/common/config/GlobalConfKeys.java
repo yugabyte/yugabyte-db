@@ -1685,4 +1685,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Use the runtime info from the previously failed task on retry",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> gcpBlobDeleteRetryCount =
+      new ConfKeyInfo<>(
+          "yb.gcp.blob_delete_retry_count",
+          ScopeType.GLOBAL,
+          "GCP Blob Delete Retry Count",
+          "Number of times to retry deleting blobs in GCP. This is used to handle the case where"
+              + " the blob deletion fails due to some transient error.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
