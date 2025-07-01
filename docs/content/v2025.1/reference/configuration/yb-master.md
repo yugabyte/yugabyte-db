@@ -964,6 +964,8 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
+For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
+
 ##### --ysql_enable_db_catalog_version_mode
 
 Enable the per database catalog version mode. A DDL statement that
