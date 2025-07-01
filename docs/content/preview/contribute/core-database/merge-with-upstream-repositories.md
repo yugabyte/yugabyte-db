@@ -27,7 +27,7 @@ This document is primarily concerned about the case of code being embedded into 
 Before getting started, note that most of this document is applicable to both internal and external contributors, but some steps are internal-only.
 In particular, references to "Phorge", "`arc`", and "internal slack" are internal.
 Such references generally pertain to putting up [yugabyte/yugabyte-db][repo-yugabyte-db] code for review, getting it tested through jenkins, and committing it.
-External contributors may publish the code for review using a GitHub PR, and an internal engineer will take care of the internal steps.
+External contributors may publish the code for review using a GitHub PR, and reach out in our [community Slack]({{<slack-invite>}}) so that a YugabyteDB engineer can take care of the internal steps.
 External contributors may also reach out in our [community Slack]({{<slack-invite>}}).
 
 ## Different tracking approaches
@@ -56,14 +56,14 @@ Therefore, in case of port-imports, YugabyteDB must create a fork of the externa
 To make matters more complicated, the upstream repository might be tracked differently across [yugabyte/yugabyte-db][repo-yugabyte-db] branches.
 For example, pgaudit has different branches for each PG version while pg_cron has a single branch where, at any point, there is multi-version support.
 In case of the former, it is necessary to track separate upstream commits across [yugabyte/yugabyte-db][repo-yugabyte-db] branches, and if a fork is required, then a branch should be created for each PG version that YugabyteDB supports, conventionally named `yb-pg<version>` for `master` and `yb-pg<version>-<yb_branch>` otherwise.
-In case of the latter, you may have to do the same in case changes aren't always fully backported.
+In case of the latter, you may have to do the same in case older branches diverge from the master.
 Otherwise, a single `yb` branch can be used across all [yugabyte/yugabyte-db][repo-yugabyte-db] branches provided the PG versions of those branches are all within support.
 Typically, this is possible for low-traffic third-party extensions.
 Branches can be renamed, so if the single `yb` branch ever needs to be split to two, it can switch to the `yb-pg<version>` format from that point.
 It's fine as long as historical commits are not lost so that old commits still have a valid upstream commit that can be referenced.
 
 Not all external repositories are yet tracked in [`upstream_repositories.csv`][upstream-repositories-csv].
-New repositories ought to be registered in here.
+New repositories should be registered in here.
 Old repositories should be migrated into the CSV over time.
 Today, all repositories under `src/postgres` are tracked in the CSV.
 By using the CSV, several linter rules have been made to ensure YugabyteDB stays aligned with the upstream repositories.
@@ -125,8 +125,8 @@ The following steps detail what has already been done to add DocumentDB.
    In case of a conflict with existing tags, there are many workarounds, one of which is to delete the existing tag first then re-run the fetch.
 1. Find an appropriate location to embed the repository.
    The common case is PostgreSQL extensions, which belong in `src/postgres/third-party-extensions/<extension_name>`.
+1. Switch to a new feature branch first, based off the latest [yugabyte/yugabyte-db][repo-yugabyte-db] `master` branch.
 1. Add the subtree.
-   You may want to switch to a new feature branch first, based off the latest [yugabyte/yugabyte-db][repo-yugabyte-db] `master` branch.
 
    ```sh
    git fetch origin master:master
@@ -151,7 +151,7 @@ The following steps detail what has already been done to add DocumentDB.
 1. Create a Phorge revision of this feature branch for official review.
    Make sure lint is not skipped to make sure [`upstream_repositories.csv`][upstream-repositories-csv] is valid.
    The reviewer should make sure the latest commit hash of both submissions are exactly equal.
-1. Request permission from @buildteam in the internal slack #eng-infra channel to land a merge commit of this revision.
+1. Request permission from `@buildteam` in the internal slack `#eng-infra` channel to land a merge commit of this revision.
 1. Land the change using the merge strategy:
 
    ```sh
