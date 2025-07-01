@@ -262,8 +262,9 @@ You can also import files to the same table across multiple runs. For example:
     yb-voyager import data file –config-file <path_to_config_file>
     ```
 
-1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. 
-For example, importing `orders.csv` under `data-dir` to the `orders` table, it is the same file which keeps on updating:
+To import an updated version of the same file (that is, having the same file name and data-dir), use the `start-clean` parameter and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. 
+
+For example, importing `orders.csv` under `data-dir` to the `orders` table updates the same file:
 
     ```conf
     ...
@@ -279,7 +280,7 @@ For example, importing `orders.csv` under `data-dir` to the `orders` table, it i
     yb-voyager import data file –config-file <path_to_config_file>
     ```
 
-1. After adding new rows to `orders.csv`, make the following change in the configuration file and run the `import data file` command again:
+After adding new rows to `orders.csv`, make the following change in the configuration file and run the `import data file` command again:
 
     **Warning**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using `enable-upsert: true` may corrupt the indexes.
 
@@ -318,7 +319,8 @@ For example, importing `orders.csv` under `data-dir` to the `orders` table, it i
     ```
 
 1. To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode.
-For example, importing `orders.csv` under `data-dir` to the `orders` table, it is the same file which keeps on updating:
+
+    For example, importing `orders.csv` under `data-dir` to the `orders` table updates the same file:
     ```sh
     yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
     ```
@@ -464,7 +466,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 To complete the migration, you need to clean up the export directory (export-dir) and Voyager state (Voyager-related metadata) stored in the target YugabyteDB database.
 
-Run the `yb-voyager end migration` command to perform the clean up, and to back up the migration report, and the log files by providing the backup related flags (mandatory) as follows:
+Run the `yb-voyager end migration` command to perform the clean up, and to back up the migration report and the log files by providing the backup related flags (mandatory) as follows:
 
 Run the command as follows:
 
