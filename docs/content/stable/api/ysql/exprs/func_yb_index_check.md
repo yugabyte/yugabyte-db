@@ -161,7 +161,7 @@ There is no general method of repairing problems that `yb_index_check()` detects
 
 ### Read restart error
 
-`yb_index_check()` is not concerned with read-after-commit-visibility. It picks up a read time (and an associated snapshot) and uses it to scan both the index and base relation. If a write operation that was committed before the picked read time, did not make it to the snapshot due to clock skew, then that’s fine too because its effect would be absent from both index and the base relation scan result.
+`yb_index_check()` is not concerned with read-after-commit-visibility. It picks up a read time (and an associated snapshot) and uses it to scan both the index and base relation. Even if a write that committed before the chosen read time is missing from the snapshot due to clock skew, that's acceptable—its effects will be absent from both the index and the base table scans.
 
 If [`Restart read required error`](https://docs.yugabyte.com/preview/architecture/transactions/read-restart-error/) is encountered while running `yb_index_check()`, set the following parameter and then re-run `yb_index_check()`:
 
@@ -171,7 +171,7 @@ SET yb_read_after_commit_visibility=relaxed;
 
 This error should not surface while running `yb_index_check()` after issue {{<issue 27288>}}.
 
-### Snapshot too old
+### Snapshot too old error
 
 Any operation that takes more time than `timestamp_history_retention_interval_sec` (TServer flag with default value of 900) is susceptible to `Snapshot Too Old` error.
 
