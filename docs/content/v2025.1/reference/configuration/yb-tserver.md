@@ -2062,8 +2062,6 @@ Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/
 
 When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
-When enabling CBO, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
-
 For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 ### Auto Analyze service flags
