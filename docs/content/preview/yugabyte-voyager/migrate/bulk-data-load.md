@@ -280,7 +280,7 @@ You can also import files to the same table across multiple runs. For example:
     yb-voyager import data file –config-file <path_to_config_file>
     ```
 
-    After adding new rows to `orders.csv`, make the following change in the configuration file and run the `import data file` command again:
+1. After adding new rows to `orders.csv`, make the following change in the configuration file and run the `import data file` command again:
 
     **Warning**: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using `enable-upsert: true` may corrupt the indexes.
 
