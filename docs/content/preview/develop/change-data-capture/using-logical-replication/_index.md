@@ -103,7 +103,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - There should be a primary key on the table you want to stream the changes from.
 
-- CDC is not supported on xCluster target universe [15534](https://github.com/yugabyte/yugabyte-db/issues/15534). However, both CDC and xCluster can work simultaneously on the same source universe.
+- CDC is not supported on tables replicated by xCluster (target), see [GitHub issue 15534](https://github.com/yugabyte/yugabyte-db/issues/15534). However, both CDC and xCluster can work simultaneously on the same source tables.
 
 - Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations after the replication slot is created. However, you can perform these operations before creating the replication slot without any issues.
 
