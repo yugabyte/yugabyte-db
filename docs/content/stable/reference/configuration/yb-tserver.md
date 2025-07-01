@@ -1809,6 +1809,20 @@ Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
 
+##### yb_enable_cbo
+
+{{<tags/feature/ea idea="483">}} Available in v2024.2.4 or later. Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-scans-cost-model) and [yb_enable_optimizer_statistics](#yb-enable-optimizer-statistics) parameters.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+See also the [--ysql_yb_enable_cbo](#ysql-yb-enable-cbo) flag. If the flag is set, this parameter takes precedence.
+
+Default: `legacy_mode`
+
 ##### yb_enable_base_scans_cost_model
 
 {{<tags/feature/ea idea="483">}} Enables the YugabyteDB cost model for Sequential and Index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.

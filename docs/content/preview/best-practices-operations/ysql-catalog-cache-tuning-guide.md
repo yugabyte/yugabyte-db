@@ -4,6 +4,8 @@ headerTitle: Customize preloading of YSQL catalog caches
 linkTitle: YSQL catalog cache tuning
 description: Trading off memory vs performance in YSQL catalog caches
 headcontent: Trading off memory vs performance in YSQL catalog caches
+tags:
+  other: ysql
 menu:
   preview:
     identifier: ysql-catalog-cache-tuning-guide
