@@ -7,6 +7,7 @@ menu:
   preview_api:
     identifier: api-ysql-exprs-yb_index_check
     parent: api-ysql-exprs
+    weight: 9
 type: docs
 ---
 

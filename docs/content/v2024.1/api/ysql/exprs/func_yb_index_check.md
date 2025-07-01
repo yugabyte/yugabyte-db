@@ -4,9 +4,10 @@ headerTitle: yb_index_check()
 linkTitle: yb_index_check()
 description: Checks if the given index is consistent with its base relation.
 menu:
-  preview_api:
+  v2024.1_api:
     identifier: api-ysql-exprs-yb_index_check
     parent: api-ysql-exprs
+    weight: 9
 type: docs
 ---
 
