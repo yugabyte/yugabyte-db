@@ -2089,7 +2089,7 @@ You still need to configure the flag separately after adding it to this list.
 {{<note title="Using YugabyteDB Anywhere">}}
 If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
 
-After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag; use the **Edit Flags** option.
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
 
 ##### backfill_index_client_rpc_timeout_ms
