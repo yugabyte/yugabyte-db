@@ -25,7 +25,6 @@ import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.Storage.BlobListOption;
 import com.google.cloud.storage.Storage.BucketListOption;
 import com.google.cloud.storage.StorageBatch;
-import com.google.cloud.storage.StorageBatchResult;
 import com.google.cloud.storage.StorageException;
 import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Inject;
@@ -69,6 +68,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -322,7 +322,7 @@ public class GCPUtil implements CloudUtil {
             return false;
           }
         }
-      } catch (StorageException | IOException e) {
+      } catch (StorageException | IOException | PlatformServiceException e) {
         log.error(" Error occured while deleting objects in GCS: {}", e.getMessage());
         return false;
       }
@@ -332,46 +332,71 @@ public class GCPUtil implements CloudUtil {
 
   private void deleteBlob(Storage storage, Page<Blob> blobs, String backupLocation)
       throws InterruptedException {
-    List<Blob> blobsList =
-        StreamSupport.stream(blobs.getValues().spliterator(), false).collect(Collectors.toList());
-    if (blobs == null || blobsList.size() == 0) {
+    if (blobs == null) {
       return;
     }
+    List<Blob> blobsList =
+        StreamSupport.stream(blobs.getValues().spliterator(), false).collect(Collectors.toList());
+    if (blobsList.isEmpty()) {
+      return;
+    }
+    int retryCount = runtimeConfGetter.getGlobalConf(GlobalConfKeys.gcpBlobDeleteRetryCount);
+    Set<Blob> blobsToDelete = ConcurrentHashMap.newKeySet();
+    blobsToDelete.addAll(blobsList);
+    while (retryCount-- > 0 && !blobsToDelete.isEmpty()) {
+      CountDownLatch blobDeletionWaitBarrier = new CountDownLatch(blobsToDelete.size());
+      StorageBatch storageBatch = storage.batch();
+      Set<Blob> failedToDeleteBlobs = ConcurrentHashMap.newKeySet();
+      blobsToDelete.stream()
+          .forEach(
+              blob -> {
+                if (blob != null) {
+                  storageBatch
+                      .delete(blob.getBlobId())
+                      .notify(
+                          new BatchResult.Callback<>() {
+                            @Override
+                            public void success(Boolean result) {
+                              blobDeletionWaitBarrier.countDown();
+                            }
 
-    CountDownLatch blobDeletionWaitBarrier = new CountDownLatch(blobsList.size());
-    AtomicInteger failed = new AtomicInteger();
-    List<StorageBatchResult<Boolean>> results = new ArrayList<>();
-    StorageBatch storageBatch = storage.batch();
-    blobsList.stream()
-        .forEach(
+                            @Override
+                            public void error(StorageException exception) {
+                              log.error("Error deleting blob: ", exception);
+                              failedToDeleteBlobs.add(blob);
+                              blobDeletionWaitBarrier.countDown();
+                            }
+                          });
+                }
+              });
+
+      storageBatch.submit();
+      if (!blobDeletionWaitBarrier.await(30, TimeUnit.MINUTES)) {
+        log.error("Timed out waiting for objects at location {} to get deleted", backupLocation);
+        blobsToDelete.forEach(
             blob -> {
-              if (blob != null) {
-                storageBatch
-                    .delete(blob.getBlobId())
-                    .notify(
-                        new BatchResult.Callback<>() {
-                          @Override
-                          public void success(Boolean result) {
-                            blobDeletionWaitBarrier.countDown();
-                          }
-
-                          @Override
-                          public void error(StorageException exception) {
-                            log.error(exception.getMessage());
-                            failed.incrementAndGet();
-                            blobDeletionWaitBarrier.countDown();
-                          }
-                        });
+              if (blob.exists()) {
+                failedToDeleteBlobs.add(blob);
               }
             });
-
-    storageBatch.submit();
-    if (!blobDeletionWaitBarrier.await(30, TimeUnit.MINUTES)) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
-          String.format(
-              "Timed out waiting for objects at location %s to get deleted", backupLocation));
-    } else if (failed.get() > 0) {
+      }
+      if (failedToDeleteBlobs.size() > 0) {
+        log.error(
+            "Encountered failures deleting {} blobs at location {}",
+            failedToDeleteBlobs.size(),
+            backupLocation);
+        // Retry the failed blobs
+        blobsToDelete.clear();
+        log.info(
+            "Retrying the {} failed blobs at location {}",
+            failedToDeleteBlobs.size(),
+            backupLocation);
+        blobsToDelete.addAll(failedToDeleteBlobs);
+      } else {
+        blobsToDelete.clear();
+      }
+    }
+    if (!blobsToDelete.isEmpty()) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format("Encountered failures deleting objects at location %s", backupLocation));
