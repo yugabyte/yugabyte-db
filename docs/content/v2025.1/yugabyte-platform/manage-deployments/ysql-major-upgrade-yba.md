@@ -46,6 +46,8 @@ To perform the pre-check, do the following:
 
 1. Click **Run Pre-Check Only**.
 
+Results are displayed in the task details. To view tasks, navigate to your universe **Tasks** tab.
+
 After a successful upgrade precheck, you can proceed with the usual database upgrade.
 
 {{<tip title="Backup">}}
