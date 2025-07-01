@@ -17,7 +17,7 @@ It performs checks to detect spurious, missing, and inconsistent index rows. It 
 
 If executed on a partitioned index, it will recursively execute on all the child partitions. It does not yet support vector and ybgin indexes.
 
-## Functional Interface
+## Function interface
 
 `yb_index_check(index regclass) returns void`
 
