@@ -75,15 +75,17 @@ namespace yb {
 namespace master {
 
 ScopedLeaderSharedLock::ScopedLeaderSharedLock(
-    CatalogManager* catalog, const char* file_name, int line_number, const char* function_name)
+    CatalogManager* catalog,
+    int64_t expected_term,
+    const char* file_name,
+    int line_number,
+    const char* function_name)
     : catalog_(DCHECK_NOTNULL(catalog)),
       leader_shared_lock_(catalog->leader_mutex_, std::defer_lock),
       start_(std::chrono::steady_clock::now()),
       file_name_(file_name),
       line_number_(line_number),
       function_name_(function_name) {
-
-
   {
     // Check if the catalog manager is running.
     std::lock_guard l(catalog_->state_lock_);
@@ -94,6 +96,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     }
     epoch_.pitr_count = catalog_->sys_catalog_->pitr_count();
   }
+  epoch_.leader_term = expected_term;
 
   leader_status_ = Lock();
 }
@@ -119,10 +122,12 @@ Status ScopedLeaderSharedLock::Lock() NO_THREAD_SAFETY_ANALYSIS {
         "Couldn't acquire leader lock in shared mode, leader still loading catalog tables");
   }
 
-  epoch_.leader_term = catalog_->leader_ready_term_.load();
+  if (epoch_.leader_term == OpId::kUnknownTerm) {
+    epoch_.leader_term = catalog_->leader_ready_term_.load();
+  }
   if (epoch_.leader_term != leader_state.term) {
     // Normally we use LeaderNotReadyToServe to indicate that the leader has not replicated its
-    // NO_OP entry or the previous leader's lease has not expired yet, and the handling logic is to
+    // NO_OP entry or the previous leader's lease has not expired yet, and the handling logic is
     // to retry on the same server.
     return STATUS_FORMAT(
         LeaderNotReadyToServe, "$0: leader_ready_term_ = $1; current_term = $2",
@@ -164,7 +169,9 @@ void ScopedLeaderSharedLock::Unlock() {
   }
 }
 
-int64_t ScopedLeaderSharedLock::GetLeaderReadyTerm() const { return epoch_.leader_term; }
+int64_t ScopedLeaderSharedLock::GetLeaderReadyTerm() const {
+  return epoch_.leader_term;
+}
 
 }  // namespace master
 }  // namespace yb
