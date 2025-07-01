@@ -19,13 +19,13 @@ type: docs
 
 Enable the YugabyteDB [cost-based optimizer (CBO)](../../architecture/query-layer/planner-optimizer/) to create optimal execution plans for queries. CBO provides significant performance improvements both in single-primary and distributed PostgreSQL workloads, and reduces or eliminates the need to use hints or modify queries to optimize query execution.
 
-You configure CBO using the [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) configuration parameter. The `yb_enable_cbo` parameter also provides a heuristic-based optimizer mode that operates independently of table analysis. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable this mode for specific connections if needed.
+You configure CBO using the [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) configuration parameter (available in v2024.2.4 or later). The `yb_enable_cbo` parameter also provides a heuristic-based optimizer mode that operates independently of table analysis. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable this mode for specific connections if needed.
 
 `yb_enable_cbo` replaces the [yb_enable_optimizer_statistics](../../reference/configuration/yb-tserver/#yb-enable-optimizer-statistics) and [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) parameters, which will be deprecated and removed in a future release.
 
 ## New deployments
 
-For new YSQL deployments, or when migrating from another system, to enable CBO, add the parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
+For new YSQL deployments (v2024.2.4 and later), or when migrating from another system, to enable CBO, add the parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
 
 ```sh
 --ysql_pg_conf_csv=yb_enable_cbo=on
@@ -51,17 +51,6 @@ When upgrading a deployment to a version of YugabyteDB that supports the `yb_ena
 `legacy_mode` uses only reltuples for index scan nodes, and both reltuples and the column statistics for other operations such as joins, GROUP BY, and more. (`legacy_mode` is currently the default for new deployments.)
 
 You should migrate existing deployments from using `legacy_mode` or `legacy_stats_mode` to either `on` (recommended) or, if you do not want to use CBO, `off`.
-
-<!--## Recommended settings
-
-| Scenario | Tables analyzed | Setting |
-| :--- | :--- | :--- |
-| New installation, migrating from another system | N/A | on |
-| Using CBO. yb_enable_base_scans_cost_model = on | Yes | on |
-| Using default settings (yb_enable_optimizer_statistics = off, yb_enable_base_scans_cost_model = off) | No | off |
-| Using default settings (yb_enable_optimizer_statistics = off, yb_enable_base_scans_cost_model = off) | Yes | legacy_mode |
-| yb_enable_optimizer_statistics = on,  yb_enable_base_scans_cost_model = off | Yes | legacy_stats_mode |
--->
 
 ### Turn on CBO safely
 
@@ -93,10 +82,6 @@ If your tables are analyzed, do the following:
 
 1. Re-establish any existing application connections (if specifying the parameter via [ALTER DATABASE](../../api/ysql/the-sql-language/statements/ddl_alter_db/) command, for example) or perform a rolling restart of the servers if you are setting the TServer flag.
 
-## ANALYZE and Auto Analyze service
+## ANALYZE
 
-Use the [YugabyteDB Auto Analyze service](../../explore/query-1-performance/auto-analyze/) {{<tags/feature/ea idea="590">}} to automate the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold. This ensures table statistics are always up-to-date.
-
-Even with the Auto Analyze service, for the CBO to create optimal execution plans, you should still run ANALYZE manually on user tables after data load, as well as in other circumstances.
-
-For more information, refer to [Auto Analyze](../../explore/query-1-performance/auto-analyze/).
+For the CBO to create optimal execution plans, you should run ANALYZE manually on user tables after data load, as well as in other circumstances.

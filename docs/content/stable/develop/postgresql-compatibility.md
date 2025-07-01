@@ -61,7 +61,7 @@ Configuration parameter: `yb_enable_cbo=on`
 
 For information on configuring CBO, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
 
-When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
 
