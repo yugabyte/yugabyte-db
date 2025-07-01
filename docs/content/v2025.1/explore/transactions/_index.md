@@ -48,21 +48,16 @@ The following table summarizes the support for transactions across the YSQL and 
     href="explicit-locking/"
     icon="fa-thin fa-lock">}}
 
+  {{<index/item
+    title="Transactional DDL"
+    body="How YugabyteDB handles DDL operations in transaction block"
+    href="transactional-ddl/"
+    icon="fa-thin fa-table">}}
+
 {{</index/block>}}
 
 <!-- ADD THIS ONCE READY:
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ddl-operations/">
-      <div class="head">
-        <div class="icon"><i class="fa-solid fa-table"></i></div>
-        <div class="title">DDL Operations</div>
-      </div>
-      <div class="body">
-        How YugabyteDB handles DDL operations in transaction blocks.
-      </div>
-    </a>
-  </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="non-transactional-tables/">
       <div class="head">
