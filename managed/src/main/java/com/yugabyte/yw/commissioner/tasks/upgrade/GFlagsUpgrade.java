@@ -477,7 +477,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
         && curCluster.userIntent.auditLogConfig != null) {
       createManageOtelCollectorTasks(
           userIntent,
-          nodes,
+          nodes.stream().filter(nodeDetails -> nodeDetails.isTserver).collect(Collectors.toList()),
           false,
           curCluster.userIntent.auditLogConfig,
           nodeDetails ->
