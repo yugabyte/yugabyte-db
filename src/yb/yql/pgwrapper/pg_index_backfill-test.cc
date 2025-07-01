@@ -1766,6 +1766,21 @@ TEST_P(PgIndexBackfillBlockDoBackfill, IndexScanVisibility) {
             << " for other sessions to notice that the index became public";
 }
 
+TEST_P(PgIndexBackfillTest, SimulateEmptyIndexesForStackOverflow) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_empty_indexes_during_backfill", "true"));
+
+  LOG(INFO) << "Create connection to run CREATE INDEX";
+  PGConn create_index_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  LOG(INFO) << "Create index...";
+  // The failed BackfillChunk/BackfillTable will not update the
+  // backfill_error_message in IndexInfoPB for kIndexName. Thus the following
+  // CREATE INDEX won't bubble up an error from the backfill job failing.
+  ASSERT_OK(create_index_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
+
+  cluster_->AssertNoCrashes();
+}
+
 // Override to have smaller backfill deadline.
 class PgIndexBackfillClientDeadline : public PgIndexBackfillBlockDoBackfill {
  public:
