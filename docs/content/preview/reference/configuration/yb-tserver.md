@@ -447,7 +447,7 @@ See also the [--ysql_yb_enable_cbo](#ysql-yb-enable-cbo) flag. If the flag is se
 ##### yb_enable_base_scans_cost_model
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="483">}}
+
 Default: `false`
 {{% /tags/wrap %}}
 

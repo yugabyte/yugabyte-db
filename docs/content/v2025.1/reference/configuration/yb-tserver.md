@@ -438,8 +438,6 @@ This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-sc
 
 When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
-When enabling CBO, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
-
 For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 See also the [--ysql_yb_enable_cbo](#ysql-yb-enable-cbo) flag. If the flag is set, this parameter takes precedence.
