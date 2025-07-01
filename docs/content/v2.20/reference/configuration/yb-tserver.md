@@ -1268,6 +1268,24 @@ Default: `true`
 
 ## Advanced flags
 
+##### --allowed_preview_flags_csv
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag; use the **Edit Flags** option.
+{{</note>}}
+
 ##### backfill_index_client_rpc_timeout_ms
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.

@@ -1043,13 +1043,17 @@ Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/r
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
-If you are using YugabyteDB Anywhere, as with other flags, set this flag using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
-
 {{<warning title="You still need to set the flag">}}
 Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
 
-You still need to configure the flag separately after adding it to this list. In YugabyteDB Anywhere, you still need to set the flag using the **Edit Flags** option.
+You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag; use the **Edit Flags** option.
+{{</note>}}
 
 ##### --ysql_index_backfill_rpc_timeout_ms
 
