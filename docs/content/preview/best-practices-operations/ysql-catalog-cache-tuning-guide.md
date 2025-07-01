@@ -474,7 +474,7 @@ To confirm that catalog caching is the cause of this, see [Confirm that catalog 
 - [Use connection pooling](#connection-pooling) to reuse existing connections.
 - [Preload additional system tables](#preload-additional-system-tables).
 
-### High memory usage on PostgreSQL backends 
+### High memory usage on PostgreSQL backends
 
 On the flip side, automatic preloading of caches may result in higher memory usage of PostgreSQL backends than desired.
 
