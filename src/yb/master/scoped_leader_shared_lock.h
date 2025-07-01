@@ -36,13 +36,14 @@
 #include <string>
 #include <unordered_map>
 
-#include "yb/util/logging.h"
+#include "yb/common/opid.h"
 
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/service_if.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/rw_mutex.h"
 
@@ -51,9 +52,9 @@ namespace master {
 
 // This is how we should instantiate ScopedLeaderSharedLock. Captures context information so we can
 // use it in logging and debugging.
-#define SCOPED_LEADER_SHARED_LOCK(lock_name, catalog_manager) \
+#define SCOPED_LEADER_SHARED_LOCK(lock_name, ...) \
     ::yb::master::ScopedLeaderSharedLock lock_name( \
-        (catalog_manager), __FILE__, __LINE__, __func__)
+        __VA_ARGS__, __FILE__, __LINE__, __func__)
 
 // Scoped "shared lock" to serialize master leader elections.
 //
@@ -83,8 +84,16 @@ class ScopedLeaderSharedLock {
   // destroyed.
   //
   // 'catalog' must outlive this object.
-  explicit ScopedLeaderSharedLock(
+  ScopedLeaderSharedLock(
       CatalogManager* catalog,
+      const char* file_name,
+      int line_number,
+      const char* function_name) :
+      ScopedLeaderSharedLock(catalog, OpId::kUnknownTerm, file_name, line_number, function_name) {}
+
+  ScopedLeaderSharedLock(
+      CatalogManager* catalog,
+      int64_t expected_term,
       const char* file_name,
       int line_number,
       const char* function_name);
