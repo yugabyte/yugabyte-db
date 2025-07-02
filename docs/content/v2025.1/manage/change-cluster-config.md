@@ -85,7 +85,7 @@ export MASTERS=node1:7100,node2:7100,node3:7100,node7:7100,node8:7100,node9:7100
     >& /mnt/d0/yb-tserver.out &
 ```
 
-Refer to [starting `tserver` servers](../../deploy/manual-deployment/start-tservers/) for further parameters and options.
+Refer to [YB-TServer servers](../../deploy/manual-deployment/start-masters/#yb-tserver-servers) for further parameters and options.
 
 {{< note title="Note" >}}
 The `tserver_master_addrs` parameter includes the new master IP addresses as well, so that they can keep heartbeating/reporting to the new master even after the old masters are removed from master quorum.

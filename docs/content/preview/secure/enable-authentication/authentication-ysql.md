@@ -67,7 +67,7 @@ To enable YSQL authentication in deployable YugabyteDB clusters, you need to sta
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` to the YB-TServer configuration file (`tserver.conf`). For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
+You can also enable YSQL authentication by adding the `--ysql_enable_auth=true` to the YB-TServer configuration file (`tserver.conf`). For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
 
 ## Open the YSQL shell (ysqlsh)
 
