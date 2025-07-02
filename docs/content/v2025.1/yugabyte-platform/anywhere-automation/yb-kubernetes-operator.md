@@ -435,7 +435,63 @@ This example decribes how to create and delete scheduled backups, and assumes yo
 - An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
 - A configured storage location for your backups.
 
-- Create scheduled backup CR:
+You can create a scheduled backup using the following CR:
+
+```sh
+kubectl apply scheduled-backup-demo.yaml -n schedule-cr
+```
+
+```yaml
+apiVersion:operator.yugabyte.io/v1alpha1
+kind:BackupSchedule
+metadata:
+  name:operator-scheduled-backup-1
+spec:
+  backupType:PGSQL_TABLE_TYPE
+  storageConfig:s3-config-operator
+  universe:operator-universe-test-2
+  timeBeforeDelete:1234567890
+  keyspace:test
+  schedulingFrequency:3600000
+  incrementalBackupFrequency:900000
+```
+
+Backup schedules get automatically deleted when you delete the YBA universe that owns it as per the following:
+
+```sh
+$kubectl get backups -n schedule-cr
+```
+
+```yaml
+NAME                           AGE
+operator-scheduled-backup-1   101m
+```
+
+```sh
+$ kubectl get ybuniverse -n schedule-cr
+```
+
+```yaml
+NAME                       STATE   SOFTWARE VERSION
+operator-universe-test-2   Ready   2.25.2.0-b40
+```
+
+```sh
+# Delete YBA universe
+$ kubectl delete ybuniverse operator-universe-test-2 -n schedule-cr
+```
+
+```output
+ybuniverse.operator.yugabyte.io "operator-universe-test-2" deleted
+```
+
+```sh
+$ kubectl get backupschedule -n schedule-cr
+```
+
+```output
+No resources found in schedule-cr namespace.
+```
 
 ### Support bundle
 
