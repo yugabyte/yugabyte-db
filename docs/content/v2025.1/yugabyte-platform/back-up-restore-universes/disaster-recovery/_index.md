@@ -28,7 +28,7 @@ The recovery time objective (RTO) for failover or switchover is very low, and de
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
 
-All major tasks - switchover, failover, delete, restart - are retryable. Switchover tasks can be rolled back if the old stream exists.
+All major DR tasks - switchover, failover, delete, restart - are retryable. Switchover tasks can be rolled back if the old stream exists. For information on managing tasks, refer to [Monitor universe tasks](../../manage-deployments/retry-failed-task/)
 
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
 
