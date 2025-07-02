@@ -24,8 +24,6 @@ The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
 You can install and use the YugabyteDB Anywhere CLI in two ways.
 
-Note that the CLI can only be used with the same or earlier version of YBA.
-
 ### Option 1: Download and extract
 
 1. Download and extract the YugabyteDB Anywhere CLI by entering the following commands:
