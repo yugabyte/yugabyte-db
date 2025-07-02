@@ -20,14 +20,14 @@ Reference documentation for yba CLI commands and their flags is available in the
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is {{<tags/feature/ea idea="1879">}}. Commands and options may change before {{<tags/feature/ga>}}.
-
 ## Install CLI
 
-Your YugabyteDB Anywhere installation includes the CLI binary, in the following location:
+Download and extract the YugabyteDB Anywhere CLI by entering the following commands:
 
 ```sh
-/opt/ybanywhere/software/active/yb-platform/yugaware/yba-cli
+wget https://downloads.yugabyte.com/releases/2025.1.0.0/yba_cli-2025.1.0.0-b<build-number>-linux-amd64.tar.gz
+tar -xf yba_cli-2025.1.0.0-b<build-number>-linux-amd64.tar.gz
+cd yba_cli-2.25.2.0-b<build-number>/
 ```
 
 The CLI is available for following architectures:
