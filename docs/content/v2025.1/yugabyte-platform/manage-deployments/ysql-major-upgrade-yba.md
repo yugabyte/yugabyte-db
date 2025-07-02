@@ -1,5 +1,5 @@
 ---
-title: YSQL major upgrade in YBA
+title: YSQL major upgrade in YugabyteDB Anywhere
 headerTitle: YSQL major upgrade
 linkTitle: YSQL major upgrade
 description: Upgrade YugabyteDB to PostgreSQL 15 version in YBA
@@ -12,19 +12,19 @@ menu:
 type: docs
 ---
 
-Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later) requires additional steps.
+Upgrading YugabyteDB from a version based on PostgreSQL 11 ({{<release "2024.2">}} and earlier) to a version based on PostgreSQL 15 ({{<release "2025.1">}} or later) requires additional steps.
 
 The upgrade is fully online. While the upgrade is in progress, you have full and uninterrupted read and write access to your cluster.
 
 ## Before you begin
 
-- All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
+- All DDL statements, except ones related to [Temporary table](../../../api/ysql/the-sql-language/creating-and-using-temporary-schema-objects/temporary-tables-views-sequences-and-indexes/) and [Refresh Materialized View](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
 - Upgrade client drivers.
 
     Upgrade all application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
-- Your cluster must be running v2024.2.3.0 or later.
+- Your cluster must be running {{<release "2024.2.3.0">}} or later.
 
-    If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-deployment/).
+    If you have a pre-existing cluster, first upgrade it to the latest version in the v2024.2 series using the [upgrade instructions](../upgrade-software/).
 
 - If your cluster has dedicated YB-Master nodes (that is, nodes with YB-Master service only and no YB-TServer), you must create a superuser named `yugabyte_upgrade` and add its credentials to the `.pgpass` file on each YB-Master node. You can safely remove this user after the upgrade process is complete.
 
@@ -51,7 +51,7 @@ Results are displayed in the task details. To view tasks, navigate to your unive
 After a successful upgrade precheck, you can proceed with the usual database upgrade.
 
 {{<tip title="Backup">}}
-Back up your cluster at this time. Refer to [Backup](../../reference/configuration/yugabyted/#backup).
+Back up your cluster at this time. Refer to [Backup](../../../reference/configuration/yugabyted/#backup).
 {{</tip>}}
 
 ## Limitations
@@ -63,8 +63,8 @@ During the upgrade process, until the upgrade is finalized or rolled back, the f
 - Restore a backup or point-in-time-recovery (PITR)
 - Configure YSQL
 - Update YSQL usernames and passwords
-- Create or restart XCluster replication
-- XCluster DR operations, including creating, restarting, switchover, failover, or changes to tables or database in replication
+- Create or restart xCluster replication
+- xCluster DR operations, including creating, restarting, switchover, failover, or changes to tables or database in replication
 - Changes to audit logging
 
 Keep in mind the following additional caveats for backups and PITR:
