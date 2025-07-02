@@ -30,6 +30,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "commands/extension.h"
+#include "pg_yb_utils.h"
 
 static Oid	lookup_am_handler_func(List *handler_name, char amtype);
 static const char *get_am_type_string(char amtype);
@@ -54,12 +57,14 @@ CreateAccessMethod(CreateAmStmt *stmt)
 	rel = table_open(AccessMethodRelationId, RowExclusiveLock);
 
 	/* Must be superuser */
-	if (!superuser())
+	if (!superuser() && !(IsYbExtensionUser(GetUserId()) && creating_extension))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create access method \"%s\"",
 						stmt->amname),
-				 errhint("Must be superuser to create an access method.")));
+				 errhint("Must be superuser to create access method or command "
+						 "must be invoked as part of creating an extension by "
+						 "a member of the yb_extension role.")));
 
 	/* Check if name is used */
 	amoid = GetSysCacheOid1(AMNAME, Anum_pg_am_oid,

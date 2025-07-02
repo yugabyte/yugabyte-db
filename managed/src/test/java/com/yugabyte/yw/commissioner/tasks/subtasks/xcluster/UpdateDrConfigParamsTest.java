@@ -57,7 +57,8 @@ public class UpdateDrConfigParamsTest extends FakeDBApplication {
             targetUniverse.getUniverseUUID(),
             storageParams,
             pitrParams,
-            new HashSet<>(Set.of("000000000000", "11111111")));
+            new HashSet<>(Set.of("000000000000", "11111111")),
+            false);
 
     task = AbstractTaskBase.createTask(UpdateDrConfigParams.class);
     params = new UpdateDrConfigParams.Params();

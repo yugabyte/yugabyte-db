@@ -2106,7 +2106,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
-    if (reinstall == false && nodeAgentEnabler.shouldMarkUniverse(universe)) {
+    if (reinstall == false && nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe)) {
       // Reinstall forces direct installation in the same task.
       log.info(
           "Skipping node agent installation for universe {} as it is not enabled",

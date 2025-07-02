@@ -4,8 +4,6 @@ headerTitle: YugabyteDB Kubernetes Operator
 linkTitle: Kubernetes Operator
 description: YugabyteDB Kubernetes Operator for YugabyteDB Anywhere.
 headcontent: Install YugabyteDB Anywhere and create universes using YugabyteDB Kubernetes Operator
-tags:
-  feature: early-access
 menu:
   v2025.1_yugabyte-platform:
     parent: anywhere-automation
@@ -14,7 +12,7 @@ menu:
 type: docs
 ---
 
-The YugabyteDB Kubernetes Operator {{<tags/feature/ea idea="831">}} streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
+The YugabyteDB Kubernetes Operator streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
 
 The Operator establishes `ybuniverse` as a Custom Resource (CR) in Kubernetes, and enables a declarative management of your YugabyteDB Anywhere (YBA) universe. You can update the custom resources to customize the `ybuniverse` resources, including CPU, memory, and disk configurations, and deploy multi-availability zone balanced YBA universes on the underlying cluster for optimal performance. The CR supports seamless upgrades of YBA universes with no downtime, as well as transparent scaling operations.
 
@@ -84,7 +82,7 @@ FIELDS:
  kubernetesOverrides  <Object>
   Kubernetes overrides for the universe. Please refer to yugabyteDB
   documentation for more details.
-  https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides
+  https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides
 
  numNodes   <integer>
   Number of tservers in the universe to create.

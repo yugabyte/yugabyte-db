@@ -104,7 +104,7 @@ This should succeed.
 
 ## Advisory locks
 
-{{<tags/feature/tp idea="812">}}Advisory locks are available in {{<release "2.25.1.0">}} and later.
+Advisory locks are available in {{<release "2.25.1.0">}} and later.
 
 YSQL also supports advisory locks, where the application manages concurrent access to resources through a cooperative locking mechanism. Advisory locks can be less resource-intensive than table or row locks for certain use cases because they don't involve scanning tables or indexes for lock conflicts. They are session-specific and managed by the client application.
 
@@ -152,7 +152,7 @@ Advisory locks can also be exclusive or shared:
     Multiple sessions/transactions can hold the lock simultaneously. However, no session/transaction can acquire an exclusive lock while shared locks are held.
 
     ```sql
-    select pg_advisory_lock_shared(10); 
+    select pg_advisory_lock_shared(10);
     select pg_advisory_xact_lock_shared(10);
     ```
 
@@ -163,7 +163,7 @@ Finally, advisory locks can be blocking or non-blocking:
     The process trying to acquire the lock waits until the lock is acquired.
 
     ```sql
-    select pg_advisory_lock(10); 
+    select pg_advisory_lock(10);
     select pg_advisory_xact_lock(10);
     ```
 

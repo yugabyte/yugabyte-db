@@ -4010,6 +4010,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
           min_allowed, ht_lease);
     }
   } else if (min_allowed) {
+    SCOPED_WAIT_STATUS(WaitForReadTime);
     RETURN_NOT_OK(WaitUntil(clock_.get(), min_allowed, deadline));
   }
   if (min_allowed > ht_lease.lease) {
@@ -4989,6 +4990,7 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 
   TransactionLockInfoManager lock_info_manager(tablet_lock_info);
   rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
   // It could happen that the tablet gets a lock status request with the transactions field unset,
@@ -5039,12 +5041,15 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
       }
 
       // Scan the transaction's corresponding reverse index section.
-      while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0) {
+      uint32_t txn_intents_count = 0;
+      while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0 &&
+             (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
         // We should only consider intents whose value is within the tablet's key bounds.
         // Else, we would observe duplicate results in case of tablet split.
         if (key_bounds_.IsWithinBounds(intent_iter->value())) {
           txn_intent_keys.emplace_back(intent_iter->value());
+          ++txn_intents_count;
         }
         intent_iter->Next();
       }

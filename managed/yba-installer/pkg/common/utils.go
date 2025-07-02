@@ -185,7 +185,7 @@ func ResolveSymlink(source, target string) error {
 	if errors.Is(tErr, fs.ErrNotExist) && errors.Is(sErr, fs.ErrNotExist) {
 		msg := fmt.Sprintf("Neither source %s nor target %s exist", source, target)
 		log.Error(msg)
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 		// Handle only target existing (already resolved)
 	} else if tErr == nil && errors.Is(sErr, fs.ErrNotExist) {
 		log.Debug(fmt.Sprintf("Symlink %s -> %s already resolved", source, target))
@@ -272,6 +272,19 @@ func resolveSymlinkFallback(source, target string) error {
 		log.Warn("failed to remove backup source directory " + srcTmpName + ": " + err.Error())
 	}
 	return nil
+}
+
+// returns true if and only if filePath is a symlink to targetPath
+func IsSameFile(filePath, targetPath string) (bool, error) {
+	fi, err := os.Stat(filePath)
+	if err != nil {
+		return false, err
+	}
+	tg, err := os.Stat(targetPath)
+	if err != nil {
+		return false, err
+	}
+	return os.SameFile(fi, tg), nil
 }
 
 func IsSubdirectory(base, target string) (bool, error) {

@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
+import io.prometheus.client.Gauge;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -75,12 +76,21 @@ public class NodeAgentEnabler {
   private static final Duration SCANNER_INITIAL_DELAY = Duration.ofMinutes(5);
 
   // Metric names.
+  private static final String NODE_AGENT_MISSING_UNIVERSE = "ybp_nodeagent_missing_universe";
   private static final String NODE_AGENT_INSTALL_RUN = "ybp_nodeagent_bg_install_run_count";
   private static final String NODE_AGENT_INSTALL_FAILURE = "ybp_nodeagent_bg_install_failure_count";
   private static final String NODE_AGENT_INSTALL_SUCCESS = "ybp_nodeagent_bg_install_success_count";
   private static final String NODE_AGENT_MIGRATE_FAILURE = "ybp_nodeagent_bg_migrate_failure_count";
   private static final String NODE_AGENT_MIGRATE_SUCCESS = "ybp_nodeagent_bg_migrate_success_count";
 
+  // Gauges.
+  private static final Gauge NODE_AGENT_MISSING_UNIVERSE_GUAGE =
+      Gauge.build(NODE_AGENT_MISSING_UNIVERSE, "Universes missing node agent")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_UUID.labelName(),
+              KnownAlertLabels.UNIVERSE_NAME.labelName())
+          .register(CollectorRegistry.defaultRegistry);
   // Counters.
   private static final Counter NODE_AGENT_INSTALL_RUN_COUNT =
       Counter.build(NODE_AGENT_INSTALL_RUN, "Number of background node agent installation runs")
@@ -246,6 +256,12 @@ public class NodeAgentEnabler {
               nodeIps,
               universe.getName(),
               universe.getUniverseUUID());
+          NODE_AGENT_MISSING_UNIVERSE_GUAGE
+              .labels(
+                  customerUuid.toString(),
+                  universe.getUniverseUUID().toString(),
+                  universe.getName())
+              .set(nodeIps.size() - nodeAgentCount);
           boolean nodeAgentMissing = nodeAgentCount != nodeIps.size();
           if (nodeAgentMissing == universe.getUniverseDetails().nodeAgentMissing) {
             // No change.
@@ -287,16 +303,27 @@ public class NodeAgentEnabler {
   }
 
   /**
-   * Checks if the universe should be marked for pending node agent installation. It returns true
+   * Checks if the universe should be marked for to skip node agent installation. It returns true
    * for all the eligible universes even if the background installation may not happen because it is
    * not supported. This is for audit and future changes.
    *
    * @param universe the given universe.
-   * @return true if it should be marked, else false.
+   * @return true if it should be marked and installation should be skipped, else false.
    */
-  public boolean shouldMarkUniverse(Universe universe) {
-    // Not mandatory now, but mark it for future back-fill.
-    return isEnabled() && isNodeAgentEnabled(universe, p -> true).orElse(false) == false;
+  public boolean shouldSkipInstallAndMarkUniverse(Universe universe) {
+    if (!isEnabled()) {
+      return false;
+    }
+    // Migration is still not complete.
+    if (universe.getUniverseDetails().installNodeAgent) {
+      return true;
+    }
+    // As migration is complete, do not check the provider details field if the runtime config is
+    // true.
+    return !isNodeAgentEnabled(
+            universe,
+            p -> !confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableBgInstallPostMigration))
+        .orElse(false);
   }
 
   /**

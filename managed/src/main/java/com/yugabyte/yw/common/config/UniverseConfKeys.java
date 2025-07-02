@@ -1209,6 +1209,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If flag is enabled, allows DR creation with db scoped xCluster replication",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> XClusterDbScopedAutomaticDdlCreationEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.automatic_ddl.creationEnabled",
+          ScopeType.UNIVERSE,
+          "Flag indicating if db scoped xCluster replication should have automatic DDL replication",
+          "If flag and yb.xcluster.db_scoped.creationEnabled are enabled, newly created DR configs"
+              + " will have automatic DDL replication",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
       new ConfKeyInfo<>(
           "yb.checks.leaderless_tablets.enabled",

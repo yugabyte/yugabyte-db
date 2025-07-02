@@ -100,6 +100,11 @@ class YcqlOnlyUpgradeTest : public UpgradeTestBase {
 
 TEST_F(YcqlOnlyUpgradeTest, TestUpgrade) {
   ASSERT_OK(UpgradeClusterToCurrentVersion());
+
+  // upgrade_ysql should be a no-op.
+  std::string output;
+  ASSERT_OK(cluster_->CallYbAdmin({"upgrade_ysql"}, 10min, &output));
+
   ASSERT_OK(InsertRowsAndValidate());
 
   ASSERT_NOK_STR_CONTAINS(StartYsqlMajorCatalogUpgrade(), "YSQL is not enabled");

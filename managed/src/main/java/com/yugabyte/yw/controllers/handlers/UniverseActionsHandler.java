@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -22,7 +24,8 @@ import com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse;
 import com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
@@ -51,13 +54,12 @@ public class UniverseActionsHandler {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseActionsHandler.class);
 
   private final Commissioner commissioner;
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
-  public UniverseActionsHandler(
-      Commissioner commissioner, RuntimeConfigFactory runtimeConfigFactory) {
+  public UniverseActionsHandler(Commissioner commissioner, RuntimeConfGetter runtimeConfGetter) {
     this.commissioner = commissioner;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   public void setBackupFlag(Universe universe, Boolean value) {
@@ -379,9 +381,15 @@ public class UniverseActionsHandler {
 
   public UUID updateAdditionalServicesState(
       Customer customer, Universe universe, AdditionalServicesStateData data) {
+    boolean enableEarlyoomFeature =
+        runtimeConfGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
+    if (!enableEarlyoomFeature) {
+      throw new PlatformServiceException(BAD_REQUEST, "Earlyoom feature is disabled");
+    }
     LOG.info(
         "Update additional services state: {} {}  ", universe.getUniverseUUID(), Json.toJson(data));
-    UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
     params.additionalServicesStateData = data;
     UUID taskUUID = commissioner.submit(TaskType.UpdateOOMServiceState, params);
     LOG.info(

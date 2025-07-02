@@ -30,6 +30,8 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -41,6 +43,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
 
+#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -217,7 +220,12 @@ class PgClient {
 
   Status DeleteDBSequences(int64_t db_oid);
 
-  PerformResultFuture PerformAsync(tserver::PgPerformOptionsPB* options, PgsqlOps&& operations);
+  PerformResultFuture PerformAsync(
+      tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics);
+
+  bool TryAcquireObjectLockInSharedMemory(
+      SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
+      docdb::ObjectLockFastpathLockType lock_type);
 
   Result<bool> CheckIfPitrActive();
 

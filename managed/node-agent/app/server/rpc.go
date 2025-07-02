@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/status"
 )
 
@@ -215,6 +216,7 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 			Version:       config.String(util.PlatformVersionKey),
 			RestartNeeded: config.Bool(util.NodeAgentRestartKey),
 			Offloadable:   util.IsPexEnvAvailable(),
+			Compressor:    gzip.Name,
 		},
 	}, nil
 }
@@ -338,14 +340,14 @@ func (server *RPCServer) SubmitTask(
 			if err2 != nil {
 				util.FileLogger().
 					Errorf(ctx, "Error in running configure handler - %s", err2.Error())
-				return res, status.Errorf(codes.Internal, err2.Error())
+				return res, status.Error(codes.Internal, err2.Error())
 			}
 			res.TaskId = taskID
 			return res, nil
 		default:
 			return res, status.Errorf(
 				codes.Unimplemented,
-				fmt.Sprintf("Unsupported type: %s", configureServiceInput.GetService()),
+				"Unsupported type: %s", configureServiceInput.GetService(),
 			)
 		}
 	}
@@ -400,14 +402,29 @@ func (server *RPCServer) SubmitTask(
 	}
 	setupCGroupInput := req.GetSetupCGroupInput()
 	if setupCGroupInput != nil {
-		SetupCgroupHandler := task.NewSetupCgroupHandler(
+		setupCgroupHandler := task.NewSetupCgroupHandler(
 			setupCGroupInput,
 			username,
 		)
-		err := task.GetTaskManager().Submit(ctx, taskID, SetupCgroupHandler)
+		err := task.GetTaskManager().Submit(ctx, taskID, setupCgroupHandler)
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Error in running setup cGroup - %s", err.Error())
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
+	destroyServerInput := req.GetDestroyServerInput()
+	if destroyServerInput != nil {
+		destroyServerHandler := task.NewDestroyServerHandler(
+			destroyServerInput,
+			username,
+		)
+		err := task.GetTaskManager().Submit(ctx, taskID, destroyServerHandler)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Error in running destroy server - %s", err.Error())
 			return res, status.Error(codes.Internal, err.Error())
 		}
 		res.TaskId = taskID
@@ -594,13 +611,13 @@ func (server *RPCServer) DownloadFile(
 		}
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in reading file %s - %s", filename, err.Error())
-			return status.Errorf(codes.Internal, err.Error())
+			return status.Error(codes.Internal, err.Error())
 		}
 		res.ChunkData = res.ChunkData[:n]
 		err = stream.Send(res)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in sending file %s - %s", filename, err.Error())
-			return status.Errorf(codes.Internal, err.Error())
+			return status.Error(codes.Internal, err.Error())
 		}
 	}
 	return nil

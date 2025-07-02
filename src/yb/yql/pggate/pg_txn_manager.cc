@@ -16,6 +16,8 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
 
+#include "yb/docdb/object_lock_shared_state.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -65,7 +67,6 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
 
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(TEST_ysql_yb_ddl_transaction_block_enabled);
 
 namespace {
 
@@ -334,8 +335,7 @@ uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requir
 
 Status PgTxnManager::CalculateIsolation(
     bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement) {
-  if (FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction()
-                                                       : IsDdlMode()) {
+  if (yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
     VLOG_TXN_STATE(2);
     if (!priority_.has_value())
       priority_ = NewPriority(txn_priority_requirement);
@@ -408,11 +408,11 @@ Status PgTxnManager::CalculateIsolation(
   } else if (read_only_op &&
              (docdb_isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
               docdb_isolation == IsolationLevel::READ_COMMITTED) &&
-             (!FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled || !IsDdlMode())) {
+             (!yb_ddl_transaction_block_enabled || !IsDdlMode())) {
     // Preserves isolation_level_ as NON_TRANSACTIONAL
   } else {
     if (IsDdlMode()) {
-      DCHECK(FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled)
+      DCHECK(yb_ddl_transaction_block_enabled)
           << "Unexpected DDL state found in plain transaction";
     }
 
@@ -439,7 +439,9 @@ Status PgTxnManager::RestartTransaction() {
 // yb_attempt_to_restart_on_error() (e.g., in case of a retry on kConflict error).
 Status PgTxnManager::ResetTransactionReadPoint() {
   RSTATUS_DCHECK(
-      !IsDdlMode(), IllegalState, "READ COMMITTED semantics don't apply to DDL transactions");
+      !IsDdlMode() || yb_ddl_transaction_block_enabled, IllegalState,
+      "READ COMMITTED semantics don't apply to DDL transactions except if "
+      "yb_ddl_transaction_block_enabled is true.");
   serial_no_.IncReadTime();
   const auto& pick_read_time_alias = FLAGS_ysql_rc_force_pick_read_time_on_pg_client;
   read_time_manipulation_ =
@@ -596,8 +598,8 @@ Status PgTxnManager::ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_s
 
 Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info) {
   VLOG_TXN_STATE(2);
-  if (!((FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled && IsDdlModeWithSeparateTransaction()) ||
-          (!FLAGS_TEST_ysql_yb_ddl_transaction_block_enabled && IsDdlMode()))) {
+  if (!((yb_ddl_transaction_block_enabled && IsDdlModeWithSeparateTransaction()) ||
+          (!yb_ddl_transaction_block_enabled && IsDdlMode()))) {
     RSTATUS_DCHECK(
         !commit_info, IllegalState,
         "Commit separate ddl txn called when not in a separate DDL transaction");
@@ -883,11 +885,22 @@ Status PgTxnManager::RollbackToSubTransaction(SubTransactionId id) {
 }
 
 Status PgTxnManager::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(enable_table_locking_)) {
+  if (!PREDICT_FALSE(enable_table_locking_) || YBCIsInitDbModeEnvVarSet()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
+    // Also skip object locking during initdb bootstrap mode, since it's a single-process,
+    // non-concurrent setup with no running tservers and transaction status tablets.
     return Status::OK();
   }
+
+  auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
+  if (fastpath_lock_type &&
+      client_->TryAcquireObjectLockInSharedMemory(
+          active_sub_transaction_id_, lock_id, *fastpath_lock_type)) {
+    return Status::OK();
+  }
+  VLOG(1) << "Lock acquisition via shared memory not available";
+
   RETURN_NOT_OK(CalculateIsolation(
       mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK /* read_only */,
       isolation_level_ == IsolationLevel::READ_COMMITTED ? kHighestPriority : kLowerPriorityRange));

@@ -186,3 +186,11 @@ message SetupCGroupInput {
 message SetupCGroupOutput {
     int32 pid = 1;
 }
+
+message DestroyServerInput {
+    string ybHomeDir = 1;
+    bool isProvisioningCleanup = 2;
+}
+
+message DestroyServerOutput {
+}

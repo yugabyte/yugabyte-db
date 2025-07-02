@@ -144,12 +144,6 @@
  */
 #define UUID_YBCTID_WIDTH 33
 
-/*
- * This multiplier is a temporary way to disincentivize bitmap scans unless they
- * are a very obvious choice.
- */
-#define YB_BITMAP_DISCOURAGE_MODIFIER 3
-
 double		seq_page_cost = DEFAULT_SEQ_PAGE_COST;
 double		random_page_cost = DEFAULT_RANDOM_PAGE_COST;
 double		cpu_tuple_cost = DEFAULT_CPU_TUPLE_COST;
@@ -1163,9 +1157,7 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	run_cost += path->pathtarget->cost.per_tuple * path->rows;
 
 	path->startup_cost = startup_cost;
-	path->total_cost = (IsYugaByteEnabled() && baserel->is_yb_relation)
-		? (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER
-		: startup_cost + run_cost;
+	path->total_cost = startup_cost + run_cost;
 }
 
 /*
@@ -8976,8 +8968,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * tuples_fetched;
 
-	path->startup_cost = startup_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
-	path->total_cost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
+	path->startup_cost = startup_cost;
+	path->total_cost = startup_cost + run_cost;
 	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
 	path->yb_plan_info.estimated_num_bmscan_nexts_prevs = 0;

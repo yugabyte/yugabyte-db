@@ -23,6 +23,7 @@ message ServerInfo {
     string version = 1;
     bool restartNeeded = 2;
     bool offloadable = 3;
+    string compressor = 4;
 }
 
 message PingRequest {
@@ -63,6 +64,7 @@ message SubmitTaskRequest {
         InstallOtelCollectorInput installOtelCollectorInput = 11;
         SetupCGroupInput setupCGroupInput = 12;
         DownloadSoftwareInput downloadSoftwareInput = 13;
+        DestroyServerInput destroyServerInput = 14;
     }
 }
 
@@ -89,6 +91,7 @@ message DescribeTaskResponse {
         InstallOtelCollectorOutput installOtelCollectorOutput = 11;
         SetupCGroupOutput setupCGroupOutput = 12;
         DownloadSoftwareOutput DownloadSoftwareOutput = 13;
+        DestroyServerOutput destroyServerOutput = 14;
     }
 }
 

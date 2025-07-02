@@ -80,7 +80,8 @@ public class TestPgRangePresplit extends BasePgSQLTest {
       for (int id = 90; id < 105; id++) {
         expectedRows.add(new Row(id));
       }
-      try (ResultSet rs = statement.executeQuery("SELECT * FROM t WHERE id < 105 AND id >= 90")) {
+      try (ResultSet rs = statement.executeQuery(
+          "SELECT * FROM t WHERE id < 105 AND id >= 90 ORDER BY id")) {
         assertEquals(expectedRows, getRowList(rs));
       }
 

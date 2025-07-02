@@ -151,6 +151,8 @@ set(od_libraries ${od_libraries} ${od_prom})
 
 #scram
 
+set(USE_SCRAM ON)
+
 if (USE_SCRAM)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DUSE_SCRAM")
 endif()

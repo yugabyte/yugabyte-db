@@ -56,10 +56,7 @@ func (h *SetupCgroupHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespon
 	}
 
 	// 2) figure out home dir
-	home := ""
-	if h.param.GetYbHomeDir() != "" {
-		home = h.param.GetYbHomeDir()
-	} else {
+	if h.param.GetYbHomeDir() == "" {
 		err := errors.New("ybHomeDir is required")
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
@@ -110,24 +107,21 @@ func (h *SetupCgroupHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespon
 			ctx,
 			cGroupServiceContext,
 			filepath.Join(ServerTemplateSubpath, YsqlCgroupService),
-			filepath.Join(home, SystemdUnitPath, YsqlCgroupService),
+			filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, YsqlCgroupService),
 			fs.FileMode(0755),
 			h.username,
 		)
 
-		cmd, err := module.ControlServerCmd(
+		err := module.ControlSystemdService(
+			ctx,
 			h.username,
 			YsqlCgroupService,
 			"start",
+			h.logOut,
 		)
 		if err != nil {
-			util.FileLogger().Errorf(ctx, "Failed to get server control command - %s", err.Error())
-			return nil, err
-		}
-		util.FileLogger().Infof(ctx, "Running command %v", cmd)
-		_, err = module.RunShellCmd(ctx, h.username, "serverControl", cmd, h.logOut)
-		if err != nil {
-			util.FileLogger().Errorf(ctx, "Server control failed in %v - %s", cmd, err.Error())
+			util.FileLogger().
+				Errorf(ctx, "Server control failed for %s - %s", YsqlCgroupService, err.Error())
 			return nil, err
 		}
 	}

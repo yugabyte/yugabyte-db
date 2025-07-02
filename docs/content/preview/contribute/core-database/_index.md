@@ -45,4 +45,10 @@ type: indexpage
     href="coding-style/"
     icon="fa-thin fa-code">}}
 
+  {{<index/item
+    title="Merge with upstream repositories"
+    body="How to merge upstream repositories into YugabyteDB."
+    href="merge-with-upstream-repositories/"
+    icon="fa-thin fa-code">}}
+
 {{</index/block>}}

@@ -14,6 +14,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/backoff_waiter.h"
@@ -72,6 +73,19 @@ class ClusterAdminClientTest : public pgwrapper::PgCommandTestBase {
         },
         30s * kTimeMultiplier, "Waiting for snapshot to complete");
   }
+
+  Result<TxnSnapshotId> CreateAndWaitForSnapshotToComplete(const TypedNamespaceName database) {
+    RETURN_NOT_OK(
+        cluster_admin_client_->CreateNamespaceSnapshot(database, 0 /* retention_duration_hours */));
+    auto resp = VERIFY_RESULT(cluster_admin_client_->ListSnapshots({}));
+    SCHECK_EQ(
+        resp.snapshots_size(), 1, IllegalState,
+        Format("Expected 1 snapshot but found: $0", resp.snapshots_size()));
+    TxnSnapshotId snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(resp.snapshots(0).id()));
+    RETURN_NOT_OK(WaitForSnapshotComplete(snapshot_id));
+    LOG(INFO) << Format("Finished creating snapshot with id: $0", snapshot_id);
+    return snapshot_id;
+  }
 };
 
 TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithDetails)) {
@@ -81,8 +95,7 @@ TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithDe
     .name = "yugabyte"};
   ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(
       database, 0 /* retention_duration_hours */));
-  EnumBitSet<ListSnapshotsFlag> flags;
-  flags.Set(ListSnapshotsFlag::SHOW_DETAILS);
+  EnumBitSet<ListSnapshotsFlag> flags{ListSnapshotsFlag::SHOW_DETAILS};
   auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(flags));
   EXPECT_EQ(resp.snapshots_size(), 1);
   std::unordered_set<master::SysRowEntryType> expected_types = {
@@ -140,32 +153,29 @@ TEST_F(ClusterAdminClientTest, ExportSnapshotWithDdlInProgressTables) {
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
   auto conn = ASSERT_RESULT(PgConnect(db_name));
   ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY (k)", table_name)));
+  // Verify that the uncommitted DocDB table still exists.
+  master::ListTablesResponsePB docdb_tables =
+      ASSERT_RESULT(client_->ListTables(table_name, /* ysql_db_fiter */ db_name));
+  ASSERT_EQ(docdb_tables.tables_size(), 2);
+
   // Create a snapshot.
   const TypedNamespaceName database{.db_type = YQL_DATABASE_PGSQL, .name = db_name};
-  ASSERT_OK(
-      cluster_admin_client_->CreateNamespaceSnapshot(database, 0 /* retention_duration_hours */));
-  // Get the snapshot_id before trying to export the snapshot.
-  auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(EnumBitSet<ListSnapshotsFlag>()));
-  ASSERT_EQ(resp.snapshots_size(), 1);
-  TxnSnapshotId snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(resp.snapshots(0).id()));
-  ASSERT_OK(WaitForSnapshotComplete(snapshot_id));
-  LOG(INFO) << Format("Finished creating snapshot with id: $0", snapshot_id);
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(CreateAndWaitForSnapshotToComplete(database));
   // Exporting a snapshot means listing the snapshot with prepare_for_backup = true.
   // ListSnapshot should fail as one table is still undergoing DDL verification.
-  EnumBitSet<ListSnapshotsFlag> flags;
-  flags.Set(ListSnapshotsFlag::SHOW_DETAILS);
+  EnumBitSet<ListSnapshotsFlag> flags{ListSnapshotsFlag::SHOW_DETAILS};
   auto s = cluster_admin_client_->ListSnapshots(
       flags, snapshot_id, /*prepare_for_backup*/ true,
       /*include_ddl_in_progress_tables*/ false);
   ASSERT_NOK_STR_CONTAINS(s, "undergoing DDL verification");
   // Should be able to export the snapshot when include_ddl_in_progress_tables = true.
-  resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(
+  auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(
       flags, snapshot_id, /*prepare_for_backup*/ true,
       /*include_ddl_in_progress_tables*/ true));
   ASSERT_EQ(resp.snapshots_size(), 1);
-  // TODO(mhaddad): Uncomment this assert when fixing #27449
-  // Expect to have 3 backup_entries: 1 for namespace and 2 for the old and new DocDB tables.
-  // ASSERT_EQ(resp.snapshots(0).backup_entries_size(), 3);
+  // Expect to have 2 backup_entries: 1 for namespace and 1 for the old committed DocDB table.
+  ASSERT_EQ(resp.snapshots(0).backup_entries_size(), 2);
+  ASSERT_EQ(resp.snapshots(0).backup_entries(1).entry().id(), docdb_tables.tables(0).id());
   // Re-enable DDL rolback so that the test exists gracefully.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
 }
@@ -179,17 +189,10 @@ TEST_F(ClusterAdminClientTest, ExportSnapshotHasCorrectFormatVersion) {
   CreateTable(Format("CREATE TABLE $0 (k INT, v TEXT)", table_name));
   // Create a snapshot.
   const TypedNamespaceName database{.db_type = YQL_DATABASE_PGSQL, .name = db_name};
-  ASSERT_OK(
-      cluster_admin_client_->CreateNamespaceSnapshot(database, 0 /* retention_duration_hours */));
-  // Get the snapshot_id before trying to export the snapshot.
-  EnumBitSet<ListSnapshotsFlag> flags;
-  flags.Set(ListSnapshotsFlag::SHOW_DETAILS);
-  auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(flags));
-  EXPECT_EQ(resp.snapshots_size(), 1);
-  TxnSnapshotId snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(resp.snapshots(0).id()));
-  ASSERT_OK(WaitForSnapshotComplete(snapshot_id));
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(CreateAndWaitForSnapshotToComplete(database));
   // Check that format_version=2 when include_ddl_in_progress_tables = false.
-  resp = ASSERT_RESULT(
+  EnumBitSet<ListSnapshotsFlag> flags{ListSnapshotsFlag::SHOW_DETAILS};
+  auto resp = ASSERT_RESULT(
       cluster_admin_client_->ListSnapshots(flags, snapshot_id, /*prepare_for_backup*/ true));
   ASSERT_EQ(resp.snapshots_size(), 1);
   ASSERT_EQ(resp.snapshots(0).format_version(), master::kUseBackupRowEntryFormatVersion);
@@ -198,6 +201,42 @@ TEST_F(ClusterAdminClientTest, ExportSnapshotHasCorrectFormatVersion) {
       flags, snapshot_id, /*prepare_for_backup*/ true, /*include_ddl_in_progress_tables*/ true));
   ASSERT_EQ(resp.snapshots_size(), 1);
   ASSERT_EQ(resp.snapshots(0).format_version(), master::kUseRelfilenodeFormatVersion);
+}
+
+// Test that export_snapshot includes only the committed DocDB tables as of snapshot_hybrid_time.
+// This behavior is introduced to support backups during DDLs.
+TEST_F(ClusterAdminClientTest, ExportCommittedDocDbTablesAsOfSnapshotHt) {
+  const std::string db_name = "yugabyte";
+  const std::string table_name = "test_table";
+  auto conn = ASSERT_RESULT(PgConnect(db_name));
+  CreateTable(Format("CREATE TABLE $0 (k INT, v TEXT)", table_name));
+  // Keep the old DocDB table in the next table rewrite to check that export_snapshot doesn't skip
+  // including it.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_yb_test_table_rewrite_keep_old_table", "true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_table_rewrite_keep_old_table TO TRUE"));
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER TABLE $0 ALTER COLUMN v TYPE INT USING v::INTEGER", table_name));
+  // Verify that the uncommitted DocDB table still exists.
+  master::ListTablesResponsePB base_docdb_tables =
+      ASSERT_RESULT(client_->ListTables(table_name, /* ysql_db_fiter */ db_name));
+  ASSERT_EQ(base_docdb_tables.tables_size(), 2);
+
+  // Create a snapshot.
+  const TypedNamespaceName database{.db_type = YQL_DATABASE_PGSQL, .name = db_name};
+  TxnSnapshotId snapshot_id = ASSERT_RESULT(CreateAndWaitForSnapshotToComplete(database));
+
+  // Drop the table after completing the snapshot. Export_snapshot should still be able to
+  // export the committed DocDB table as of snapshot_hybid_time.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
+  // Exporting a snapshot means listing the snapshot with prepare_for_backup = true.
+  EnumBitSet<ListSnapshotsFlag> flags{ListSnapshotsFlag::SHOW_DETAILS};
+  auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(
+      flags, snapshot_id, /*prepare_for_backup*/ true,
+      /*include_ddl_in_progress_tables*/ true));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+  // Expect to have 2 backup_entries: 1 for namespace and 1 for the new committed DocDB table.
+  ASSERT_EQ(resp.snapshots(0).backup_entries_size(), 2);
+  ASSERT_EQ(resp.snapshots(0).backup_entries(1).entry().id(), base_docdb_tables.tables(1).id());
 }
 
 TEST_F(
