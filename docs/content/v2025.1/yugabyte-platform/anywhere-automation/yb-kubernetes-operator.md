@@ -275,7 +275,7 @@ spec:
 
 #### Incremental backups
 
-You can add incremental backups to your [existing full or incremental backups](../../back-up-restore-universes/back-up-universe-data/) in YugabyteDB Kubernetes Operator for your YugabyteDB Anywhere universes.
+This feature is {{<tags/feature/ea>}}. You can add incremental backups to your [existing full or incremental backups](../../back-up-restore-universes/back-up-universe-data/) in YugabyteDB Kubernetes Operator for your YugabyteDB Anywhere universes.
 
 This functionality creates a chain of references for your backups. Each incremental backup CR references its preceding backup in the chain, whether a full or another incremental backup. This chain always leads back to the initial full backup.
 
@@ -318,56 +318,56 @@ This example decribes how to create and delete incremental backups, and assumes 
 - An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
 - A configured storage location for your backups. You must have an existing base backup (either a full backup or a previous incremental backup) to create the new incremental backup.
 
-Create incremental backup CR:
+Use the following CRD to create an incremental backup:
 
 ```sh
 kubectl apply operator-backup-demo.yaml -n schedule-cr
 ```
 
 ```yaml
-    #operator-backup-demo.yaml
-    apiVersion: operator.yugabyte.io/v1alpha1
-    kind: Backup
-    metadata:
-      name: operator-backup-1
-    spec:
-      backupType: PGSQL_TABLE_TYPE
-      storageConfig: az-config-operator-1
-      universe: operator-universe-test-1
-      timeBeforeDelete: 1234567890
-      keyspace: test
-      incrementalBackupBase: <base full backup cr name>
+#operator-backup-demo.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: Backup
+metadata:
+  name: operator-backup-1
+spec:
+  backupType: PGSQL_TABLE_TYPE
+  storageConfig: az-config-operator-1
+  universe: operator-universe-test-1
+  timeBeforeDelete: 1234567890
+  keyspace: test
+  incrementalBackupBase: <base full backup cr name>
   ```
 
 Deleting full backup deletes all incremental backups associated with it as follows:
 
-  ```sh
-    # Get all backups in the 'schedule-cr' namespace.
-    $ kubectl get backups -n schedule-cr
-  ```
+```sh
+# Get all backups in the 'schedule-cr' namespace.
+$ kubectl get backups -n schedule-cr
+```
 
-  ```output
-     NAME                                                                     AGE
-    operator-scheduled-backup-1-1069296176-full-2025-02-27-06-43-25          32m
-    operator-scheduled-backup-1-1069296176-incremental-2025-02-27-06-59-26   16m
-    operator-scheduled-backup-1-1069296176-incremental-2025-02-27-07-13-26   2m55s
-  ```
+```output
+NAME                                                                     AGE
+operator-scheduled-backup-1-1069296176-full-2025-02-27-06-43-25          32m
+operator-scheduled-backup-1-1069296176-incremental-2025-02-27-06-59-26   16m
+operator-scheduled-backup-1-1069296176-incremental-2025-02-27-07-13-26   2m55s
+```
 
-  ```sh
-  kubectl delete backup operator-scheduled-backup-1-1069296176-full-2025-02-27-06-43-25 -n schedule-cr
-  ```
+```sh
+$ kubectl delete backup operator-scheduled-backup-1-1069296176-full-2025-02-27-06-43-25 -n schedule-cr
+```
 
-  ```sh
-  $ kubectl get backups -n schedule-cr
-  ```
+```sh
+$ kubectl get backups -n schedule-cr
+```
 
-  ```output
-  No resources found in schedule-cr namespace.
-  ```
+```output
+No resources found in schedule-cr namespace.
+```
 
 #### Scheduled backups
 
-Backup schedules support taking full backups based on cron expressions or specified frequencies. They also allow you to configure incremental backups to run in between these full backups, providing finer-grained recovery points.
+This feature is {{<tags/feature/ea>}}. Backup schedules support taking full backups based on cron expressions or specified frequencies. They also allow you to configure incremental backups to run in between these full backups, providing finer-grained recovery points.
 
 When an operator schedule triggers a backup, you need to create a corresponding CR for that specific backup. The operator names this CR appropriately, and marks it with ignore-reconciler-add.
 
@@ -435,7 +435,7 @@ This example decribes how to create and delete scheduled backups, and assumes yo
 - An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
 - A configured storage location for your backups.
 
-You can create a scheduled backup using the following CR:
+Use the following CRD to create a scheduled backup:
 
 ```sh
 kubectl apply scheduled-backup-demo.yaml -n schedule-cr
