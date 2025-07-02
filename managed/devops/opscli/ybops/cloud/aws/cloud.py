@@ -149,7 +149,7 @@ class AwsCloud(AbstractCloud):
             except ClientError as e:
                 code = e.response['Error']['Code']
                 if code == 'AuthFailure' and args.ignore_auth_failure:
-                    logging.warn("Ignoring error: {}".format(str(e)))
+                    logging.warning("Ignoring error: {}".format(str(e)))
                 else:
                     raise e
 
@@ -270,7 +270,7 @@ class AwsCloud(AbstractCloud):
 
     def get_current_host_info(self, args):
         """This method would fetch current host information by calling AWS metadata api
-        to fetch requested metatdata's.
+        to fetch requested metadata.
         """
         try:
             metadata = {}
@@ -406,7 +406,7 @@ class AwsCloud(AbstractCloud):
             server_tags = None
             launched_by_tags = None
             if data.get("Tags") is not None:
-                # Server Type is an optinal flag only for cluster servers.
+                # Server Type is an optional flag only for cluster servers.
                 server_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "yb-server-type"]
                 name_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "Name"]
                 launched_by_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "launched-by"]
@@ -567,7 +567,7 @@ class AwsCloud(AbstractCloud):
         waiter.wait(VolumeIds=[vol_id])
 
     def get_disk(self, host_info, vol_id, args):
-        logging.info("Retreiving volume {} from host {}".format(vol_id, host_info['id']))
+        logging.info("Retrieving volume {} from host {}".format(vol_id, host_info['id']))
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         try:
             response = ec2.describe_volumes(VolumeIds=[vol_id])

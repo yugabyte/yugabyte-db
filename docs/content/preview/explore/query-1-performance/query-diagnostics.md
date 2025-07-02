@@ -27,11 +27,11 @@ Query diagnostics collects the following information:
 
 ## Enable query diagnostics
 
-Query diagnostics is {{<tags/feature/tp>}}. To use query diagnostics, enable and configure the following flags for each node of your cluster.
+Query diagnostics is {{<tags/feature/tp idea="2078">}}. To use query diagnostics, enable and configure the following flags for each node of your cluster.
 
 | Flag | Description |
 | :--- | :---------- |
-| allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_enable_query_diagnostics`. |
+| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_enable_query_diagnostics`. |
 | ysql_yb_enable_query_diagnostics | Enable or disable query diagnostics. <br>Default: false. Changing this flag requires a VM restart. |
 | yb_query_diagnostics_circular_buffer_size | Size (in KB) of query diagnostics circular buffer that stores statuses of bundles.<br>Default: 64. Changing this flag requires a VM restart. |
 

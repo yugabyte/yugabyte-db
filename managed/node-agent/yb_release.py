@@ -46,6 +46,23 @@ def get_release_version(source_dir):
     return version_format.format(version, build_num)
 
 
+def is_amd64(filename):
+    return "x86_64" in filename or "amd64" in filename
+
+
+def is_arm64(filename):
+    return "aarch64" in filename or "arm64" in filename
+
+
+def find_target_os(filename):
+    if is_amd64(filename):
+        return "amd64"
+    if is_arm64(filename):
+        return "arm64"
+    # No specific target.
+    return None
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--source_dir', help='Source code directory.', required=True)
 parser.add_argument('--destination', help='Copy release to Destination directory.', required=True)
@@ -98,7 +115,12 @@ try:
                 for file in os.listdir(thirdparty_folder):
                     # Skip Packaging alertmanager with NodeAgent.
                     # TODO: Make a list of packages that are actually needed.
-                    if "alertmanager" in file:
+                    if "alertmanager" in file or "prometheus" in file:
+                        continue
+                    target_os = find_target_os(file)
+                    if target_os is not None and target_os != parts[1]:
+                        logging.info("Skipping non-matching file {} for target OS {}"
+                                     .format(file, parts[1]))
                         continue
                     filepath = os.path.join(thirdparty_folder, file)
                     if os.path.isfile(filepath):

@@ -1091,6 +1091,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     overrides.put("Image", imageInfo);
 
+    // Override for openshift
+    if (config.containsKey("KUBECONFIG_PROVIDER")
+        && config.get("KUBECONFIG_PROVIDER").equals("openshift")) {
+      Map<String, Object> ocpCompatibility = new HashMap<>();
+      ocpCompatibility.put("enabled", true);
+      overrides.put("ocpCompatibility", ocpCompatibility);
+    }
+
     // Use primary cluster intent to read gflags, tls settings.
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
         taskUniverseDetails.getPrimaryCluster().userIntent;

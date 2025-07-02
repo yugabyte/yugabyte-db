@@ -13,7 +13,7 @@ func installAndValidateYBA(t *testing.T, mgr containertest.Manager, ctrRef conta
 	t.Helper()
 	// Install YBA
 	if output := mgr.Exec(ctrRef, "/yba_installer/yba-ctl", "install", "-f", "-l", "/yba.lic"); !output.Succeeded() {
-		t.Fatalf("failed to install YBA: %v", output.StderrString())
+		t.Fatalf("failed to install on container %s YBA: %v", ctrRef.ContainerName, output.StderrString())
 	}
 
 	// Validate YBA installation

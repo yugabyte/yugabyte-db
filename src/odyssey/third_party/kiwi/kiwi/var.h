@@ -267,6 +267,24 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars)
 #else
 	vars->size = 0;
 	vars->vars = NULL;
+	/*
+	 * YB: Important: Set 'pg_hint_plan.enable_hint_table' before 'compute_query_id'
+	 * in the deploy phase.
+	 * These GUCs are not commutative in effect. Setting 'compute_query_id' to OFF
+	 * before enabling 'pg_hint_plan.enable_hint_table' leads to a failure, as the
+	 * hint plan GUC requires 'compute_query_id' to be ON during its validation.
+	 *
+	 * Although reversing the order (enabling hint_table first, then disabling compute_query_id)
+	 * may succeed with a warning, any subsequent usage of pg_hint_plan features will still
+	 * fail due to 'compute_query_id' being OFF.
+	 *
+	 * To avoid such issues during the deploy phase in the connection manager,
+	 * we enforce this safe order of setting GUCs here.
+	 */
+	yb_kiwi_var_push(vars, "pg_hint_plan.enable_hint_table", 31,
+				"off", 4);
+	yb_kiwi_var_push(vars, "compute_query_id", 17,
+				"auto", 5);
 #endif
 }
 

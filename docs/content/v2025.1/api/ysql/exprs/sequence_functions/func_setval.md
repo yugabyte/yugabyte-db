@@ -21,6 +21,10 @@ When called with `is_called` set to `false`, `nextval` will return the specified
 
 `setval()` returns just the value of its second argument.
 
+**Limitations**
+
+- Use of `setval` is discouraged when using automatic mode xCluster replication; see [Limitations of Transactional Automatic mode](../../../../../architecture/docdb-replication/async-replication/#transactional-automatic-mode).
+
 ## Semantics
 
 ### _sequence_name_

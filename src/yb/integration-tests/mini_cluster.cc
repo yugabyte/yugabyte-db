@@ -272,8 +272,7 @@ Status MiniCluster::StartAsync(
   }
 
   running_ = true;
-  rpc::MessengerBuilder builder("minicluster-messenger");
-  builder.set_num_reactors(1);
+  auto builder = CreateMiniClusterMessengerBuilder();
   messenger_ = VERIFY_RESULT(builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
   return Status::OK();
@@ -331,16 +330,13 @@ Status MiniCluster::StartMasters() {
     mini_masters_.resize(options_.num_masters);
   }
 
-  bool started = false;
-  auto se = ScopeExit([this, &started] {
-    if (!started) {
-      for (const auto& master : mini_masters_) {
-        if (master) {
-          master->Shutdown();
-        }
+  CancelableScopeExit shutdown_se{[this] {
+    for (const auto& master : mini_masters_) {
+      if (master) {
+        master->Shutdown();
       }
     }
-  });
+  }};
 
   for (size_t i = 0; i < options_.num_masters; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(
@@ -370,7 +366,7 @@ Status MiniCluster::StartMasters() {
     RETURN_NOT_OK(consensus->StartElection(data));
   }
 
-  started = true;
+  shutdown_se.Cancel();
   return Status::OK();
 }
 

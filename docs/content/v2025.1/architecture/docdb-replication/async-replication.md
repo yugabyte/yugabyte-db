@@ -16,7 +16,7 @@ type: docs
 
 ## YugabyteDB's xCluster replication
 
-xCluster replication is YugabyteDB's implementation of high throughput asynchronous physical replication between two YugabyteDB universes. It allows you to set up one or more unidirectional replication _flows_ between universes. For each flow, data is replicated from a _source_ (also called a producer) universe to a _target_ (also called a consumer) universe. Replication is done at the DocDB layer, by efficiently replicating WAL records asynchronously to the target universe. Both YSQL and YCQL are supported.
+xCluster replication is YugabyteDB's implementation of high-throughput asynchronous physical replication between two YugabyteDB universes. It allows you to set up one or more unidirectional replication _flows_ between universes. For each flow, data is replicated from a _source_ (also called a producer) universe to a _target_ (also called a consumer) universe. Replication is done at the DocDB layer, by efficiently replicating WAL records asynchronously to the target universe. Both YSQL and YCQL are supported.
 
 Multiple flows can be configured; for instance, setting up two unidirectional flows between two universes, one in each direction, enables bidirectional replication. This ensures that data written in one universe is replicated to the other without causing infinite loops. Refer to [supported deployment scenarios](#deployment-scenarios) for details on the supported flow combinations.
 
@@ -98,11 +98,11 @@ Transactional replication comes in three modes:
 
 #### Automatic mode
 
-{{<tags/feature/tp idea="153">}}In this mode all aspects of replication are handled automatically, including schema changes.
+{{<tags/feature/ea idea="153">}}In this mode all aspects of replication are handled automatically, including schema changes.
 
 #### Semi-automatic mode
 
-Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes. This is the recommended mode for new deployments.
+Provides operationally simpler setup and management of replication compared to manual mode, as well as fewer steps for performing DDL changes. This is the recommended mode for new deployments.
 
 {{<lead link="https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p">}}
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p)
@@ -240,6 +240,10 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
   [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
 
+- Truncate
+
+  The TRUNCATE command is not supported. See {{<issue 23958>}} for supporting it in automatic mode.
+  
 - Backups
 
   Backups are supported on both universes. However, for backups on target clusters, if there is an active workload, the consistency of the latest data is not guaranteed. This applies even to transactional modes. Therefore, it is recommended to take backups on the source universe only.
@@ -248,10 +252,14 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
   CDC [gRPC protocol](../change-data-capture) and [PostgreSQL protocol](../cdc-logical-replication) are not supported on the target universe. It is recommended to set up CDC on the source universe only.
 
-- Modifications of Types
+- Modifications of Array Types
 
-  When xCluster is active, composite user types, array types whose base types are row types, domains, and other non-primitive types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via bootstrap. [#24078](https://github.com/yugabyte/yugabyte-db/issues/24078), [#24079](https://github.com/yugabyte/yugabyte-db/issues/24079)
+  While xCluster is active, array types whose base types are row types, domains, and multi-ranges should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via bootstrap. [#24079](https://github.com/yugabyte/yugabyte-db/issues/24079)
 
+- Row types
+
+  Table columns whose types involve row types are not supported.
+  
 Limitations specific to each scenario and mode are listed below:
 
 ### Non-transactional
@@ -260,9 +268,9 @@ Limitations specific to each scenario and mode are listed below:
 
   Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
 
-- Enum types
+- Composite, enum, and range (array) types
 
-  When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
+  While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
 #### Multi-master asynchronous replication
 
@@ -278,7 +286,7 @@ Limitations specific to each scenario and mode are listed below:
 
 - Sequences and Serial columns
 
-  Sequence data is not replicated by xCluster. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
+  Sequence data is not replicated by non-transactional xCluster. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
 
 ### Transactional
 
@@ -301,21 +309,22 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 #### Transactional Automatic mode
 
-- All connections to the source universe must be reset after setting up the replication. [#25853](https://github.com/yugabyte/yugabyte-db/issues/25853)
-- The GRANT statement is currently not replicated. [#26461](https://github.com/yugabyte/yugabyte-db/issues/26461)
-- Adding unique constraints is currently not supported. [#26167](https://github.com/yugabyte/yugabyte-db/issues/26167)
-- Table rewrites (ALTER TABLE commands that require structural changes to the table) on partitioned tables are currently not supported. [#26453](https://github.com/yugabyte/yugabyte-db/issues/26453)
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
 - DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
 - CREATE TABLE AS and SELECT INTO DDL statements are not supported. You can work around this by breaking the DDL into a CREATE TABLE followed by INSERT SELECT.
-- ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, TRUNCATE, and ALTER LARGE OBJECT DDLs are not supported.
+- ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, and ALTER LARGE OBJECT DDLs are not supported.
 - DDLs related to PUBLICATION and SUBSCRIPTION are not supported.
-- While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
+- Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
+- Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
+- While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: `file_fdw`, `fuzzystrmatch`, `pgcrypto`, `postgres_fdw`, `sslinfo`, `uuid-ossp`, `hypopg`, `pg_stat_monitor`, and `pgaudit`. All other extensions must be created _before_ setting up automatic mode.
 
 #### Transactional Semi-Automatic and Manual mode
 
 - All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
-- When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Consider setting up these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
+
+- Sequence data is not replicated by these modes. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
+
+- While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
 ### Kubernetes
 

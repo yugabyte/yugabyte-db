@@ -98,4 +98,14 @@ class CAPABILITY("mutex") RobustMutex {
   RobustMutexImpl impl_;
 };
 
+namespace robust_mutex_internal {
+
+inline void EmptyCleanupFunction(void*) {}
+
+} // namespace robust_mutex_internal
+
+// This is useful for cases where no cleanup is needed (e.g. because the data is readonly from
+// child proceses), but we still need the mutex to be released on process crash.
+using RobustMutexNoCleanup = RobustMutex<robust_mutex_internal::EmptyCleanupFunction>;
+
 } // namespace yb

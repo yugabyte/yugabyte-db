@@ -45,6 +45,8 @@ DECLARE_uint64(refresh_waiter_timeout_ms);
 
 namespace yb::tserver {
 
+YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
+
 // This class tracks object locks specifically for the pg_locks view.
 // An alternative would be to extract and decrypt locks directly from ObjectLockManager,
 // but for simplicity, we decided to maintain a separate tracker here.
@@ -268,6 +270,17 @@ class TSLocalLockManager::Impl {
     }
   }
 
+  Status WaitUntilBootstrapped(CoarseTimePoint deadline) {
+    LOG(INFO) << "Waiting until object lock manager is bootstrapped.";
+    return Wait(
+        [this]() -> bool {
+          bool ret = is_bootstrapped_;
+          VTRACE(2, "Is bootstrapped: $0", ret);
+          return ret;
+        },
+        deadline, "Waiting to Bootstrap.");
+  }
+
   Status PrepareAndExecuteAcquire(
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       StdStatusCallback& callback, WaitForBootstrap wait) {
@@ -277,14 +290,7 @@ class TSLocalLockManager::Impl {
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     VLOG(3) << object_lock_owner.ToString() << " Acquiring lock : " << req.ShortDebugString();
     if (wait) {
-      VTRACE(1, "Waiting for bootstrap.");
-      RETURN_NOT_OK(Wait(
-          [this]() -> bool {
-            bool ret = is_bootstrapped_;
-            VTRACE(2, "Is bootstrapped: $0", ret);
-            return ret;
-          },
-          deadline, "Waiting to Bootstrap."));
+      RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
     }
     TRACE("Through wait for bootstrap.");
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
@@ -368,10 +374,10 @@ class TSLocalLockManager::Impl {
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
     RETURN_NOT_OK(CheckShutdown());
+    RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
-    VLOG(3) << object_lock_owner.ToString()
-            << " Releasing locks : " << req.ShortDebugString();
+    VLOG(3) << object_lock_owner.ToString() << " Releasing locks : " << req.ShortDebugString();
 
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
     RETURN_NOT_OK(WaitToApplyIfNecessary(req, deadline));
@@ -497,8 +503,8 @@ class TSLocalLockManager::Impl {
     }
     for (const auto& acquire_req : entries.lock_entries()) {
       // This call should not block on anything.
-      CoarseTimePoint deadline = CoarseMonoClock::Now() + 1s;
-      RETURN_NOT_OK(AcquireObjectLocks(acquire_req, deadline, tserver::WaitForBootstrap::kFalse));
+      RETURN_NOT_OK(AcquireObjectLocks(
+          acquire_req, CoarseMonoClock::Now() + 1s, tserver::WaitForBootstrap::kFalse));
     }
     MarkBootstrapped();
     return Status::OK();
@@ -537,8 +543,8 @@ TSLocalLockManager::~TSLocalLockManager() {}
 
 void TSLocalLockManager::AcquireObjectLocksAsync(
     const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-    StdStatusCallback&& callback, WaitForBootstrap wait) {
-  impl_->DoAcquireObjectLocksAsync(req, deadline, std::move(callback), wait);
+    StdStatusCallback&& callback) {
+  impl_->DoAcquireObjectLocksAsync(req, deadline, std::move(callback), WaitForBootstrap::kTrue);
 }
 
 Status TSLocalLockManager::ReleaseObjectLocks(
@@ -604,4 +610,4 @@ std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
   return impl_->TEST_GetLockStateMapForTxn(txn);
 }
 
-} // namespace yb::tserver
+}  // namespace yb::tserver

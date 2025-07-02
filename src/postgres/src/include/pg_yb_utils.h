@@ -206,8 +206,6 @@ extern bool IsYBSystemColumn(int attrNum);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
-extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
-
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
@@ -828,8 +826,10 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
+extern bool YBIsDdlTransactionBlockEnabled();
 extern int	YBGetDdlNestingLevel();
 extern NodeTag YBGetCurrentStmtDdlNodeTag();
+extern bool YBIsCurrentStmtDdl();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
 extern void YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
@@ -850,7 +850,7 @@ typedef enum YbSysCatalogModificationAspect
 	/*
 	 * Indicates if the statement runs in an autonomous transaction when
 	 * transactional DDL support is enabled.
-	 * Always unset if TEST_ysql_yb_ddl_transaction_block_enabled is false.
+	 * Always unset if yb_ddl_transaction_block_enabled is false.
 	 */
 	YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE = 8,
 } YbSysCatalogModificationAspect;

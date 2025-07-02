@@ -372,8 +372,7 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
     CreateMetricsEntityIfNotFound create,
     const std::optional<std::string>& slot_name = std::nullopt) {
   const auto tablet_id = tablet_peer.tablet_id();
-  auto tablet = tablet_peer.shared_tablet();
-  SCHECK(tablet, IllegalState, Format("Tablet id $0 not found", tablet_id));
+  auto tablet = VERIFY_RESULT(tablet_peer.shared_tablet_safe());
 
   const auto key = GetXreplMetricsKey(stream_id);
   auto metrics_raw = tablet->GetAdditionalMetadata(key);
@@ -1810,7 +1809,7 @@ void CDCServiceImpl::GetChanges(
               << ", get proper schema version from system catalog.";
       cached_schema_details.clear();
     }
-    bool cql_namespace = tablet_peer->tablet()->table_type() == YQL_TABLE_TYPE;
+    bool cql_namespace = tablet_ptr->table_type() == YQL_TABLE_TYPE;
     auto enum_map = RPC_VERIFY_RESULT(
         GetEnumMapFromCache(namespace_name, cql_namespace), resp->mutable_error(),
         CDCErrorPB::INTERNAL_ERROR, context);
@@ -4997,6 +4996,11 @@ void CDCServiceImpl::GetLagMetrics(
   }
 
   auto tablet = tablet_peer->shared_tablet();
+  if (!tablet) {
+    resp->set_lag_metric(-1);
+    context.RespondSuccess();
+    return;
+  }
   const auto key = GetXreplMetricsKey(stream_id);
 
   auto metrics_raw = tablet->GetAdditionalMetadata(key);

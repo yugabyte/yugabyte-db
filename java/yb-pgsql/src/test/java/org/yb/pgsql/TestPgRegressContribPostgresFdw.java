@@ -32,10 +32,4 @@ public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
     runPgRegressTest(new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/postgres_fdw"),
                      "yb_pg_schedule");
   }
-
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    return flagMap;
-  }
 }

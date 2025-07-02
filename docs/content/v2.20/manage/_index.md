@@ -8,6 +8,7 @@ menu:
   v2.20:
     identifier: manage
     parent: launch-and-manage
+    weight: 50
 type: indexpage
 ---
 <div class="row">

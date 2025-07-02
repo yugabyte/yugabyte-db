@@ -3068,6 +3068,36 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_ddl_transaction_block_enabled", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("If true, DDL operations in YSQL will execute within "
+						 "the active transaction block instead of their "
+						 "separate transactions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ddl_transaction_block_enabled,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_disable_ddl_transaction_block_for_read_committed", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("If true, DDL operations in READ COMMITTED mode will "
+						 "be executed in a separate DDL transaction instead of "
+						 "the as part of the enclosing transaction block even "
+						 "if ysql_yb_ddl_transaction_block_enabled is true. In "
+						 "other words, for Read Committed, fall back to the "
+						 "mode when ysql_yb_ddl_transaction_block_enabled is "
+						 "false."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_ddl_transaction_block_for_read_committed,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_explain_hide_non_deterministic_fields", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("If set, all fields that vary from run to run are hidden from "
 						 "the output of EXPLAIN"),
@@ -3311,7 +3341,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"yb_disable_auto_analyze", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Run 'ALTER DATABASE <name> SET yb_disable_auto_analyze=on' to disable auto "
 						 "analyze on that database. Set it to off to resume auto analyze. Setting this GUC via "
-						 "any other method is not allowed."),
+						 "any other method will throw a WARNING message"),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -3422,7 +3452,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_force_early_ddl_serialization,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -15952,10 +15982,18 @@ yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source)
 	if (source == PGC_S_DEFAULT || source == PGC_S_TEST)
 		return true;
 
+	/*
+	 * YB: This GUC is set by restore scripts generated via ysql_dump. It is used by the auto
+	 * analyze service. However, when using connection manager, the GUC can become part of the
+	 * deploy phase query (SET stmts are executed). So, we throw a warning instead of an error
+	 * if the source is not PGC_S_DATABASE.
+	 */
+
 	if (source != PGC_S_DATABASE)
 	{
-		GUC_check_errmsg("Can only be set on a database level using ALTER DATABASE SET. Current source: %s", GucSource_Names[source]);
-		return false;
+		ereport(WARNING,
+				(errmsg("can only be set on a database level using ALTER DATABASE SET. Current source: %s",
+						GucSource_Names[source])));
 	}
 	return true;
 }

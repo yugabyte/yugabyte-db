@@ -1770,11 +1770,12 @@ public class AsyncYBClient implements AutoCloseable {
    * @return A deferred object that yields a {@link XClusterCreateOutboundReplicationGroupResponse}
    */
   public Deferred<XClusterCreateOutboundReplicationGroupResponse>
-      xClusterCreateOutboundReplicationGroup(String replicationGroupId, Set<String> namespaceIds) {
+      xClusterCreateOutboundReplicationGroup(
+        String replicationGroupId, Set<String> namespaceIds, boolean automaticDdlMode) {
     checkIsClosed();
     XClusterCreateOutboundReplicationGroupRequest request =
         new XClusterCreateOutboundReplicationGroupRequest(
-            this.masterTable, replicationGroupId, namespaceIds);
+            this.masterTable, replicationGroupId, namespaceIds, automaticDdlMode);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

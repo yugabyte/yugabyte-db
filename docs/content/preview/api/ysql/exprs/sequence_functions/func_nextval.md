@@ -16,6 +16,10 @@ type: docs
 
 Use the `nextval( sequence_name )` function to return the next value from the sequence cache for the current session. If no more values are available in the cache, the session allocates a block of numbers for the cache and returns the first one. The number of elements allocated is determined by the `cache` option specified as part of the `CREATE SEQUENCE` statement.
 
+**Limitations**
+
+- xCluster replication (unless you are using automatic mode) is not compatible with sequences and therefore is not compatible with this feature.
+
 ## Semantics
 
 ### _sequence_name_
@@ -33,7 +37,6 @@ When the server cache method is used, the connection cache size is implicitly se
 **Limitations**
 
 - Calling `setval` on a sequence or restarting a sequence is not currently compatible with server caching, as the cache will not be cleared. This issue is tracked in GitHub issue [#16225](https://github.com/yugabyte/yugabyte-db/issues/16225).
-- Bidirectional xCluster replication and point-in-time-restore are not compatible with sequences and therefore are not compatible with this feature.
 
 ## Examples
 

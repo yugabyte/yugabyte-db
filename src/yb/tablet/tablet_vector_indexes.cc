@@ -193,11 +193,8 @@ Status TabletVectorIndexes::DoCreateIndex(
   // Enable vector index compaction only when new vector index has been added to all collections.
   {
     auto it = vector_indexes_map_.emplace(index_table.table_id, std::move(vector_index)).first;
-    auto scope_exit = ScopeExit([&it, bootstrap] {
-      if (!bootstrap) {
-        it->second->EnableAutoCompactions();
-      }
-    });
+    auto scope_exit = !bootstrap
+        ? MakeOptionalScopeExit([&it] { it->second->EnableAutoCompactions(); }) : std::nullopt;
 
     auto& indexes = vector_indexes_list_;
     if (!indexes) {

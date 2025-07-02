@@ -15,6 +15,9 @@
 
 #include <sys/mman.h>
 
+#include <boost/interprocess/mapped_region.hpp>
+#include <boost/interprocess/shared_memory_object.hpp>
+
 #include "yb/util/logging.h"
 
 #include "yb/util/result.h"
@@ -144,6 +147,49 @@ class SharedMemoryObject {
 
   SharedMemorySegment segment_;
   bool owned_ = false;
+};
+
+class InterprocessSharedMemoryObject;
+
+class InterprocessMappedRegion {
+ public:
+  InterprocessMappedRegion() = default;
+
+  size_t get_size() const noexcept {
+    return impl_.get_size();
+  }
+
+  void* get_address() const noexcept {
+    return impl_.get_address();
+  }
+
+ private:
+  explicit InterprocessMappedRegion(boost::interprocess::mapped_region&& impl)
+      : impl_(std::move(impl)) {}
+
+  friend class InterprocessSharedMemoryObject;
+
+  boost::interprocess::mapped_region impl_;
+};
+
+class InterprocessSharedMemoryObject {
+ public:
+  InterprocessSharedMemoryObject() = default;
+
+  static Result<InterprocessSharedMemoryObject> Create(const std::string& name, size_t size);
+  static Result<InterprocessSharedMemoryObject> Open(const std::string& name);
+
+  Result<InterprocessMappedRegion> Map() const;
+
+  explicit operator bool() const noexcept;
+
+  void DestroyAndRemove();
+
+ private:
+  explicit InterprocessSharedMemoryObject(boost::interprocess::shared_memory_object&& object)
+      : impl_(std::move(object)) {}
+
+  boost::interprocess::shared_memory_object impl_;
 };
 
 }  // namespace yb

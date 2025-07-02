@@ -669,15 +669,11 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   DataIdPB data_id;
   data_id.set_type(DataIdPB::LOG_SEGMENT);
   data_id.set_wal_segment_seqno(wal_segment_seqno);
-  const string dest_path = fs_manager().GetWalSegmentFilePath(meta_->wal_dir(), wal_segment_seqno);
+  const auto dest_path = fs_manager().GetWalSegmentFilePath(meta_->wal_dir(), wal_segment_seqno);
   const auto temp_dest_path = dest_path + ".tmp";
-  bool ok = false;
-  auto se = ScopeExit([this, &temp_dest_path, &ok] {
-    if (!ok) {
-      WARN_NOT_OK(env().DeleteFile(temp_dest_path),
-                  "Failed to delete temporary WAL segment");
-    }
-  });
+  CancelableScopeExit delete_tmp_wal_se{[this, &temp_dest_path] {
+    WARN_NOT_OK(env().DeleteFile(temp_dest_path), "Failed to delete temporary WAL segment");
+  }};
 
   std::unique_ptr<WritableFile> writer;
   RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
@@ -692,7 +688,7 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   LOG_WITH_PREFIX(INFO) << "Downloaded WAL segment with seq. number " << wal_segment_seqno
                         << " of size " << writer->Size() << " in " << elapsed.ToSeconds()
                         << " seconds";
-  ok = true;
+  delete_tmp_wal_se.Cancel();
 
   return Status::OK();
 }
@@ -703,13 +699,10 @@ Status RemoteBootstrapClient::DownloadTabletBootstrapStateFile() {
   data_id.set_type(DataIdPB::RETRYABLE_REQUESTS);
   auto dest_path = tablet::TabletBootstrapStateManager::FilePath(meta_->wal_dir());
   const auto temp_dest_path = dest_path + ".tmp";
-  bool ok = false;
-  auto se = ScopeExit([this, &temp_dest_path, &ok] {
-    if (!ok) {
-      WARN_NOT_OK(env().DeleteFile(temp_dest_path),
-                  "Failed to delete temporary retryable requests file");
-    }
-  });
+  CancelableScopeExit delete_tmp_file_se{[this, &temp_dest_path] {
+    WARN_NOT_OK(
+        env().DeleteFile(temp_dest_path), "Failed to delete temporary retryable requests file");
+  }};
 
   std::unique_ptr<WritableFile> writer;
   RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
@@ -722,7 +715,7 @@ Status RemoteBootstrapClient::DownloadTabletBootstrapStateFile() {
   auto elapsed = MonoTime::Now().GetDeltaSince(start);
   LOG_WITH_PREFIX(INFO) << "Downloaded retryable requests file of size " << writer->Size()
                         << " in " << elapsed.ToSeconds() << " seconds";
-  ok = true;
+  delete_tmp_file_se.Cancel();
 
   return Status::OK();
 }

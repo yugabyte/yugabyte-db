@@ -83,8 +83,10 @@ void PgDocMetrics::FlushRequest(uint64_t wait_time) {
   state_.stats.flush_wait += wait_time;
 }
 
-void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) {
+void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics, bool is_read) {
   bool has_change = false;
+  auto& docdb_metrics = is_read ? state_.stats.read_metrics
+                                : state_.stats.write_metrics;
   for (const auto& storage_metric : metrics.gauge_metrics()) {
     auto metric = storage_metric.metric();
     // If there is a rolling restart in progress, it's possible for an unknown metric to be
@@ -95,7 +97,7 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) 
     auto value = storage_metric.value();
     if (value) {
       has_change = true;
-      state_.stats.storage_gauge_metrics[metric] += value;
+      docdb_metrics.gauges[metric] += value;
     }
   }
   for (const auto& storage_metric : metrics.counter_metrics()) {
@@ -106,7 +108,7 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) 
     auto value = storage_metric.value();
     if (value) {
       has_change = true;
-      state_.stats.storage_counter_metrics[metric] += value;
+      docdb_metrics.counters[metric] += value;
     }
   }
   for (const auto& storage_metric : metrics.event_metrics()) {
@@ -114,15 +116,15 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) 
     if (metric >= YB_STORAGE_GAUGE_COUNT) {
       continue;
     }
-    auto& stats = state_.stats.storage_event_metrics[metric];
     if (storage_metric.count()) {
       has_change = true;
+      auto& stats = docdb_metrics.events[metric];
       stats.sum += storage_metric.sum();
       stats.count += storage_metric.count();
     }
   }
   if (has_change) {
-    ++state_.stats.storage_metrics_version;
+    ++docdb_metrics.version;
   }
 }
 

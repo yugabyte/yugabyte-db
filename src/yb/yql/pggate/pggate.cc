@@ -1572,7 +1572,8 @@ Status PgApiImpl::DmlHnswSetReadOptions(PgStatement* handle, int ef_search) {
 
 Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exec_params) {
   auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-  if (pg_sys_table_prefetcher_ && select.IsReadFromYsqlCatalog() && select.read_req()) {
+  if (pg_sys_table_prefetcher_ && !paused_catalog_read_time_ &&
+      select.IsReadFromYsqlCatalog() && select.read_req()) {
     // In case of sys tables prefetching is enabled all reads from sys table must use cached data.
     auto data = pg_sys_table_prefetcher_->GetData(
         *select.read_req(), select.IsIndexOrderedScan());
@@ -2153,6 +2154,24 @@ void PgApiImpl::StopSysTablePrefetching() {
   } else {
     pg_sys_table_prefetcher_.reset();
     ResetCatalogReadTime();
+  }
+}
+
+void PgApiImpl::PauseSysTablePrefetching() {
+  if (pg_sys_table_prefetcher_) {
+    paused_catalog_read_time_ = pg_session_->catalog_read_time();
+    ResetCatalogReadTime();
+  }
+}
+
+void PgApiImpl::ResumeSysTablePrefetching() {
+  if (pg_sys_table_prefetcher_) {
+    if (!paused_catalog_read_time_) {
+      LOG(DFATAL) << "Cannot resume sys table prefetching because it wasn't paused";
+    } else {
+      pg_session_->TrySetCatalogReadPoint(paused_catalog_read_time_);
+      paused_catalog_read_time_ = ReadHybridTime();
+    }
   }
 }
 

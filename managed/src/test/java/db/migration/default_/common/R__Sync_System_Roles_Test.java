@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
+import db.migration.default_.postgres.V383__Enable_Rbac;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
@@ -99,5 +100,19 @@ public class R__Sync_System_Roles_Test extends FakeDBApplication {
     assertEquals(5, rolesInDbForCustomer1.size());
     rolesInDbForCustomer2 = Role.getAll(testCustomer2.getUuid(), RoleType.System);
     assertEquals(5, rolesInDbForCustomer2.size());
+  }
+
+  @Test
+  public void test383() {
+    // This test is to ensure that the migration V383__Enable_Rbac is run successfully.
+    // The migration should not throw any exceptions and should complete without issues.
+    // If this test fails, most probably we need to add a newly added Action in
+    // com.yugabyte.yw.models.migrations.V383.PermissionInfo.Action
+
+    V383__Enable_Rbac migration = new V383__Enable_Rbac();
+    migration.addDefaultRoleBindings();
+
+    com.yugabyte.yw.models.migrations.V383.Role newRbacRole =
+        com.yugabyte.yw.models.migrations.V383.Role.get(testCustomer1.getUuid(), "Admin");
   }
 }

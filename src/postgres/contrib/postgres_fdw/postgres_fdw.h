@@ -135,6 +135,7 @@ typedef struct PgFdwRelationInfo
 
 	/* The underlying server that is hosting the relation. */
 	YbPgFdwServerType yb_server_type;
+	AttrNumber	yb_min_attr;
 } PgFdwRelationInfo;
 
 /*
@@ -152,6 +153,7 @@ extern void process_pending_request(AsyncRequest *areq);
 
 /* YB functions in postgres_fdw.c */
 extern bool yb_is_valid_server_type(const char *server_type);
+extern AttrNumber yb_get_min_attr_from_ftrelid(Oid relid);
 
 /* in connection.c */
 extern PGconn *GetConnection(UserMapping *user, bool will_prep_stmt,

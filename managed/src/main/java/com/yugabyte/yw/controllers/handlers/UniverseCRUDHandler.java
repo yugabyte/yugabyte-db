@@ -65,6 +65,7 @@ import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.ImportUniverseTaskParams;
@@ -706,18 +707,6 @@ public class UniverseCRUDHandler {
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
         c.userIntent.tserverGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, c, taskParams.clusters);
-        try {
-          String errMsg =
-              GFlagsUtil.checkPreviewGFlagsOnSpecificGFlags(
-                  c.userIntent.specificGFlags, gFlagsValidation, c.userIntent.ybSoftwareVersion);
-          if (errMsg != null) {
-            throw new PlatformServiceException(BAD_REQUEST, errMsg);
-          }
-        } catch (IOException e) {
-          LOG.error("Error while checking preview flags on the cluster: {}", c.uuid, e);
-          throw new PlatformServiceException(
-              INTERNAL_SERVER_ERROR, "Error while checking preview flags on cluster: " + c.uuid);
-        }
       } else {
         if (c.clusterType == ClusterType.ASYNC) {
           c.userIntent.specificGFlags = SpecificGFlags.constructInherited();
@@ -921,6 +910,21 @@ public class UniverseCRUDHandler {
       if (taskParams.nodeDetailsSet != null) {
         for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
           nodeDetails.otelCollectorMetricsPort = otelPort;
+        }
+      }
+      if (!Util.isOnPremManualProvisioning(taskParams)
+          && taskParams.additionalServicesStateData == null) {
+        boolean enableEarlyoomFeature =
+            confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
+        if (enableEarlyoomFeature) {
+          AdditionalServicesStateData servicesStateData = new AdditionalServicesStateData();
+          Boolean enableEarlyoom =
+              confGetter.getConfForScope(p, ProviderConfKeys.enableEarlyoomByDefaultForProvider);
+          String earlyoomArgs = confGetter.getConfForScope(p, ProviderConfKeys.earlyoomDefaultArgs);
+          servicesStateData.setEarlyoomConfig(
+              AdditionalServicesStateData.fromArgs(earlyoomArgs, true));
+          servicesStateData.setEarlyoomEnabled(enableEarlyoom);
+          taskParams.additionalServicesStateData = servicesStateData;
         }
       }
     }

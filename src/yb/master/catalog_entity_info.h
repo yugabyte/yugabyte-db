@@ -1061,25 +1061,26 @@ struct PersistentObjectLockInfo : public Persistent<SysObjectLockEntryPB> {};
 
 class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
  public:
-  explicit ObjectLockInfo(const std::string& ts_uuid) : ts_uuid_(ts_uuid) {}
+  explicit ObjectLockInfo(const std::string& ts_uuid)
+      : ts_uuid_(ts_uuid), ysql_lease_deadline_(MonoTime::Min()) {}
   ~ObjectLockInfo() = default;
 
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
   std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
-  RefreshYsqlOperationLease(const NodeInstancePB& instance) EXCLUDES(mutex_);
+  RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 
-  MonoTime last_ysql_lease_refresh() const EXCLUDES(mutex_);
+  MonoTime ysql_lease_deadline() const EXCLUDES(mutex_);
 
  private:
   // The ID field is used in the sys_catalog table.
   const std::string ts_uuid_;
 
   mutable simple_spinlock mutex_;
-  MonoTime last_ysql_lease_refresh_ GUARDED_BY(mutex_);
+  MonoTime ysql_lease_deadline_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(ObjectLockInfo);
 };
