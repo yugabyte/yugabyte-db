@@ -7837,7 +7837,8 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     }
 
     // Get pgschema_name for YSQL tables from PG Catalog. Skip for some special cases.
-    if (l->table_type() == TableType::PGSQL_TABLE_TYPE && !table->is_system() &&
+    if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+        resp->schema().deprecated_pgschema_name().empty() && !table->is_system() &&
         !table->IsSequencesSystemTable() && !table->IsColocationParentTable()) {
       TRACE("Acquired catalog manager lock for schema name lookup");
 
