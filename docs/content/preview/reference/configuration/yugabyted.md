@@ -753,7 +753,7 @@ Create a local single-node universe with encryption in transit and authenticatio
 ./bin/yugabyted start --secure
 ```
 
-Create a local single-node cluster with IPv6 address:
+Create a local single-node universe with IPv6 address:
 
 ```sh
 ./bin/yugabyted start --advertise_address ::1
@@ -779,10 +779,10 @@ For more advanced examples, see [Examples](#examples).
 : Print the command-line help and exit.
 
 --advertise_address *bind-ip*
-: IP address or local hostname on which yugabyted will listen. Supports both IPv4 and IPv6 addresses.
+: IP (v4 or v6) address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens). Supports both IPv4 and IPv6 addresses.
+: The IP (v4 or v6) or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
 --config *path-to-config-file*
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
