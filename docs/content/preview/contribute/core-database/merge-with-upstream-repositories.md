@@ -104,6 +104,7 @@ Cons of using git subtrees over squash merge:
   And instead, `git log -- documentdb_errors.csv` lists those commits.
   Which is to say, the paths of all these upstream repositories are mapped to the same base.
   So common paths such as `git log -- .gitignore` show a mix of all `.gitignore` changes across the upstream repositories using subtrees.
+- [GitHub issues may be inadvertently closed.](#github-closing-issues-via-commit-messages)
 
 There is currently no strong preference for one over the other, though currently, upstream repositories have only migrated from squash merge to subtree, never the other way around.
 
@@ -161,6 +162,7 @@ The following steps detail what has already been done to add DocumentDB.
    Append `--hold` if it is your first time and you are afraid of making mistakes.
    After [checking the structure looks good](#subtree-illustrations) using a command such as `git log --oneline --graph`, push the change using the sample command provided at the end of the `arc land --hold` output.
    In this example, this was done by commit [b01e29bafa6fb8bfb899f0b3ac6e98363340c8e7](https://github.com/yugabyte/yugabyte-db/commit/b01e29bafa6fb8bfb899f0b3ac6e98363340c8e7).
+1. [Reopen any GitHub issues that were inadvertently closed.](#github-closing-issues-via-commit-messages)
 
 ### Converting a squash embedded upstream repository to subtree
 
@@ -575,6 +577,13 @@ Otherwise, the author information is generated with your configuration.
 Take care not to overwrite the author information when you shouldn't.
 
 For Phorge, the author information of the latest commit being landed is transferred to the merge or squash commit constructed by `arc land`.
+
+### GitHub closing issues via commit messages
+
+GitHub automatically [closes issues based on keywords](https://github.blog/news-insights/product-news/closing-issues-via-commit-messages/), and subtree commits may have such messages.
+The problem is that those issue number references are for the subtree's repository, but they end up closing [yugabyte/yugabyte-db][repo-yugabyte-db] repository issues.
+This isn't too big of a problem since most of YugabyteDB's issues on low numbers are already closed, and these subtrees's issue numbers tend to be relatively low.
+However, when it does happen, the issues that were inadvertently closed need to manually be reopened.
 
 ### Find PostgreSQL back-patch commits
 
