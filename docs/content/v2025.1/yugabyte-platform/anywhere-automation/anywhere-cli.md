@@ -22,22 +22,44 @@ The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
 ## Install CLI
 
-Download and extract the YugabyteDB Anywhere CLI by entering the following commands:
+You can install and use the YugabyteDB Anywhere CLI in two ways.
+
+Note that the CLI can only be used with the same or earlier version of YBA.
+
+### Option 1: Download and extract
+
+1. Download and extract the YugabyteDB Anywhere CLI by entering the following commands:
+
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_cli-{{<yb-version     version="stable" format="build">}}-linux-amd64.tar.gz
+    tar -xf yba_cli-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz
+    cd yba_cli-{{<yb-version version="stable" format="build">}}/
+    ```
+
+1. Verify that the package is available:
+
+    ```sh
+    ./yba help
+    ```
+
+### Option 2: Use included binary
+
+The CLI binary is already included in your YugabyteDB Anywhere installation at the following location:
 
 ```sh
-wget https://downloads.yugabyte.com/releases/2025.1.0.0/yba_cli-2025.1.0.0-b<build-number>-linux-amd64.tar.gz
-tar -xf yba_cli-2025.1.0.0-b<build-number>-linux-amd64.tar.gz
-cd yba_cli-2.25.2.0-b<build-number>/
+/opt/ybanywhere/software/active/yb-platform/yugaware/yba-cli
 ```
 
-The CLI is available for following architectures:
+The CLI is available for the following architectures:
 
 - Linux AMD64 and ARM64
 - Darwin AMD64 and ARM64
 
-Copy the appropriate binary to your local machine. Note that the CLI can only be used with the same or earlier version of YBA.
+Copy the appropriate binary to your local machine.
 
-For help, enter the following command:
+### Need Help?
+
+For CLI commands and options, run:
 
 ```sh
 yba help
