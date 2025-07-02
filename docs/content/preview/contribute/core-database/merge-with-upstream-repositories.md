@@ -18,7 +18,7 @@ They are incorporated in one of the following ways:
 - Inside the [thirdparty repository][repo-thirdparty].
 - Embedded into some subdirectory in the [yugabyte-db repository][repo-yugabyte-db].
 - Downloaded on the fly as part of build or test (e.g. YB Controller).
-- [Prerequisite packages or binaries](./build-from-src-almalinux.md).
+- [Prerequisite packages or binaries](./build-from-src-almalinux).
 
 This document is primarily concerned about the case of code being embedded into the [yugabyte-db repository][repo-yugabyte-db].
 
