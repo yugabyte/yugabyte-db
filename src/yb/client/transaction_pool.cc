@@ -301,7 +301,7 @@ class TransactionPool::Impl {
       ForceCreateTransaction force_create_txn = ForceCreateTransaction::kFalse) EXCLUDES(mutex_) {
     const auto is_global = force_global_transaction ||
                            FLAGS_force_global_transactions ||
-                           !manager_->PlacementLocalTransactionsPossible();
+                           !manager_->RegionLocalTransactionsPossible();
     auto transaction =
         (is_global ? &global_pool_ : &local_pool_)->Take(deadline, force_create_txn);
     if (FLAGS_TEST_track_last_transaction) {
