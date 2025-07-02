@@ -125,7 +125,7 @@ The following steps detail what has already been done to add DocumentDB.
    In case of a conflict with existing tags, there are many workarounds, one of which is to delete the existing tag first then re-run the fetch.
 1. Find an appropriate location to embed the repository.
    The common case is PostgreSQL extensions, which belong in `src/postgres/third-party-extensions/<extension_name>`.
-1. Switch to a new feature branch first, based off the latest [yugabyte/yugabyte-db][repo-yugabyte-db] `master` branch.
+1. Switch to a new feature branch, based off the latest [yugabyte/yugabyte-db][repo-yugabyte-db] `master` branch.
 1. Add the subtree.
 
    ```sh
