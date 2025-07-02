@@ -41,6 +41,12 @@ type: indexpage
     icon="fa-thin fa-helmet-safety">}}
 
   {{<index/item
+    title="Multi-DC deployments"
+    body="Deploy across multiple data centers in 3DC or 2DC configurations."
+    href="multi-dc/"
+    icon="fa-thin fa-buildings">}}
+
+  {{<index/item
     title="Public clouds"
     body="Automate and manually deploy YugabyteDB on public clouds."
     href="public-clouds/"
@@ -51,11 +57,5 @@ type: indexpage
     body="Orchestrated deployment of YugabyteDB using open source as well as managed Kubernetes services."
     href="kubernetes/"
     icon="fa-thin fa-dharmachakra">}}
-
-  {{<index/item
-    title="Multi-DC deployments"
-    body="Deploy across multiple data centers in 3DC or 2DC configurations."
-    href="multi-dc/"
-    icon="fa-thin fa-buildings">}}
 
 {{</index/block>}}

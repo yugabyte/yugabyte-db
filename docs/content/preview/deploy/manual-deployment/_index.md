@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: deploy-manual-deployment
     parent: deploy
-    weight: 610
+    weight: 20
 type: indexpage
 ---
 

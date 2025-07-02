@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: multi-dc
     parent: deploy
-    weight: 631
+    weight: 30
 type: indexpage
 ---
 YugabyteDB is a geo-distributed SQL database that can be deployed across multiple data centers (DCs) or cloud regions. There are two primary configurations for such multi-DC deployments.
