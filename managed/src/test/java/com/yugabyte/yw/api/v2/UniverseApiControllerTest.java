@@ -142,6 +142,28 @@ public class UniverseApiControllerTest extends UniverseTestBase {
   }
 
   @Test
+  public void testCreateUniverseV2Geo() throws ApiException, IOException {
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2Geo();
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    assertThat(createTask.getTaskUuid(), is(fakeTaskUUID));
+    ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), v1CreateParamsCapture.capture());
+    UniverseDefinitionTaskParams v1CreateParams = v1CreateParamsCapture.getValue();
+
+    // validate that the Universe create params matches properties specified in the createSpec
+    validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
+  }
+
+  @Test
   public void testDeleteUniverseV2() throws ApiException {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.DestroyUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(DestroyUniverse.Params.class)))
@@ -154,7 +176,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               new UniverseDefinitionTaskParams.UserIntent();
           userIntent.providerType = Common.CloudType.aws;
-          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
@@ -189,7 +211,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               new UniverseDefinitionTaskParams.UserIntent();
           userIntent.providerType = Common.CloudType.aws;
-          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.

@@ -572,7 +572,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     userIntent.ybSoftwareVersion = baseVersion;
     userIntent.enableYSQLAuth = true;
     userIntent.dedicatedNodes = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 
@@ -684,7 +684,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     userIntent.ybSoftwareVersion = baseVersion;
     userIntent.enableYSQLAuth = true;
     userIntent.dedicatedNodes = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 

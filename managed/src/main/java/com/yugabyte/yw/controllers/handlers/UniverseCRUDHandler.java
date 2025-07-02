@@ -712,7 +712,7 @@ public class UniverseCRUDHandler {
       if (c.placementInfo != null && c.placementInfo.hasRankOrdering()) {
         PlacementInfoUtil.validatePriority(c.placementInfo);
       }
-      PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+      PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
       if (c.userIntent.specificGFlags != null) {
@@ -1257,7 +1257,7 @@ public class UniverseCRUDHandler {
       mergeNodeExporterInfo(u, taskParams);
     }
     PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster.placementInfo);
+        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster);
     return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Universe);
   }
 
@@ -1265,8 +1265,7 @@ public class UniverseCRUDHandler {
       Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
     validateConsistency(u.getUniverseDetails().getPrimaryCluster(), cluster);
-    PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
+    PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster);
     TaskType taskType = TaskType.EditUniverse;
     if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -1576,7 +1575,7 @@ public class UniverseCRUDHandler {
 
     // TODO: do we need this?
     PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(addOnCluster.uuid), addOnCluster.placementInfo);
+        taskParams.getNodesInCluster(addOnCluster.uuid), addOnCluster);
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -1688,7 +1687,7 @@ public class UniverseCRUDHandler {
     }
 
     PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster.placementInfo);
+        taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster);
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -2470,6 +2469,30 @@ public class UniverseCRUDHandler {
                   + newBundle.getDetails().getArch());
         }
       }
+      if (CollectionUtils.isEmpty(newCluster.getPartitions())
+          != CollectionUtils.isEmpty(curCluster.getPartitions())) {
+        throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
+      }
+      if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
+        Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
+            curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
+        Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =
+            newCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
+        for (UniverseDefinitionTaskParams.PartitionInfo cur : currentMap.values()) {
+          UniverseDefinitionTaskParams.PartitionInfo newPartition = newMap.get(cur.getUuid());
+          if (newPartition == null) {
+            if (cur.isDefaultPartition()) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot delete default partition " + cur.getName());
+            }
+          }
+          if (newCluster.clusterType == ClusterType.ASYNC && newMap.size() > 1) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Multiple partitions for readonly cluster is not supported");
+          }
+        }
+      }
+
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
       for (NodeDetails nodeDetails : nodeDetailsSet) {
         if (nodeDetails.state != NodeState.ToBeAdded

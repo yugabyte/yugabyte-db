@@ -382,7 +382,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       UniverseDefinitionTaskParams taskParams,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       PlacementInfo pi) {
-    taskParams.upsertPrimaryCluster(userIntent, pi);
+    taskParams.upsertPrimaryCluster(userIntent, null, pi);
     taskParams.nodePrefix = NODE_PREFIX;
     taskParams.getPrimaryCluster().uuid =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
@@ -706,7 +706,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 3;
-    taskParams.upsertPrimaryCluster(newUserIntent, pi);
+    taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
     taskParams.nodePrefix = NODE_PREFIX;
     taskParams.getPrimaryCluster().uuid =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;

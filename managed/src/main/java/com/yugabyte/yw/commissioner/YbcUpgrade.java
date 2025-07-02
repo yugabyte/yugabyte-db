@@ -369,7 +369,8 @@ public class YbcUpgrade {
           new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
       List<String> commandArgs =
           Arrays.asList("/bin/bash", "-c", "/home/yugabyte/tools/k8s_ybc_parent.py stop");
-      PlacementInfo primaryPI = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      PlacementInfo primaryPI =
+          universe.getUniverseDetails().getPrimaryCluster().getOverallPlacement();
       Map<String, Map<String, String>> k8sConfigMap =
           KubernetesUtil.getKubernetesConfigPerPodName(primaryPI, primaryTservers);
       for (NodeDetails primaryTserver : primaryTservers) {
@@ -396,7 +397,7 @@ public class YbcUpgrade {
         Cluster readOnlyCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
         Set<NodeDetails> readOnlyTservers =
             new HashSet<NodeDetails>(universe.getNodesInCluster(readOnlyCluster.uuid));
-        PlacementInfo readOnlyPI = readOnlyCluster.placementInfo;
+        PlacementInfo readOnlyPI = readOnlyCluster.getOverallPlacement();
         k8sConfigMap = KubernetesUtil.getKubernetesConfigPerPodName(readOnlyPI, readOnlyTservers);
         for (NodeDetails readOnlyTserver : readOnlyTservers) {
           try {

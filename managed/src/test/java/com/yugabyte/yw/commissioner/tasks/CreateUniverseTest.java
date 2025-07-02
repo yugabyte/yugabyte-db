@@ -259,6 +259,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
     List<AvailabilityZone> zones = Arrays.asList(zone1, zone2, zone3);
     UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    PlacementInfo placementInfo = new PlacementInfo();
+    for (AvailabilityZone zone : zones) {
+      PlacementInfoUtil.addPlacementZone(zone.getUuid(), placementInfo);
+    }
+    taskParams.getPrimaryCluster().placementInfo = placementInfo;
     int i = 0;
     for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
       AvailabilityZone zone = zones.get(i++ % zones.size());
@@ -352,6 +357,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
     List<AvailabilityZone> zones = Arrays.asList(zone1, zone2, zone3);
     UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    PlacementInfo placementInfo = new PlacementInfo();
+    for (AvailabilityZone zone : zones) {
+      PlacementInfoUtil.addPlacementZone(zone.getUuid(), placementInfo);
+    }
+    taskParams.getPrimaryCluster().placementInfo = placementInfo;
     int i = 0;
     for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
       AvailabilityZone zone = zones.get(i++ % zones.size());
@@ -419,6 +429,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);
     List<AvailabilityZone> zones = Arrays.asList(zone1, zone2, zone3);
     UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    PlacementInfo placementInfo = new PlacementInfo();
+    for (AvailabilityZone zone : zones) {
+      PlacementInfoUtil.addPlacementZone(zone.getUuid(), placementInfo);
+    }
+    taskParams.getPrimaryCluster().placementInfo = placementInfo;
     int i = 0;
     for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
       AvailabilityZone zone = zones.get(i++ % zones.size());
@@ -690,7 +705,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     taskParams.getPrimaryCluster().userIntent.dedicatedNodes = true;
     PlacementInfoUtil.SelectMastersResult selectMastersResult =
         PlacementInfoUtil.selectMasters(
-            null, taskParams.nodeDetailsSet, null, true, taskParams.clusters);
+            null, taskParams.nodeDetailsSet, n -> true, true, taskParams.clusters);
     selectMastersResult.addedMasters.forEach(taskParams.nodeDetailsSet::add);
     PlacementInfoUtil.dedicateNodes(taskParams.nodeDetailsSet);
     TaskInfo taskInfo = submitTask(taskParams);

@@ -50,7 +50,7 @@ public class DeleteNode extends NodeTaskBase {
               removeNodeByName(taskParams().nodeName, universeDetails.nodeDetailsSet);
               // Update Placement Info to reflect new nodeDetailSet
               Set<NodeDetails> clusterNodes = universeDetails.getNodesInCluster(cluster.uuid);
-              updatePlacementInfo(clusterNodes, cluster.placementInfo);
+              updatePlacementInfo(clusterNodes, cluster);
 
               // Update userIntent to reflect new numNodes
               cluster.userIntent.numNodes =

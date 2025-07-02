@@ -1524,7 +1524,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, pi);
+    taskParams.upsertPrimaryCluster(userIntent, Collections.emptyList(), pi);
     taskParams.userAZSelected = true;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
@@ -1544,7 +1544,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UUID asyncUUID = UUID.randomUUID();
     taskParams.upsertCluster(
-        rrIntent, piRR, asyncUUID, UniverseDefinitionTaskParams.ClusterType.ASYNC);
+        rrIntent,
+        Collections.emptyList(),
+        piRR,
+        asyncUUID,
+        UniverseDefinitionTaskParams.ClusterType.ASYNC);
     taskParams.userAZSelected = true;
 
     PlacementInfoUtil.updateUniverseDefinition(
@@ -1672,7 +1676,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, pi);
+    taskParams.upsertPrimaryCluster(userIntent, Collections.emptyList(), pi);
     taskParams.userAZSelected = true;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
@@ -1694,7 +1698,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UUID asyncUUID = UUID.randomUUID();
     taskParams.upsertCluster(
-        rrIntent, piRR, asyncUUID, UniverseDefinitionTaskParams.ClusterType.ASYNC);
+        rrIntent,
+        Collections.emptyList(),
+        piRR,
+        asyncUUID,
+        UniverseDefinitionTaskParams.ClusterType.ASYNC);
     taskParams.userAZSelected = true;
 
     PlacementInfoUtil.updateUniverseDefinition(
@@ -1974,7 +1982,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                   PlacementInfoUtil.selectMasters(
                       masterLeader,
                       universe.getNodes(),
-                      null,
+                      n -> true,
                       true,
                       universe.getUniverseDetails().clusters);
               AtomicInteger nodeIdx = new AtomicInteger(universe.getNodes().size());

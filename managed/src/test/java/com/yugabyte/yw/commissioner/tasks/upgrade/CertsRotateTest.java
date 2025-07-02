@@ -300,7 +300,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
               if (nodeToNode || clientToNode) {
                 universeDetails.allowInsecure = false;
               }
-              universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
               universe.setUniverseDetails(universeDetails);
             },
             false);

@@ -1880,7 +1880,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                 universeDetails.rootAndClientRootCASame = false;
                 userIntent.providerType = CloudType.aws;
               }
-              universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
               // Modifying default values to make sure these params are merged into taskParams.
               universeDetails.setTxnTableWaitCountFlag = !universeDetails.setTxnTableWaitCountFlag;
               universeDetails.allowInsecure = !universeDetails.allowInsecure;
@@ -1955,7 +1955,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           universeDetails.rootAndClientRootCASame = true;
           universeDetails.rootCA = rootCA;
           universeDetails.setClientRootCA(rootCA);
-          universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+          universeDetails.upsertPrimaryCluster(
+              userIntent, universeDetails.getPrimaryCluster().getPartitions(), placementInfo);
           universe.setUniverseDetails(universeDetails);
         });
     return universeUUID;
@@ -2002,7 +2003,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
           userIntent.provider = provider.getUuid().toString();
           userIntent.regionList = ImmutableList.of(region.getUuid());
-          universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+          universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
 
           universeDetails.nodeDetailsSet = new HashSet<>();
           for (int idx = 0; idx <= userIntent.numNodes; idx++) {

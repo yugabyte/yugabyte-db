@@ -149,7 +149,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Set all the in-memory node names first.
       setNodeNames(universe);
 
-      PlacementInfo pi = primaryCluster.placementInfo;
+      PlacementInfo pi = primaryCluster.getOverallPlacement();
 
       selectNumMastersAZ(pi);
 
@@ -203,7 +203,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
         throw new RuntimeException(msg);
       } else if (readClusters.size() == 1) {
         Cluster readCluster = readClusters.get(0);
-        PlacementInfo readClusterPI = readCluster.placementInfo;
+        PlacementInfo readClusterPI = readCluster.getOverallPlacement();
         Provider readClusterProvider =
             Provider.getOrBadRequest(UUID.fromString(readCluster.userIntent.provider));
         CloudType readClusterProviderType = readCluster.userIntent.providerType;

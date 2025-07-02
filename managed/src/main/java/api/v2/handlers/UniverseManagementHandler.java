@@ -30,7 +30,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -44,7 +44,6 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
-import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler.OpType;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -56,6 +55,7 @@ import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
@@ -129,6 +129,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // create universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     v1Params.currentClusterType = ClusterType.PRIMARY;
+
     universeCRUDHandler.configure(customer, v1Params);
 
     if (v1Params.clusters.stream().anyMatch(cluster -> cluster.clusterType == ClusterType.ASYNC)) {
@@ -199,7 +200,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       v1Params.currentClusterType = ClusterType.ASYNC;
       universeCRUDHandler.configure(customer, v1Params);
     }
-    universeCRUDHandler.checkGeoPartitioningParameters(customer, v1Params, OpType.UPDATE);
 
     Cluster primaryCluster = v1Params.getPrimaryCluster();
     for (Cluster readOnlyCluster : dbUniverse.getUniverseDetails().getReadOnlyClusters()) {
@@ -214,10 +214,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     } else {
       universeCRUDHandler.mergeNodeExporterInfo(dbUniverse, v1Params);
     }
-    for (Cluster cluster : v1Params.clusters) {
-      PlacementInfoUtil.updatePlacementInfo(
-          v1Params.getNodesInCluster(cluster.uuid), cluster.placementInfo);
-    }
     v1Params.rootCA = universeCRUDHandler.checkValidRootCA(dbUniverse.getUniverseDetails().rootCA);
     UUID taskUUID = commissioner.submit(taskType, v1Params);
     log.info(
@@ -226,6 +222,14 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         uniUUID,
         dbUniverse.getName(),
         taskUUID);
+    CustomerTask.create(
+        customer,
+        dbUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        dbUniverse.getName(),
+        CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, v1Params, null));
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 

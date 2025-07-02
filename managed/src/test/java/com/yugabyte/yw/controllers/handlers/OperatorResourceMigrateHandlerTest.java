@@ -69,7 +69,7 @@ public class OperatorResourceMigrateHandlerTest extends FakeDBApplication {
   @Test
   public void testReadOnlyClusters() {
     when(mockConfGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(true);
-    defaultUniverse.getUniverseDetails().upsertCluster(null, null, UUID.randomUUID());
+    defaultUniverse.getUniverseDetails().upsertCluster(null, null, null, UUID.randomUUID());
     assertThrows(
         PlatformServiceException.class, () -> handler.precheckUniverseImport(defaultUniverse));
   }

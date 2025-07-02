@@ -67,6 +67,14 @@ public class EditUniverse extends EditUniverseTaskBase {
     if (isFirstTry()) {
       configureTaskParams(universe);
     }
+    if (universe.getUniverseDetails().getPrimaryCluster().isGeoPartitioned()
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      createTablespaceValidationOnRemoveTask(
+          primaryCluster.uuid,
+          primaryCluster.getOverallPlacement(),
+          taskParams().getPrimaryCluster().getPartitions());
+    }
   }
 
   protected void freezeUniverseInTxn(Universe universe) {
@@ -130,7 +138,8 @@ public class EditUniverse extends EditUniverseTaskBase {
         // Updating cluster in memory
         universe
             .getUniverseDetails()
-            .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+            .upsertCluster(
+                cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
         if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
           updateGFlagsForTservers(cluster, universe);
         }
