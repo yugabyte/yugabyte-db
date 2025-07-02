@@ -668,7 +668,7 @@ int od_auth_frontend(od_client_t *client)
 	{
 		rc = yb_auth_via_auth_backend(client);
 
-		/* Auth Failed FATAL response is already sent. */
+		/* AuthOk packet or Auth Failed FATAL response is already sent. */
 		if (rc == -1)
 			return -1;
 	}
@@ -680,8 +680,6 @@ int od_auth_frontend(od_client_t *client)
 		/* AuthOk packet or Auth Failed FATAL response is already sent. */
 		if (rc == -1)
 			return -1;
-
-		return 0;
 	}
 
 #else
@@ -718,7 +716,6 @@ int od_auth_frontend(od_client_t *client)
 		assert(0);
 		break;
 	}
-#endif
 
 	/* pass */
 	machine_msg_t *msg;
@@ -731,6 +728,8 @@ int od_auth_frontend(od_client_t *client)
 			 "write error: %s", od_io_error(&client->io));
 		return -1;
 	}
+#endif
+
 	return 0;
 }
 
@@ -1151,9 +1150,19 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 	/* handle communication for the auth backend separately. */
 	if (client->yb_is_authenticating)
 	{
+		od_client_t *external_client = client->yb_external_client;
+
 		/* AuthenticationOk */
 		if (auth_type == OD_AUTH_OK) {
-			machine_msg_free(msg);
+			rc = od_write(&external_client->io, msg);
+			if (rc == -1) {
+				od_error(
+					&instance->logger, "auth",
+					external_client, NULL,
+					"error while forwarding the AuthOk packet to the client: %s",
+					od_io_error(&external_client->io));
+				return -1;
+			}
 			return 0;
 		}
 
@@ -1177,7 +1186,6 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 		assert(instance->config.yb_use_auth_backend);
 
 		kiwi_fe_type_t type;
-		od_client_t *external_client = client->yb_external_client;
 
 
 		rc = yb_od_relay_auth_server_to_client(server, msg, external_client,
