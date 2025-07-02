@@ -25,6 +25,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -249,25 +251,6 @@ TEST_F(PgGetLockStatusTest, TestLocksFromWaitQueue) {
   auto num_txns = ASSERT_RESULT(session.conn->FetchRow<int64>(kPgLocksDistTxnsQuery));
   ASSERT_EQ(num_txns, 2);
 
-  ASSERT_OK(session.conn->Execute("COMMIT"));
-  ASSERT_OK(status_future.get());
-}
-
-TEST_F(PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksOfSingleShardWaiters)) {
-  const auto table = "foo";
-  const auto key = "1";
-  auto session = ASSERT_RESULT(Init(table, key));
-
-  auto conn = ASSERT_RESULT(Connect());
-  // Fire a single row update that will wait on the earlier launched transaction.
-  auto status_future = ASSERT_RESULT(
-      ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=v+10 WHERE k=$1", table, key)));
-
-  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
-  const auto& tablet_id = session.first_involved_tablet;
-  auto resp = ASSERT_RESULT(GetLockStatus(tablet_id));
-  ASSERT_EQ(resp.tablet_lock_infos(0).single_shard_waiters_size(), 1);
-  ASSERT_TRUE(conn.IsBusy());
   ASSERT_OK(session.conn->Execute("COMMIT"));
   ASSERT_OK(status_future.get());
 }
@@ -645,14 +628,21 @@ TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
   SleepFor(5s * kTimeMultiplier);
   // Each transaction above acquires 2 locks, one {STRONG_READ,STRONG_WRITE} on the primary key
   // and the other being a {WEAK_READ,WEAK_WRITE} on the table.
-  auto res = ASSERT_RESULT(setup_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks"));
-  ASSERT_EQ(res, table_names.size() * 2);
-  // Assert that the locks held belong to tables "foo", "bar", "baz".
-  auto values = ASSERT_RESULT(setup_conn.FetchRows<std::string>(
-    "SELECT relname FROM pg_class WHERE oid IN (SELECT DISTINCT relation FROM pg_locks)"));
-  ASSERT_EQ(values.size(), 3);
-  for (const auto& relname : values) {
-    ASSERT_TRUE(table_names.find(relname) != table_names.end());
+  // If object locks are enabled, each table will also acquire a table-level lock.
+  const int expected_lock_count = FLAGS_enable_object_locking_for_table_locks ? 3 : 2;
+  for (const auto& table_name : table_names) {
+    auto res = ASSERT_RESULT(setup_conn.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM pg_locks WHERE relation = '$0'::regclass", table_name)));
+    ASSERT_EQ(res, expected_lock_count);
+  }
+  // Assert that the locks held contain tables "foo", "bar", "baz".
+  auto relnames = ASSERT_RESULT(setup_conn.FetchRows<std::string>(
+      "SELECT relname FROM pg_class WHERE oid IN (SELECT DISTINCT relation FROM pg_locks)"));
+  std::unordered_set<std::string> relnames_set(relnames.begin(), relnames.end());
+  ASSERT_GE(relnames_set.size(), 3);
+  for (const auto& table_name : table_names) {
+    ASSERT_TRUE(relnames_set.find(table_name) != relnames_set.end())
+        << "Missing lock on table: " << table_name;
   }
   fetched_locks.CountDown();
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
@@ -687,16 +677,18 @@ TEST_F(PgGetLockStatusTest, TestColocatedWaiterWriteLock) {
   // The transaction that has been granted has four locks; one {STRONG_READ,STRONG_WRITE} on the
   // column, one {WEAK_READ, WEAK_WRITE} on the row, a {STRONG_READ} on the row, and a
   // {WEAK_READ,WEAK_WRITE} on the table.
-  auto value = ASSERT_RESULT(
-      setup_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks WHERE granted = true"));
-  ASSERT_EQ(value, 4);
+  auto value = ASSERT_RESULT(setup_conn.FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM pg_locks WHERE granted = true AND relation = '$0'::regclass",
+      table_name)));
+  ASSERT_EQ(value, FLAGS_enable_object_locking_for_table_locks ? 4 + num_txns : 4);
 
   // The waiter displays 3 locks in total,
   // 1 {STRONG_READ,STRONG_WRITE} on the column
   // 1 {WEAK_READ,WEAK_WRITE,STRONG_READ} on the row
   // 1 {WEAK_READ,WEAK_WRITE} on the table
-  value = ASSERT_RESULT(
-      setup_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks WHERE granted = false"));
+  value = ASSERT_RESULT(setup_conn.FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM pg_locks WHERE granted = false AND relation = '$0'::regclass",
+      table_name)));;
   ASSERT_EQ(value, (num_txns - 1) * 3);
   fetched_locks.CountDown();
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
@@ -752,9 +744,9 @@ TEST_F(PgGetLockStatusTest, HidesLocksFromAbortedSubTransactions) {
   ASSERT_OK(session.conn->FetchFormat("SELECT * FROM $0 WHERE k=3 FOR UPDATE", table));
 
   auto get_distinct_subtxn_count_query = Format(
-    "SELECT COUNT(DISTINCT(ybdetails->>'subtransaction_id')) FROM pg_locks "
-    "WHERE ybdetails->>'transactionid'='$0'",
-    session.txn_id.ToString());
+      "SELECT COUNT(DISTINCT(ybdetails->>'subtransaction_id')) FROM pg_locks "
+      "WHERE ybdetails->>'transactionid'='$0' AND relation = '$1'::regclass",
+      session.txn_id.ToString(), table);
 
   ASSERT_OK(session.conn->ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
   SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
@@ -826,7 +818,8 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
 
   auto session_1 = ASSERT_RESULT(Init("foo", "1"));
   auto init_stamp = ASSERT_RESULT(conn.FetchRow<MonoDelta>(
-      "SELECT DISTINCT(waitend) FROM pg_locks WHERE granted"));
+      "SELECT DISTINCT(waitend) FROM pg_locks "
+      "WHERE granted AND relation = 'foo'::regclass AND waitend IS NOT NULL"));
 
   std::atomic<uint> total_num_waiting_requests{0};
   yb::SyncPoint::GetInstance()->SetCallBack(
@@ -861,14 +854,16 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
   auto now_stamp = ASSERT_RESULT(conn.FetchRow<MonoDelta>("SELECT NOW()"));
 
   auto wait_start_time_1_query =
-      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted ORDER BY waitstart LIMIT 1";
+      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted "
+      "AND relation = 'foo'::regclass AND waitstart IS NOT NULL ORDER BY waitstart LIMIT 1";
   auto wait_start_time_1 =
       ASSERT_RESULT(conn.FetchRow<MonoDelta>(wait_start_time_1_query));
   ASSERT_LE(init_stamp, wait_start_time_1);
   ASSERT_GE(now_stamp, wait_start_time_1);
 
   auto wait_start_time_2_query =
-      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted ORDER BY waitstart DESC LIMIT 1";
+      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted "
+      "AND relation = 'foo'::regclass AND waitstart IS NOT NULL ORDER BY waitstart DESC LIMIT 1";
   auto wait_start_time_2 =
       ASSERT_RESULT(conn.FetchRow<MonoDelta>(wait_start_time_2_query));
   ASSERT_LE(init_stamp, wait_start_time_2);
@@ -890,11 +885,12 @@ TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) 
 
 TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
   constexpr int kMinTxnAgeMs = 1;
-  // All distributed txns returned as part of pg_locks should have the host node uuid set.
-  const auto kPgLocksQuery =
-      Format("$0 WHERE NOT fastpath AND ybdetails->>'node' IS NULL", kPgLocksDistTxnsQuery);
   const auto table = "foo";
   const auto key = "1";
+  // All distributed txns returned as part of pg_locks should have the host node uuid set.
+  const auto kPgLocksQuery =
+      Format("$0 WHERE NOT fastpath AND ybdetails->>'node' IS NULL AND relation = '$1'::regclass",
+          kPgLocksDistTxnsQuery, table);
 
   // Sets up a table, and launches a transaction acquiring for share lock on the key.
   auto session = ASSERT_RESULT(Init(table, key));
@@ -906,15 +902,49 @@ TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), 0);
+
+  const int expected_lock_count = FLAGS_enable_object_locking_for_table_locks ? 2 : 0;
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), expected_lock_count);
 
   // Try simulating GetLockStatus requests to tablets querying for fast path transactions alone.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_returning_old_transactions) = true;
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), expected_lock_count);
 
   ASSERT_OK(session.conn->CommitTransaction());
   ASSERT_OK(status_future.get());
 }
+
+class PgGetLockStatusTestDisableObjectLocks : public PgGetLockStatusTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    PgGetLockStatusTest::SetUp();
+  }
+};
+
+// TODO: Enable object locking and transactional ddl once #27865 is resolved.
+TEST_F_EX(
+    PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksOfSingleShardWaiters),
+    PgGetLockStatusTestDisableObjectLocks) {
+  const auto table = "foo";
+  const auto key = "1";
+  auto session = ASSERT_RESULT(Init(table, key));
+
+  auto conn = ASSERT_RESULT(Connect());
+  // Fire a single row update that will wait on the earlier launched transaction.
+  auto status_future = ASSERT_RESULT(
+      ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=v+10 WHERE k=$1", table, key)));
+
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+  const auto& tablet_id = session.first_involved_tablet;
+  auto resp = ASSERT_RESULT(GetLockStatus(tablet_id));
+  ASSERT_EQ(resp.tablet_lock_infos(0).single_shard_waiters_size(), 1);
+  ASSERT_TRUE(conn.IsBusy());
+  ASSERT_OK(session.conn->Execute("COMMIT"));
+  ASSERT_OK(status_future.get());
+}
+
 class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
   size_t NumTabletServers() override {
     return 3;
@@ -925,7 +955,19 @@ class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
   }
 };
 
-TEST_F(PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns) {
+class PgGetLockStatusTestRF3DisableObjectLocks : public PgGetLockStatusTestRF3 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    PgGetLockStatusTestRF3::SetUp();
+  }
+};
+
+// TODO: Enable object locking and transactional ddl once #27851 is resolved.
+TEST_F_EX(
+    PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns,
+    PgGetLockStatusTestRF3DisableObjectLocks) {
   constexpr auto table = "foo";
   constexpr auto key = "1";
   constexpr int kMinTxnAgeSeconds = 1;
@@ -965,8 +1007,11 @@ TEST_F(PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns) {
   thread_holder.WaitAndStop(20s * kTimeMultiplier);
 }
 
+// TODO: Enable object locking and transactional ddl once #27865 is resolved.
 #ifndef NDEBUG
-TEST_F(PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters) {
+TEST_F_EX(
+    PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters,
+    PgGetLockStatusTestRF3DisableObjectLocks) {
   constexpr auto table = "foo";
   constexpr int kMinTxnAgeMs = 1;
   constexpr int kNumSingleShardWaiters = 2;
@@ -1071,23 +1116,24 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterTableRewrite) {
   }
 
   SleepFor(5s * kTimeMultiplier);
-  // Assert that the locks held belong to tables "foo", "bar".
-  auto values = ASSERT_RESULT(conn.FetchRows<std::string>(
+  // Assert that the locks held contain tables "foo", "bar".
+  auto relnames = ASSERT_RESULT(conn.FetchRows<std::string>(
     "SELECT relname FROM pg_class WHERE oid IN (SELECT DISTINCT relation FROM pg_locks)"));
-  ASSERT_EQ(values.size(), 2);
-  for (const auto& relname : values) {
-    ASSERT_TRUE(table_names.find(relname) != table_names.end());
+  std::unordered_set<std::string> relnames_set(relnames.begin(), relnames.end());
+  ASSERT_GE(relnames_set.size(), 2);
+  for (const auto& table_name : table_names) {
+    ASSERT_TRUE(relnames_set.find(table_name) != relnames_set.end())
+        << "Missing lock on table: " << table_name;
   }
   fetched_locks.CountDown();
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }
 
 TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
-  const auto kPgLocksQuery = "SELECT count(*) FROM pg_locks";
+  const auto kPgLocksQuery = "SELECT count(*) FROM pg_locks WHERE relation = 'foo'::regclass";
   const size_t num_tservers = cluster_->num_tablet_servers();
 
   auto setup_conn = ASSERT_RESULT(Connect());
-  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 0);
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(1, 10), 0"));
 
@@ -1097,7 +1143,9 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
   ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
 
   SleepFor(FLAGS_heartbeat_interval_ms * 2ms * kTimeMultiplier);
-  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+
+  const int expected_lock_count = FLAGS_enable_object_locking_for_table_locks ? 3 : 2;
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), expected_lock_count);
 
   // Add a new tserver to the cluster and wait for it to become "live".
   ASSERT_OK(cluster_->AddTabletServer());
@@ -1115,7 +1163,7 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
   WaitForLoadBalanceCompletion();
 
   // Assert that the pg_locks query returns correct results after the add node operation.
-  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), expected_lock_count);
 
   ASSERT_OK(cluster_->ClearBlacklist());
   // Move replicas back to the old tserver
@@ -1137,7 +1185,7 @@ TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterNodeOperations) {
   }, 10s * kTimeMultiplier, "Failed to learn about removed tserver from master"));
 
   // Assert that the pg_locks query returns correct results after the remove node operation.
-  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 2);
+  ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), expected_lock_count);
 
   ASSERT_OK(conn.CommitTransaction());
   ASSERT_EQ(ASSERT_RESULT(setup_conn.FetchRow<int64>(kPgLocksQuery)), 0);
@@ -1173,7 +1221,10 @@ TEST_F(PgGetLockStatusTest, FetchLocksAmidstTransactionCommit) {
 
   auto result_future = std::async(std::launch::async, [&]() -> Result<int64> {
     auto conn = VERIFY_RESULT(Connect());
-    return conn.FetchRow<int64>(kPgLocksDistTxnsQuery);
+    // Exclude table-level locks, because they are fetched in an earlier, separate RPC,
+    // so they are not affected by sync point blocking in this test.
+    return conn.FetchRow<int64>(Format(
+        "$0 WHERE relation = 'foo'::regclass AND locktype != 'relation'", kPgLocksDistTxnsQuery));
   });
 
   // Wait for the lock status request to scan the transaction reverse index section and store
@@ -1195,6 +1246,9 @@ class PgGetLockStatusTestFastElection : public PgGetLockStatusTestRF3 {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 4;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 100;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 400;
+    // TODO: Enable object locking and transactional ddl once #27850 is resolved.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     PgGetLockStatusTestRF3::SetUp();
   }
 };
