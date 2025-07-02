@@ -7,6 +7,11 @@
   {{ if ne .Type "searchpage" }}
   <div class="search-result" style="display:none">
     <div class="algolia-data" id="docs">
+      <div class="yb-kapa-button">
+        <div class="ask-ai-about">
+          <a role="button" id="yb-ask-ai"><img width="24" height="24" src="/icons/ai-icon.svg" alt="Ask AI"> <span class="text">Ask AI about</span><span class="comma">"</span><span class="search-val"></span><span class="comma">"</span></a>
+        </div>
+      </div>
       <ul id="doc-hit" class="content-panel"></ul>
       <div id="pagination-docs" class="pager"></div>
     </div>

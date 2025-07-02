@@ -35,6 +35,26 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Kapa modal Styling and add shadow on root.
+   */
+  function askAiPopupStyle() {
+    const host = document.querySelector('#kapa-widget-container:not(.styled)');
+
+    if (host) {
+      const shadowRoot = host.shadowRoot;
+      if (shadowRoot) {
+        const style = document.createElement('style');
+
+        // Original (Unminified) file located in `docs/assets/scss/_yb_kapa_modal_styling.scss`.
+        style.textContent = `.mantine-SegmentedControl-label{color:#4e5f6d;font-size:13px;font-style:normal;font-weight:400;line-height:16px;display:flex;padding:4px 12px 4px 8px;align-items:center;height:24px;gap: 4px}.mantine-Image-imageWrapper img{border-radius:0}.mantine-SegmentedControl-root span{display:none}.mantine-SegmentedControl-root{padding:0;overflow:visible}.mantine-SegmentedControl-controlActive{gap:4px;background:#fff;border-radius:8px;box-shadow:0 0 0 1px #7879f1}.mantine-SegmentedControl-control:not(:last-child) label:before{content:"";width:24px;height:24px;background:url(/icons/ai-icon.svg) center no-repeat;display:inline-block;filter:grayscale(1) brightness(1.2)}.mantine-SegmentedControl-control:not(:last-child).mantine-SegmentedControl-controlActive label:before{filter:none}.mantine-SegmentedControl-control:not(:last-child).mantine-SegmentedControl-controlActive label{background:linear-gradient(273deg,#ed35ec 5.14%,#ed35c5 38.93%,#7879f1 48.17%,#5e60f0 98.9%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:600}.mantine-SegmentedControl-control:last-child.mantine-SegmentedControl-controlActive label{color:#2b59c3;font-weight:600}.mantine-SegmentedControl-controlActive label{border-radius:8px;border:0;font-size:13px;font-style:normal;font-weight:600;line-height:16px;display:flex;gap:4px}.mantine-SegmentedControl-control:last-child label {padding: 4px 12px;}`;
+
+        shadowRoot.appendChild(style);
+      }
+      host.classList.add('styled');
+    }
+  }
+
+  /**
    * Provided name value from the Query param either from URL or with the passed
    * search query.
    */
@@ -363,6 +383,31 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Shoe "Ask AI" button in search results dropdown.
+   */
+  function kapaAskAI() {
+    const askAI = document.getElementById('yb-ask-ai');
+    if (askAI) {
+      askAI.addEventListener('click', () => {
+        if (window.Kapa) {
+          window.Kapa.open({
+            mode: 'ai',
+            query: encodedSearchedTerm(),
+            submit: true,
+          });
+        }
+        askAiPopupStyle();
+      });
+    }
+    const askAITop = document.querySelector('.ask-ai-top span');
+    if (askAITop) {
+      askAITop.addEventListener('click', () => {
+        askAiPopupStyle();
+      });
+    }
+  }
+
+  /**
    * Trigger AI Search on clicking custom button.
    */
   function kapaSearch() {
@@ -372,10 +417,11 @@ import algoliasearch from 'algoliasearch';
         if (window.Kapa) {
           window.Kapa.open({
             mode: 'search',
-            query: searchInput.value.trim(),
+            query: encodedSearchedTerm(),
             submit: true,
           });
         }
+        askAiPopupStyle();
       });
     }
   }
@@ -449,12 +495,27 @@ import algoliasearch from 'algoliasearch';
           if (searchSummary !== null) {
             searchSummary.innerHTML = `${totalResults} results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
           }
+
+          const btnSearchVal = document.querySelector('.yb-kapa-button .search-val');
+          if (btnSearchVal) {
+            btnSearchVal.innerHTML = `${searchedTerm}`;
+          }
+
+          setTimeout(() => {
+            if (document.querySelector('.yb-kapa-button')) {
+              document.querySelector('.yb-kapa-button').style.display = 'block';
+            }
+          }, 500);
         } else {
           const noResultMessage = `No results found for <b>"${searchedTerm}"</b>. <a role="button" id="ai-search">Try this search in AI</a>.`;
           if (searchSummary) {
             searchSummary.innerHTML = noResultMessage;
           } else {
             document.getElementById('doc-hit').innerHTML = `<li class="no-result">${noResultMessage}</li>`;
+          }
+
+          if (document.querySelector('.yb-kapa-button')) {
+            document.querySelector('.yb-kapa-button').style.display = 'none';
           }
         }
 
@@ -475,7 +536,7 @@ import algoliasearch from 'algoliasearch';
           searchpagerparent.className = `pager results-${totalResults}`;
           let viewAll = '';
           if (nbPages > 1) {
-            viewAll = `<a href="/search/?query=${searchValue}" title="View all results">View all results</a>`;
+            viewAll = `<a href="/search/?query=${searchValue}" title="View all results">View all results <img src="/icons/arrow-btn-sm.svg"></a>`;
           }
 
           document.getElementById('pagination-docs').innerHTML = `<nav class="pager-area">
@@ -536,6 +597,7 @@ import algoliasearch from 'algoliasearch';
   }
 
   addSearchEvents();
+  kapaAskAI();
 
   document.addEventListener('keydown', (event) => {
     if (event.target.nodeName === 'TEXTAREA') {
