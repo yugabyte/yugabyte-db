@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-You can view the status and details of tasks performed on your YugabyteDB Anywhere universes, including create universe, edit universe, software upgrades, GFlags upgrades, and more using the universe **Tasks** page. You can also manage these tasks by retrying failed ones or aborting those still in progress.
+You can view the status and details of tasks performed on your YugabyteDB Anywhere universes, including create universe, edit universe, software upgrades, flag changes, and more using the universe **Tasks** page. You can also manage these tasks by retrying failed ones or aborting those still in progress.
 
 You view task details by navigating to **Universes > Universe-Name > Tasks**, as shown in the following illustration:
 
