@@ -16,6 +16,7 @@
 #include <array>
 #include <span>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "yb/docdb/docdb.pb.h"
@@ -87,6 +88,10 @@ inline LockState IntentTypeSetConflict(dockv::IntentTypeSet intent_types) {
 
 bool IntentTypeSetsConflict(dockv::IntentTypeSet lhs, dockv::IntentTypeSet rhs);
 
+[[nodiscard]] bool IntentTypeReadOnly(dockv::IntentTypeSet intents);
+
+[[nodiscard]] size_t LockStateWriteIntentCount(LockState state);
+
 std::string LockStateDebugString(LockState state);
 
 template <typename LockManager>
@@ -140,6 +145,8 @@ void FilterKeysToLock(LockBatchEntries<T> *keys_locked) {
   keys_locked->erase(w, keys_locked->end());
 }
 
+using LockTypeEntry = std::pair<dockv::KeyEntryType, dockv::IntentTypeSet>;
+
 // We achieve the same table lock conflict matrix as that of pg documented here,
 // https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-TABLES
 //
@@ -148,8 +155,7 @@ void FilterKeysToLock(LockBatchEntries<T> *keys_locked) {
 // KeyEntryType values and associate a list of <KeyEntryType, IntentTypeSet> to each table lock.
 // Since our conflict detection mechanism checks conflicts against each key, we indirectly achieve
 // the exact same conflict matrix. Refer comments on the function definition for more details.
-std::span<const std::pair<dockv::KeyEntryType, dockv::IntentTypeSet>>
-    GetEntriesForLockType(TableLockType lock);
+std::span<const LockTypeEntry> GetEntriesForLockType(TableLockType lock);
 
 // Returns DetermineKeysToLockResult<ObjectLockManager> which can further be passed to
 // ObjectLockManager to acquire locks against the required objects with the given lock type.
