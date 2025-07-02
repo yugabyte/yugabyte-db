@@ -20,7 +20,7 @@ YugabyteDB's transactional DDL provides similar guarantees for rolling back DDL 
 
 ## Enable transactional DDL
 
-To enable transactional DDL, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `yb_ddl_transaction_block_enabled` to true.
+This feature is {{<tags/feature/tp>}}. Support for transactional DDL is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `yb_ddl_transaction_block_enabled` to true.
 
 Because `yb_ddl_transaction_block_enabled` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=yb_ddl_transaction_block_enabled`).
 
@@ -127,7 +127,7 @@ yugabyte=# \du test_user
 
 ### Limitations
 
-- Concurrent DDLs on the same database are unsupported and will lead to conflict and read restart required errors. Your applications must handle these by retrying the statements.
+- [Concurrent DDLs](../../../best-practices-operations/administration/#concurrent-ddl-during-a-ddl-operation) on the same database are unsupported and will lead to conflict and read restart required errors. Your applications must handle these by retrying the statements.
 
 - [Savepoints](../../develop/learn/transactions/transactions-retries-ysql/#savepoints) are unsupported for DDL statements. As a result, you cannot create a savepoint in a transaction block that has executed a DDL statement. Similarly, you cannot execute a DDL statement in a transaction block in which a savepoint has been created.
 
