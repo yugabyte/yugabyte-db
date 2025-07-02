@@ -751,6 +751,12 @@ Create a local single-node universe with encryption in transit and authenticatio
 ./bin/yugabyted start --secure
 ```
 
+Create a local single-node cluster with IPv6 address:
+
+```sh
+./bin/yugabyted start --advertise_address ::1
+```
+
 Create a single-node locally and join other nodes that are part of the same universe:
 
 ```sh
@@ -771,10 +777,10 @@ For more advanced examples, see [Examples](#examples).
 : Print the command-line help and exit.
 
 --advertise_address *bind-ip*
-: IP address or local hostname on which yugabyted will listen.
+: IP address or local hostname on which yugabyted will listen. Supports both IPv4 and IPv6 addresses.
 
 --join *master-ip*
-: The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
+: The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens). Supports both IPv4 and IPv6 addresses.
 
 --config *path-to-config-file*
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
@@ -1454,7 +1460,25 @@ To create secure single-node universe with [encryption in transit](../../../secu
     --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
+
+### Create a single-node cluster with IPv6 address
+
+Create a single-node cluster with a given base directory. You need to provide a fully-qualified directory path for the `base_dir` parameter.
+
+```sh
+./bin/yugabyted start --advertise_address=::1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
+```
+
+To create a secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
+
+```sh
+./bin/yugabyted start --secure --advertise_address=::1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
+```
+
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 
 ### Create certificates for a secure local multi-node universe
 
