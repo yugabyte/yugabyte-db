@@ -44,3 +44,13 @@ Use the following steps to perform a planned switchover:
     The switchover process waits for all remaining changes on the current DR primary to be replicated to the DR replica.
 
 1. Resume the application traffic on the new DR primary.
+
+## Abort, retry, and rollback
+
+During switchover, writes to both universes are rejected until the task completes. The Abort, Retry, and Rollback options provide flexibility in case the switchover is taking too long and you want to quickly restore write availability on at least one universe.
+
+If a switchover task fails or you abort it, you have the option to roll back to the previous state, keeping the current primary universe as primary and the replica universe as replica.
+
+Rollback is only possible if the switchover hasn't progressed beyond a certain point. If you make a rollback request beyond this point, the system will return an error indicating that rollback is no longer possible. At that stage, the new primary universe will already be able to accept writes.
+
+To revert roles, you must retry the original switchover to success, and then (if needed) initiate a new switchover task to swap roles again.

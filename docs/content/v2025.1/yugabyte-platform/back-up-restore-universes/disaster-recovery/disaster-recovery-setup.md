@@ -40,7 +40,7 @@ After DR is configured, the DR replica is only be available for reads.
 
 ### Best practices
 
-- Monitor CPU and keep its  use below 65%.
+- Monitor CPU and keep its use below 65%.
 - Monitor disk space and keep its use under 65%.
 - Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) flag to 86400 on both DR primary and replica.
 
@@ -99,13 +99,15 @@ In addition, you can monitor the following metrics on the **xCluster Disaster Re
 
 - Async Replication Lag
 
-    The network lag in microseconds between any two communicating nodes.
+    The network lag in microseconds between any two communicating nodes. It measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost.
 
-    If you have [set an alert for replication lag](#set-up-replication-lag-alerts), you can also display the alert threshold.
+    If you have [set an alert for replication lag](#set-up-alerts), you can also display the alert threshold.
 
 - Consumer Safe Time Lag
 
     The time elapsed in microseconds between the physical time and safe time. Safe time is the time (usually in the past) at which the database or tables can be read with full correctness and consistency. For example, even though the actual time may be 3:00:00, a query or read against the DR replica database may be able to only return a result as of 2:59:59 (that is 1 second ago) due to network lag and/or out-of-order delivery of datagrams.
+
+    By default, an [alert](#set-up-alerts) of 180 seconds is set up for DR configurations.
 
 - Consumer Safe Time Skew
 
@@ -159,6 +161,9 @@ The table statuses are described in the following table.
 | Bootstrapping | The table is undergoing a full copy; that is, being backed up from the DR primary and being restored to the DR replica. |
 | Validated | The table passes pre-checks and is eligible to be added to replication. |
 | Operational | The table is being replicated. |
+| Unable to fetch | Unable to obtaing the most recent replication status from the target universe master leader. |
+| Uninitialized | The master leader of the target universe has not yet gathered the status of the replication stream. This can happen when the replication is just set up or there is a new master leader. |
+| Source unreachable | The target universe TServer cannot reach the source universe TServer, likely due to network connectivity issues. |
 
 The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 
@@ -175,13 +180,20 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
 | Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
 
-### Set up replication lag alerts
+### Set up alerts
 
-Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost.
+When DR is set up, YugabyteDB Anywhere automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
 
-To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
+- there is a table schema mismatch between DR primary and replica.
+- tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.
 
-To create an alert:
+A [Consumer safe time lag](#metrics) alert with a threshold of 180 seconds is also set up for DR configurations. It triggers when the replica universe safe time lags behind the configured threshold from the physical time; that is, when the Consumer Safe Time Lag goes beyond the threshold. In this case, the read data on the replica universe can be stale even if the replication lag for other tables is not very high.
+
+To modify the alert, navigate to **Admin > Alert Configurations > Alert Policies**, find the alert, and click its **Actions > Edit Alert**.
+
+You can also set up an alert for [Replication lag](#metrics). To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for [Replication lag](#metrics). Note that to display the lag threshold in the [Async Replication Lag chart](#metrics), the alert Severity and Condition must be Severe and Greater Than respectively.
+
+To create a replication lag alert:
 
 1. Navigate to **Admin > Alert Configurations > Alert Policies**.
 1. Click **Create Alert Policy** and choose **Universe Alert**.
@@ -196,11 +208,6 @@ To create an alert:
     - Set the threshold to an acceptable value for your deployment. The default threshold is 3 minutes (180000ms).
 
 1. Click **Save** when you are done.
-
-When DR is set up, YugabyteDB automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
-
-- there is a table schema mismatch between DR primary and replica.
-- tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.
 
 When you receive an alert, navigate to the replication configuration [Tables tab](#tables) to see the table status.
 
