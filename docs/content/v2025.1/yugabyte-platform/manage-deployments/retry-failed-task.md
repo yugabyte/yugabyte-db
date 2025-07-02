@@ -14,7 +14,7 @@ type: docs
 
 You can view the status and details of tasks performed on your YugabyteDB Anywhere universes, including create universe, edit universe, software upgrades, flag changes, and more using the universe **Tasks** page. You can also manage these tasks by retrying failed ones or aborting those still in progress.
 
-You view task details by navigating to **Universes > Universe-Name > Tasks**, as shown in the following illustration:
+To view the task history for all your universes, navigate to **Tasks**; to view the tasks for a specific universe, navigate to **Universes > Universe-Name > Tasks**, as shown in the following illustration:
 
 ![Task history](/images/yp/task-history.png)
 
