@@ -246,6 +246,14 @@ spec:
                   perDownloadNumObjects:
                     description: Number of buffers per download per node. Used during restore.
                     type: integer
+                  diskReadBytesPerSec:
+                    description: Disk read bytes per second to throttle disk usage during backups
+                    type: integer
+                    format: int64
+                  diskWriteBytesPerSec:
+                    description: Disk write bytes per second to throttle disk usage during restores
+                    type: integer
+                    format: int64
               kubernetesOverrides:
                 description: >
                   Kubernetes overrides for the universe.

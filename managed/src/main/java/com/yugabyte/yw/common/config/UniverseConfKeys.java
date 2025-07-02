@@ -1711,4 +1711,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip auto flags and YSQL migration files validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ybcPerDiskIoRequestSize =
+      new ConfKeyInfo<>(
+          "ybc.disk_io_request_size_bytes",
+          ScopeType.UNIVERSE,
+          "Per disk IO request size",
+          "Per disk IO request size during backup/restore in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> defaultDiskIoReadBytesPerSecond =
+      new ConfKeyInfo<>(
+          "ybc.default_disk_io_read_bytes_per_sec",
+          ScopeType.UNIVERSE,
+          "Default disk IO read bytes per second",
+          "Default disk IO read bytes per second during backup in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> defaultDiskIoWriteBytesPerSecond =
+      new ConfKeyInfo<>(
+          "ybc.default_disk_io_write_bytes_per_sec",
+          ScopeType.UNIVERSE,
+          "Default disk IO write bytes per second",
+          "Default disk IO write bytes per second during restore in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

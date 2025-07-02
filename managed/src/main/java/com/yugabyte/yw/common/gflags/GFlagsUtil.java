@@ -174,6 +174,9 @@ public class GFlagsUtil {
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
   public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
+  public static final String YBC_DISK_READ_BYTES_PER_SECOND = "disk_read_bytes_per_sec";
+  public static final String YBC_DISK_WRITE_BYTES_PER_SECOND = "disk_write_bytes_per_sec";
+  public static final String YBC_DISK_IO_REQUEST_SIZE = "disk_io_request_size_bytes";
   public static final String YBC_LOG_FILENAME = "yb-controller-server";
   public static final String TMP_DIRECTORY = "tmp_dir";
   public static final String JWKS_FILE_CONTENT_KEY = "jwks=";
@@ -510,6 +513,22 @@ public class GFlagsUtil {
     ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
+    ybcFlags.put(
+        YBC_DISK_IO_REQUEST_SIZE,
+        Long.toString(
+            confGetter.getConfForScope(universe, UniverseConfKeys.ybcPerDiskIoRequestSize)));
+    // Write default values for disk read/write bytes per sec so that resetToDefaults for throttle
+    // params falls back to these values.
+    ybcFlags.put(
+        YBC_DISK_READ_BYTES_PER_SECOND,
+        Long.toString(
+            confGetter.getConfForScope(
+                universe, UniverseConfKeys.defaultDiskIoReadBytesPerSecond)));
+    ybcFlags.put(
+        YBC_DISK_WRITE_BYTES_PER_SECOND,
+        Long.toString(
+            confGetter.getConfForScope(
+                universe, UniverseConfKeys.defaultDiskIoWriteBytesPerSecond)));
 
     if (taskParam.enableNodeToNodeEncrypt) {
       ybcFlags.put(CERT_NODE_FILENAME, node.cloudInfo.private_ip);
@@ -542,12 +561,12 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID,
+      Universe universe,
       String nodeName,
       boolean listenOnAllInterfaces,
       int hardwareConcurrency,
-      Map<String, String> customYbcGflags) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+      Map<String, String> customYbcGflags,
+      RuntimeConfGetter confGetter) {
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
@@ -577,6 +596,22 @@ public class GFlagsUtil {
     ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
+    ybcFlags.put(
+        YBC_DISK_IO_REQUEST_SIZE,
+        Long.toString(
+            confGetter.getConfForScope(universe, UniverseConfKeys.ybcPerDiskIoRequestSize)));
+    // Write default values for disk read/write bytes per sec so that resetToDefaults for throttle
+    // params falls back to these values.
+    ybcFlags.put(
+        YBC_DISK_READ_BYTES_PER_SECOND,
+        Long.toString(
+            confGetter.getConfForScope(
+                universe, UniverseConfKeys.defaultDiskIoReadBytesPerSecond)));
+    ybcFlags.put(
+        YBC_DISK_WRITE_BYTES_PER_SECOND,
+        Long.toString(
+            confGetter.getConfForScope(
+                universe, UniverseConfKeys.defaultDiskIoWriteBytesPerSecond)));
 
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
