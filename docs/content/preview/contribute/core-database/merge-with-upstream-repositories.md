@@ -27,8 +27,7 @@ This document is primarily concerned about the case of code being embedded into 
 Before getting started, note that most of this document is applicable to both internal and external contributors, but some steps are internal-only.
 In particular, references to "Phorge", "`arc`", and "internal slack" are internal.
 Such references generally pertain to putting up [yugabyte/yugabyte-db][repo-yugabyte-db] code for review, getting it tested through jenkins, and committing it.
-External contributors may publish the code for review using a GitHub PR, and reach out in our [community Slack]({{<slack-invite>}}) so that a YugabyteDB engineer can take care of the internal steps.
-External contributors may also reach out in our [community Slack]({{<slack-invite>}}).
+External contributors may publish the code for review using a GitHub PR and reach out in our [community Slack]({{<slack-invite>}}) so that a YugabyteDB engineer can take care of the internal steps.
 
 ## Different tracking approaches
 
