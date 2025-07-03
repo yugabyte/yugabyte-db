@@ -113,6 +113,14 @@ In addition, you can monitor the following metrics on the **xCluster Disaster Re
 
     The time elapsed in microseconds for replication between the most caught up tablet and the tablet that lags the most on the DR replica. This metric is available only on the DR replica.
 
+- Consumer Replication Error Count
+
+    The number of replication errors on the replica universe TServers.
+
+- CDC Get-Changes Throughput
+
+    The throughput at which the change data is being retrieved by the replica universe TServers.
+
 Consider the following scenario.
 
 ![Disaster recovery metrics](/images/yb-platform/disaster-recovery/disaster-recovery-metrics.png)
