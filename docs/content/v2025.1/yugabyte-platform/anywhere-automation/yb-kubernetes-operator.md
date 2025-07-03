@@ -369,7 +369,7 @@ No resources found in schedule-cr namespace.
 
 This feature is {{<tags/feature/ea>}}. Backup schedules support taking full backups based on cron expressions or specified frequencies. They also allow you to configure incremental backups to run in between these full backups, providing finer-grained recovery points.
 
-When an operator schedule triggers a backup, you need to create a corresponding CR for that specific backup. The operator names this CR appropriately, and marks it with ignore-reconciler-add.
+When an operator schedule triggers a backup, a corresponding CR is automatically created for that specific backup. The operator names this CR appropriately, and marks it with "ignore-reconciler-add".
 
 Operator schedules maintain owner references to their respective YBA universes. This ensures that when you delete a source universe, its associated schedule also gets deleted.
 
@@ -454,6 +454,19 @@ spec:
   keyspace:test
   schedulingFrequency:3600000
   incrementalBackupFrequency:900000
+```
+
+Backups are created from the schedules (using their auto-created CRs). You can verify them using the `kubectl get backups` as follows:
+
+```sh
+kubectl get backups -n schedule-cr
+```
+
+```output
+NAME                                                          AGE
+operator-scheduled-backup-1-1069296176-full--06-43-25         32m
+operator-scheduled-backup-1-1069296176-incremental--06-59-26  16m
+operator-scheduled-backup-1-1069296176-incremental--07-13-26  2m55s
 ```
 
 Backup schedules get automatically deleted when you delete the YBA universe that owns it as per the following:
