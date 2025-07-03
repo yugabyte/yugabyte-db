@@ -1,5 +1,3 @@
-import React from 'react';
-
 /*
  * Created on Tue Mar 25 2025
  *
@@ -27,15 +25,19 @@ import {
   AccessKeyField
 } from '../../fields';
 import { OtherAdvancedProps } from './dtos';
+// import { useCreateUniverse } from '../../../../../v2/api/universe/universe';
+import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
 
 // import { useTranslation } from 'react-i18next';
 
 const { Box } = mui;
 
 export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
+  const [context, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
+
+  // const createUniverse = useCreateUniverse();
 
   const methods = useForm<OtherAdvancedProps>({
     defaultValues: {
@@ -52,6 +54,12 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
+        methods.handleSubmit((data) => {
+          // const payload = mapCreateUniversePayload({ ...context, otherAdvancedSettings: data });
+          // createUniverse.mutateAsync({
+          //   data: payload
+          // });
+        });
         moveToNextPage();
       },
       onPrev: () => {
@@ -83,3 +91,5 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     </FormProvider>
   );
 });
+
+OtherAdvancedSettings.displayName = 'OtherAdvancedSettings';

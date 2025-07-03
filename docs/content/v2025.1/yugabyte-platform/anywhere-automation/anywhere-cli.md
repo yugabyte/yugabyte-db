@@ -4,8 +4,6 @@ headerTitle: YugabyteDB Anywhere CLI
 linkTitle: yba CLI
 description: Use YugabyteDB Anywhere CLI to create and manage resources in YBA.
 headcontent: Install the CLI, configure default settings, and set up autocompletion
-tags:
-  feature: early-access
 menu:
   v2025.1_yugabyte-platform:
     parent: anywhere-automation
@@ -22,24 +20,44 @@ Reference documentation for yba CLI commands and their flags is available in the
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is {{<tags/feature/ea idea="1879">}}. Commands and options may change before {{<tags/feature/ga>}}.
-
 ## Install CLI
 
-Your YugabyteDB Anywhere installation includes the CLI binary, in the following location:
+You can install and use the YugabyteDB Anywhere CLI in two ways.
+
+### Option 1: Download and extract
+
+1. Download and extract the YugabyteDB Anywhere CLI by entering the following commands:
+
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_cli-{{<yb-version     version="stable" format="build">}}-linux-amd64.tar.gz
+    tar -xf yba_cli-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz
+    cd yba_cli-{{<yb-version version="stable" format="build">}}/
+    ```
+
+1. Verify that the package is available:
+
+    ```sh
+    ./yba help
+    ```
+
+### Option 2: Use included binary
+
+The CLI binary is already included in your YugabyteDB Anywhere installation at the following location:
 
 ```sh
 /opt/ybanywhere/software/active/yb-platform/yugaware/yba-cli
 ```
 
-The CLI is available for following architectures:
+The CLI is available for the following architectures:
 
 - Linux AMD64 and ARM64
 - Darwin AMD64 and ARM64
 
-Copy the appropriate binary to your local machine. Note that the CLI can only be used with the same or earlier version of YBA.
+Copy the appropriate binary to your local machine.
 
-For help, enter the following command:
+### Need Help?
+
+For CLI commands and options, run:
 
 ```sh
 yba help
@@ -65,9 +83,9 @@ For convenience, you can configure the CLI with a default API token as follows:
 
   At the prompt, paste your API token and press Enter.
 
-  By default, this writes the value to the CLI configuration file `$HOME/.yba-cli.yaml`.
+  By default, this writes the value to the CLI configuration file `$HOME/.yba-cli/.yba-cli.yaml`.
 
-  You can create multiple configuration files, and switch between them using the [--config](#global-flags) flag. You can add any of the other [global flags](#global-flags) to your configuration files.
+  You can create multiple configuration files, and switch between them using the `--config` flag, or `--directory` flag if you want to maintain the configuration files in a directory. See [Global flags](#global-flags) for more details.
 
 - Using [environment variables](#environment-variables). Environment variables must begin with `YBA_`. For example:
 
@@ -140,6 +158,9 @@ The following flags can be passed in with any command. These flags can also be a
 
 --config string
 : Configuration file (default is `$HOME/.yba-cli.yaml`).
+
+--directory string
+: Directory containing YBA CLI configuration and generated files. If specified, the CLI looks for a configuration file named '.yba-cli.yaml' in this directory. (default is `$HOME/.yba-cli/`).
 
 --debug
 : Use debug mode, same as `--logLevel debug`.

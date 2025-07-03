@@ -621,10 +621,18 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             return self._is_disk_unmounted(host_info, current_root_volume, args)
 
         def __is_disk_mounting():
-            return self._is_disk_mounting(host_info, current_root_volume, args)
+            # Azure does not require unmounting because replacement is done in one API call.
+            if self.cloud.name != "azu":
+                return self._is_disk_mounting(host_info, current_root_volume, args)
+            else:
+                return False
 
         def __is_disk_mounted():
-            return self._is_disk_mounted(host_info, current_root_volume, args)
+            # Azure does not require unmounting because replacement is done in one API call.
+            if self.cloud.name != "azu":
+                return self._is_disk_mounted(host_info, current_root_volume, args)
+            else:
+                return True
 
         try:
             id = args.search_pattern

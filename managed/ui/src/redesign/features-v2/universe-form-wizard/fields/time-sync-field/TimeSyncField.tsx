@@ -4,7 +4,7 @@ import { useFormContext } from 'react-hook-form';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
 
-const { Box, Typography, styled } = mui;
+const { Box } = mui;
 
 interface TimeSyncProps {
   disabled: boolean;
@@ -12,7 +12,7 @@ interface TimeSyncProps {
 
 const TIME_SYNC_FIELD = 'useTimeSync';
 
-export const TimeSyncField: FC<TimeSyncProps> = ({ disabled }) => {
+export const TimeSyncField: FC<TimeSyncProps> = () => {
   const { control } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation();
 

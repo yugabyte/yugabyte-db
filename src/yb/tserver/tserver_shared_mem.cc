@@ -243,7 +243,8 @@ TServerSharedData::~TServerSharedData() = default;
 
 Status TServerSharedData::AllocatorsInitialized(SharedMemoryBackingAllocator& allocator) {
   if (FLAGS_enable_object_lock_fastpath) {
-    object_lock_state_ = VERIFY_RESULT(allocator.MakeUnique<docdb::ObjectLockSharedState>());
+    object_lock_state_ =
+        VERIFY_RESULT(allocator.MakeUnique<docdb::ObjectLockSharedState>(allocator));
   }
 
   fully_initialized_ = true;

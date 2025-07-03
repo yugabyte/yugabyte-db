@@ -4,7 +4,7 @@ import { useFormContext } from 'react-hook-form';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
 
-const { Box, Typography, styled } = mui;
+const { Box } = mui;
 
 interface SystemDFieldProps {
   disabled: boolean;
@@ -12,7 +12,7 @@ interface SystemDFieldProps {
 
 const SYSTEMD_FIELD = 'useSystemd';
 
-export const SystemDField: FC<SystemDFieldProps> = ({ disabled }) => {
+export const SystemDField: FC<SystemDFieldProps> = () => {
   const { control } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation();
 

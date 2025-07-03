@@ -164,7 +164,7 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) erro
 			util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
 			return err
 		}
-		if unit != "network-online.target" && unit[len(unit)-6:] == "timer" {
+		if strings.HasSuffix(unit, ".timer") {
 			err := module.StartSystemdService(ctx, h.username, unit, h.logOut)
 			if err != nil {
 				util.FileLogger().

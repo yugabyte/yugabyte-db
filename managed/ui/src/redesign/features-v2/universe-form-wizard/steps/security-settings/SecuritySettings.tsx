@@ -7,10 +7,10 @@ import {
 import { FormProvider, useForm } from 'react-hook-form';
 // import { yupResolver } from '@hookform/resolvers/yup';
 // import { useTranslation } from 'react-i18next';
-import { AssignPublicIPField, EARField, EITField } from '../../fields';
-import { SecuritySettingsProps } from './dtos';
 import { mui } from '@yugabyte-ui-library/core';
+import { AssignPublicIPField, EARField, EITField } from '../../fields';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
+import { SecuritySettingsProps } from './dtos';
 
 const { Box } = mui;
 
@@ -25,10 +25,11 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        moveToNextPage();
+        methods.handleSubmit((data) => {
+          moveToNextPage();
+        })();
       },
       onPrev: () => {
-        console.log('prev');
         moveToPreviousPage();
       }
     }),
@@ -60,3 +61,5 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
     </FormProvider>
   );
 });
+
+SecuritySettings.displayName = 'SecuritySettings';

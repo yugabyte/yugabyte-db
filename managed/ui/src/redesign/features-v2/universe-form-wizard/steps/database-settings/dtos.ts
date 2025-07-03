@@ -1,4 +1,4 @@
-import { UniverseInfo, UniverseSpec } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { UniverseSpec } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 export interface DatabaseSettingsProps {
   ysql?: UniverseSpec['ysql'];

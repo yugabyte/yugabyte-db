@@ -11,7 +11,6 @@
 import { FC } from 'react';
 import { useFormContext, useFieldArray, FieldArrayPath } from 'react-hook-form';
 import { mui, YBInputField, YBButton } from '@yugabyte-ui-library/core';
-import { useTranslation } from 'react-i18next';
 import { OtherAdvancedProps, InstanceTag } from '../../steps/advanced-settings/dtos';
 import { StyledLink } from '../../components/DefaultComponents';
 

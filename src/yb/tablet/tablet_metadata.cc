@@ -41,13 +41,10 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/colocated_util.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
-#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_util.h"
-#include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -56,8 +53,6 @@
 
 #include "yb/dockv/reader_projection.h"
 
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -79,7 +74,6 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/random.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -1233,12 +1227,6 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(env, path, superblock),
       Substitute("Could not load Raft group metadata from $0", path));
-  // Migration for backward compatibility with versions which don't have separate
-  // TableType::TRANSACTION_STATUS_TABLE_TYPE.
-  if (superblock->obsolete_table_type() == TableType::REDIS_TABLE_TYPE &&
-      superblock->obsolete_table_name() == kGlobalTransactionsTableName) {
-    superblock->set_obsolete_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
-  }
   return Status::OK();
 }
 
@@ -2071,54 +2059,8 @@ Result<std::string> RaftGroupMetadata::TopSnapshotsDir() const {
   return result;
 }
 
-namespace {
-// MigrateSuperblockForDXXXX functions are only needed for backward compatibility with
-// YugabyteDB versions which don't have changes from DXXXX revision.
-// Each MigrateSuperblockForDXXXX could be removed after all YugabyteDB installations are
-// upgraded to have revision DXXXX.
-
-Status MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superblock) {
-  // In previous version of superblock format we stored primary table metadata in superblock's
-  // top-level fields (deprecated table_* and other). TableInfo objects were stored inside
-  // RaftGroupReplicaSuperBlockPB.tables.
-  //
-  // In new format TableInfo objects and some other top-level fields are moved from superblock's
-  // top-level fields into RaftGroupReplicaSuperBlockPB.kv_store. Primary table (see
-  // RaftGroupMetadata::primary_table_id_ field description) metadata is stored inside one of
-  // RaftGroupReplicaSuperBlockPB.kv_store.tables objects and is referenced by
-  // RaftGroupReplicaSuperBlockPB.primary_table_id.
-  if (superblock->has_kv_store()) {
-    return Status::OK();
-  }
-
-  LOG(INFO) << "Migrating superblock for raft group " << superblock->raft_group_id();
-
-  KvStoreInfoPB* kv_store_pb = superblock->mutable_kv_store();
-  kv_store_pb->set_kv_store_id(superblock->raft_group_id());
-  kv_store_pb->set_rocksdb_dir(superblock->obsolete_rocksdb_dir());
-  kv_store_pb->mutable_rocksdb_files()->CopyFrom(superblock->obsolete_rocksdb_files());
-  kv_store_pb->mutable_snapshot_files()->CopyFrom(superblock->obsolete_snapshot_files());
-
-  TableInfoPB* primary_table = kv_store_pb->add_tables();
-  primary_table->set_table_id(superblock->primary_table_id());
-  primary_table->set_table_name(superblock->obsolete_table_name());
-  primary_table->set_table_type(superblock->obsolete_table_type());
-  primary_table->mutable_schema()->CopyFrom(superblock->obsolete_schema());
-  primary_table->set_schema_version(superblock->obsolete_schema_version());
-  primary_table->mutable_partition_schema()->CopyFrom(superblock->obsolete_partition_schema());
-  primary_table->mutable_indexes()->CopyFrom(superblock->obsolete_indexes());
-  primary_table->mutable_index_info()->CopyFrom(superblock->obsolete_index_info());
-  primary_table->mutable_deleted_cols()->CopyFrom(superblock->obsolete_deleted_cols());
-
-  kv_store_pb->mutable_tables()->MergeFrom(superblock->obsolete_tables());
-
-  return Status::OK();
-}
-
-} // namespace
-
 Status MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock) {
-  return MigrateSuperblockForD5900(superblock);
+  return Status::OK();
 }
 
 std::shared_ptr<std::vector<DeletedColumn>> RaftGroupMetadata::deleted_cols(

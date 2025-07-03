@@ -1,5 +1,4 @@
 import { FC } from 'react';
-import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch, Controller, FieldPath } from 'react-hook-form';

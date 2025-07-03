@@ -97,18 +97,23 @@ public class ManageOtelCollector extends NodeTaskBase {
         universe.getUniverseDetails().getPrimaryCluster();
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
     String ybHomeDir = provider.getYbHome();
-    log.debug("Using ybHomeDir {} to check for the tserver serviced unit file", ybHomeDir);
+    log.debug("Using ybHomeDir {} to check for the tserver service unit file", ybHomeDir);
     String serviceFilePath = String.format("%s/.config/systemd/user/yb-tserver.service", ybHomeDir);
+    // Build a command that always exits 0 upon successful execution and prints either
+    // present or absent.
+    String checkCmd =
+        String.format("if [ -f \"%s\" ]; then echo present; else echo absent; fi", serviceFilePath);
     ShellResponse result =
         nodeUniverseManager.runCommand(
-            node, universe, Arrays.asList("test", "-f", serviceFilePath), shellContext);
+            node, universe, Arrays.asList("bash", "-c", checkCmd), shellContext);
+    // result.isSuccess() means the command executed, not the file exists.
     if (!result.isSuccess()) {
       throw new RuntimeException(
           String.format(
               "Failed to check for service file %s. Error: %s",
               serviceFilePath, result.getMessage()));
     }
-    // User-level systemd file does not exist, install otel collector as root level systemd.
-    return result.getCode() == 1;
+    String output = result.getMessage() == null ? "" : result.getMessage().trim();
+    return "absent".equalsIgnoreCase(output);
   }
 }
