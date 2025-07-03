@@ -3100,5 +3100,28 @@ TEST_F(PgCatalogVersionTest, InvalMessageWaitOnVersionGap) {
   VerifyCatCacheRefreshMetricsHelper(0 /* num_full_refreshes */, 1 /* num_delta_refreshes */);
 }
 
+// Test GUC yb_test_preload_catalog_tables=true triggers full catalog cache refresh.
+TEST_F(PgCatalogVersionTest, TestPreloadCatalogTables) {
+  RestartClusterWithInvalMessageEnabled({ "--ysql_pg_conf_csv=log_statement=all" });
+
+  // Note that yb_test_preload_catalog_tables=true does not invalidate tserver cache,
+  // so preloading will read the same catalog data from tserver cache as other active
+  // connections. A typical use is to start a new session, set this GUC, and then
+  // SELECT yb_mem_usage_sql_kb();
+  for (int i = 0; i < 5; ++i) {
+    auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+    // Make a new connection to get the default memory size.
+    conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+    auto defaultSize = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT yb_mem_usage_sql_kb()"));
+    ASSERT_OK(conn.Execute("SET yb_test_preload_catalog_tables=true"));
+    auto preloadSize = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT yb_mem_usage_sql_kb()"));
+    LOG(INFO) << "defaultSize: " << defaultSize << ", preloadSize: " << preloadSize;
+    // With preloading, we see significant increase in session memory.
+    ASSERT_GT(preloadSize, defaultSize * 5);
+  }
+  VerifyCatCacheRefreshMetricsHelper(5 /* num_full_refreshes */, 0 /* num_delta_refreshes */);
+}
+
 } // namespace pgwrapper
 } // namespace yb
