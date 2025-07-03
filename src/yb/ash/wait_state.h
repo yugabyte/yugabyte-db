@@ -159,6 +159,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRemoteBootstrap_StartRemoteSession)
     (kRemoteBootstrap_ReadDataFromFile)
     (kRemoteBootstrap_RateLimiter)
+    (kWaitForReadTime)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -220,6 +221,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
 // Make sure that kAsyncRPC is always 0
 YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   ((kNoRPC, 0))
+  // PgClientService RPCs
   (kAlterDatabase)
   (kAlterTable)
   (kBackfillIndex)
@@ -275,6 +277,14 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kClearExportedTxnSnapshots)
   (kPollVectorIndexReady)
   (kGetXClusterRole)
+
+  // CDCService RPCs
+  (kInitVirtualWALForCDC)
+  (kGetLagMetrics)
+  (kUpdatePublicationTableList)
+  (kDestroyVirtualWALForCDC)
+  (kGetConsistentChanges)
+  (kUpdateAndPersistLSN)
 );
 
 struct WaitStatesDescription {

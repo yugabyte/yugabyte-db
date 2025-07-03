@@ -248,6 +248,7 @@ alter_column_action = (
                     | 'DROP' 'DEFAULT'
                     | 'DROP' 'IDENTITY' [ 'IF EXISTS' ]
                     | { 'SET' | 'DROP' } 'NOT' 'NULL'
+                    | 'DROP' 'EXPRESSION' [ 'IF EXISTS' ]
                     | 'ADD' 'GENERATED' { 'ALWAYS' | 'BY' 'DEFAULT' } 'AS' 'IDENTITY' [ ( sequence_options ) ]
                     | 'SET' 'GENERATED' { 'ALWAYS' | 'BY' 'DEFAULT' }
 );
@@ -257,6 +258,7 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              'NULL' |
                              'CHECK' '(' expression ')' |
                              'DEFAULT' expression |
+                             'GENERATED' 'ALWAYS' 'AS' '(' expression ')' 'STORED' |
                              'UNIQUE' index_parameters |
                              'PRIMARY' 'KEY' |
                              references_clause )

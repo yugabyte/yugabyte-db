@@ -9,9 +9,9 @@
  */
 
 import { useContext } from 'react';
-import { CreateUniverseContext, CreateUniverseContextMethods } from './CreateUniverseContext';
-import { getCreateUniverseSteps } from './CreateUniveseUtils';
 import { useTranslation } from 'react-i18next';
+import { CreateUniverseContext, CreateUniverseContextMethods } from './CreateUniverseContext';
+import { getCreateUniverseSteps } from './CreateUniverseUtils';
 
 export const CreateUniverseBreadCrumb = () => {
   const [{ activeStep }] = (useContext(

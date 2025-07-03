@@ -1,5 +1,5 @@
 import { FC } from 'react';
-import _ from 'lodash';
+import { sortBy } from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch, Controller } from 'react-hook-form';
@@ -33,7 +33,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
 
   //fetch data
   const { data, isLoading } = useQuery(QUERY_KEY.getKMSConfigs, api.getKMSConfigs);
-  let kmsConfigs: KmsConfig[] = data ? _.sortBy(data, 'metadata.provider', 'metadata.name') : [];
+  const kmsConfigs: KmsConfig[] = data ? sortBy(data, 'metadata.provider', 'metadata.name') : [];
 
   const handleChange = (e: any, option: any) => {
     setValue(KMS_FIELD, option?.metadata?.configUUID ?? null, {

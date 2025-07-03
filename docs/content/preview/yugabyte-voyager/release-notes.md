@@ -17,6 +17,23 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.7.1 - July 1, 2025
+
+### New feature
+
+- You can now use [configuration files](../reference/configuration-file/) with the [import-data-file](../reference/bulk-data-load/import-data-file/) command for [bulk data load](../migrate/bulk-data-load/) from files.
+
+### Enhancements
+
+- Added a check to prompt users to run ANALYZE on schemas if it hasn't been executed, ensuring more accurate performance optimization assessment.
+- The assessment no longer reports partial indexes as redundant in performance optimizations.
+- The assessment no longer reports any partial indexes filtering NULL values in the "Indexes with high percentage of NULL values" case, and filtering a particular value in the "Indexes with high percentage of a particular value" case.
+
+### Bug fixes
+
+- Fixed the `export data from source` and `export data from target` commands to prevent multiple internal processes from running concurrently in cases where a previous run may have left an orphaned process.
+- Fixed a bug where DDLs containing `DEFAULT CURRENT_TIMESTAMP AT TIME ZONE` clauses were generated with a syntax error during export schema.
+
 ## v2025.6.2 - June 17, 2025
 
 ### New feature

@@ -23,7 +23,6 @@ export const StyledSubText = styled(Typography)(({ theme }) => ({
 
 export const AssignPublicIPField: FC<PublicIPFieldProps> = ({ disabled }) => {
   const { control } = useFormContext<SecuritySettingsProps>();
-  const { t } = useTranslation();
 
   return (
     <Box

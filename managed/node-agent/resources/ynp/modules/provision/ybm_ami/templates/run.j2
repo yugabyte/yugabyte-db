@@ -189,3 +189,16 @@ for folder in "${symlink_folders[@]}"; do
     fi
   done
 done
+
+# Ensure the /home/yugabyte/.ssh/authorized_keys file is removed from prebuilt
+# AMIs to avoid retaining default or cloud-injected SSH keys
+# (e.g., Google-injected keys).
+
+AUTHORIZED_KEYS_PATH="{{ yb_home_dir }}/.ssh/authorized_keys"
+
+if [ -f "$AUTHORIZED_KEYS_PATH" ]; then
+  rm -f "$AUTHORIZED_KEYS_PATH"
+  echo "Removed: $AUTHORIZED_KEYS_PATH"
+else
+  echo "No authorized_keys file found"
+fi

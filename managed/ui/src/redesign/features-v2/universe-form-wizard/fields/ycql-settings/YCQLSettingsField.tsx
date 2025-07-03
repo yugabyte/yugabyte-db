@@ -12,7 +12,7 @@ import { mui, YBToggleField, YBPasswordField } from '@yugabyte-ui-library/core';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 
-const { Box, Typography } = mui;
+const { Box } = mui;
 
 import { ReactComponent as NextLineIcon } from '../../../../assets/next-line.svg';
 
@@ -25,13 +25,12 @@ const YCQL_AUTH_FIELD = 'ycql.enable_auth';
 const YCQL_PASSWORD_FIELD = 'ycql.password';
 const YCQL_CONFIRM_PWD = 'ycql_confirm_password';
 
-export const YCQLFIELD = ({ disabled }: YCQLProps): ReactElement => {
+export const YCQField = (): ReactElement => {
   const { control } = useFormContext<DatabaseSettingsProps>();
 
   //watchers
   const ycqlEnabled = useWatch({ name: YCQL_FIELD });
   const ycqlAuthEnabled = useWatch({ name: YCQL_AUTH_FIELD });
-  const ycqlPassword = useWatch({ name: YCQL_PASSWORD_FIELD });
 
   return (
     <Box

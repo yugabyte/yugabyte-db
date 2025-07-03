@@ -1266,7 +1266,58 @@ type and help information regardless of the setting of this flag.
 
 Default: `true`
 
+## Catalog flags
+
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
+
+##### ysql_catalog_preload_additional_table_list
+
+Specifies the names of catalog tables (such as `pg_operator`, `pg_proc`, and `pg_amop`) to be preloaded by PostgreSQL backend processes. This flag reduces latency of first query execution of a particular statement on a connection.
+
+Default: `""`
+
+If [ysql_catalog_preload_additional_tables](#ysql-catalog-preload-additional-tables) is also specified, the union of the above specified catalog tables and `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` is preloaded.
+
+##### ysql_catalog_preload_additional_tables
+
+When enabled, the postgres backend processes preload the `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` catalog tables. This flag reduces latency of first query execution of a particular statement on a connection.
+
+Default: `false`
+
+If [ysql_catalog_preload_additional_table_list](#ysql-catalog-preload-additional-table-list) is also specified, the union of `pg_am`, `pg_amproc`, `pg_cast`, and `pg_tablespace` and the tables specified in `ysql_catalog_preload_additional_table_list` is preloaded.
+
+##### ysql_enable_read_request_caching
+
+Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
+
+Default: `false`
+
+##### ysql_minimal_catalog_caches_preload
+
+Defines what part of the catalog gets cached and preloaded by default. As a rule of thumb, preloading more means lower first-query latency (as most/all necessary metadata will already be in the cache) at a cost of higher per-connection memory. Preloading less of the catalog means less memory though can result in a higher mean first-query latency (as we may need to ad-hoc lookup more catalog entries first time we execute a query). This flag only loads the system catalog tables (but not the user objects) which should keep memory low, while loading all often used objects. Still user-object will need to be loaded ad-hoc, which can make first-query latency a bit higher (most impactful in multi-region clusters).
+
+Default: `false`
+
+
 ## Advanced flags
+
+##### --allowed_preview_flags_csv
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+{{</note>}}
 
 ##### backfill_index_client_rpc_timeout_ms
 

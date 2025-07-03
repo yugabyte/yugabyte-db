@@ -14,13 +14,9 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
-import { mui } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { ProxyAdvancedProps } from './dtos';
 import { EnableProxyServer } from '../../fields';
-// import { useTranslation } from 'react-i18next';
-
-const { Box } = mui;
 
 export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
@@ -53,3 +49,5 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
     </FormProvider>
   );
 });
+
+ProxySettings.displayName = 'ProxySettings';

@@ -91,7 +91,7 @@ public class TestYbBackup extends BasePgSQLTest {
   //    instead of old 'use_tablespaces'
   // 3. If the new API 'backup_roles' is NOT used - the YSQL Dump is generated
   //    with '--no-privileges' flag.
-  private static final boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
+  private static boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
 
   @Before
   public void initYBBackupUtil() throws Exception {
@@ -99,6 +99,11 @@ public class TestYbBackup extends BasePgSQLTest {
     YBBackupUtil.setMasterAddresses(masterAddresses);
     YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
     YBBackupUtil.maybeStartYbControllers(miniCluster);
+
+    if (!ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR && TestUtils.useYbController()) {
+      // YBC is always using "STOP_ON_ERROR" mode.
+      ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = true;
+    }
   }
 
   @Override
@@ -1626,10 +1631,7 @@ public class TestYbBackup extends BasePgSQLTest {
   public void doTestBackupRestoreRoles(final RestoreRoles restoreRoles,
                                        final UseRoles useRoles,
                                        final DumpRoleChecks dumpRoleChecks) throws Exception {
-    // ybc doesn't support --ignore_existing_roles currently
-    if (TestUtils.useYbController()){
-      return;
-    }
+    LOG.info("Using YBC: " + TestUtils.useYbController());
 
     // Uncomment the next line to get detailed log from the 'yb_backup.py' script.
     // YBBackupUtil.enableVerboseMode();
@@ -1659,7 +1661,9 @@ public class TestYbBackup extends BasePgSQLTest {
       }
 
       String output = YBBackupUtil.runYbBackupCreate(args);
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     try (Connection connection2 = getConnectionBuilder().withUser("admin").connect();
@@ -1687,12 +1691,9 @@ public class TestYbBackup extends BasePgSQLTest {
     try {
       YBBackupUtil.runYbBackupRestore(backupDir, args);
     } catch (YBBackupException ex) {
-      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR &&
-          restoreRoles == RestoreRoles.OFF && dumpRoleChecks == DumpRoleChecks.OFF) {
-        // The exception is expected if
-        //     (1) the roles were NOT restored (restoreRoles == RestoreRoles.OFF)
-        // AND (2) --dump_role_checks was NOT used on the backup create
-        //         phase (dumpRoleChecks == DumpRoleChecks.OFF)
+      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR && dumpRoleChecks == DumpRoleChecks.OFF) {
+        // The exception is expected if --dump_role_checks was NOT used on
+        // the backup create phase (dumpRoleChecks == DumpRoleChecks.OFF).
         LOG.info("Expected exception", ex);
         assertTrue(ex.getMessage().contains("ERROR:  role \"admin\" does not exist"));
         return;
@@ -1715,12 +1716,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
         runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
       } catch (PSQLException ex) {
-        if (restoreRoles == RestoreRoles.ON) {
-          throw ex;
-        } else {
+        if (role.equals("admin")) {
           LOG.info("Expected exception", ex);
           assertTrue(ex.getMessage().contains("FATAL: role \"admin\" does not exist"));
-       }
+        } else {
+          throw ex;
+        }
       }
     }
 

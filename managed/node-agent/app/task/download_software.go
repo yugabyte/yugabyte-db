@@ -114,15 +114,12 @@ func (h *DownloadSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskR
 	}
 
 	// 2) figure out home dir
-	home := ""
-	if h.param.GetYbHomeDir() != "" {
-		home = h.param.GetYbHomeDir()
-	} else {
+	if h.param.GetYbHomeDir() == "" {
 		err := errors.New("ybHomeDir is required")
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
-	ybSoftwareDir := filepath.Join(home, "yb-software")
+	ybSoftwareDir := filepath.Join(h.param.GetYbHomeDir(), "yb-software")
 
 	// 3) download (if remote)
 	tmpDir := filepath.Join(h.param.GetRemoteTmp(), pkgName)
@@ -150,7 +147,7 @@ func (h *DownloadSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskR
 	// 4) define our sequence of shell steps
 	err = h.execShellCommands(
 		ctx,
-		home,
+		h.param.GetYbHomeDir(),
 		ybSoftwareDir,
 		releaseVersion,
 		tmpDir,

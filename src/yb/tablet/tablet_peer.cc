@@ -364,7 +364,11 @@ Status TabletPeer::InitTabletPeer(
 
 Result<FixedHybridTimeLease> TabletPeer::HybridTimeLease(
     HybridTime min_allowed, CoarseTimePoint deadline) {
-  auto time = VERIFY_RESULT(WaitUntil(clock_.get(), min_allowed, deadline));
+  HybridTime time;
+  {
+    SCOPED_WAIT_STATUS(WaitForReadTime);
+    time = VERIFY_RESULT(WaitUntil(clock_.get(), min_allowed, deadline));
+  }
   // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
   // the resulting ht_lease is at least min_allowed.
   auto min_allowed_micros = min_allowed.CeilPhysicalValueMicros();

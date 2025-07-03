@@ -32,6 +32,8 @@ import com.yugabyte.yw.nodeagent.ConfigureServiceInput;
 import com.yugabyte.yw.nodeagent.ConfigureServiceOutput;
 import com.yugabyte.yw.nodeagent.DescribeTaskRequest;
 import com.yugabyte.yw.nodeagent.DescribeTaskResponse;
+import com.yugabyte.yw.nodeagent.DestroyServerInput;
+import com.yugabyte.yw.nodeagent.DestroyServerOutput;
 import com.yugabyte.yw.nodeagent.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.DownloadFileResponse;
 import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
@@ -1064,6 +1066,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), ServerGFlagsOutput.class);
+  }
+
+  public DestroyServerOutput runDestroyServer(
+      NodeAgent nodeAgent, DestroyServerInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setDestroyServerInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), DestroyServerOutput.class);
   }
 
   public synchronized void cleanupCachedClients() {

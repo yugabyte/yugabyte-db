@@ -605,10 +605,7 @@ public class NodeAgentRpcPayload {
     String taskSubType = taskParams.getProperty("taskSubType");
     UserIntent userIntent = nodeManager.getUserIntentFromParams(universe, taskParams);
     ServerGFlagsInput.Builder builder =
-        ServerGFlagsInput.newBuilder()
-            .setServerHome(serverHome)
-            .setServerName(serverHome)
-            .setServerName(serverName);
+        ServerGFlagsInput.newBuilder().setServerHome(serverHome).setServerName(serverName);
     Map<String, String> gflags =
         new HashMap<>(
             GFlagsUtil.getAllDefaultGFlags(

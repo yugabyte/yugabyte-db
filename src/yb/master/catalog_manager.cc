@@ -7837,7 +7837,8 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     }
 
     // Get pgschema_name for YSQL tables from PG Catalog. Skip for some special cases.
-    if (l->table_type() == TableType::PGSQL_TABLE_TYPE && !table->is_system() &&
+    if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+        resp->schema().deprecated_pgschema_name().empty() && !table->is_system() &&
         !table->IsSequencesSystemTable() && !table->IsColocationParentTable()) {
       TRACE("Acquired catalog manager lock for schema name lookup");
 
@@ -8063,104 +8064,113 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     include_type[relation] = true;
   }
 
-  PgDbRelNamespaceMap pg_rel_nsp_cache;
-  SharedLock lock(mutex_);
-  for (const auto& table_info : tables_->GetAllTables()) {
-    auto ltm = table_info->LockForRead();
+  std::vector<std::pair<int, TableInfoPtr>> pg_tables;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& table_info : tables_->GetAllTables()) {
+      auto ltm = table_info->LockForRead();
 
-    if (!ltm->visible_to_client() && !req->include_not_running()) {
-      continue;
-    }
-
-    const auto& table_namespace_id = ltm->namespace_id();
-    if (table_namespace_id.empty() ||
-        (!req_namespace.id().empty() && req_namespace.id() != table_namespace_id)) {
-      continue; // Skip tables from other namespaces.
-    }
-
-    if (req->has_name_filter()) {
-      size_t found = ltm->name().find(req->name_filter());
-      if (found == string::npos) {
+      if (!ltm->visible_to_client() && !req->include_not_running()) {
         continue;
       }
-    }
 
-    RelationType relation_type;
-    if (table_info->IsUserIndex(ltm)) {
-      relation_type = INDEX_TABLE_RELATION;
-    } else if (ltm->pb.is_matview()) {
-      relation_type = MATVIEW_TABLE_RELATION;
-    } else if (table_info->IsUserTable(ltm)) {
-      relation_type = USER_TABLE_RELATION;
-    } else if (table_info->IsColocationParentTable()) {
-      if (!include_type[SYSTEM_TABLE_RELATION]) {
-        continue;
+      const auto& table_namespace_id = ltm->namespace_id();
+      if (table_namespace_id.empty() ||
+          (!req_namespace.id().empty() && req_namespace.id() != table_namespace_id)) {
+        continue; // Skip tables from other namespaces.
       }
-      relation_type = COLOCATED_PARENT_TABLE_RELATION;
-    } else {
-      relation_type = SYSTEM_TABLE_RELATION;
-    }
-    if (!include_type[relation_type]) {
-      continue;
-    }
 
-    ListTablesResponsePB::TableInfo* table;
-
-    if (!namespace_info || namespace_info->id() != table_namespace_id) {
-      auto ns = FindNamespaceByIdUnlocked(table_namespace_id);
-      if (!ns.ok()) {
-        if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
-          VERIFY_NAMESPACE_FOUND(std::move(ns), resp);
+      if (req->has_name_filter()) {
+        size_t found = ltm->name().find(req->name_filter());
+        if (found == string::npos) {
+          continue;
         }
-        LOG(WARNING) << "Unable to find namespace with id " << table_namespace_id
-                     << " for table " << table_info->ToStringWithState();
-        continue;
       }
-      auto namespace_lock = (**ns).LockForRead();
-      if (namespace_lock->pb.state() != SysNamespaceEntryPB::RUNNING) {
-        LOG(WARNING) << "Namespace with id " << table_namespace_id << " for table "
-                     << table_info->ToStringWithState() << " is in wrong state: "
-                     << SysNamespaceEntryPB::State_Name(namespace_lock->pb.state());
-        continue;
-      }
-      table = resp->add_tables();
-      namespace_info = table->mutable_namespace_();
-      namespace_info->set_id((**ns).id());
-      namespace_info->set_name(namespace_lock->name());
-      namespace_info->set_database_type(namespace_lock->pb.database_type());
-    } else {
-      table = resp->add_tables();
-      *table->mutable_namespace_() = *namespace_info;
-    }
 
-    table->set_id(table_info->id());
-    table->set_name(ltm->name());
-    table->set_table_type(ltm->table_type());
-    table->set_relation_type(relation_type);
-    if (relation_type == INDEX_TABLE_RELATION) {
-      table->set_indexed_table_id(table_info->indexed_table_id());
-    }
-    table->set_state(ltm->pb.state());
-
-    if (ltm->table_type() == PGSQL_TABLE_TYPE) {
-      const auto pgschema_name =
-          ysql_manager_->GetCachedPgSchemaName(table_info->id(), ltm.data(), pg_rel_nsp_cache);
-      if (!pgschema_name.ok() || pgschema_name->empty()) {
-        LOG(WARNING) << "Unable to find schema name for YSQL table " << ltm->namespace_name()
-                     << "." << ltm->name() << " due to error: " << pgschema_name;
+      RelationType relation_type;
+      if (table_info->IsUserIndex(ltm)) {
+        relation_type = INDEX_TABLE_RELATION;
+      } else if (ltm->pb.is_matview()) {
+        relation_type = MATVIEW_TABLE_RELATION;
+      } else if (table_info->IsUserTable(ltm)) {
+        relation_type = USER_TABLE_RELATION;
+      } else if (table_info->IsColocationParentTable()) {
+        if (!include_type[SYSTEM_TABLE_RELATION]) {
+          continue;
+        }
+        relation_type = COLOCATED_PARENT_TABLE_RELATION;
       } else {
-        table->set_pgschema_name(*pgschema_name);
+        relation_type = SYSTEM_TABLE_RELATION;
       }
-    }
+      if (!include_type[relation_type]) {
+        continue;
+      }
 
-    if (table_info->colocated()) {
-      table->mutable_colocated_info()->set_colocated(true);
-      if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
-        table->mutable_colocated_info()->set_parent_table_id(ltm->pb.parent_table_id());
+      ListTablesResponsePB::TableInfo* table;
+
+      if (!namespace_info || namespace_info->id() != table_namespace_id) {
+        auto ns = FindNamespaceByIdUnlocked(table_namespace_id);
+        if (!ns.ok()) {
+          if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
+            VERIFY_NAMESPACE_FOUND(std::move(ns), resp);
+          }
+          LOG(WARNING) << "Unable to find namespace with id " << table_namespace_id
+                       << " for table " << table_info->ToStringWithState();
+          continue;
+        }
+        auto namespace_lock = (**ns).LockForRead();
+        if (namespace_lock->pb.state() != SysNamespaceEntryPB::RUNNING) {
+          LOG(WARNING) << "Namespace with id " << table_namespace_id << " for table "
+                       << table_info->ToStringWithState() << " is in wrong state: "
+                       << SysNamespaceEntryPB::State_Name(namespace_lock->pb.state());
+          continue;
+        }
+        table = resp->add_tables();
+        namespace_info = table->mutable_namespace_();
+        namespace_info->set_id((**ns).id());
+        namespace_info->set_name(namespace_lock->name());
+        namespace_info->set_database_type(namespace_lock->pb.database_type());
+      } else {
+        table = resp->add_tables();
+        *table->mutable_namespace_() = *namespace_info;
       }
+
+      table->set_id(table_info->id());
+      table->set_name(ltm->name());
+      table->set_table_type(ltm->table_type());
+      table->set_relation_type(relation_type);
+      if (relation_type == INDEX_TABLE_RELATION) {
+        table->set_indexed_table_id(table_info->indexed_table_id());
+      }
+      table->set_state(ltm->pb.state());
+
+      if (ltm->table_type() == PGSQL_TABLE_TYPE) {
+        pg_tables.emplace_back(resp->tables().size() - 1, table_info);
+      }
+
+      if (table_info->colocated()) {
+        table->mutable_colocated_info()->set_colocated(true);
+        if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
+          table->mutable_colocated_info()->set_parent_table_id(ltm->pb.parent_table_id());
+        }
+      }
+      table->set_hidden(ltm->is_hidden());
     }
-    table->set_hidden(ltm->is_hidden());
   }
+
+  PgDbRelNamespaceMap pg_rel_nsp_cache;
+  for (auto [index, table_info] : pg_tables) {
+    auto& table = (*resp->mutable_tables())[index];
+    const auto pgschema_name_res = ysql_manager_->GetCachedPgSchemaName(
+        table.id(), table_info->LockForRead().data(), pg_rel_nsp_cache);
+    if (!pgschema_name_res.ok() || pgschema_name_res->empty()) {
+      LOG(WARNING) << "Unable to find schema name for YSQL table " << table.namespace_().name()
+                   << "." << table.name() << " due to error: " << pgschema_name_res;
+    } else {
+      table.set_pgschema_name(*pgschema_name_res);
+    }
+  }
+
   return Status::OK();
 }
 

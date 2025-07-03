@@ -49,6 +49,7 @@
 
 namespace yb {
 
+class HtmlPrintHelper;
 class Schema;
 
 namespace master {
@@ -193,20 +194,15 @@ class MasterPathHandlers {
 
   const std::string kNoPlacementUUID = "NONE";
 
-  static inline void TServerTable(std::stringstream* output, TServersViewType viewType);
-
-  void TServerDisplay(const std::string& current_uuid,
-                      std::vector<std::shared_ptr<TSDescriptor>>* descs,
-                      TabletCountMap* tmap,
-                      std::stringstream* output,
-                      const int hide_dead_node_threshold_override,
-                      TServersViewType viewType);
+  void TServerDisplay(
+      const std::string& current_uuid, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
+      const TabletCountMap& tablet_map, HtmlPrintHelper& html_print_helper);
 
   void DisplayUniverseSummary(
       const TabletCountMap& tablet_map, const std::vector<std::shared_ptr<TSDescriptor>>& all_descs,
       const std::string& live_id,
       int hide_dead_node_threshold_mins,
-      std::stringstream* output);
+      HtmlPrintHelper& html_print_helper);
 
   // Outputs a ZoneTabletCounts::CloudTree as an html table with a heading.
   static void DisplayTabletZonesTable(
@@ -329,14 +325,6 @@ class MasterPathHandlers {
       const std::vector<TsUuidAndTabletReplica>&
           locations,
       const std::string& tablet_id) const;
-
-  // Convert the specified server registration to HTML, adding a link
-  // to the server's own web server (if specified in 'reg') with
-  // anchor text 'link_text'.
-  std::string RegistrationToHtml(
-      const ServerRegistrationPB& reg, const std::string& link_text) const;
-
-  std::string GetHttpHostPortFromServerRegistration(const ServerRegistrationPB& reg) const;
 
   Master* master_;
 

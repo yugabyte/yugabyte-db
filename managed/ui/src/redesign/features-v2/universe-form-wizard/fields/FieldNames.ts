@@ -1,0 +1,11 @@
+export const PROVIDER_CONFIGURATION = 'providerConfiguration';
+export const UNIVERSE_NAME = 'universeName';
+export const CLOUD = 'cloud';
+export const DATABASE_VERSION = 'databaseVersion';
+export const REGIONS_FIELD = 'regions';
+export const RESILIENCE_TYPE = 'resilienceType';
+export const RESILIENCE_FORM_MODE = 'resilienceFormMode';
+export const REPLICATION_FACTOR = 'replicationFactor';
+export const FAULT_TOLERANCE_TYPE = 'faultToleranceType';
+export const NODE_COUNT = 'nodeCount';
+export const SINGLE_AVAILABILITY_ZONE = 'singleAvailabilityZone';

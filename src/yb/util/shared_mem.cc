@@ -275,4 +275,61 @@ int SharedMemorySegment::GetFd() const {
   return fd_;
 }
 
+Result<InterprocessSharedMemoryObject> InterprocessSharedMemoryObject::Create(
+    const std::string& name, size_t size) {
+  try {
+    boost::interprocess::shared_memory_object object(
+        boost::interprocess::create_only, name.c_str(), boost::interprocess::read_write);
+    object.truncate(size);
+    return InterprocessSharedMemoryObject(std::move(object));
+  } catch (boost::interprocess::interprocess_exception& exc) {
+    return STATUS_FORMAT(
+        RuntimeError, "Failed to create segment $0 of size $1: $2", name, size, exc.what());
+  }
+}
+
+Result<InterprocessSharedMemoryObject> InterprocessSharedMemoryObject::Open(
+    const std::string& name) {
+  try {
+    boost::interprocess::shared_memory_object object(
+        boost::interprocess::open_only, name.c_str(), boost::interprocess::read_write);
+    return InterprocessSharedMemoryObject(std::move(object));
+  } catch (boost::interprocess::interprocess_exception& exc) {
+    return STATUS_FORMAT(
+        RuntimeError, "Failed to open segment $0: $1", name, exc.what());
+  }
+}
+
+InterprocessSharedMemoryObject::operator bool() const noexcept {
+  return impl_.get_mapping_handle().handle !=
+         boost::interprocess::shared_memory_object().get_mapping_handle().handle;
+}
+
+void InterprocessSharedMemoryObject::DestroyAndRemove() {
+  if (!*this) {
+    return;
+  }
+  std::string shared_memory_object_name(impl_.get_name());
+  try {
+    impl_ = boost::interprocess::shared_memory_object();
+    boost::interprocess::shared_memory_object::remove(shared_memory_object_name.c_str());
+  } catch (boost::interprocess::interprocess_exception& exc) {
+    LOG(DFATAL)
+        << "Failed to remove shared memory segment " << shared_memory_object_name << ": "
+        << exc.what();
+  }
+}
+
+Result<InterprocessMappedRegion> InterprocessSharedMemoryObject::Map() const {
+  try {
+    boost::interprocess::mapped_region region(impl_, boost::interprocess::read_write);
+    return InterprocessMappedRegion(std::move(region));
+  } catch (boost::interprocess::interprocess_exception& exc) {
+    auto status = STATUS_FORMAT(
+        RuntimeError, "Failed to map region $0: $1", impl_.get_name(), exc.what());
+    LOG(DFATAL) << status;
+    return status;
+  }
+}
+
 }  // namespace yb

@@ -32,7 +32,7 @@ To use ASH, enable and configure the following flags for each node of your clust
 
 | Flag | Description |
 | :--- | :---------- |
-| allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_ash_enable_infra,ysql_yb_enable_ash`. |
+| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_ash_enable_infra,ysql_yb_enable_ash`. |
 | ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a TServer restart. |
 | ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables the collection of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a TServer restart. |
 

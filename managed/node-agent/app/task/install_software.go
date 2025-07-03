@@ -70,18 +70,15 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	}
 
 	// 2) figure out home dir
-	home := ""
-	if h.param.GetYbHomeDir() != "" {
-		home = h.param.GetYbHomeDir()
-	} else {
+	if h.param.GetYbHomeDir() == "" {
 		err := errors.New("ybHomeDir is required")
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
-	ybSoftwareDir := filepath.Join(home, "yb-software", pkgFolder)
+	ybSoftwareDir := filepath.Join(h.param.GetYbHomeDir(), "yb-software", pkgFolder)
 
 	// 3) symlink for master & tserver
-	err = h.setupSymlinks(ctx, home, ybSoftwareDir)
+	err = h.setupSymlinks(ctx, h.param.GetYbHomeDir(), ybSoftwareDir)
 	if err != nil {
 		return nil, err
 	}

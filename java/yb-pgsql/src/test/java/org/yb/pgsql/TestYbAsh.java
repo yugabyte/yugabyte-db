@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.*;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.sql.PreparedStatement;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -381,5 +382,42 @@ public class TestYbAsh extends BasePgSQLTest {
           "query_id = %d", ASH_VIEW, pstmtQueryId)).getLong(0).intValue();
       assertGreaterThan(res, 0);
     }
+  }
+
+  @Test
+  public void testQueryId5Samples() throws Exception {
+    setAshConfigAndRestartCluster(50, ASH_SAMPLE_SIZE);
+
+    Statement stmt = connection.createStatement();
+
+    stmt.execute("CREATE TABLE test_table(k int primary key, v int, t timestamptz)");
+    stmt.execute("CREATE INDEX test_table_val on test_table(v)");
+    stmt.execute("CREATE INDEX test_table_time on test_table(t HASH)");
+
+    for (int i = 0; i < 100; ++i) {
+      stmt.execute(String.format("INSERT INTO test_table VALUES (%d, %d)", i, i));
+    }
+
+    // intentionally incorrect syntax to make the query flush buffered ops outside of
+    // executor hooks
+    final String multiQuery = "insert into test_table (k, v, t) select max(k) + 1 as k, "
+        + "max(v) + 1 as v, now() as t from test_table; "
+        + "select * from test_table where t=now(); "
+        + "pg_sleep(0.1);";
+
+    try (PreparedStatement pstmt = connection.prepareStatement(multiQuery)) {
+      for (int i = 0; i < 1000; ++i) {
+        try {
+          pstmt.executeUpdate();
+        } catch (Exception e) {}
+      }
+    }
+
+    final String storageFlushQueryId =
+        "SELECT COUNT(*) FROM " + ASH_VIEW +
+        " WHERE wait_event = 'StorageFlush' AND query_id = 5";
+
+    assertEquals(
+        getSingleRow(stmt, storageFlushQueryId).getLong(0).intValue(), 0);
   }
 }

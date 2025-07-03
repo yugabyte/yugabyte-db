@@ -5,25 +5,27 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
+import { mui } from '@yugabyte-ui-library/core';
 // import { yupResolver } from '@hookform/resolvers/yup';
 // import { useTranslation } from 'react-i18next';
 import { DatabaseSettingsProps } from './dtos';
-import { YCQLFIELD, YSQLField, ConnectionPoolingField, PGCompatibiltyField } from '../../fields';
-import { mui } from '@yugabyte-ui-library/core';
+import { YCQField, YSQLField, ConnectionPoolingField, PGCompatibiltyField } from '../../fields';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 const { Box } = mui;
 
 export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const [
+    { databaseSettings },
+    { moveToNextPage, moveToPreviousPage, saveDatabaseSettings }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const methods = useForm<DatabaseSettingsProps>({
     defaultValues: {
       ysqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort,
-      internalYsqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort
+      internalYsqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort,
+      ...databaseSettings
     }
   });
 
@@ -31,7 +33,10 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        moveToNextPage();
+        methods.handleSubmit((data) => {
+          saveDatabaseSettings(data);
+          moveToNextPage();
+        })();
       },
       onPrev: () => {
         moveToPreviousPage();
@@ -46,7 +51,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
         <StyledHeader>{'Interface'}</StyledHeader>
         <StyledContent>
           <YSQLField />
-          <YCQLFIELD />
+          <YCQField />
         </StyledContent>
       </StyledPanel>
       <Box sx={{ mt: 3 }}></Box>
@@ -65,3 +70,5 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     </FormProvider>
   );
 });
+
+DatabaseSettings.displayName = 'DatabaseSettings';
