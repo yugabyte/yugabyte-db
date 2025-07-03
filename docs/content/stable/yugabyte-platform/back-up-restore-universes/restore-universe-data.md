@@ -213,6 +213,8 @@ If you created backups using a [scheduled backup policy with PITR](../schedule-d
 
     For YCQL backups, you can select a subset of tables to restore. If a table is not available in the specified restore window, an error message is displayed.
 
+    Note that you cannot restore to a point in time earlier than the most recent DDL change.
+
 1. When finished, click **Next**.
 
 1. Select the **Target Universe** where you want to restore the backup. You also have the option to rename the keyspaces/databases.
