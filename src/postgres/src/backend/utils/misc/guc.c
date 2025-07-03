@@ -2732,6 +2732,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_preload_catalog_tables", PGC_USERSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, force a full catalog cache refresh before "
+						 "executing the next top level statement."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_preload_catalog_tables,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_stay_in_global_catalog_version_mode", PGC_SUSET,
 			DEVELOPER_OPTIONS,
 			gettext_noop("When set, this PG backend will stay in global "
