@@ -15,6 +15,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/qlexpr/index.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
@@ -194,7 +196,12 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
-  Status s = regular_db().Flush(rocksdb::FlushOptions());
+  Status s;
+  {
+    SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
+    s = regular_db().Flush(rocksdb::FlushOptions());
+  }
+
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "RocksDB flush status: " << s;
     return s.CloneAndPrepend("Unable to flush RocksDB");
@@ -320,6 +327,7 @@ FsManager* TabletSnapshots::fs_manager() {
 }
 
 Status TabletSnapshots::CleanupSnapshotDir(const std::string& dir) {
+  SCOPED_WAIT_STATUS(Snapshot_CleanupSnapshotDir);
   auto& env = this->env();
   if (!env.FileExists(dir)) {
     return Status::OK();
@@ -494,6 +502,7 @@ Result<docdb::CotableIdsMap> TabletSnapshots::GetCotableIdsMap(const std::string
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& snapshot_dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
     const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
+  SCOPED_WAIT_STATUS(Snapshot_RestoreCheckpoint);
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
