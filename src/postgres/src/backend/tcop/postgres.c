@@ -4142,6 +4142,8 @@ static void YBCheckSharedCatalogCacheVersion() {
 		YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
 		YBRefreshCache();
 	}
+	else if (yb_test_preload_catalog_tables)
+		YBRefreshCache();
 }
 
 /*

@@ -2163,6 +2163,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_preload_catalog_tables", PGC_USERSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, force a full catalog cache refresh before "
+						 "executing the next top level statement."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_preload_catalog_tables,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"force_global_transaction", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces use of global transaction table."),
 			NULL

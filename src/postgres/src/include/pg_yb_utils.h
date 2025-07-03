@@ -596,6 +596,12 @@ extern char *yb_test_block_index_phase;
 extern char *yb_test_fail_index_state_change;
 
 /*
+ * If set to true, force a full catalog cache refresh before
+ * executing the next top level statement.
+ */
+extern bool yb_test_preload_catalog_tables;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure.
 */

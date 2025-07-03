@@ -1364,6 +1364,8 @@ bool yb_test_system_catalogs_creation = false;
 
 bool yb_test_fail_next_ddl = false;
 
+bool		yb_test_preload_catalog_tables = false;
+
 bool yb_test_fail_next_inc_catalog_version = false;
 
 char *yb_test_block_index_phase = "";
