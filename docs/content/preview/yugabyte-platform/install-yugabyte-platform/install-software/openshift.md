@@ -190,10 +190,8 @@ To create a YugabyteDB Anywhere instance, perform the following:
 
   ```shell
   helm install yw-test yugabytedb/yugware-openshift -n yb-platform \
-     --version {{<yb-version version="preview" format="short">}} \
-     --set image.repository=quay.io/yugabyte/yugaware-ubi \
-     --set ocpCompatibility.enabled=true --set rbac.create=false \
-     --set securityContext.enabled=false --wait
+    --version {{<yb-version version="preview" format="short">}} \
+    --wait
   ```
 
   Expect to see a message notifying you whether or not the deployment is successful.
