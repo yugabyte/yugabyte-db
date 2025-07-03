@@ -80,6 +80,7 @@ RUN set -x; \
 RUN $yum_install -y \
       bind-utils \
       diffutils \
+      gettext \
       glibc-all-langpacks \
       glibc-langpack-en \
       glibc-locale-source \
