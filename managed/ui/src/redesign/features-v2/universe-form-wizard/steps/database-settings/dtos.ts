@@ -1,5 +1,12 @@
 import { UniverseSpec } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
+export interface GFlag {
+  Name: string;
+  MASTER?: string | boolean | number;
+  TSERVER?: string | boolean | number;
+  tags?: string;
+}
+
 export interface DatabaseSettingsProps {
   ysql?: UniverseSpec['ysql'];
   ycql?: UniverseSpec['ycql'];
@@ -10,6 +17,7 @@ export interface DatabaseSettingsProps {
   enablePGCompatibitilty?: boolean;
   ysql_confirm_password?: string;
   ycql_confirm_password?: string;
+  gFlags: GFlag[];
 }
 export interface CommunicationPorts {
   masterHttpPort: number;

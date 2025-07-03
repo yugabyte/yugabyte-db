@@ -465,6 +465,7 @@
         "modalTitle": "Delete Read Replica of {{universeName}}"
       },
       "gFlags": {
+        "loadingGflagGroups": "Loading Gflag groups ...",
         "edit": "Edit",
         "preview": "Preview",
         "addFlag": "Add Flag",
@@ -485,6 +486,7 @@
         "JWKSModalNote": "Note: You can obtain JWKS from JWKS URI that is part of OIDC discover end point",
         "JWKSModalPlaceholder": "e.g. eyJraWQiOiJQQWc0NjVINmxZMC1XR1JwUm1ZbEloeEpXb2s5OG10LVZLcXV3VzNPazg0IiwiYWxnIjoiUlMyNTYifQeyJzdWIiOiIw MHUyYXBxMWNtSFlaM092ZDVkNyIsIm5hbWUiOiJKaW4gWWFuIiwiZW1haWwiOiJqeWFuQHl1Z2FieXRlLmNvbSIsInZlciI6MSwiaXNzIjoi",
         "noFlags": "There are no flags assigned to this universe ",
+        "noFlagsCreate": "You have not added any database configuration flags yet.",
         "removeFlag": "Remove Flag",
         "removeValue": "Remove Value",
         "selectedDBVersion": "Selected DB Version : ",
@@ -3168,10 +3170,15 @@
           "rfFactor": "What is Replication Factor?",
           "rfFactorAns": "YugabyteDB replicates data across fault domains (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.",
           "FtAndRf": "Correlation between Fault Tolerance and Replication Factor",
-          "FtAndRfAns":"To achieve a FT of <highlight>f</highlight> fault domains, the primary cluster has to be configured with a RF of at least <highlight>2f + 1</highlight>.",
-          "tip":"<b>Tip!</b> When using Guided Mode, the required replication factor is automatically configured and applied based on your selected fault tolerance. ",
-          "learn":"<a>Learn more about Replication Factor</a> and <a2>Fault Tolerance.</a2>"
+          "FtAndRfAns": "To achieve a FT of <highlight>f</highlight> fault domains, the primary cluster has to be configured with a RF of at least <highlight>2f + 1</highlight>.",
+          "tip": "<b>Tip!</b> When using Guided Mode, the required replication factor is automatically configured and applied based on your selected fault tolerance. ",
+          "learn": "<a>Learn more about Replication Factor</a> and <a2>Fault Tolerance.</a2>"
         }
+      },
+      "databaseSettings": {
+        "interface": "Interface",
+        "features": "Features",
+        "advFlags": "Advanced Flags"
       },
       "reviewAndSummary": {
         "daily": "Daily",

@@ -9,13 +9,25 @@
 
 import { createContext } from 'react';
 import { GeneralSettingsProps } from './steps/general-settings/dtos';
-import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './steps/resilence-regions/dtos';
+import {
+  FaultToleranceType,
+  ResilienceAndRegionsProps,
+  ResilienceFormMode,
+  ResilienceType
+} from './steps/resilence-regions/dtos';
 import { NodeAvailabilityProps } from './steps/nodes-availability/dtos';
 import { InstanceSettingProps } from './steps/hardware-settings/dtos';
 import { DatabaseSettingsProps } from './steps/database-settings/dtos';
 import { SecuritySettingsProps } from './steps/security-settings/dtos';
 import { OtherAdvancedProps, ProxyAdvancedProps } from './steps/advanced-settings/dtos';
-import { FAULT_TOLERANCE_TYPE, NODE_COUNT, REGIONS_FIELD, REPLICATION_FACTOR, RESILIENCE_FORM_MODE, RESILIENCE_TYPE } from './fields/FieldNames';
+import {
+  FAULT_TOLERANCE_TYPE,
+  NODE_COUNT,
+  REGIONS_FIELD,
+  REPLICATION_FACTOR,
+  RESILIENCE_FORM_MODE,
+  RESILIENCE_TYPE
+} from './fields/FieldNames';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
@@ -32,7 +44,7 @@ export enum CreateUniverseSteps {
 export type createUniverseFormProps = {
   activeStep: number;
   generalSettings?: GeneralSettingsProps;
-  resilienceAndRegionsSettings?: ResilienceAndRegionsProps
+  resilienceAndRegionsSettings?: ResilienceAndRegionsProps;
   nodesAvailabilitySettings?: NodeAvailabilityProps;
   instanceSettings?: InstanceSettingProps;
   databaseSettings?: DatabaseSettingsProps;
@@ -66,7 +78,8 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
       enable: false,
       enable_auth: false,
       password: ''
-    }
+    },
+    gFlags: []
   }
 };
 
