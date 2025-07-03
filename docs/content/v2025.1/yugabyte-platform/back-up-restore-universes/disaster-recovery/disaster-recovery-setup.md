@@ -169,9 +169,6 @@ The table statuses are described in the following table.
 | Bootstrapping | The table is undergoing a full copy; that is, being backed up from the DR primary and being restored to the DR replica. |
 | Validated | The table passes pre-checks and is eligible to be added to replication. |
 | Operational | The table is being replicated. |
-| Unable to fetch | Unable to obtaing the most recent replication status from the target universe master leader. |
-| Uninitialized | The master leader of the target universe has not yet gathered the status of the replication stream. This can happen when the replication is just set up or there is a new master leader. |
-| Source unreachable | The target universe TServer cannot reach the source universe TServer, likely due to network connectivity issues. |
 
 The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 
@@ -187,13 +184,16 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
 | Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
+| Unable to fetch | Unable to obtaing the most recent replication status from the target universe master leader. |
+| Uninitialized | The master leader of the target universe has not yet gathered the status of the replication stream. This can happen when the replication is just set up or there is a new master leader. |
+| Source unreachable | The target universe TServer cannot reach the source universe TServer, likely due to network connectivity issues. |
 
 ### Set up alerts
 
 When DR is set up, YugabyteDB Anywhere automatically creates the alert _XCluster Config Tables are in bad state_. This alert fires when:
 
-- there is a table schema mismatch between DR primary and replica.
-- tables are added or dropped from either DR primary or replica, but have not been added or dropped from the other.
+- There is a table schema mismatch between DR primary and replica.
+- Tables are in a bad state, such as added or dropped from either DR primary or replica, but not added or dropped from the other.
 
 A [Consumer safe time lag](#metrics) alert with a threshold of 180 seconds is also set up for DR configurations. It triggers when the replica universe safe time lags behind the configured threshold from the physical time; that is, when the Consumer Safe Time Lag goes beyond the threshold. In this case, the read data on the replica universe can be stale even if the replication lag for other tables is not very high.
 
