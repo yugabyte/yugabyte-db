@@ -11,7 +11,6 @@
 import { FC } from 'react';
 import { useFormContext, FieldPath } from 'react-hook-form';
 import { mui, YBInputField } from '@yugabyte-ui-library/core';
-import { useTranslation } from 'react-i18next';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
