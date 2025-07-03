@@ -168,14 +168,14 @@ To create a YugabyteDB Anywhere instance, perform the following:
   To search for the available chart version, execute the following command:
 
   ```shell
-  helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
+  helm search repo yugabytedb/yugware-openshift --version {{<yb-version version="preview" format="short">}}
   ```
 
   Expect the following output:
 
     ```output
-    NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
+    NAME                         CHART VERSION  APP VERSION  DESCRIPTION
+    yugabytedb/yugware-openshift {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 - Verify the StorageClass setting for your cluster by executing the following command as admin user:
@@ -189,7 +189,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
 - Execute the following command to install the YugabyteDB Anywhere Helm chart:
 
   ```shell
-  helm install yw-test yugabytedb/yugaware -n yb-platform \
+  helm install yw-test yugabytedb/yugware-openshift -n yb-platform \
      --version {{<yb-version version="preview" format="short">}} \
      --set image.repository=quay.io/yugabyte/yugaware-ubi \
      --set ocpCompatibility.enabled=true --set rbac.create=false \
