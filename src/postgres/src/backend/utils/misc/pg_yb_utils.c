@@ -389,17 +389,24 @@ IsYBSystemColumn(int attrNum)
 }
 
 AttrNumber
-YBGetFirstLowInvalidAttrNumber(bool is_yb_relation)
-{
-	return (is_yb_relation ?
-			YBFirstLowInvalidAttributeNumber :
-			FirstLowInvalidHeapAttributeNumber);
-}
-
-AttrNumber
 YBGetFirstLowInvalidAttributeNumber(Relation relation)
 {
-	return (IsYBRelation(relation) ?
+	/*
+	 * Foreign tables contain a superset of columns that a foreign server is
+	 * allowed to populate. These are usually user defined columns. With
+	 * postgres_fdw (a foreign data wrapper that points to a server that speaks
+	 * the postgres wire protocol), a foreign server may be yet another
+	 * YugabyteDB instance. In this case, the foreign table (param: relation)
+	 * is simply a pointer to a YugabyteDB table on the foreign cluster, which
+	 * of course has a ybctid system column. The ybctid column is used
+	 * extensively by postgres_fdw implicitly to perform updates and deletes.
+	 * It is not very convenient to check what FDW a foreign table belongs to.
+	 * Furthermore, all foreign tables (irrespective of FDW) are currently
+	 * created with a ybctid column. Therefore, assume that that all foreign
+	 * tables have a ybctid column and return the YB-specific offset.
+	 */
+	return (IsYBRelation(relation) ||
+			relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE ?
 			YBFirstLowInvalidAttributeNumber :
 			FirstLowInvalidHeapAttributeNumber);
 }
