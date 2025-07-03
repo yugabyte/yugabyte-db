@@ -98,7 +98,7 @@ The `yb_locks_txn_locks_per_tablet` parameter sets the maximum number of rows pe
 
 Default: 200
 
-Example: Enter the following command to change the maximum number of transactions to return to 10:
+Example: Enter the following command to return a maximum of 10 rows per transaction per tablet:
 
 ```sh
 SET session yb_locks_txn_locks_per_tablet = 10;
