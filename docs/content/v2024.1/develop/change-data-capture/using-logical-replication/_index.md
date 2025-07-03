@@ -101,16 +101,16 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - There should be a primary key on the table you want to stream the changes from.
 
-- CDC is not supported on tables (both source and target) for xCluster replication. Issues [25371](https://github.com/yugabyte/yugabyte-db/issues/25371) and [15534](https://github.com/yugabyte/yugabyte-db/issues/15534).
+- CDC is not supported on tables (both source and target) for xCluster replication. Issues {{<issue 25371>}} and {{<issue 15534>}}.
 
 - Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations after the replication slot is created. However, you can perform these operations before creating the replication slot without any issues.
 
-- YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
+- YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 
-- Support for point-in-time recovery (PITR) is tracked in issue [10938](https://github.com/yugabyte/yugabyte-db/issues/10938).
+- Support for point-in-time recovery (PITR) is tracked in issue {{<issue 10938>}}.
 
-- Support for transaction savepoints is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936).
+- Support for transaction savepoints is tracked in issue {{<issue 10936>}}.
 
-- Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
+- Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
 
-- Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. Tracked in issue [24918](https://github.com/yugabyte/yugabyte-db/issues/24918).
+- Support for tablet splitting with logical replication is disabled from v2024.1.4 and v2024.2.1. Tracked in issue {{<issue 24918>}}.
