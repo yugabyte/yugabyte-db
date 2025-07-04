@@ -223,6 +223,59 @@ YugabyteDB Anywhere collects these metrics every 2 minutes, and fires the alert 
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 
+#### Webhook notifications
+
+You can configure webhooks on a DR configuration to be notified after a failover or switchover so that you can, for example, update your DNS records. After a failover or switchover, YugabyteDB Anywhere sends a POST request to each configured webhook URL with the new primary universe's IPs.
+
+You configure the webhooks using the [YBA API](https://api-docs.yugabyte.com/docs/yugabyte-platform/):
+
+```sh
+POST /customers/{customerUUID}/dr_configs/{drConfigUUID}/edit
+```
+
+Example request:
+
+```json
+{
+  "webhookUrls": ["http://your-endpoint.com"]
+}
+```
+
+Webhook payload:
+
+```json
+{
+  "drConfigUuid": "<dr-config-uuid>",
+  "ips": "10.1.1.10,10.1.1.11",
+  "recordType": "A",
+  "ttl": 5
+}
+```
+
+- ips: Comma-separated TServer IPs from the new primary universe.
+- ttl: Fixed at 5 seconds.
+- recordType: Always "A".
+
+View the DR configuration details:
+
+```sh
+GET /customers/{customerUUID}/dr_configs/{drConfigUUID}
+```
+
+Example response snippet:
+
+```json
+"webhooks": [
+  {
+    "uuid": "<webhook-uuid>",
+    "url": "http://your-endpoint.com"
+  }
+]
+```
+
+Note that YugabyteDB Anywhere does not retry failed webhooks, and webhook failures do not block DR operations.
+
+
 ## Manage replication
 
 ### Add a database to an existing DR
