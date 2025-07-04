@@ -47,7 +47,9 @@ Use the following steps to perform a planned switchover:
 
 ## Abort, retry, and rollback
 
-During switchover, writes to both universes are rejected until the task completes. The Abort, Retry, and Rollback options provide flexibility in case the switchover is taking too long and you want to quickly restore write availability on at least one universe.
+While in progress, the swtchover task is displayed on the universe **Tasks** tab. From there you can abort, retry, and roll back the switchover task.
+
+During switchover, writes to both universes are rejected until the task completes. The Abort, Retry, and Rollback options provide flexibility in case the switchover is taking too long, and you want to quickly restore write availability on at least one universe.
 
 If a switchover task fails or you abort it, you have the option to roll back to the previous state, keeping the current primary universe as primary and the replica universe as replica.
 

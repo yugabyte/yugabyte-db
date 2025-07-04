@@ -275,7 +275,6 @@ Example response snippet:
 
 Note that YugabyteDB Anywhere does not retry failed webhooks, and webhook failures do not block DR operations.
 
-
 ## Manage replication
 
 ### Add a database to an existing DR
