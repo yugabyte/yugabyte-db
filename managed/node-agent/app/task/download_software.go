@@ -62,6 +62,7 @@ func (h *DownloadSoftwareHandler) execShellCommands(
 		Desc string
 		Cmd  string
 	}{
+		{"clean-yb-software-dir", fmt.Sprintf("rm -rf %s", ybSoftwarePkgDir)},
 		{"make-yb-software-dir", fmt.Sprintf("mkdir -m 755 -p %s", ybSoftwarePkgDir)},
 		{
 			"make-yb-software-temporary-dir",
