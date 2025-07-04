@@ -121,7 +121,7 @@ Default: 0, no rows are skipped.
 
 YugabyteDB supports a fast-path mode for the COPY command on colocated tables, which can significantly improve performance during data import.
 
-###Enable fast-path COPY
+### Enable fast-path COPY
 
 The fast-path copy feature is disabled by default. To enable it for your current PostgreSQL session, run:
 
