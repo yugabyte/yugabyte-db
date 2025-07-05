@@ -51,6 +51,7 @@ block_indexing = true
 | YugabyteDB Psycopg2 Smart Driver<br/>[Recommended] | [2.9.3](https://github.com/yugabyte/psycopg2) |Full | [CRUD](/v2.20/drivers-orms/python/yugabyte-psycopg2/) |
 | PostgreSQL Psycopg2 Driver | [2.9.3](https://github.com/psycopg/psycopg2) | Full | [CRUD](/v2.20/drivers-orms/python/postgres-psycopg2/) |
 | aiopg      | 1.4          | Full | [Hello World](/v2.20/drivers-orms/python/aiopg/) |
+| PostgreSQL Psycopg 3 Driver | [3.2.9](https://github.com/psycopg/psycopg) | Full | [CRUD](/v2.20/drivers-orms/python/postgres-psycopg3/) |
 | YugabyteDB Python Driver for YCQL | [3.25.0](https://github.com/yugabyte/cassandra-python-driver/tree/master) | Full | [CRUD](/v2.20/drivers-orms/python/ycql/) |
 | **ORMs** | | | |
 | Django     | 2.2 or later | Full | [CRUD](/v2.20/drivers-orms/python/django/) |
