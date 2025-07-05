@@ -298,6 +298,33 @@ TEST_F(ThreadPoolTest, TestOwns) {
   ASSERT_TRUE(pool.Owns(task.thread()));
 }
 
+TEST_F(ThreadPoolTest, SingleWorker) {
+  constexpr size_t kConcurrency = 32;
+  constexpr size_t kIterations = 128;
+  TestThreadHolder thread_holder;
+  for (size_t i = 0; i != kConcurrency; ++i) {
+    thread_holder.AddThreadFunctor([i] {
+      for (size_t j = 0; j != kIterations; ++j) {
+        ThreadPool pool(ThreadPoolOptions {
+          .name = Format("tp_$0_$1", i, j),
+          .max_workers = 1,
+        });
+        CountDownLatch latch(1);
+        ASSERT_TRUE(pool.EnqueueFunctor([&latch] {
+          latch.CountDown();
+        }));
+        latch.Wait();
+        CountDownLatch latch2(1);
+        ASSERT_TRUE(pool.EnqueueFunctor([&latch2] {
+          latch2.CountDown();
+        }));
+        ASSERT_TRUE(latch2.WaitFor(1s * kTimeMultiplier));
+      }
+    });
+  }
+  thread_holder.JoinAll();
+}
+
 namespace strand {
 
 constexpr size_t kPoolMaxTasks = 100;
