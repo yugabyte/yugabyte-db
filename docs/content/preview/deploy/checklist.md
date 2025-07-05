@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: checklist
     parent: deploy
-    weight: 605
+    weight: 10
 type: docs
 ---
 

@@ -7,7 +7,7 @@ menu:
   v2025.1:
     identifier: checklist
     parent: deploy
-    weight: 605
+    weight: 10
 type: docs
 ---
 

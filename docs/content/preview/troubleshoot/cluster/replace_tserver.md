@@ -13,7 +13,7 @@ type: docs
 
 You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
 
-1. Install and then start a new YB-TServer, making sure it is in the same placement group as the one you are replacing. For detailed instructions, see [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
+1. Install and then start a new YB-TServer, making sure it is in the same placement group as the one you are replacing. For detailed instructions, see [Start YB-TServers](../../../deploy/manual-deployment/start-masters/#yb-tserver-servers/).
 
 2. Blacklist the failed YB-TServer by using the following command:
 
