@@ -158,6 +158,11 @@ class Worker : public boost::intrusive::list_base_hook<> {
     for (;;) {
       AddToWaitingWorkers();
 
+      if (auto task = share_.task_queue.Pop()) {
+        state_ = WorkerState::kRunning;
+        return task;
+      }
+
       bool timeout;
       if (share_.options.idle_timeout) {
         CHECK(!task_);
@@ -168,12 +173,19 @@ class Worker : public boost::intrusive::list_base_hook<> {
         timeout = false;
       }
 
-      if (auto task_opt = DoPopTask()) {
+      if (state_ == WorkerState::kExternalStop) {
+        return nullptr;
+      }
+      if (task_) {
         state_ = WorkerState::kRunning;
-        return *task_opt;
+        return std::exchange(task_, nullptr);
       }
 
       if (timeout && added_to_waiting_workers_) {
+        if (auto task = share_.task_queue.Pop()) {
+          state_ = WorkerState::kRunning;
+          return task;
+        }
         --share_.num_workers;
         state_ = WorkerState::kIdleStop;
         auto thread = std::move(thread_);
