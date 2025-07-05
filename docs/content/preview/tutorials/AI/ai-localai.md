@@ -17,10 +17,46 @@ This tutorial shows how you can use [LocalAI](https://localai.io/) to create an 
 
 ## Prerequisites
 
-* YugabyteDB [v2.19.2 or later](https://download.yugabyte.com/)
+* YugabyteDB [v2.25+](https://download.yugabyte.com/)
 * [LocalAI](https://localai.io/basics/getting_started/)
 * Python 3
 * Docker
+
+## Set up YugabyteDB
+
+Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
+
+```sh
+# NOTE: if the ~/yb_docker_data already exists on your machine, delete and re-create it
+mkdir ~/yb_docker_data
+
+docker network create custom-network
+
+docker run -d --name yugabytedb-node1 --hostname yugabytedb-node1 --net custom-network \
+    -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
+    -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start \
+    --base_dir=/home/yugabyte/yb_data --background=false
+
+docker run -d --name yugabytedb-node2 --hostname yugabytedb-node2 --net custom-network \
+    -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
+    -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start --join=yugabytedb-node1 \
+    --base_dir=/home/yugabyte/yb_data --background=false
+
+docker run -d --name yugabytedb-node3 --hostname yugabytedb-node3 --net custom-network \
+    -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
+    -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start --join=yugabytedb-node1 \
+    --base_dir=/home/yugabyte/yb_data --background=false
+```
+
+The database connectivity settings are provided in the `{project_dir}/.env` file and do not need to be changed if you started the cluster with the preceding command.
+
+Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 
 ## Set up the application
 
@@ -60,42 +96,6 @@ Download the application and provide settings specific to your deployment:
 
 1. Configure the application environment variables in `{project_directory/.env}`.
 
-## Set up YugabyteDB
-
-Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
-
-```sh
-# NOTE: if the ~/yb_docker_data already exists on your machine, delete and re-create it
-mkdir ~/yb_docker_data
-
-docker network create custom-network
-
-docker run -d --name yugabytedb-node1 --net custom-network \
-    -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
-    -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start \
-    --base_dir=/home/yugabyte/yb_data --background=false
-
-docker run -d --name yugabytedb-node2 --net custom-network \
-    -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
-    -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
-    --base_dir=/home/yugabyte/yb_data --background=false
-
-docker run -d --name yugabytedb-node3 --net custom-network \
-    -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
-    -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb-node1 \
-    --base_dir=/home/yugabyte/yb_data --background=false
-```
-
-The database connectivity settings are provided in the `{project_dir}/.env` file and do not need to be changed if you started the cluster with the preceding command.
-
-Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
-
 ## Get started with LocalAI
 
 Running [LocalAI](https://localai.io/basics/getting_started/) on your machine, or on a virtual machine, requires sufficient hardware. Be sure to check the specifications before installation. This application uses Docker to run a BERT text-embedding model.
@@ -125,13 +125,13 @@ This application requires a database table with information about popular progra
 1. Copy the schema to the first node's Docker container.
 
     ```sh
-    docker cp {project_dir}/sql/schema.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/schema.sql yugabytedb-node1:/home/schema.sql
     ```
 
 1. Copy the seed data file to the Docker container.
 
     ```sh
-    docker cp {project_dir}/sql/data.sql yugabytedb-node1:/home
+    docker cp {project_dir}/sql/data.sql yugabytedb-node1:/home/data.sql
     ```
 
 1. Execute the SQL files against the database.
@@ -353,6 +353,25 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
+
+The search speed is further increased by using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type. This application uses cosine distance for indexing, as the backend query is using cosine similarity search.
+This application is straightforward.
+
+```sql
+# sql/schema.sql
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS
+    programming_languages (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(50),
+        summary text,
+        text_embeddings vector (384)
+    );
+
+CREATE INDEX NONCONCURRENTLY ON programming_languages USING ybhnsw (text_embeddings vector_cosine_ops);
 ```
 
 ## Wrap-up
