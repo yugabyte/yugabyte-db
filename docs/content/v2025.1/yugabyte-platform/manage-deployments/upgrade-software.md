@@ -33,8 +33,8 @@ When upgrading universes in [xCluster Replication](../../manage-deployments/xclu
 - Upgrade and finalize the target/DR replica before upgrading and finalizing the source/DR primary.
 {{< /note >}}
 
-{{< warning title="Upgrading YugabyteDB to v2.25" >}}
-Upgrading universes to YugabyteDB v2.25 from previous preview versions is not yet available.
+{{< warning title="YSQL major version upgrades" >}}
+To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG11 to v2025.1 or later based on PG15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yba/).
 {{< /warning >}}
 
 When performing a database upgrade, do the following:
