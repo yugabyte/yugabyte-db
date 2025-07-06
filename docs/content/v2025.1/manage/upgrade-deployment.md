@@ -51,6 +51,8 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - You can upgrade from any version of 2.14.x to any stable version in one go.
 
+- After finalizing an upgrade, backups and snapshots from the previous version can no longer be used for PITR or restoring.
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:

@@ -73,7 +73,6 @@ In addition, refer to the following:
 - [Prepare your cluster for upgrade](../upgrade-deployment/#1-prepare-the-cluster-for-the-upgrade)
 - [Download and install the new version](../upgrade-deployment/#2-download-and-install-the-new-version)
 
-
 ## Upgrade phase
 
 ### Restart for catalog upgrade

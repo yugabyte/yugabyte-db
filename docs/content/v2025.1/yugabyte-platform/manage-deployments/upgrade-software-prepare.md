@@ -34,6 +34,10 @@ YugabyteDB Anywhere will attempt to automatically update universes. If it is una
 
 Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by following the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
 
+## Backups and point-in-time-restore
+
+After finalizing an upgrade, backups and snapshots from the previous version can no longer be used for PITR or restoring.
+
 ## Review major changes in previous YugabyteDB releases
 
 {{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
