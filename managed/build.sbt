@@ -482,6 +482,7 @@ downloadThirdPartyDeps := {
 
 devSpaceReload := {
   (Universal / packageBin).value
+  Process("./devspace.sh", baseDirectory.value / "scripts") !
   val status = Process("devspace run extract-archive").!
   status
 }
