@@ -1794,4 +1794,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Keep remote files after ansible run for debugging.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipRuntimeGflagValidation =
+      new ConfKeyInfo<>(
+          "yb.skip_runtime_gflag_validation",
+          ScopeType.GLOBAL,
+          "Skip Runtime GFlag validation before cluster operations.",
+          "Skip Runtime GFlag validation before cluster operations.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

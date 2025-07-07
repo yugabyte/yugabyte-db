@@ -1118,6 +1118,8 @@ public enum TaskType {
   FinalizeYsqlMajorCatalogUpgrade(
       com.yugabyte.yw.commissioner.tasks.subtasks.FinalizeYsqlMajorCatalogUpgrade.class),
 
+  ValidateGFlags(com.yugabyte.yw.commissioner.tasks.subtasks.ValidateGFlags.class),
+
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
 

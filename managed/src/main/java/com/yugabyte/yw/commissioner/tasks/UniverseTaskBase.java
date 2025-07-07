@@ -1355,6 +1355,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return params;
   }
 
+  /** Create a task to validate gflags for universe */
+  public SubTaskGroup createValidateGFlagsTask(
+      List<UniverseDefinitionTaskParams.Cluster> newClusters) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ValidateGFlags");
+    ValidateGFlags task = createTask(ValidateGFlags.class);
+    ValidateGFlags.Params params = new ValidateGFlags.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.newClusters = newClusters;
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Create a task to mark the change on a universe as success. */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks() {
     return createMarkUniverseUpdateSuccessTasks(taskParams().getUniverseUUID());
