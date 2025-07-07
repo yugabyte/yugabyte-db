@@ -479,7 +479,8 @@ Result<std::string> GetEncodedHashPartitionKey(const std::string& partition_key)
 
 } // namespace
 
-Result<std::string> PartitionSchema::GetEncodedPartitionKey(const std::string& partition_key) {
+Result<std::string> PartitionSchema::GetEncodedPartitionKey(
+    const std::string& partition_key) const {
   if (!IsHashPartitioning() || partition_key.empty()) {
     return partition_key;
   }
