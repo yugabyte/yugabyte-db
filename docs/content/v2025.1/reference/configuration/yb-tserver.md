@@ -592,6 +592,18 @@ To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 
 Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
 
+##### yb_sampling_algorithm
+
+{{% tags/wrap %}}
+
+Default: block_based_sampling
+{{% /tags/wrap %}}
+
+Determines the sampling algorithm to use to select random rows from a table when performing sampling operations in YSQL. You can choose from the following algorithms:
+
+- `full_table_scan`: Scans the whole table and picks random rows
+- `block_based_sampling`: Samples the table for a set of blocks, and then scans only those selected blocks to form a final rows sample.
+
 ## Networking
 
 ### RPC and binding addresses
