@@ -50,7 +50,7 @@ The following table summarizes the support for transactions across the YSQL and 
 
   {{<index/item
     title="Transactional DDL"
-    body="How YugabyteDB handles DDL operations in transaction block"
+    body="How YugabyteDB handles DDL operations in a transaction block."
     href="transactional-ddl/"
     icon="fa-thin fa-table">}}
 
