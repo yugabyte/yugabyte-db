@@ -86,7 +86,7 @@ Without [c] or [binary] extras you will obtain a pure Python implementation. Thi
 
 Python applications can connect to and query the YugabyteDB database using the following:
 
-- Import the psycopg2 package.
+- Import the psycopg package.
 
     ```python
     import psycopg
@@ -119,7 +119,7 @@ The following table describes the connection parameters required to connect to t
 The following is an example connection string for connecting to YugabyteDB.
 
 ```python
-conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
+conn = psycopg.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
 ```
 
 ### Executing queries
@@ -167,7 +167,7 @@ INSERT INTO employee VALUES (1, 'John', 35, 'Java')
 ```
 
 ```python
-conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
+conn = psycopg.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
 conn.execute('INSERT INTO employee VALUES (1, 'John', 35, 'Java')')
 ```
 

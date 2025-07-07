@@ -1,13 +1,13 @@
 ---
-title: PostgreSQL Psycopg3 Driver
-headerTitle: Python Drivers
-linkTitle: Python Drivers
+title: PostgreSQL Psycopg3 driver
+headerTitle: Python drivers
+linkTitle: Python drivers
 description: PostgreSQL Psycopg3 Python Driver for YSQL
 tags:
   other: ysql
 menu:
-  v2024.1:
-    name: Python Drivers
+  preview:
+    name: Python drivers
     identifier: ref-postgres-psycopg3-driver
     parent: python-drivers
     weight: 110
@@ -17,25 +17,25 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
-      <i class="fa-brands fa-java" aria-hidden="true"></i>
-      YugabyteDB Psycopg2 Smart Driver
+      <img src="/icons/yugabyte.svg"></i>
+      Yugabyte Psycopg2 Smart
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg2-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg2 Driver
+      PG Psycopg2
     </a>
   </li>
   <li >
-    <a href="../postgres-psycopg2-reference/" class="nav-link active">
+    <a href="../postgres-psycopg3-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg3 Driver
+      PG Psycopg3
     </a>
   </li>
 </ul>
 
-Psycopg 3 design emerges from the experience of more than 10 years of development and support of psycopg2. It embraces the new possibilities offered by the more modern generations of the Python language and the PostgreSQL database and addresses the challenges offered by the current patterns in software development and deployment.
+Psycopg 3 is the newest implementation of the most popular adapter for Python.
 
 For details on using psycopg3, see [Psycopg3 documentation](https://www.psycopg.org/psycopg3/docs/).
 
@@ -86,7 +86,7 @@ Without [c] or [binary] extras you will obtain a pure Python implementation. Thi
 
 Python applications can connect to and query the YugabyteDB database using the following:
 
-- Import the psycopg2 package.
+- Import the psycopg package.
 
     ```python
     import psycopg
@@ -119,7 +119,7 @@ The following table describes the connection parameters required to connect to t
 The following is an example connection string for connecting to YugabyteDB.
 
 ```python
-conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
+conn = psycopg.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
 ```
 
 ### Executing queries
@@ -167,7 +167,7 @@ INSERT INTO employee VALUES (1, 'John', 35, 'Java')
 ```
 
 ```python
-conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
+conn = psycopg.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
 conn.execute('INSERT INTO employee VALUES (1, 'John', 35, 'Java')')
 ```
 
