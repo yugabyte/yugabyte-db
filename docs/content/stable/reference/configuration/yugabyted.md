@@ -752,7 +752,7 @@ Create a local single-node cluster with encryption in transit and authentication
 ./bin/yugabyted start --secure
 ```
 
-Create a local single-node cluster with IPv6 address:
+Create a local single-node universe with IPv6 address:
 
 ```sh
 ./bin/yugabyted start --advertise_address ::1
@@ -1340,36 +1340,34 @@ To destroy a local multi-node cluster, use the `destroy` command with the `--bas
 
 If the cluster has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
 
-### Create a single-node cluster
+### Create a single-node universe
 
-Create a single-node cluster with a given [base directory](#base-directory). Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
+Create a single-node universe with a given [base directory](#base-directory). You need to provide a fully-qualified directory path for the `base_dir` parameter.
+
+By default, yugabyted uses IPv4. To start a universe with an IPv6 address, specify `::1` for the `--advertise_address`.
 
 ```sh
+# Using IPv4
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+```
+
+```sh
+# Using IPv6
+./bin/yugabyted start --advertise_address=::1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
 To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
 
 ```sh
+# Using IPv4
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
-When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
-
-### Create a single-node cluster with IPv6 address
-
-Create a single-node cluster with a given base directory. You need to provide a fully-qualified directory path for the `base_dir` parameter.
-
 ```sh
-./bin/yugabyted start --advertise_address=::1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
-```
-
-To create a secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
-
-```sh
+# Using IPv6
 ./bin/yugabyted start --secure --advertise_address=::1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
