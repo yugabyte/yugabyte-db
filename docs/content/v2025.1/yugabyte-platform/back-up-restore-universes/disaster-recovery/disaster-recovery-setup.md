@@ -225,7 +225,7 @@ For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../..
 
 #### Webhook notifications
 
-You can configure webhooks on a DR configuration to be notified after a failover or switchover so that you can, for example, update your DNS records. After a failover or switchover, YugabyteDB Anywhere sends a POST request to each configured webhook URL with the new primary universe's IPs.
+You can configure webhooks on a DR configuration to be notified after a failover or switchover so that you can, for example, update your DNS records. After a failover or switchover, YugabyteDB Anywhere sends a POST request to each configured webhook URL with the new primary universe's IP addresses.
 
 You configure the webhooks using the [YBA API](https://api-docs.yugabyte.com/docs/yugabyte-platform/):
 
