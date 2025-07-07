@@ -28,23 +28,14 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 
 ## Configure ASH
 
-To use ASH, enable and configure the following flags for each node of your cluster.
+To configure ASH, you can set the following YB-TServer flags for each node of your cluster.
 
 | Flag | Description |
 | :--- | :---------- |
-| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_ash_enable_infra,ysql_yb_enable_ash`. |
-| ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a TServer restart. |
-| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables the collection of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a TServer restart. |
-
-### Additional flags
-
-You can also use the following flags based on your requirements.
-
-| Flag | Description |
-| :--- | :---------- |
+| ysql_yb_enable_ash | Enables ASH. Changing this flag requires a TServer restart. Default: true |
 | ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MiB for 1-2 cores</li><li>64 MiB for 3-4 cores</li><li>128 MiB for 5-8 cores</li><li>256 MiB for 9-16 cores</li><li>512 MiB for 17-32 cores</li><li>1024 MiB for more than 32 cores</li></ul> Changing this flag requires a TServer restart. |
-| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). <br>Default: 1000. Changing this flag doesn't require a TServer restart. |
-| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a TServer restart. |
+| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). Changing this flag doesn't require a TServer restart. Default: 1000 |
+| ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. Changing this flag doesn't require a TServer restart. Default:  500 |
 
 ## Limitations
 
