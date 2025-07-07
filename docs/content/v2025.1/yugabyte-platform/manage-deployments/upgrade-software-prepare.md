@@ -28,11 +28,9 @@ However, on-premises cron-based universes must be upgraded manually. To do this,
 
 YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
 
-If any universe nodes require an update to node agent, YugabyteDB Anywhere displays a notice to that effect.
+To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions>Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
 
-You can manually update a universe to node agent by navigating to the universe and clicking **Actions>Install Node Agent**.
-
-If you want YugabyteDB Anywhere to automatically update universes requiring node agent, click **Automatically Install Node Agents**. YugabyteDB Anywhere will then attempt to update universe nodes to use node agent in the background. If it is unable to update a universe, click **View Node Agents** to identify problem nodes. Make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by clicking **Actions>Install Node Agent**.
+You can configure YugabyteDB Anywhere to automatically update universes to node agent in the background. Refer to [Prepare to upgrade YugabyteDB Anywhere](../../upgrade/prepare-to-upgrade/#node-agent).
 
 ## Transparent hugepages
 
