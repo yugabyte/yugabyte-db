@@ -178,7 +178,7 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
 
     ```js
     const { PrismaClient } = require('@prisma/client')
-    const { PrismaPg } = require('@yugabytedb/prisma-adapter');
+    const { PrismaPg } = require('@yugabytedb/prisma-adapter')
 
     const connectionString = `${process.env.DATABASE_URL}`
     const adapter = new PrismaPg({ connectionString })
