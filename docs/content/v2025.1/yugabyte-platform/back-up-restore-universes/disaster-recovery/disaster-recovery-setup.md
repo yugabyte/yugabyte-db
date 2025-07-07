@@ -184,7 +184,7 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the DR primary. Create the same table on the DR replica. |
 | Auto flag config mismatch | Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version. |
-| Unable to fetch | Unable to obtaing the most recent replication status from the target universe master leader. |
+| Unable to fetch | Unable to obtain the most recent replication status from the target universe master leader. |
 | Uninitialized | The master leader of the target universe has not yet gathered the status of the replication stream. This can happen when the replication is just set up or there is a new master leader. |
 | Source unreachable | The target universe TServer cannot reach the source universe TServer, likely due to network connectivity issues. |
 
