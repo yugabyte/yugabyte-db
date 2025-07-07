@@ -1662,4 +1662,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Whether to check if correct Transparent Huge Pages settings are applied",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipAutoflagsAndYsqlMigrationFilesValidation =
+      new ConfKeyInfo<>(
+          "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation",
+          ScopeType.UNIVERSE,
+          "Skip auto flags and YSQL migration files validation",
+          "Skip auto flags and YSQL migration files validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
