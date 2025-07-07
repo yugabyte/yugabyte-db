@@ -834,17 +834,26 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	bool		found_conflict;
 	bool		log_lock = false;
 
-	if (!YBIsPgLockingEnabled())
-	{
-		HandleYBStatus(YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode));
-		return LOCKACQUIRE_OK;
-	}
-
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
 		elog(ERROR, "unrecognized lock method: %d", lockmethodid);
 	lockMethodTable = LockMethods[lockmethodid];
 	if (lockmode <= 0 || lockmode > lockMethodTable->numLockModes)
 		elog(ERROR, "unrecognized lock mode: %d", lockmode);
+
+	if (!YBIsPgLockingEnabled())
+	{
+		int			log_level = (locktag->locktag_field2 >= FirstNormalObjectId) ?
+			((lockmode >= ShareUpdateExclusiveLock) ? DEBUG1 : DEBUG2) : DEBUG4;
+
+		elog(log_level, "LockAcquire start: lock [%u,%u] mode: %s",
+			 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);
+
+		HandleYBStatus(YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode));
+
+		elog(log_level, "LockAcquired: lock [%u,%u] mode: %s",
+			 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);
+		return LOCKACQUIRE_OK;
+	}
 
 	if (RecoveryInProgress() && !InRecovery &&
 		(locktag->locktag_type == LOCKTAG_OBJECT ||

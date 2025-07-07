@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
@@ -78,6 +79,8 @@ DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(send_wait_for_report_interval_ms);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_enable_invalidation_messages);
 
 namespace yb {
 namespace master {
@@ -821,6 +824,28 @@ void ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(ReleaseObjectLoc
     catalog_version_pb->set_current_version(it.second.current_version);
     catalog_version_pb->set_last_breaking_version(it.second.last_breaking_version);
   }
+
+  if (!FLAGS_ysql_yb_enable_invalidation_messages && !FLAGS_ysql_enable_db_catalog_version_mode) {
+    return;
+  }
+
+  // Populate all known invalidation messages
+  Result<DbOidVersionToMessageListMap> inval_messages =
+    catalog_manager_.GetYsqlCatalogInvalationMessages(false /*use_cache*/);
+  if (!inval_messages.ok()) {
+    LOG(WARNING) << "Couldn't populate invalidation messages in lock release request " << s;
+    return;
+  }
+  auto* const mutable_messages_data = req.mutable_db_catalog_inval_messages_data();
+  for (auto& [db_oid_version, message_list] : *inval_messages) {
+    auto* const db_inval_messages = mutable_messages_data->add_db_catalog_inval_messages();
+    db_inval_messages->set_db_oid(db_oid_version.first);
+    db_inval_messages->set_current_version(db_oid_version.second);
+    if (message_list.has_value()) {
+      db_inval_messages->set_message_list(std::move(*message_list));
+    }
+  }
+
 }
 
 Status ObjectLockInfoManager::Impl::UnlockObjectSync(

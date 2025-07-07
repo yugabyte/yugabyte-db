@@ -2730,7 +2730,7 @@ YbTrackPgTxnInvalMessagesForAnalyze()
 		memcpy(currentInvalMessages + numCatCacheMsgs,
 			   relCacheInvalMessages,
 			   numRelCacheMsgs * sizeof(SharedInvalidationMessage));
-	if (log_min_messages <= DEBUG1)
+	if (log_min_messages <= DEBUG1 || yb_debug_log_catcache_events)
 		YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 	YbCatalogMessageList *current = (YbCatalogMessageList *)
 		MemoryContextAlloc(ddl_transaction_state.mem_context,
@@ -2852,6 +2852,9 @@ YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 		message_list.num_bytes = 0;
 	}
 
+	elog(DEBUG2,
+		"YbCheckNewSharedCatalogVersionOptimization: "
+		"updating tserver shared catalog version to %"PRIu64, new_version);
 	if (yb_test_delay_set_local_tserver_inval_message_ms > 0)
 		pg_usleep(yb_test_delay_set_local_tserver_inval_message_ms * 1000L);
 	YbcStatus	status = YBCPgSetTserverCatalogMessageList(MyDatabaseId,
@@ -7677,7 +7680,7 @@ YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 		const SharedInvalidationMessage *invalMessages =
 			(const SharedInvalidationMessage *) msglist->message_list;
 
-		elog(DEBUG1, "invalMessages=%p, msglist->num_bytes=%zu",
+		elog(yb_debug_log_catcache_events ? LOG : DEBUG1, "invalMessages=%p, msglist->num_bytes=%zu",
 			 invalMessages, msglist->num_bytes);
 		if (!invalMessages)
 		{
@@ -7720,7 +7723,7 @@ YbApplyInvalidationMessages(YbcCatalogMessageLists *message_lists)
 
 		size_t		nmsgs = msglist->num_bytes / sizeof(SharedInvalidationMessage);
 
-		if (log_min_messages <= DEBUG1)
+		if (log_min_messages <= DEBUG1 || yb_debug_log_catcache_events)
 			YbLogInvalidationMessages(invalMessages, nmsgs);
 		for (size_t i = 0; i < nmsgs; ++i)
 			/*

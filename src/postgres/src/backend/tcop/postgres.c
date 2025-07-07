@@ -4347,8 +4347,12 @@ YBRefreshCache()
 	finish_xact_command();
 }
 
-static void
-YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
+/*
+ * Return value true indicates that an incremental refresh was performed
+ */
+static bool
+YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
+						  bool full_refresh_allowed)
 {
 	uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
 	uint64_t	local_catalog_version = YbGetCatalogCacheVersion();
@@ -4422,7 +4426,8 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 		if (YbApplyInvalidationMessages(&message_lists))
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
-			elog(DEBUG1, "YBRefreshCache skipped after applying %d message lists, "
+			elog(yb_debug_log_catcache_events ? LOG : DEBUG1,
+				"full cache refresh skipped after applying %d message lists, "
 				 "updating local catalog version from %" PRIu64 " to %" PRIu64
 				 " for database %u",
 				 message_lists.num_lists,
@@ -4437,7 +4442,7 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 			 */
 			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
 			yb_need_cache_refresh = false;
-			return;
+			return true;
 		}
 		/* apply failed */
 		reason = 5;
@@ -4446,14 +4451,32 @@ YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 	if (enable_inval_messages)
 		/* must have a reason for doing full catalog cache refresh. */
 		Assert(reason > 0);
-	ereport(enable_inval_messages ? LOG : DEBUG1,
-			(errmsg("calling YBRefreshCache: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d"
-					" for database %u",
-					message_lists.num_lists, local_catalog_version,
-					shared_catalog_version, catalog_master_version,
-					num_catalog_versions, is_retry, reason, MyDatabaseId)));
-	YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
-	YBRefreshCache();
+	if (full_refresh_allowed)
+	{
+		ereport(enable_inval_messages ? LOG : DEBUG1,
+				(errmsg("full cache refresh: %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %d %d"
+						" for database %u",
+						message_lists.num_lists, local_catalog_version,
+						shared_catalog_version, catalog_master_version,
+						num_catalog_versions, is_retry, reason, MyDatabaseId)));
+		YbUpdateLastKnownCatalogCacheVersion(shared_catalog_version);
+		YBRefreshCache();
+	}
+	return false;
+}
+
+bool
+YBRefreshCacheUsingInvalMsgs()
+{
+	return YBRefreshCacheWrapperImpl(YB_CATCACHE_VERSION_UNINITIALIZED,
+									 false /* is_retry */ ,
+									 false /* full_refresh_allowed */ );
+}
+
+static void
+YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
+{
+	(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
 }
 
 static bool

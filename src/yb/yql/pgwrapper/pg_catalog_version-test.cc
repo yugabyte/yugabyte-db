@@ -27,10 +27,19 @@ using std::string;
 
 using namespace std::literals;
 
+DECLARE_string(vmodule);
+
 namespace yb {
 namespace pgwrapper {
 
 class PgCatalogVersionTest : public LibPqTestBase {
+
+ public:
+  void SetUp() override {
+    LibPqTestBase::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils=1";
+  }
+
  protected:
   using Version = uint64_t;
 

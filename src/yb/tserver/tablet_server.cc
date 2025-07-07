@@ -1558,7 +1558,7 @@ void TabletServer::UpdateCatalogVersionsFingerprintUnlocked() {
 
 void TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages(
     const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data) {
   // std::atomic needed to avoid tsan reporting data race.
   static std::atomic<uint64_t> next_debug_id{0};
   std::lock_guard l(lock_);
@@ -1568,8 +1568,8 @@ void TabletServer::SetYsqlDBCatalogVersionsWithInvalMessages(
 }
 
 void TabletServer::SetYsqlDBCatalogInvalMessagesUnlocked(
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
-    uint64_t debug_id) {
+  const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+  uint64_t debug_id) {
   if (db_catalog_inval_messages_data.db_catalog_inval_messages_size() == 0) {
     LOG(INFO) << "empty db_catalog_inval_messages, debug_id: " << debug_id;
     return;
@@ -1628,7 +1628,7 @@ void TabletServer::SetYsqlDBCatalogInvalMessagesUnlocked(
  */
 void TabletServer::MergeInvalMessagesIntoQueueUnlocked(
     uint32_t db_oid,
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
     int start_index, int end_index,
     uint64_t debug_id) {
   DCHECK_LT(start_index, end_index);
@@ -1671,7 +1671,7 @@ void TabletServer::MergeInvalMessagesIntoQueueUnlocked(
 
 void TabletServer::DoMergeInvalMessagesIntoQueueUnlocked(
     uint32_t db_oid,
-    const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+    const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
     int start_index, int end_index, InvalidationMessagesQueue *db_message_lists,
     uint64_t debug_id) {
   bool changed = false;
