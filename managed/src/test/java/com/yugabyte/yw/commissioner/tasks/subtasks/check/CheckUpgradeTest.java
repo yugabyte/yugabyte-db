@@ -2,8 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -22,6 +21,7 @@ import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagsPerServer;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import org.junit.Before;
 import org.junit.Test;
@@ -131,6 +131,55 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
     flagsPerServer.autoFlagDetails = Arrays.asList(flag);
     when(mockGFlagsValidation.extractAutoFlags(any(), anyString())).thenReturn(flagsPerServer);
+    CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
+    task.initialize(params);
+    task.run();
+  }
+
+  @Test
+  public void testMissingYsqlMigrationFiles() throws Exception {
+    CheckUpgrade.Params params = new CheckUpgrade.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.ybSoftwareVersion = "new-version";
+    // Mock autoflag checks to pass
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of());
+    AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
+    flagsPerServer.autoFlagDetails = new ArrayList<>();
+    when(mockGFlagsValidation.extractAutoFlags(any(), anyString())).thenReturn(flagsPerServer);
+    // Mock migration files: old version has file1.sql, file2.sql; new version only has file1.sql
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("old-version"))
+        .thenReturn(ImmutableSet.of("file1.sql", "file2.sql"));
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("new-version"))
+        .thenReturn(ImmutableSet.of("file1.sql"));
+    // Set old version in universe
+    TestHelper.updateUniverseVersion(defaultUniverse, "old-version");
+    CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
+    task.initialize(params);
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> task.run());
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertTrue(exception.getMessage().contains("file2.sql"));
+  }
+
+  @Test
+  public void testYsqlMigrationFilesAllPresent() throws Exception {
+    CheckUpgrade.Params params = new CheckUpgrade.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.ybSoftwareVersion = "new-version";
+    // Mock autoflag checks to pass
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
+        .thenReturn(ImmutableSet.of());
+    AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
+    flagsPerServer.autoFlagDetails = new ArrayList<>();
+    when(mockGFlagsValidation.extractAutoFlags(any(), anyString())).thenReturn(flagsPerServer);
+    // Both versions have the same migration files
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("old-version"))
+        .thenReturn(ImmutableSet.of("file1.sql", "file2.sql"));
+    when(mockGFlagsValidation.getYsqlMigrationFilesList("new-version"))
+        .thenReturn(ImmutableSet.of("file1.sql", "file2.sql"));
+    // Set old version in universe
+    TestHelper.updateUniverseVersion(defaultUniverse, "old-version");
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     task.run();

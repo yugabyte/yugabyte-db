@@ -44,9 +44,10 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
       "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
           + "local-provider-test/2.21.0.0-b340/yugabyte-2.21.0.0-b340-%s-%s.tar.gz";
 
-  private static final String PG_15_DB_VERSION = "2.25.1.0-b381";
+  private static final String PG_15_DB_VERSION = "2025.1.1.0-b73";
   private static final String PG_15_DB_VERSION_URL =
-      "https://software.yugabyte.com/releases/2.25.1.0/yugabyte-2.25.1.0-b381-%s-%s.tar.gz";
+      "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
+          + "local-provider-test/2025.1.1.0-b73/yugabyte-2025.1.1.0-b73-%s-%s.tar.gz";
 
   private static final String PG_11_DB_VERSION = "2024.2.3.0-b116";
   private static final String PG_11_DB_VERSION_URL =

@@ -325,7 +325,10 @@ public class RestoreBackupYbc extends YbcTaskBase {
       }
       // Validate that all master and tserver auto flags present during backup
       // should exist in restore universe.
-      if (backupConfig.masterAutoFlags != null && backupConfig.tserverAutoFlags != null) {
+      if (!confGetter.getConfForScope(
+              universe, UniverseConfKeys.skipAutoflagsAndYsqlMigrationFilesValidation)
+          && backupConfig.masterAutoFlags != null
+          && backupConfig.tserverAutoFlags != null) {
         if (Util.compareYbVersions(
                 restoreUniverseDBVersion,
                 YbcBackupUtil.YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION,
@@ -340,6 +343,13 @@ public class RestoreBackupYbc extends YbcTaskBase {
       }
       if (backupConfig.ysqlMajorVersion != null) {
         ybcBackupUtil.validateYsqlMajorVersion(universe, backupConfig.ysqlMajorVersion);
+      }
+      // Validate that all YSQL migration files present in the backup are also present in the
+      // restore universe version.
+      if (!confGetter.getConfForScope(
+              universe, UniverseConfKeys.skipAutoflagsAndYsqlMigrationFilesValidation)
+          && !backupConfig.ysqlMigrationFiles.isEmpty()) {
+        ybcBackupUtil.validateYsqlMigrationFiles(universe, backupConfig.ysqlMigrationFiles);
       }
     } catch (IOException e) {
       log.error("Error while validating backup metadata: ", e);
