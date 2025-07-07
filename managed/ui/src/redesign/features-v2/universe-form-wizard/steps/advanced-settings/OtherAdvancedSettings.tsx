@@ -8,6 +8,7 @@
  */
 
 import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
@@ -27,17 +28,21 @@ import {
 import { OtherAdvancedProps } from './dtos';
 // import { useCreateUniverse } from '../../../../../v2/api/universe/universe';
 import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
+import { GeneralSettingsProps } from '../general-settings/dtos';
 
 // import { useTranslation } from 'react-i18next';
 
 const { Box } = mui;
 
 export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [context, { moveToNextPage, moveToPreviousPage }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const [
+    { generalSettings, databaseSettings },
+    { moveToNextPage, moveToPreviousPage }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
-  // const createUniverse = useCreateUniverse();
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.otherAdvancedSettings'
+  });
 
   const methods = useForm<OtherAdvancedProps>({
     defaultValues: {
@@ -72,18 +77,35 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px', mb: 3 }}>
-        <YBAccordion titleContent="Deployment Port Override" sx={{ width: '100%' }}>
-          <DeploymentPortsField disabled={false} />
+        <YBAccordion titleContent={t('portsOverrideHeader')} sx={{ width: '100%' }}>
+          {generalSettings?.providerConfiguration?.code &&
+          databaseSettings?.ysql &&
+          databaseSettings?.ycql ? (
+            <DeploymentPortsField
+              disabled={false}
+              providerCode={generalSettings?.providerConfiguration?.code}
+              ysql={databaseSettings?.ysql}
+              ycql={databaseSettings?.ycql}
+              enableConnectionPooling={databaseSettings?.enableConnectionPooling}
+            />
+          ) : (
+            <></>
+          )}
         </YBAccordion>
-        <YBAccordion titleContent="User Tags" sx={{ width: '100%' }}>
+        <YBAccordion titleContent={t('userTagsHeader')} sx={{ width: '100%' }}>
           <UserTagsField disabled={false} />
         </YBAccordion>
       </Box>
       <StyledPanel>
-        <StyledHeader>Other Additional Settings</StyledHeader>
+        <StyledHeader>{t('additionalSettingsHeader')}</StyledHeader>
         <StyledContent>
-          <TimeSyncField disabled={false} />
-          <AccessKeyField disabled={false} />
+          {generalSettings?.providerConfiguration?.code && (
+            <TimeSyncField disabled={false} provider={generalSettings?.providerConfiguration} />
+          )}
+          <AccessKeyField
+            disabled={false}
+            provider={generalSettings?.providerConfiguration?.uuid || ''}
+          />
           <InstanceARNField disabled={false} />
           <SystemDField disabled={false} />
         </StyledContent>

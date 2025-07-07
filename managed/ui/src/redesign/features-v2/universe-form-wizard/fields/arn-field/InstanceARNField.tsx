@@ -9,11 +9,12 @@
  */
 
 import { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBInputField } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
 
-const { Box, styled, Typography } = mui;
+const { Box } = mui;
 
 interface InstanceARNProps {
   disabled: boolean;
@@ -22,7 +23,8 @@ interface InstanceARNProps {
 const INSTANCE_ARN_FIELD = 'awsArnString';
 
 export const InstanceARNField: FC<InstanceARNProps> = ({ disabled }) => {
-  const { setValue, control } = useFormContext<OtherAdvancedProps>();
+  const { control } = useFormContext<OtherAdvancedProps>();
+  const { t } = useTranslation();
 
   return (
     <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column', gap: '12px' }}>
@@ -31,7 +33,7 @@ export const InstanceARNField: FC<InstanceARNProps> = ({ disabled }) => {
         name={INSTANCE_ARN_FIELD}
         fullWidth
         disabled={disabled}
-        label={'Instance Profile ARN'}
+        label={t('createUniverseV2.otherAdvancedSettings.arnField')}
         sx={{ width: '734px' }}
       />
     </Box>

@@ -1,4 +1,8 @@
-import { UniverseSpec } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  UniverseSpec,
+  YSQLSpec,
+  YCQLSpec
+} from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 export interface GFlag {
   Name: string;
@@ -7,9 +11,17 @@ export interface GFlag {
   tags?: string;
 }
 
+export interface YSQLFormSpec extends YSQLSpec {
+  confirm_pwd?: string;
+}
+
+export interface YCQLFormSpec extends YCQLSpec {
+  confirm_pwd?: string;
+}
+
 export interface DatabaseSettingsProps {
-  ysql?: UniverseSpec['ysql'];
-  ycql?: UniverseSpec['ycql'];
+  ysql?: YSQLFormSpec;
+  ycql?: YCQLFormSpec;
   enableConnectionPooling?: boolean;
   overrideCPPorts?: boolean;
   ysqlServerRpcPort?: number;

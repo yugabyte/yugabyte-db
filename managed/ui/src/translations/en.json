@@ -3178,7 +3178,113 @@
       "databaseSettings": {
         "interface": "Interface",
         "features": "Features",
-        "advFlags": "Advanced Flags"
+        "advFlags": "Advanced Flags",
+        "enableYsqlOrYcql": "Need to enable at least one endpoint among YSQL and YCQL",
+        "ysqlSettings": {
+          "toggleLabel": "Enable YSQL End Point",
+          "authToggleLabel": "Enable YSQL Authentication",
+          "authPwd": "YSQL Auth Password",
+          "authConfirmPwd": "Confirm YSQL Auth Password"
+        },
+        "ycqlSettings": {
+          "toggleLabel": "Enable YCQL End Point",
+          "authToggleLabel": "Enable YCQL Authentication",
+          "authPwd": "YCQL Auth Password",
+          "authConfirmPwd": "Confirm YCQL Auth Password"
+        },
+        "conPool": {
+          "label": "Enable Connection Pooling",
+          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
+          "versionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
+          "YSQLWarn": "Enable YSQL first to use connection pooling.",
+          "dbVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
+          "overridePorts": "Override related YSQL Ports (Optional)",
+          "ysqlPortlabel": "YSQL Port",
+          "internalPortLabel": "Internal YSQL Port",
+          "defaultPortMsg": "Default {{port}}"
+        },
+        "pgCompatibility": {
+          "label": "Enhanced Postgres Compatibility",
+          "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
+          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+        }
+      },
+      "securitySettings": {
+        "publicIPTitle": "Public IP assignment",
+        "eitTitle": "Encryption in Transit Settings",
+        "earTitle": "Encryption at Rest Settings",
+        "publicIPField": {
+          "label": "Assign Public IP",
+          "subText": "Assign a public IP to the DB servers for connections over the internet."
+        },
+        "earField": {
+          "label": "Enable Encryption At Rest",
+          "kmsConfig": "Key Management Service Config",
+          "kmsConfigPlaceHolder": "Select Configuration"
+        },
+        "eitField": {
+          "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",
+          "enableNodeToNodeEncryption": "Enable Node-to-Node Encryption",
+          "enableClientToNodeEncryption": "Enable Client-to-Node Encryption",
+          "selectRootCert": "Select Root Certificate",
+          "rootCertificatePlaceHolder": "Select",
+          "genSelfSignedCert": "Generate Self Signed Certificate"
+        }
+      },
+      "proxySettings": {
+        "header": "Proxy Configuration",
+        "enableProxyServer": {
+          "toggleLabel": "Enable Proxy Server",
+          "toggleHelper": "Configure web proxies as gateways for traffic from your database nodes.",
+          "learnMore": "Learn more",
+          "secureWebProxyLabel": "Secure Web Proxy (HTTPS)",
+          "serverLabel": "Server",
+          "serverPlaceholder": "https://proxy.example.com",
+          "portLabel": "Port",
+          "portPlaceholder": "8080",
+          "webProxy": "Web Proxy (HTTP)",
+          "byPassProxy": "Bypass Proxy List",
+          "byPassListPlaceholder": "example.com, example.com:8080",
+          "byPassHelper": "Separate multiple values by pressing Enter, Space, or Comma."
+        }
+      },
+      "otherAdvancedSettings": {
+        "portsOverrideHeader": "Deployment Port Override",
+        "userTagsHeader": "User Tags",
+        "additionalSettingsHeader": "Other Additional Settings",
+        "deployPortsFeild": {
+          "defaultPortValue": "Default {{port}}",
+          "masterHttpPort": "Master HTTP Port",
+          "masterRpcPort": "Master RPC Port",
+          "tserverHttpPort": "T-Server HTTP Port",
+          "tserverRpcPort": "T-Server RPC Port",
+          "yqlServerHttpPort": "YCQL HTTP Port",
+          "yqlServerRpcPort": "YCQL Port",
+          "ysqlServerHttpPort": "YSQL HTTP Port",
+          "ysqlServerRpcPort": "YSQL Port",
+          "internalYsqlServerRpcPort": "Internal YSQL Port",
+          "redisServerHttpPort": "Redis HTTP Port",
+          "redisServerRpcPort": "Redis HTTP Port",
+          "nodeExporterPort": "Node Exporter Port",
+          "ybControllerrRpcPort": "YB Controller RPC Port",
+          "masterGroup": "Master Server",
+          "tServerGroup": "T-Server",
+          "ysqlGroup": "YSQL",
+          "ycqlGroup": "YCQL",
+          "redisGroup": "Redis",
+          "othersGroup": "Others"
+        },
+        "userTags": {
+          "subText": "Assign custom metadata to help manage, bill, or audit the resources.",
+          "learnMore": "Learn more",
+          "tagName": "Tag name",
+          "tagNamePlaceholder": "Ex : Department",
+          "tagValue": "Tag value",
+          "tagValuePlaceholder": "Ex : Dev",
+          "addTag": "Add User Tag"
+        },
+        "accessKeyLabel": "Access Key",
+        "arnField": "Instance Profile ARN"
       },
       "reviewAndSummary": {
         "daily": "Daily",

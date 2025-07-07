@@ -8,15 +8,16 @@ import {
   UNIVERSE_NAME
 } from '../../fields/FieldNames';
 
+export interface ProviderConfig {
+  uuid: string;
+  isOnPremManuallyProvisioned: boolean;
+  code: string;
+  imageBundles: ImageBundle & { uuid: string }[];
+  allAccessKeys: AccessKey[];
+}
 export interface GeneralSettingsProps {
   [UNIVERSE_NAME]: UniverseSpec['name'];
-  [PROVIDER_CONFIGURATION]: {
-    uuid: string;
-    isOnPremManuallyProvisioned: boolean;
-    code: string;
-    imageBundles: ImageBundle & { uuid: string }[];
-    allAccessKeys: AccessKey[];
-  };
+  [PROVIDER_CONFIGURATION]: ProviderConfig;
   [DATABASE_VERSION]: UniverseInfo['ybc_software_version'];
   [CLOUD]: string;
 }

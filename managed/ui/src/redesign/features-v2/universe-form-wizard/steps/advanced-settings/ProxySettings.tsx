@@ -14,6 +14,7 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { ProxyAdvancedProps } from './dtos';
 import { EnableProxyServer } from '../../fields';
@@ -22,6 +23,8 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
+
+  const { t } = useTranslation();
 
   const methods = useForm<ProxyAdvancedProps>({});
 
@@ -41,7 +44,7 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <StyledPanel>
-        <StyledHeader>Proxy Configuration</StyledHeader>
+        <StyledHeader>{t('createUniverseV2.proxySettings.header')}</StyledHeader>
         <StyledContent>
           <EnableProxyServer disabled={false} />
         </StyledContent>

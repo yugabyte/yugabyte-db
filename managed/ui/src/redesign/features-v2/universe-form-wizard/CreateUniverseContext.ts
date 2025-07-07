@@ -54,7 +54,7 @@ export type createUniverseFormProps = {
 };
 
 export const initialCreateUniverseFormState: createUniverseFormProps = {
-  activeStep: CreateUniverseSteps.GENERAL_SETTINGS,
+  activeStep: CreateUniverseSteps.SECURITY,
   resilienceAndRegionsSettings: {
     [RESILIENCE_TYPE]: ResilienceType.REGULAR,
     [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
@@ -70,16 +70,18 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
   },
   databaseSettings: {
     ysql: {
-      enable: false,
+      enable: true,
       enable_auth: false,
       password: ''
     },
     ycql: {
-      enable: false,
+      enable: true,
       enable_auth: false,
       password: ''
     },
-    gFlags: []
+    gFlags: [],
+    enableConnectionPooling: false,
+    enablePGCompatibitilty: false
   }
 };
 

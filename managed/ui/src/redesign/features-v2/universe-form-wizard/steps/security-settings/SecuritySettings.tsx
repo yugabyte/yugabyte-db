@@ -5,27 +5,38 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
-// import { yupResolver } from '@hookform/resolvers/yup';
-// import { useTranslation } from 'react-i18next';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { useTranslation } from 'react-i18next';
 import { mui } from '@yugabyte-ui-library/core';
 import { AssignPublicIPField, EARField, EITField } from '../../fields';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
 import { SecuritySettingsProps } from './dtos';
+import { SecurityValidationSchema } from './ValidationSchema';
 
 const { Box } = mui;
 
 export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const [
+    { securitySettings, generalSettings },
+    { moveToNextPage, moveToPreviousPage, saveSecuritySettings }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
-  const methods = useForm<SecuritySettingsProps>({});
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.securitySettings'
+  });
+
+  const methods = useForm<SecuritySettingsProps>({
+    resolver: yupResolver(SecurityValidationSchema()),
+    defaultValues: { ...securitySettings },
+    mode: 'onChange'
+  });
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
         methods.handleSubmit((data) => {
+          saveSecuritySettings(data);
           moveToNextPage();
         })();
       },
@@ -39,21 +50,24 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <StyledPanel>
-        <StyledHeader>{'Public IP assignment'}</StyledHeader>
+        <StyledHeader>{t('publicIPTitle')}</StyledHeader>
         <StyledContent>
-          <AssignPublicIPField disabled={false} />
+          <AssignPublicIPField
+            disabled={false}
+            providerCode={generalSettings?.providerConfiguration?.code || ''}
+          />
         </StyledContent>
       </StyledPanel>
       <Box sx={{ mt: 3 }}></Box>
       <StyledPanel>
-        <StyledHeader>{'Encryption in Transit Settings'}</StyledHeader>
+        <StyledHeader>{t('eitTitle')}</StyledHeader>
         <StyledContent>
           <EITField disabled={false} />
         </StyledContent>
       </StyledPanel>
       <Box sx={{ mt: 3 }}></Box>
       <StyledPanel>
-        <StyledHeader>{'Encryption at Rest Settings'}</StyledHeader>
+        <StyledHeader>{t('earTitle')}</StyledHeader>
         <StyledContent>
           <EARField disabled={false} />
         </StyledContent>
