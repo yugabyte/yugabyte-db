@@ -130,7 +130,7 @@ You can provide the connection details in one of the following ways:
 The following is an example connection string for connecting to YugabyteDB.
 
 ```python
-conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
+conn = psycopg.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
 ```
 
 ### Step 3: Write your application
