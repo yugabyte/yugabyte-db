@@ -33,7 +33,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - Access to the [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/ai-services/openai-service) resource
 - The latest [Node.js version](https://github.com/nodejs/release#release-schedule)
 - The latest version of [Docker](https://docs.docker.com/desktop/)
-- A YugabyteDB cluster running [v2.25+](https://download.yugabyte.com/)
+- A YugabyteDB cluster running [v2.25.1](https://download.yugabyte.com/) or later
 - [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
 
 ## Deploy Azure OpenAI models
@@ -92,21 +92,21 @@ docker network create yb-network
 docker run -d --name ybnode1 --hostname ybnode1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.25.2.0-b359 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name ybnode2 --hostname ybnode2  --net yb-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.25.2.0-b359 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
     
 docker run -d --name ybnode3 --hostname ybnode3 --net yb-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.25.2.0-b359 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
@@ -129,7 +129,7 @@ Navigate to the YugabyteDB UI to confirm that the database is up and running, at
 
 As long as the application provides a lodging recommendation service for San Francisco, you can leverage a publicly available Airbnb data set with over 7500 relevant listings:
 
-1. Create the `airbnb_listing` table using [ysqlsh](../../../api/ysqlsh/) (you can use any other comparable SQL tool also):
+1. Create the `airbnb_listing` table using [ysqlsh](../../../api/ysqlsh/):
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte -d yugabyte -f {project_dir}/sql/0_airbnb_listings.sql
@@ -141,12 +141,12 @@ As long as the application provides a lodging recommendation service for San Fra
     ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte -c "\copy airbnb_listing from '{project_dir}/sql/sf_airbnb_listings.csv' DELIMITER ',' CSV HEADER;"
     ```
 
-1. Execute the following script to enable the `pgvector` extension, add the `description_embedding` column of the vector type to the `airbnb_listing` table and create a index:
+1. Execute the following script to enable the `pgvector` extension, add the `description_embedding` column of the vector type to the `airbnb_listing` table, and create an index:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte -c "\i {project_dir}/sql/1_airbnb_embeddings.sql"
     ```
-    The search speed gets increased by using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type. This application uses cosine distance for indexing, as the backend query is using cosine similarity search.
+    This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
 
 ## Generate embeddings for Airbnb listings
 
