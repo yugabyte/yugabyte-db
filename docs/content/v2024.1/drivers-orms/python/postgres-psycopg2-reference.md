@@ -18,7 +18,7 @@ type: docs
     <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
       <i class="fa-brands fa-java" aria-hidden="true"></i>
-      Yugabyte Psycopg2 Smart
+      Yugabyte Psycopg2
     </a>
   </li>
   <li >

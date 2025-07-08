@@ -31,7 +31,7 @@ type: docs
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link">
       <img src="/icons/yugabyte.svg"></i>
-      Yugabyte Psycopg2 Smart
+      Yugabyte Psycopg2
     </a>
   </li>
 

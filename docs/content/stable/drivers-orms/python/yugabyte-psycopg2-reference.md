@@ -18,7 +18,7 @@ type: docs
   <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link active">
       <img src="/icons/yugabyte.svg"></i>
-      YugabyteDB Psycopg2 Smart
+      YugabyteDB Psycopg2
     </a>
   </li>
   <li >
