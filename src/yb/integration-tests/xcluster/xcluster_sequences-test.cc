@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <gmock/gmock.h>
 
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
@@ -18,7 +19,7 @@
 #include "yb/common/xcluster_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
-#include "yb/util/flags.h"
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/logging_test_util.h"
 
 DECLARE_bool(TEST_simulate_EnsureSequenceUpdatesAreInWal_failure);
@@ -153,6 +154,52 @@ TEST_F(XClusterAutomaticModeTest, StraightforwardSequenceReplication) {
   ASSERT_OK(BumpSequences(&producer_cluster_, namespace1));
   ASSERT_OK(WaitForSequencesReplicationDrain({namespace1}));
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
+}
+
+TEST_F(XClusterAutomaticModeTest, SequenceMetricsUseAliases) {
+  // Setup simple automatic replication with sequences so there will
+  // be metrics for sequences_data.
+  ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false,  namespace_name));
+  ASSERT_OK(SetUpSequences(&producer_cluster_,  namespace_name));
+  ASSERT_OK(SetUpSequences(&consumer_cluster_,  namespace_name));
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({ namespace_name}));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(BumpSequences(&producer_cluster_,  namespace_name));
+  ASSERT_OK(WaitForSequencesReplicationDrain({ namespace_name}));
+  auto namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(),  namespace_name));
+
+  // Fetch Prometheus metrics from producer.
+  std::string addr =
+     ToString(producer_cluster_.mini_cluster_->mini_tablet_server(0)->bound_http_addr());
+  EasyCurl c;
+  faststring buf;
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics", addr), &buf));
+
+  // Check each metric.
+  int xcluster_metric_count = 0;
+  std::string buffer = buf.ToString() + '\n';
+  std::string::size_type start = 0;
+  std::string::size_type end = 0;
+  for (start = 0; (end = buffer.find('\n', start)) != std::string::npos; start = end + 1) {
+    std::string line = buffer.substr(start, end - start);
+    // We only care about xCluster metrics for sequences_data.
+    if (line.find("metric_type=\"xcluster") == std::string::npos) {
+      continue;
+    }
+    if (line.find("sequences_data") == std::string::npos) {
+      continue;
+    }
+
+    xcluster_metric_count++;
+    using ::testing::HasSubstr;
+    EXPECT_THAT(line, HasSubstr(Format("namespace_name=\"$0\"",  namespace_name)));
+    EXPECT_THAT(line, HasSubstr("table_name=\"sequences_data\""));
+    EXPECT_THAT(
+        line, HasSubstr(Format(
+                  "table_id=\"$0\"", xcluster::GetSequencesDataAliasForNamespace(namespace_id))));
+  }
+  EXPECT_GT(xcluster_metric_count, 0);
 }
 
 TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithFiltering) {
