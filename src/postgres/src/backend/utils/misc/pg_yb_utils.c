@@ -137,6 +137,7 @@ static uint64_t yb_last_known_catalog_cache_version = YB_CATCACHE_VERSION_UNINIT
 static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+static bool yb_need_invalidate_all_table_cache = false;
 
 static bool YbHasDdlMadeChanges();
 
@@ -160,6 +161,32 @@ uint64_t
 YbGetNewCatalogVersion()
 {
 	return yb_new_catalog_version;
+}
+
+void
+YbSetNeedInvalidateAllTableCache()
+{
+	yb_need_invalidate_all_table_cache = true;
+}
+
+void
+YbResetNeedInvalidateAllTableCache()
+{
+	yb_need_invalidate_all_table_cache = false;
+}
+
+bool
+YbGetNeedInvalidateAllTableCache()
+{
+	return yb_need_invalidate_all_table_cache;
+}
+
+bool
+YbCanTryInvalidateTableCacheEntry()
+{
+	return IsYugaByteEnabled() &&
+		   yb_enable_invalidate_table_cache_entry &&
+		   !yb_need_invalidate_all_table_cache;
 }
 
 uint64_t
@@ -2140,6 +2167,7 @@ bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
 bool		yb_enable_invalidation_messages = true;
+bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
 

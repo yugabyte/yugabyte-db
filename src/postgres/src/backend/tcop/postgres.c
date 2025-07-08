@@ -4423,6 +4423,7 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 	}
 	if (message_lists.num_lists > 0)
 	{
+		YbResetNeedInvalidateAllTableCache();
 		if (YbApplyInvalidationMessages(&message_lists))
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
@@ -4435,12 +4436,13 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 			YbUpdateCatalogCacheVersion(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
-
-			/*
-			 * TODO(myang): only invalidate affected entries in the pggate
-			 * cache?
-			 */
-			HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+			if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
+			{
+				elog(LOG, "calling YBCPgInvalidateCache");
+				HandleYBStatus(YBCPgInvalidateCache(YbGetCatalogCacheVersion()));
+			}
+			else
+				HandleYBStatus(YBCPgUpdateTableCacheMinVersion(YbGetCatalogCacheVersion()));
 			yb_need_cache_refresh = false;
 			return true;
 		}

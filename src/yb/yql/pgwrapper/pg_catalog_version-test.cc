@@ -28,6 +28,8 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_string(vmodule);
+METRIC_DECLARE_counter(handler_latency_yb_tserver_PgClientService_OpenTable);
+METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_GetTableSchema);
 
 namespace yb {
 namespace pgwrapper {
@@ -3166,6 +3168,62 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
   ASSERT_EQ(row4, "on");
   ASSERT_EQ(row5, "off");
   ASSERT_EQ(row6, "off");
+}
+
+TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
+  for (int i = 0; i < 2; i++) {
+    if (i == 0) {
+      RestartClusterWithInvalMessageEnabled();
+    } else {
+      RestartClusterWithInvalMessageEnabled(
+          { "--ysql_yb_enable_invalidate_table_cache_entry=false" });
+    }
+    auto conn = CHECK_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("create table test_table$0(id int)", i));
+    auto conn1 = ASSERT_RESULT(Connect());
+    auto conn2 = ASSERT_RESULT(Connect());
+    auto open_table_count = [this]() -> Result<int64_t> {
+      int64_t result = 0;
+      for (auto* tserver : cluster_->tserver_daemons()) {
+        int64_t count = CHECK_RESULT(tserver->GetMetric<int64>(
+            &METRIC_ENTITY_server, "yb.tabletserver",
+            &METRIC_handler_latency_yb_tserver_PgClientService_OpenTable, "total_count"));
+        result += count;
+      }
+      return result;
+    };
+
+    auto get_schema_count = [this]() -> Result<int64_t> {
+      int64_t result = 0;
+      for (auto* master : cluster_->master_daemons()) {
+        int64_t count = CHECK_RESULT(master->GetMetric<int64>(
+            &METRIC_ENTITY_server, "yb.master",
+            &METRIC_handler_latency_yb_master_MasterDdl_GetTableSchema, "total_count"));
+        result += count;
+      }
+      return result;
+    };
+    auto open_table_count_before = CHECK_RESULT(open_table_count());
+    auto get_schema_count_before = CHECK_RESULT(open_table_count());
+    for (int col = 0; col < 100; col++) {
+      ASSERT_OK(conn1.ExecuteFormat("alter table test_table$0 add column c$1 int", i, col));
+      auto res = CHECK_RESULT(conn2.FetchFormat("select * from test_table$0", i));
+    }
+    auto open_table_count_after = CHECK_RESULT(open_table_count());
+    auto get_schema_count_after = CHECK_RESULT(get_schema_count());
+    LOG(INFO) << "i: " << i
+              << ", open_table_count_before: " << open_table_count_before
+              << ", open_table_count_after: " << open_table_count_after
+              << ", get_schema_count_before: " << get_schema_count_before
+              << ", get_schema_count_after: " << get_schema_count_after;
+    if (i == 0) {
+      ASSERT_EQ(open_table_count_after - open_table_count_before, 143);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 681);
+    } else {
+      ASSERT_EQ(open_table_count_after - open_table_count_before, 638);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 781);
+    }
+  }
 }
 
 } // namespace pgwrapper

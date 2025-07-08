@@ -220,6 +220,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   std::string GenerateNewYbrowid();
 
   void InvalidateAllTablesCache(uint64_t min_ysql_catalog_version);
+  void UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
 
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();

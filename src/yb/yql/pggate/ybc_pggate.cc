@@ -693,6 +693,10 @@ YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version) {
   return ToYBCStatus(pgapi->InvalidateCache(min_ysql_catalog_version));
 }
 
+YbcStatus YBCPgUpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version) {
+  return ToYBCStatus(pgapi->UpdateTableCacheMinVersion(min_ysql_catalog_version));
+}
+
 const YbcPgTypeEntity *YBCPgFindTypeEntity(YbcPgOid type_oid) {
   return pgapi->pg_types().Find(type_oid);
 }
@@ -1027,6 +1031,11 @@ YbcStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
 void YBCPgAlterTableInvalidateTableByOid(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid) {
   pgapi->InvalidateTableCache(PgObjectId(database_oid, table_relfilenode_oid));
+}
+
+void YBCPgRemoveTableCacheEntry(
+    const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid) {
+  pgapi->RemoveTableCacheEntry(PgObjectId(database_oid, table_relfilenode_oid));
 }
 
 // Tablegroup Operations ---------------------------------------------------------------------------

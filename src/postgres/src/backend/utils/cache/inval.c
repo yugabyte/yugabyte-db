@@ -724,6 +724,15 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 	{
 		if (msg->cat.dbId == MyDatabaseId || msg->cat.dbId == InvalidOid)
 		{
+			/* Need to invalidate whole catcache for pg_class or pg_index */
+			if (YbCanTryInvalidateTableCacheEntry() &&
+				(msg->cat.catId == RELNAMENSP ||
+				 msg->cat.catId == RELOID ||
+				 msg->cat.catId == INDEXRELID))
+			{
+				elog(LOG, "need invalidate all table cache: cat.catId %u", msg->cat.catId);
+				YbSetNeedInvalidateAllTableCache();
+			}
 			InvalidateCatalogSnapshot();
 
 			CatalogCacheFlushCatalog(msg->cat.catId);
@@ -736,6 +745,32 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 		if (msg->rc.dbId == MyDatabaseId || msg->rc.dbId == InvalidOid)
 		{
 			int			i;
+			if (YbCanTryInvalidateTableCacheEntry())
+			{
+				if (!OidIsValid(msg->rc.relId))
+				{
+					/* Need to invalidate whole relcache */
+					elog(LOG, "need invalidate all table cache: rc.relId is 0");
+					YbSetNeedInvalidateAllTableCache();
+				}
+				else
+				{
+					Relation    rel = YbRelationIdCacheLookup(msg->rc.relId);
+					if (rel)
+					{
+						/* If rc.dbId is 0 it menas a shared catalog */
+						Oid         dbid = OidIsValid(msg->rc.dbId) ? MyDatabaseId : Template1DbOid;
+						elog(DEBUG1, "relcache removing tuple for relation %u:%u", dbid, msg->rc.relId);
+						YBCPgAlterTableInvalidateTableByOid(dbid, YbGetRelfileNodeId(rel));
+					}
+					else
+					{
+						/* We assume the table cache entry did not exist or was already removed. */
+						elog(DEBUG1, "relation for rc.relId %u not found, "
+									 "skipped table cache entry invalidation", msg->rc.relId);
+					}
+				}
+			}
 
 			if (msg->rc.relId == InvalidOid)
 				RelationCacheInvalidate(false);

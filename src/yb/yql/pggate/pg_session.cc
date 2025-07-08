@@ -728,6 +728,14 @@ void PgSession::InvalidateAllTablesCache(uint64_t min_ysql_catalog_version) {
   table_cache_.clear();
 }
 
+void PgSession::UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version) {
+  DCHECK_LE(table_cache_min_ysql_catalog_version_, min_ysql_catalog_version);
+  if (table_cache_min_ysql_catalog_version_ >= min_ysql_catalog_version) {
+    return;
+  }
+  table_cache_min_ysql_catalog_version_ = min_ysql_catalog_version;
+}
+
 Result<client::TableSizeInfo> PgSession::GetTableDiskSize(const PgObjectId& table_oid) {
   return pg_client_.GetTableDiskSize(table_oid);
 }

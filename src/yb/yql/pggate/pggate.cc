@@ -649,6 +649,11 @@ Status PgApiImpl::InvalidateCache(uint64_t min_ysql_catalog_version) {
   return Status::OK();
 }
 
+Status PgApiImpl::UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version) {
+  pg_session_->UpdateTableCacheMinVersion(min_ysql_catalog_version);
+  return Status::OK();
+}
+
 bool PgApiImpl::GetDisableTransparentCacheRefreshRetry() {
   return FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry;
 }
@@ -888,6 +893,10 @@ Result<PgTableDescPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
 
 void PgApiImpl::InvalidateTableCache(const PgObjectId& table_id) {
   pg_session_->InvalidateTableCache(table_id, InvalidateOnPgClient::kTrue);
+}
+
+void PgApiImpl::RemoveTableCacheEntry(const PgObjectId& table_id) {
+  pg_session_->InvalidateTableCache(table_id, InvalidateOnPgClient::kFalse);
 }
 
 //--------------------------------------------------------------------------------------------------

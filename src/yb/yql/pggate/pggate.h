@@ -152,6 +152,9 @@ class PgApiImpl {
   // Invalidate the sessions table cache.
   Status InvalidateCache(uint64_t min_ysql_catalog_version);
 
+  // Update the table cache's min_ysql_catalog_version.
+  Status UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
+
   // Get the gflag TEST_ysql_disable_transparent_cache_refresh_retry.
   bool GetDisableTransparentCacheRefreshRetry();
 
@@ -274,6 +277,7 @@ class PgApiImpl {
 
   // Invalidate the cache entry corresponding to table_id from the PgSession table cache.
   void InvalidateTableCache(const PgObjectId& table_id);
+  void RemoveTableCacheEntry(const PgObjectId& table_id);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop tablegroup.

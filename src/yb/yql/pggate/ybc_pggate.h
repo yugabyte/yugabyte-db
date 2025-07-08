@@ -76,6 +76,9 @@ void YBCPgDeleteStatement(YbcPgStatement handle);
 // Invalidate the sessions table cache.
 YbcStatus YBCPgInvalidateCache(uint64_t min_ysql_catalog_version);
 
+// Update the table cache's min_ysql_catalog_version.
+YbcStatus YBCPgUpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
+
 // Check if initdb has been already run.
 YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
 
@@ -364,6 +367,8 @@ YbcStatus YBCPgExecAlterTable(YbcPgStatement handle);
 YbcStatus YBCPgAlterTableInvalidateTableCacheEntry(YbcPgStatement handle);
 
 void YBCPgAlterTableInvalidateTableByOid(
+    const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid);
+void YBCPgRemoveTableCacheEntry(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid);
 
 YbcStatus YBCPgNewDropTable(YbcPgOid database_oid,

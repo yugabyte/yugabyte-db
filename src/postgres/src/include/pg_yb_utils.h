@@ -99,6 +99,10 @@ extern uint64_t YBGetActiveCatalogCacheVersion();
 
 extern uint64_t YbGetCatalogCacheVersion();
 extern uint64_t YbGetNewCatalogVersion();
+extern void YbSetNeedInvalidateAllTableCache();
+extern void YbResetNeedInvalidateAllTableCache();
+extern bool YbGetNeedInvalidateAllTableCache();
+extern bool YbCanTryInvalidateTableCacheEntry();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
 extern void YbResetNewCatalogVersion();
@@ -759,6 +763,7 @@ extern bool yb_enable_advisory_locks;
  * Enable invalidation messages.
  */
 extern bool yb_enable_invalidation_messages;
+extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
 
