@@ -20,9 +20,9 @@ YugabyteDB's transactional DDL provides similar guarantees for rolling back DDL 
 
 ## Enable transactional DDL
 
-{{<tags/feature/tp idea="1677">}} Support for transactional DDL is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `yb_ddl_transaction_block_enabled` to true.
+{{<tags/feature/tp idea="1677">}} Support for transactional DDL is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `ysql_yb_ddl_transaction_block_enabled` to true.
 
-Because `yb_ddl_transaction_block_enabled` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=yb_ddl_transaction_block_enabled`).
+Because `ysql_yb_ddl_transaction_block_enabled` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled`).
 
 ### Rollback capabilities
 
