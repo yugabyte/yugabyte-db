@@ -30,99 +30,37 @@ All DDLs supported in YugabyteDB provide the same rollback capabilities as Postg
 
 Note that some DDL statements such as DDLs on database or tablespaces are disallowed in a transaction block in PostgreSQL, and are also disallowed in YugabyteDB.
 
-#### Rollback CREATE TABLE
-
-This example demonstrates rolling back a `CREATE TABLE` statement within a transaction block.
-
-```sql
-yugabyte=# BEGIN;
-yugabyte=*# CREATE TABLE foo (bar int);
-yugabyte=*# INSERT INTO foo VALUES (1);
-yugabyte=*# ROLLBACK;
-yugabyte=# SELECT * FROM foo;
-```
-
-```output
-ERROR:  relation "foo" does not exist
-LINE 1: SELECT * FROM foo;
-                      ^
-```
-
-#### Rollback ALTER TABLE
-
-This example demonstrates rolling back an `ALTER TABLE` statement that adds a column.
+The following example demonstrates how DDL statements, such as ALTER TABLE, behave in a PostgreSQL-compatible transaction in YugabyteDB. It highlights the atomicity of transactions, where all changes (both DML and DDL) are either committed together or entirely rolled back.
 
 ```sql
 yugabyte=# CREATE TABLE foo (bar int);
+yugabyte=# INSERT INTO foo VALUES (1);
 yugabyte=# BEGIN;
+yugabyte=*# INSERT INTO foo VALUES (2);
 yugabyte=*# ALTER TABLE foo ADD COLUMN name text;
+yugabyte=*# INSERT INTO foo VALUES (3, 'test');
 yugabyte=*# SELECT * FROM foo;
 ```
 
 ```output
- bar | name
+ bar | name
 -----+------
-(0 rows)
+   1 |
+   2 |
+   3 | test
+(3 rows)
 ```
 
 ```sql
 yugabyte=*# ROLLBACK;
 yugabyte=# SELECT * FROM foo;
- bar
+```
+
+```output
+ bar
 -----
-(0 rows)
-```
-
-#### Rollback Materialized View
-
-This example demonstrates rolling back the creation of a materialized view.
-
-```sql
-yugabyte=# CREATE TABLE t4 (id int);
-yugabyte=# INSERT INTO t4 VALUES (1);
-yugabyte=# BEGIN;
-yugabyte=*# CREATE MATERIALIZED VIEW mv4 AS SELECT * FROM t4;
-yugabyte=*# ROLLBACK;
-yugabyte=# SELECT * FROM mv4;
-```
-
-```output
-ERROR:  relation "mv4" does not exist
-LINE 1: SELECT * FROM mv4;
-                      ^
-```
-
-#### Rollback ALTER ROLE
-
-This example demonstrates rolling back an `ALTER ROLE` statement that grants a privilege.
-
-```sql
-yugabyte=# CREATE ROLE test_user;
-yugabyte=#
-yugabyte=# BEGIN;
-yugabyte=*# ALTER ROLE test_user WITH CREATEDB;
-yugabyte=*# \du test_user
-```
-
-```output
-                  List of roles
- Role name |       Attributes        | Member of
------------+-------------------------+-----------
- test_user | Create DB, Cannot login | {}
-```
-
-```sql
-yugabyte=*# ROLLBACK;
-
-yugabyte=# -- Role doesn't have CREATEDB privilege
-yugabyte=# \du test_user
-```
-
-```output
-            List of roles
- Role name |  Attributes  | Member of
------------+--------------+-----------
- test_user | Cannot login | {}
+   1
+(1 row)
 ```
 
 ### Limitations
