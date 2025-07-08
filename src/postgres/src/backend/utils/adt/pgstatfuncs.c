@@ -2697,6 +2697,25 @@ yb_pg_stat_get_backend_rss_mem_bytes(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(result);
 }
 
+/* Returns rss_mem_bytes from the process's beid */
+Datum
+yb_pg_stat_get_backend_pss_mem_bytes(PG_FUNCTION_ARGS)
+{
+	if (!yb_enable_memory_tracking)
+		PG_RETURN_NULL();
+
+	int32		beid = PG_GETARG_INT32(0);
+	int64		result;
+	LocalPgBackendStatus *local_beentry;
+
+	if ((local_beentry = pgstat_fetch_stat_local_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	result = local_beentry->yb_backend_pss_mem_bytes;
+
+	PG_RETURN_INT64(result);
+}
+
 /*
  * In YB, this function is used to retrieve stats for in-progress concurrent
  * CREATE INDEX from master.

@@ -301,6 +301,6 @@ extern void YbPgMemResetStmtConsumption();
  * Returns the resident set size (physical memory use) of a process
  * measured in bytes, or -1 if the value cannot be determined on this OS.
  */
-extern int64_t YbPgGetCurRSSMemUsage(int pid);
+extern void YbPgGetCurRssPssMemUsage(int pid, int64_t *rss, int64_t *pss);
 
 #endif							/* MEMUTILS_H */
