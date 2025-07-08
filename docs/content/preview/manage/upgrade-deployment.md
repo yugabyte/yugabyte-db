@@ -49,7 +49,9 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 
-- You can upgrade from any version of 2.14.x to any stable version in one go.
+- With the exception of the [major YSQL upgrade to v2025.1](../ysql-major-upgrade-yugabyted/), you can upgrade from any version of 2.14.x to any stable version in one go.
+
+- After finalizing an upgrade, snapshots from the previous version can no longer be used for PITR. Backups taken on a newer version cannot be restored to universes running a previous version. Backups taken before the upgrade can be used for restore.
 
 ## Upgrade YugabyteDB cluster
 

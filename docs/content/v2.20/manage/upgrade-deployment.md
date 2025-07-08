@@ -40,6 +40,10 @@ Review the following information before starting an upgrade.
 
 - Roll back is {{<tags/feature/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 
+- With the exception of the major YSQL upgrade to v2025.1, you can upgrade from any version of 2.14.x to any stable version in one go.
+
+- After finalizing an upgrade, snapshots from the previous version can no longer be used for PITR. Backups taken on a newer version cannot be restored to universes running a previous version. Backups taken before the upgrade can be used for restore.
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:

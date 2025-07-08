@@ -63,8 +63,6 @@ During the upgrade process, until the upgrade is finalized or rolled back, the f
 
 Keep in mind the following additional caveats for backups and PITR:
 
-- Backups taken during the monitoring phase of a YSQL major upgrade cannot be restored on the same universe after rollback.
+- Backups taken during the monitoring phase of a YSQL major upgrade cannot be restored on the same universe after rollback. Backups taken before the upgrade can be used for restore.
 
-- You can't perform PITR on the universe using old snapshots after rolling back the YSQL major upgrade.
-
-- You can't perform PITR using an old snapshot after finalizing the upgrade.
+- You can't perform PITR on the universe using old snapshots after rolling back the YSQL major upgrade, or after finalizing the upgrade.

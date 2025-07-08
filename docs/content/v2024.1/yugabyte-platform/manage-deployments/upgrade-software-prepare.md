@@ -16,6 +16,12 @@ type: docs
 
 If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major release of YugabyteDB. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
 
+## Backups and point-in-time-restore
+
+After finalizing an upgrade, backups and snapshots from the previous version can no longer be used for PITR.
+
+Backups taken on a newer version cannot be restored to universes running a previous version. Backups taken before the upgrade can be used for restore.
+
 ## Review major changes in previous YugabyteDB releases
 
 {{< warning title="For YugabyteDB upgrades in YBA" >}}

@@ -36,7 +36,9 @@ Transparent hugepages (THP) should be enabled on nodes for optimal performance. 
 
 ## Backups and point-in-time-restore
 
-After finalizing an upgrade, backups and snapshots from the previous version can no longer be used for PITR or restoring.
+After finalizing an upgrade, backups and snapshots from the previous version can no longer be used for PITR.
+
+Backups taken on a newer version cannot be restored to universes running a previous version. Backups taken before the upgrade can be used for restore.
 
 ## Review major changes in previous YugabyteDB releases
 
