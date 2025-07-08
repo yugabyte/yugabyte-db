@@ -46,6 +46,9 @@ var installCmd = &cobra.Command{
 			log.Debug("marking self signed cert in ybactlstate")
 			state.Config.SelfSignedCert = true
 		}
+		// Save the services installed
+		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
+		state.Services.Platform = !viper.GetBool("perfAdvisor.enabled") || viper.GetBool("perfAdvisor.withPlatform")
 		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
 			log.Fatal("failed to start install: " + err.Error())
 		}
@@ -93,19 +96,19 @@ var installCmd = &cobra.Command{
 			}
 		}
 
-		for _, name := range serviceOrder {
-			log.Info("About to install component " + name)
-			if err := services[name].Install(); err != nil {
-				log.Fatal("Failed while installing " + name + ": " + err.Error())
+		for service := range serviceManager.Services() {
+			log.Info("About to install component " + service.Name())
+			if err := service.Install(); err != nil {
+				log.Fatal("Failed while installing " + service.Name() + ": " + err.Error())
 			}
 			if !dataless {
-				if err := services[name].Initialize(); err != nil {
-					log.Fatal("Failed while initializing " + name + ": " + err.Error())
+				if err := service.Initialize(); err != nil {
+					log.Fatal("Failed while initializing " + service.Name() + ": " + err.Error())
 				}
 			} else {
-				log.Debug("skipping initializing of service" + name)
+				log.Debug("skipping initializing of service" + service.Name())
 			}
-			log.Info("Completed installing component " + name)
+			log.Info("Completed installing component " + service.Name())
 		}
 
 		// Update permissions of data and software to service username
@@ -144,8 +147,8 @@ var installCmd = &cobra.Command{
 
 func getAndPrintStatus(state *ybactlstate.State) {
 	var statuses []common.Status
-	for _, name := range serviceOrder {
-		status, err := services[name].Status()
+	for service := range serviceManager.Services() {
+		status, err := service.Status()
 		if err != nil {
 			log.Fatal("failed to get status: " + err.Error())
 		}

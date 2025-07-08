@@ -73,3 +73,4 @@ The following table shows the target database support for each migration type.
 
 - [How to Migrate from Oracle Database to YugabyteDB Using YugabyteDB Voyager](https://www.yugabyte.com/blog/migrate-from-oracle-database-to-yugabytedb-using-voyager/)
 - [Migrating from MySQL to YugabyteDB Using YugabyteDB Voyager](https://www.yugabyte.com/blog/migrate-web-application-mysql-yugabytedb-voyager/)
+- [Exploring Migration Options From PostgreSQL Using YugabyteDB Voyager](https://www.yugabyte.com/blog/postgresql-migration-options-using-yugabytedb-voyager/)

@@ -121,6 +121,8 @@ message DownloadSoftwareInput {
     string httpPackageChecksum = 8;
     string iTestS3PackagePath = 9;
     string remoteTmp = 10;
+    string ybHomeDir = 11;
+    uint32 numReleasesToKeep = 12;
 }
 
 message DownloadSoftwareOutput {
@@ -183,4 +185,12 @@ message SetupCGroupInput {
 
 message SetupCGroupOutput {
     int32 pid = 1;
+}
+
+message DestroyServerInput {
+    string ybHomeDir = 1;
+    bool isProvisioningCleanup = 2;
+}
+
+message DestroyServerOutput {
 }

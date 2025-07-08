@@ -38,26 +38,6 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("invalid reconfigure: " + err.Error())
 		}
 
-		// Regenerate self signed certs if hostname has changed or if certs are missing from the config.
-		/*
-			var serverCertPath, serverKeyPath string = "", ""
-			if viper.GetString("server_cert_path") == "" || viper.GetString("server_key_path") == "" {
-				log.Info("Generating new self-signed server certificates")
-				serverCertPath, serverKeyPath = common.GenerateSelfSignedCerts()
-			} else if state.Config.Hostname != viper.GetString("host") && state.Config.SelfSignedCert {
-				log.Info("Regenerating self signed certs for hostname change")
-				serverCertPath, serverKeyPath = common.RegenerateSelfSignedCerts()
-			}
-			if serverCertPath != "" || serverKeyPath != "" {
-				log.Debug("Populating new self signed certs in yba-ctl.yml: " +
-					serverCertPath + ", " + serverKeyPath)
-				common.SetYamlValue(common.InputFile(), "server_cert_path", serverCertPath)
-				common.SetYamlValue(common.InputFile(), "server_key_path", serverKeyPath)
-				common.InitViper()
-				state.Config.Hostname = viper.GetString("host")
-				state.Config.SelfSignedCert = true // Ensure we track self signed certs after reconfig
-			}
-		*/
 		if err := handleCertReconfig(state); err != nil {
 			log.Fatal("failed to handle cert reconfig: " + err.Error())
 		}
@@ -67,9 +47,9 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("failed to create server.pem: " + err.Error())
 		}
 
-		for _, name := range serviceOrder {
-			log.Info("Stopping service " + name)
-			services[name].Stop()
+		for service := range serviceManager.Services() {
+			log.Info("Stopping service " + service.Name())
+			service.Stop()
 		}
 
 		// Change into the dir we are in so that we can specify paths relative to ourselves
@@ -81,35 +61,24 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal(fmt.Sprintf("Error changing default config values: %s", err.Error()))
 		}
 
-		for _, name := range serviceOrder {
-			log.Info("Regenerating config for service " + name)
-			config.GenerateTemplate(services[name])
-			if name == PrometheusServiceName {
-				// Fix up basic auth
-				prom := services[name].(Prometheus)
-				if err := prom.FixBasicAuth(); err != nil {
-					log.Fatal("failed to edit basic auth: " + err.Error())
-				}
-			}
-			if name == PostgresServiceName {
-				// Make sure postgres is configured correctly
-				pg := services[name].(Postgres)
-				pg.modifyPostgresConf()
+		for service := range serviceManager.Services() {
+			if err := service.Reconfigure(); err != nil {
+				log.Fatal("Failed to reconfigure service " + service.Name() + ": " + err.Error())
 			}
 			// Set permissions to be safe
 			if err := common.SetAllPermissions(); err != nil {
 				log.Fatal("error updating permissions for data and software directories: " + err.Error())
 			}
-			log.Info("Starting service " + name)
-			services[name].Start()
+			log.Info("Starting service " + service.Name())
+			service.Start()
 		}
 
 		if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
 			log.Fatal(err.Error())
 		}
 
-		for _, name := range serviceOrder {
-			status, err := services[name].Status()
+		for service := range serviceManager.Services() {
+			status, err := service.Status()
 			if err != nil {
 				log.Fatal("Failed to get status: " + err.Error())
 			}

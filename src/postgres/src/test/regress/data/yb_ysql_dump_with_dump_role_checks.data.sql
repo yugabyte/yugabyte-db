@@ -7,7 +7,12 @@
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
-SET yb_ignore_relfilenode_ids = false;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_ignore_relfilenode_ids') THEN
+    EXECUTE 'SET yb_ignore_relfilenode_ids TO false';
+  END IF;
+END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -35,9 +40,9 @@ SET row_security = off;
 -- YB: disable auto analyze to avoid conflicts with catalog changes
 DO $$
 BEGIN
-IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
-END IF;
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
+  END IF;
 END $$;
 
 --
@@ -679,9 +684,39 @@ SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16627'::pg_catalog.
 
 CREATE TABLE public.level1_0 (
     c1 integer NOT NULL,
+    c2 text NOT NULL,
+    c3 text,
+    c4 text,
     CONSTRAINT level1_0_pkey PRIMARY KEY(c1 ASC)
-)
-INHERITS (public.level0);
+);
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c2'
+  AND attrelid = 'public.level1_0'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c3'
+  AND attrelid = 'public.level1_0'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c4'
+  AND attrelid = 'public.level1_0'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level1_0 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level0_c1_cons'
+  AND conrelid = 'public.level1_0'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.level1_0 INHERIT public.level0;
 
 
 \if :use_roles
@@ -716,12 +751,42 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16632'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16632'::pg_catalog.oid);
 
 CREATE TABLE public.level1_1 (
-    c2 text,
+    c1 integer,
+    c2 text NOT NULL,
+    c3 text,
+    c4 text,
     CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
     CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
 )
-INHERITS (public.level0)
 SPLIT INTO 3 TABLETS;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c1'
+  AND attrelid = 'public.level1_1'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c3'
+  AND attrelid = 'public.level1_1'::pg_catalog.regclass;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c4'
+  AND attrelid = 'public.level1_1'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level1_1 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level0_c1_cons'
+  AND conrelid = 'public.level1_1'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.level1_1 INHERIT public.level0;
 
 
 \if :use_roles
@@ -751,12 +816,28 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16635'::pg_catalog.
 SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16635'::pg_catalog.oid);
 
 CREATE TABLE public.level2_0 (
-    c1 integer,
-    c2 text,
-    c3 text NOT NULL
+    c1 integer NOT NULL,
+    c2 text NOT NULL,
+    c3 text NOT NULL,
+    c4 text
 )
-INHERITS (public.level1_0)
 SPLIT INTO 3 TABLETS;
+
+-- For binary upgrade, recreate inherited column.
+UPDATE pg_catalog.pg_attribute
+SET attislocal = false
+WHERE attname = 'c4'
+  AND attrelid = 'public.level2_0'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level2_0 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level0_c1_cons'
+  AND conrelid = 'public.level2_0'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.level2_0 INHERIT public.level1_0;
 
 
 \if :use_roles
@@ -791,14 +872,31 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16641'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16641'::pg_catalog.oid);
 
 CREATE TABLE public.level2_1 (
-    c1 integer,
-    c2 text,
+    c1 integer NOT NULL,
+    c2 text NOT NULL,
     c3 text NOT NULL,
     c4 text NOT NULL,
     CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
 )
-INHERITS (public.level1_0, public.level1_1)
 SPLIT INTO 3 TABLETS;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level2_1 ADD CONSTRAINT level0_c1_cons CHECK ((c1 > 0));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level0_c1_cons'
+  AND conrelid = 'public.level2_1'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inherited constraint.
+ALTER TABLE ONLY public.level2_1 ADD CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2));
+UPDATE pg_catalog.pg_constraint
+SET conislocal = false
+WHERE contype = 'c' AND conname = 'level1_1_c1_cons'
+  AND conrelid = 'public.level2_1'::pg_catalog.regclass;
+
+-- For binary upgrade, set up inheritance this way.
+ALTER TABLE ONLY public.level2_1 INHERIT public.level1_0;
+ALTER TABLE ONLY public.level2_1 INHERIT public.level1_1;
 
 
 \if :use_roles
@@ -3459,9 +3557,9 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists 
 -- YB: re-enable auto analyze after all catalog changes
 DO $$
 BEGIN
-IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
-EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
-END IF;
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
+    EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+  END IF;
 END $$;
 
 --

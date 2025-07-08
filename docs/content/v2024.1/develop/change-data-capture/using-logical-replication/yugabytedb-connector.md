@@ -35,7 +35,7 @@ The connector produces a change event for every row-level insert, update, and de
 
 YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the configured tables. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
-The connector is tolerant of failures. As the connector reads changes and produces events, it records the The Log Sequence Number ([LSN](../key-concepts/#lsn)) for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off.
+The connector is tolerant of failures. As the connector reads changes and produces events, it records the Log Sequence Number ([LSN](../key-concepts/#lsn)) for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off.
 
 {{< tip title="Use UTF-8 encoding" >}}
 

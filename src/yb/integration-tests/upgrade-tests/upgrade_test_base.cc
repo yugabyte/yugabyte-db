@@ -278,16 +278,6 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   // and 127.0.0.6.
   opts.use_even_ips = true;
 
-  // Allow local socket connections for ysqlsh. This was added in newer versions as part of
-  // D39566.
-  std::string hba_conf_value = "local all yugabyte trust";
-  if (!opts.enable_ysql_auth) {
-    // Include the default allow all setting.
-    hba_conf_value += ",host all all all trust";
-  }
-  AppendCsvFlagValue(opts.extra_master_flags, "ysql_hba_conf_csv", hba_conf_value);
-  AppendCsvFlagValue(opts.extra_tserver_flags, "ysql_hba_conf_csv", hba_conf_value);
-
   // Disable TEST_always_return_consensus_info_for_succeeded_rpc since it is not upgrade safe.
   AddUnDefOkAndSetFlag(
       opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");

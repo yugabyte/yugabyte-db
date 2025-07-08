@@ -8,25 +8,32 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
+
+import { FormProvider, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { ProviderConfigurationField } from '../../fields/provider-configuration/ProviderConfiguration';
+import { DatabaseVersionField } from '../../fields/database-version/DatabaseVersion';
+import { UniverseNameField } from '../../fields';
+import { CloudField } from '../../fields/provider/ProviderSelect';
+import { GeneralSettingsProps } from './dtos';
+import { GeneralSettingsValidationSchema } from './ValidationSchema';
+
+import { generateUniqueName } from '../../../../helpers/utils';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
-import { UniverseNameField } from '../../fields';
-import { FormProvider, useForm } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
-import { GeneralSettingsValidationSchema } from './ValidationSchema';
-import { useTranslation } from 'react-i18next';
-import { ProviderConfigurationField } from '../../fields/provider-configuration/ProviderConfiguration';
-import { DatabaseVersionField } from '../../fields/database-version/DatabaseVersion';
-import { CloudField } from '../../fields/provider/ProviderSelect';
-import { GeneralSettingsProps } from './dtos';
-
-import { ReactComponent as ShuffleIcon } from '../../../../assets/shuffle.svg';
-import { generateUniqueName } from '../../../../helpers/utils';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
+import {
+  CLOUD,
+  DATABASE_VERSION,
+  PROVIDER_CONFIGURATION,
+  UNIVERSE_NAME
+} from '../../fields/FieldNames';
+import { ReactComponent as ShuffleIcon } from '../../../../assets/shuffle.svg';
 
 const CONTROL_WIDTH = '480px';
 
@@ -38,7 +45,8 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
   const methods = useForm<GeneralSettingsProps>({
     resolver: yupResolver(GeneralSettingsValidationSchema(t)),
-    defaultValues: generalSettings
+    defaultValues: generalSettings,
+    mode: 'onChange'
   });
 
   useImperativeHandle(
@@ -56,6 +64,11 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   );
 
   const { errors } = methods.formState;
+  const cloud = methods.watch('cloud');
+
+  useEffect(() => {
+    methods.resetField(PROVIDER_CONFIGURATION);
+  }, [cloud]);
 
   return (
     <FormProvider {...methods}>
@@ -64,7 +77,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
         <StyledContent>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <UniverseNameField<GeneralSettingsProps>
-              name="universeName"
+              name={UNIVERSE_NAME}
               label={t('universeName')}
               placeholder={t('universeNamePlaceholder')}
               sx={{
@@ -81,17 +94,18 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               }}
             />
           </div>
-          <CloudField<GeneralSettingsProps> name="cloud" label={t('cloudProvider')} />
+          <CloudField<GeneralSettingsProps> name={CLOUD} label={t('cloudProvider')} />
           <ProviderConfigurationField<GeneralSettingsProps>
-            name="providerConfiguration"
+            name={PROVIDER_CONFIGURATION}
             label={t('providerconfiguration')}
             placeholder={t('providerConfigurationPlaceholder')}
             sx={{
               width: CONTROL_WIDTH
             }}
+            filterByProvider={cloud}
           />
           <DatabaseVersionField<GeneralSettingsProps>
-            name="databaseVersion"
+            name={DATABASE_VERSION}
             label={t('databaseVersion')}
             placeholder={t('databaseVersionPlaceholder')}
             sx={{

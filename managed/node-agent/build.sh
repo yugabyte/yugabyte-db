@@ -8,7 +8,8 @@ export GO111MODULE=on
 readonly protoc_version=21.5
 readonly package_name='node-agent'
 readonly default_platforms=("linux/amd64" "linux/arm64")
-readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target")
+readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target" \
+                    "pywheels")
 
 readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
@@ -170,6 +171,7 @@ format() {
 
 run_tests() {
     # Run all tests if one fails.
+    local failed_tests=()
     pushd "$project_dir"
     for dir in */ ; do
         # Remove trailing slash.
@@ -180,10 +182,21 @@ run_tests() {
         fi
         echo "Running tests in ${dir}..."
         set +e
-        go clean -testcache && go test --tags testonly -v ./"$dir"/...
+        go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
+        status=$?
+        if [ $status -ne 0 ]; then
+            echo "Tests failed for $dir"
+            failed_tests+=("$dir")
+        fi
         set -e
     done
     popd
+    if [ ${#failed_tests[@]} -ne 0 ]; then
+        echo "Failed tests: ${failed_tests[*]}"
+        exit 1
+    else
+        echo "All tests passed."
+    fi
 }
 
 package_for_platform() {

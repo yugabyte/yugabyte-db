@@ -1,4 +1,4 @@
-import { styled, Typography, Link } from '@material-ui/core';
+import { styled, Typography, Link, Box } from '@material-ui/core';
 
 export const StyledPanel = styled('div')(({ theme }) => ({
   padding: '0',
@@ -31,4 +31,14 @@ export const StyledLink = styled(Link)(({ theme }) => ({
   textDecoration: 'underline',
   textDecorationStyle: 'solid',
   textUnderlinePosition: 'from-font'
+}));
+
+export const FieldContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  width: '548px',
+  height: 'auto',
+  backgroundColor: '#FBFCFD',
+  border: '1px solid #D7DEE4',
+  borderRadius: '8px'
 }));

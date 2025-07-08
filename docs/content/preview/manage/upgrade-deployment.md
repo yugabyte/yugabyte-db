@@ -176,7 +176,7 @@ New YugabyteDB features may require changes to the format of data that is sent o
 
     {{< note title="Note" >}}
 
-- `promote_auto_flags` is idempotent and can be run multiple times.
+- `promote_auto_flags` is a cluster-level operation; you don't need to run it on every node.
 - Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster have been upgraded to the new version. Process running an old version may fail to connect to the cluster after the AutoFlags have been promoted.
     {{< /note >}}
 
@@ -215,7 +215,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 {{< note title="Note" >}}
 
-- `upgrade_ysql` is idempotent and can be run multiple times.
+- `upgrade_ysql` is a cluster-level operation; you don't need to run it on every node.
 - Concurrent YSQL operations in a cluster can lead to transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by retrying the operation. If `upgrade_ysql` encounters these errors, then it should also be retried.
 {{< /note >}}
 

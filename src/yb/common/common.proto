@@ -134,10 +134,16 @@ enum PgVectorIndexType {
   HNSW = 3;
 }
 
-message PgHnswIndexOptionsPB {
+enum HnswBackend {
+  USEARCH = 0;
+  YB_HNSW = 1;
+};
+
+message HnswIndexOptionsPB {
   optional uint32 m = 1;
   optional uint32 m0 = 2;
   optional uint32 ef_construction = 3;
+  optional HnswBackend backend = 4;
 }
 
 message PgVectorIdxOptionsPB {
@@ -147,7 +153,7 @@ message PgVectorIdxOptionsPB {
   optional uint32 column_id = 4;
 
   reserved 5, 6;
-  optional PgHnswIndexOptionsPB hnsw = 7;
+  optional HnswIndexOptionsPB hnsw = 7;
 
   // Permanent index id. It should be unique for tablet, but when tablet is cloned,
   // index id in new tablet remains the same.

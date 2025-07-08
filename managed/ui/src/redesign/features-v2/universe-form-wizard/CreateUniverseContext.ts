@@ -9,11 +9,30 @@
 
 import { createContext } from 'react';
 import { GeneralSettingsProps } from './steps/general-settings/dtos';
+import {
+  FaultToleranceType,
+  ResilienceAndRegionsProps,
+  ResilienceFormMode,
+  ResilienceType
+} from './steps/resilence-regions/dtos';
+import { NodeAvailabilityProps } from './steps/nodes-availability/dtos';
+import { InstanceSettingProps } from './steps/hardware-settings/dtos';
+import { DatabaseSettingsProps } from './steps/database-settings/dtos';
+import { SecuritySettingsProps } from './steps/security-settings/dtos';
+import { OtherAdvancedProps, ProxyAdvancedProps } from './steps/advanced-settings/dtos';
+import {
+  FAULT_TOLERANCE_TYPE,
+  NODE_COUNT,
+  REGIONS_FIELD,
+  REPLICATION_FACTOR,
+  RESILIENCE_FORM_MODE,
+  RESILIENCE_TYPE
+} from './fields/FieldNames';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
   RESILIENCE_AND_REGIONS = 2,
-  NODES_AND_AVAILABILITY = 3,
+  NODES_AVAILABILITY = 3,
   INSTANCE = 4,
   DATABASE = 5,
   SECURITY = 6,
@@ -25,10 +44,45 @@ export enum CreateUniverseSteps {
 export type createUniverseFormProps = {
   activeStep: number;
   generalSettings?: GeneralSettingsProps;
+  resilienceAndRegionsSettings?: ResilienceAndRegionsProps;
+  nodesAvailabilitySettings?: NodeAvailabilityProps;
+  instanceSettings?: InstanceSettingProps;
+  databaseSettings?: DatabaseSettingsProps;
+  securitySettings?: SecuritySettingsProps;
+  proxySettings?: ProxyAdvancedProps;
+  otherAdvancedSettings?: OtherAdvancedProps;
 };
 
 export const initialCreateUniverseFormState: createUniverseFormProps = {
-  activeStep: CreateUniverseSteps.ADVANCED_OTHER
+  activeStep: CreateUniverseSteps.SECURITY,
+  resilienceAndRegionsSettings: {
+    [RESILIENCE_TYPE]: ResilienceType.REGULAR,
+    [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
+    [REGIONS_FIELD]: [],
+    [REPLICATION_FACTOR]: 3,
+    [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL,
+    [NODE_COUNT]: 1
+  },
+  nodesAvailabilitySettings: {
+    availabilityZones: {},
+    nodeCountPerAz: 1,
+    useDedicatedNodes: false
+  },
+  databaseSettings: {
+    ysql: {
+      enable: true,
+      enable_auth: false,
+      password: ''
+    },
+    ycql: {
+      enable: true,
+      enable_auth: false,
+      password: ''
+    },
+    gFlags: [],
+    enableConnectionPooling: false,
+    enablePGCompatibitilty: false
+  }
 };
 
 export const CreateUniverseContext = createContext<createUniverseFormProps>(
@@ -47,6 +101,34 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
   saveGeneralSettings: (data: GeneralSettingsProps) => ({
     ...context,
     generalSettings: data
+  }),
+  saveResilienceAndRegionsSettings: (data: ResilienceAndRegionsProps) => ({
+    ...context,
+    resilienceAndRegionsSettings: data
+  }),
+  saveNodesAvailabilitySettings: (data: NodeAvailabilityProps) => ({
+    ...context,
+    nodesAvailabilitySettings: data
+  }),
+  saveInstanceSettings: (data: InstanceSettingProps) => ({
+    ...context,
+    instanceSettings: data
+  }),
+  saveDatabaseSettings: (data: DatabaseSettingsProps) => ({
+    ...context,
+    databaseSettings: data
+  }),
+  saveSecuritySettings: (data: SecuritySettingsProps) => ({
+    ...context,
+    securitySettings: data
+  }),
+  saveProxySettings: (data: ProxyAdvancedProps) => ({
+    ...context,
+    proxySettings: data
+  }),
+  saveOtherAdvancedSettings: (data: OtherAdvancedProps) => ({
+    ...context,
+    otherAdvancedSettings: data
   })
 });
 

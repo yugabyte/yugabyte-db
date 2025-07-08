@@ -20,8 +20,7 @@
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 using std::string;
 using std::vector;
@@ -48,7 +47,6 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
 
     // Create extra file to check that it will not break snapshot files collecting
     // inside RemoteBootstrapSession::InitSession().
-    const string rocksdb_dir = tablet()->metadata()->rocksdb_dir();
     const string top_snapshots_dir = tablet()->metadata()->snapshots_dir();
     const string snapshot_dir = JoinPathSegments(top_snapshots_dir, kSnapshotId);
     ASSERT_TRUE(env_->FileExists(snapshot_dir));
@@ -68,7 +66,6 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
   void CheckSuperBlockHasSnapshotFields() {
     auto superblock = session_->tablet_superblock();
     LOG(INFO) << superblock.ShortDebugString();
-    ASSERT_TRUE(superblock.obsolete_table_type() == YQL_TABLE_TYPE);
 
     const auto& kv_store = superblock.kv_store();
     ASSERT_TRUE(kv_store.has_rocksdb_dir());
@@ -118,7 +115,7 @@ class RemoteSnapshotTransferRocksDBTest : public RemoteBootstrapRocksDBTest {
   void InitSession() override {
     CreateSnapshot();
     session_.reset(new RemoteBootstrapSession(
-        tablet_peer_, "TestSession", "FakeUUID", nullptr /* nsessions */));
+        tablet_peer_, "TestSession", "FakeUUID", /*nsessions=*/nullptr));
     ASSERT_OK(session_->InitSnapshotTransferSession());
   }
 };
@@ -127,5 +124,4 @@ TEST_F(RemoteSnapshotTransferRocksDBTest, CheckSuperBlockHasSnapshotFields) {
   CheckSuperBlockHasSnapshotFields();
 }
 
-}  // namespace tserver
-}  // namespace yb
+} // namespace yb::tserver

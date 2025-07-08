@@ -1,0 +1,6 @@
+comment = 'spi:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/spi'
+relocatable = false
+superuser = false
+schema = 'spi'

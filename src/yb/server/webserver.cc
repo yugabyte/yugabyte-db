@@ -512,20 +512,25 @@ Status Webserver::Impl::GetBoundAddresses(std::vector<Endpoint>* addrs_ptr) cons
   }
 
   struct sockaddr_storage** sockaddrs = nullptr;
-  int num_addrs;
+  int num_addrs = 0;
 
   if (sq_get_bound_addresses(context_, &sockaddrs, &num_addrs)) {
     return STATUS(NetworkError, "Unable to get bound addresses from Mongoose");
   }
-  auto cleanup = ScopeExit([sockaddrs, num_addrs] {
-    if (!sockaddrs) {
-      return;
-    }
-    for (int i = 0; i < num_addrs; ++i) {
-      free(sockaddrs[i]);
-    }
-    free(sockaddrs);
-  });
+
+  if (!num_addrs) {
+    return Status::OK();
+  }
+  DCHECK(sockaddrs);
+
+  ScopeExit cleanup{
+    [sockaddrs, num_addrs] {
+      for (int i = 0; i < num_addrs; ++i) {
+        free(sockaddrs[i]);
+      }
+      free(sockaddrs);
+    }};
+
   auto& addrs = *addrs_ptr;
   addrs.resize(num_addrs);
 

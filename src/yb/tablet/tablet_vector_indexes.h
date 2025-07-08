@@ -17,6 +17,8 @@
 
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/hnsw/hnsw_fwd.h"
+
 #include "yb/tablet/tablet_component.h"
 #include "yb/tablet/tablet_options.h"
 
@@ -33,6 +35,7 @@ class VectorIndexList {
   VectorIndexList() = default;
   explicit VectorIndexList(docdb::DocVectorIndexesPtr list) : list_(std::move(list)) {}
 
+  void EnableAutoCompactions();
   void Compact();
   void Flush();
   Status WaitForFlush();
@@ -56,10 +59,8 @@ class TabletVectorIndexes : public TabletComponent {
   TabletVectorIndexes(
       Tablet* tablet,
       const VectorIndexThreadPoolProvider& thread_pool_provider,
-      const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider)
-      : TabletComponent(tablet),
-        thread_pool_provider_(thread_pool_provider),
-        priority_thread_pool_provider_(priority_thread_pool_provider) {}
+      const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
+      const hnsw::BlockCachePtr& block_cache);
 
   Status Open();
   // Creates vector index for specified index and indexed tables.
@@ -116,6 +117,8 @@ class TabletVectorIndexes : public TabletComponent {
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
   const VectorIndexPriorityThreadPoolProvider priority_thread_pool_provider_;
+  const hnsw::BlockCachePtr block_cache_;
+  const MemTrackerPtr mem_tracker_;
 
   std::atomic<bool> has_vector_indexes_{false};
   mutable std::shared_mutex vector_indexes_mutex_;

@@ -93,7 +93,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private interface ConvertedRowFetcher {
     // Ideally, args should be (String, TableInfo -> Object[]) but in Java that's too much
     // boilerplate
-    public List<Row> fetch(TableInfoSqlFormatter formatter) throws Exception;
+
+    List<Row> fetch(TableInfoSqlFormatter formatter, boolean replaceSysGeneratedOid)
+        throws Exception;
+
+    default public List<Row> fetch(TableInfoSqlFormatter formatter) throws Exception {
+      return fetch(formatter, false /* replaceSysGeneratedOid */);
+    }
   }
 
   private class TableInfo {
@@ -1409,7 +1415,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     // names and OIDs, etc - thus making them comparable
     // Also changes/removes values expected to mismatch due to PG vs YB difference.
 
-    ConvertedRowFetcher fetchExpected = (TableInfoSqlFormatter formatter) -> {
+    ConvertedRowFetcher fetchExpected = (TableInfoSqlFormatter formatter,
+        boolean replaceSysGeneratedOid) -> {
       String sql = formatter.format(origTi);
       LOG.info("Executing '{}'", sql);
       return getRowList(stmtForOrig, sql)
@@ -1420,10 +1427,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .map(r -> excluded(r, "initprivs")) // pg_init_privs.initprivs will be compared separately.
           .map(r -> bootstrapRelation ? excluded(r, "relfrozenxid") : r)
           .map(r -> bootstrapRelation ? excluded(r, "relminmxid") : r)
+          .map(r -> (replaceSysGeneratedOid && r.getColumnName(0).equals("oid") &&
+              isSysGeneratedOid(r.getLong(0)) ? replaced(r, r.getLong(0), PLACEHOLDER_OID) : r))
           .collect(Collectors.toList());
     };
 
-    ConvertedRowFetcher fetchActual = (TableInfoSqlFormatter formatter) -> {
+    ConvertedRowFetcher fetchActual = (TableInfoSqlFormatter formatter,
+        boolean replaceSysGeneratedOid) -> {
       List<Row> rows = getRowList(stmtForNew, formatter.format(newTi));
       return rows.stream()
           .map(r -> excluded(r, "reltuples"))
@@ -1445,6 +1455,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             }
             return r;
           })
+          .map(r -> (replaceSysGeneratedOid && r.getColumnName(0).equals("oid") &
+              isSysGeneratedOid(r.getLong(0)) ? replaced(r, r.getLong(0), PLACEHOLDER_OID) : r))
           .collect(Collectors.toList());
     };
 
@@ -1509,7 +1521,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + " WHERE conrelid = %d ORDER BY conname";
       TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());
       assertRows("pg_constraint",
-          fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
+          fetchExpected.fetch(fmt, true /* replaceSysGeneratedOid */),
+          fetchActual.fetch(fmt, true /* replaceSysGeneratedOid */));
     }
 
     {

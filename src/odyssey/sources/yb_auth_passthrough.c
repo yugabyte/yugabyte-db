@@ -34,7 +34,8 @@
 enum YB_CLI_AUTH_STATUS {
 	YB_CLI_AUTH_FAILED,
 	YB_CLI_AUTH_SUCCESS,
-	YB_CLI_AUTH_PROGRESS
+	YB_CLI_AUTH_PROGRESS,
+	YB_CLI_AUTH_AWAIT_FIN
 };
 
 /*
@@ -286,10 +287,14 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 					"Unable to read the control connection packet");
 				return YB_CLI_AUTH_FAILED;
 			}
+			od_debug(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, NULL, server,
+				"received server packet auth-type: %d", auth_pkt_type);
 
-			if (auth_pkt_type == 0) /* AUTHOK pkt */
+			if (auth_pkt_type == 0)  /* AUTHOK pkt */
 				progress = YB_CLI_AUTH_SUCCESS;
-			else
+			else if(auth_pkt_type == 12)  /* SCRAM Fin: wait for AuthOK */
+				progress = YB_CLI_AUTH_AWAIT_FIN;
+			else 
 				progress = YB_CLI_AUTH_PROGRESS;
 
 			rc = yb_client_write_pkt(client, server, instance, msg,
@@ -352,9 +357,19 @@ static int yb_route_auth_packets(od_server_t *server, od_client_t *client)
 							      instance);
 		switch (status) {
 		case YB_CLI_AUTH_FAILED:
+			od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client, server,
+				"failed to relay auth passthrough Server to Client. Exiting...");
 			return -1;
 		case YB_CLI_AUTH_SUCCESS:
 			return 0;
+		case YB_CLI_AUTH_AWAIT_FIN:
+			/* 
+			 * In case of mechanisms like SCRAM, the server sends
+			 * the last packet before sending the AuthOK packet.
+			 * Thus, we need to forward two consecutive packets from
+			 * the server. Reading from the client hangs indefinitely.
+			 */
+			continue;
 		case YB_CLI_AUTH_PROGRESS:
 			break;
 		}

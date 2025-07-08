@@ -811,3 +811,82 @@ SELECT * FROM t1_gen WHERE k > 7 ORDER BY k;
  17 | Text 17 | 12 | 12 |    |        24
 (5 rows)
 
+-- Partitioned tables
+CREATE TABLE part (
+    amount NUMERIC,
+    double_amount NUMERIC GENERATED ALWAYS AS (amount * 2) STORED
+) partition by range(amount);
+CREATE TABLE part_1_100 partition of part for values from (1) to (100);
+CREATE TABLE part_2_200 partition of part for values from (101) to (200);
+INSERT INTO part VALUES (1), (101);
+INSERT INTO part_1_100 VALUES (2), (3);
+INSERT INTO part_2_200 VALUES (102), (103);
+SELECT * FROM part ORDER BY amount;
+ amount | double_amount 
+--------+---------------
+      1 |             2
+      2 |             4
+      3 |             6
+    101 |           202
+    102 |           204
+    103 |           206
+(6 rows)
+
+SELECT * FROM part_1_100 ORDER BY amount;
+ amount | double_amount 
+--------+---------------
+      1 |             2
+      2 |             4
+      3 |             6
+(3 rows)
+
+SELECT * FROM part_2_200 ORDER BY amount;
+ amount | double_amount 
+--------+---------------
+    101 |           202
+    102 |           204
+    103 |           206
+(3 rows)
+
+ALTER TABLE part_1_100 ALTER COLUMN double_amount DROP EXPRESSION; -- error
+ERROR:  cannot drop generation expression from inherited column
+ALTER TABLE part ALTER COLUMN double_amount DROP EXPRESSION;
+\d part
+             Partitioned table "public.part"
+    Column     |  Type   | Collation | Nullable | Default 
+---------------+---------+-----------+----------+---------
+ amount        | numeric |           |          | 
+ double_amount | numeric |           |          | 
+Partition key: RANGE (amount)
+Number of partitions: 2 (Use \d+ to list them.)
+
+\d part_1_100
+                Table "public.part_1_100"
+    Column     |  Type   | Collation | Nullable | Default 
+---------------+---------+-----------+----------+---------
+ amount        | numeric |           |          | 
+ double_amount | numeric |           |          | 
+Partition of: part FOR VALUES FROM ('1') TO ('100')
+
+\d part_2_200
+                Table "public.part_2_200"
+    Column     |  Type   | Collation | Nullable | Default 
+---------------+---------+-----------+----------+---------
+ amount        | numeric |           |          | 
+ double_amount | numeric |           |          | 
+Partition of: part FOR VALUES FROM ('101') TO ('200')
+
+INSERT INTO part VALUES (4), (104);
+SELECT * FROM part ORDER BY amount;
+ amount | double_amount 
+--------+---------------
+      1 |             2
+      2 |             4
+      3 |             6
+      4 |              
+    101 |           202
+    102 |           204
+    103 |           206
+    104 |              
+(8 rows)
+

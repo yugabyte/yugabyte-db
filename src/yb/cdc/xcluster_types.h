@@ -71,14 +71,25 @@ struct XClusterTabletInfo {
   const std::string& producer_tablet_id() const { return producer_tablet_info.tablet_id; }
 };
 
+// Contains information about commit times of the DDLs that we need to process on the xCluster
+// target.
 struct SafeTimeBatch {
+  // Only commits earlier than this time can be processed. So this acts as a max time.
   HybridTime apply_safe_time;
   // Use set instead of unordered_set to ensure that the commit times are in order.
   std::set<HybridTime> commit_times;
+  // Commits prior to this time have already been processed. So this acts as a min time.
+  HybridTime last_commit_time_processed;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(apply_safe_time, commit_times, last_commit_time_processed);
+  }
+
   bool IsComplete() const { return !apply_safe_time.is_special(); }
 
   bool operator==(const SafeTimeBatch& other) const {
-    return apply_safe_time == other.apply_safe_time && commit_times == other.commit_times;
+    return apply_safe_time == other.apply_safe_time && commit_times == other.commit_times &&
+           last_commit_time_processed == other.last_commit_time_processed;
   }
   bool operator!=(const SafeTimeBatch& other) const { return !(*this == other); }
 };

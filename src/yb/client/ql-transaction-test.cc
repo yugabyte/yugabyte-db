@@ -183,20 +183,12 @@ void QLTransactionTest::TestReadRestart(bool commit) {
     if (commit) {
       ASSERT_OK(write_txn->CommitFuture().get());
     }
-    auto se = ScopeExit([write_txn, commit] {
-      if (!commit) {
-        write_txn->Abort();
-      }
-    });
+    auto se = !commit ? MakeOptionalScopeExit([write_txn] { write_txn->Abort(); }) : std::nullopt;
 
     server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
 
     auto txn1 = CreateTransaction2(SetReadTime::kTrue);
-    auto se2 = ScopeExit([txn1, commit] {
-      if (!commit) {
-        txn1->Abort();
-      }
-    });
+    auto se2 = !commit ? MakeOptionalScopeExit([txn1] { txn1->Abort(); }) : std::nullopt;
     auto session = CreateSession(txn1);
     if (commit) {
       for (size_t r = 0; r != kNumRows; ++r) {
@@ -1338,6 +1330,7 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
   // values[i] contains values read by i-th transaction.
   std::vector<std::vector<int32_t>> values(kConcurrentReads);
 
+  std::vector<YBSessionPtr> sessions;
   for (size_t i = 0; i != kCycles; ++i) {
     latch.Reset(kConcurrentReads);
     for (size_t j = 0; j != kConcurrentReads; ++j) {
@@ -1350,8 +1343,10 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
         ASSERT_OK(flush_status->status);
         latch.CountDown();
       });
+      sessions.push_back(std::move(session));
     }
     latch.Wait();
+    sessions.clear();
     for (size_t j = 0; j != kConcurrentReads; ++j) {
       values[j].clear();
       for (auto& op : reads[j]) {

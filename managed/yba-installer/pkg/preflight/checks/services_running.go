@@ -5,16 +5,17 @@ import (
 	"strings"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 var ServicesRunningCheck *servicesRunningCheck = &servicesRunningCheck{
 	CheckName:   "services_running",
 	skipAllowed: true,
-	Services:    []common.Component{},
+	Services:    []components.Service{},
 }
 
-func SetServicesRunningCheck(services []common.Component) {
+func SetServicesRunningCheck(services []components.Service) {
 	logging.Debug("setting services running check: " + fmt.Sprint(services))
 	ServicesRunningCheck.Services = services
 }
@@ -22,7 +23,7 @@ func SetServicesRunningCheck(services []common.Component) {
 type servicesRunningCheck struct {
 	CheckName   string
 	skipAllowed bool
-	Services    []common.Component
+	Services    []components.Service
 }
 
 func (s *servicesRunningCheck) Name() string {

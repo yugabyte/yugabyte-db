@@ -232,7 +232,7 @@ DEFINE_UNKNOWN_bool(enable_ysql, true,
     "specified or can be auto-detected). Also each tablet server will start a PostgreSQL "
     "server as a child process.");
 
-DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, yb::kIsDebug,
+DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, true,
     "Response with success when duplicate write request is detected, "
     "if case this request contains read time.");
 
@@ -472,9 +472,8 @@ Status PrintYSQLWriteRequest(
 
 template <class Req>
 void UpdateAshMetadataFrom(const Req* req) {
-  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_ash_metadata()) {
-    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 }
 
@@ -872,16 +871,8 @@ void TabletServiceAdminImpl::BackfillIndex(
 
       IndexInfoPB idx_info_pb;
       index_info->ToPB(&idx_info_pb);
-      if (!is_pg_table) {
-        all_at_backfill &=
-            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
-      } else {
-        // YSQL tables don't use all the docdb permissions, so use this approximation.
-        // TODO(jason): change this back to being like YCQL once we bring the docdb permission
-        // DO_BACKFILL back (issue #6218).
-        all_at_backfill &=
-            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_WRITE_AND_DELETE;
-      }
+      all_at_backfill &=
+          idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
       all_past_backfill &=
           idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
     } else {
@@ -940,9 +931,17 @@ void TabletServiceAdminImpl::BackfillIndex(
     }
     // Check if this is an xCluster target of automatic DDL replication, if so then we need to use
     // tablet level read consistency as the ddl_queue table is holding up xCluster safe time.
+    auto namespace_id = tablet.peer->GetNamespaceId();
+    if (!namespace_id.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          namespace_id.status().CloneAndPrepend(
+              "Failed to get namespace ID for backfill indexes request"),
+          TabletServerErrorPB::INVALID_SCHEMA, &context);
+      return;
+    }
     bool is_xcluster_automatic_mode_target =
-        server_->GetXClusterContext().IsTargetAndInAutomaticMode(
-            tablet.peer->tablet_metadata()->namespace_id());
+        server_->GetXClusterContext().IsTargetAndInAutomaticMode(*namespace_id);
 
     backfill_status = tablet.tablet->BackfillIndexesForYsql(
         indexes_to_backfill,
@@ -981,7 +980,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id() << " backfilled indexes "
            << yb::ToString(index_ids) << " and got " << backfill_status
-           << " backfilled until : " << backfilled_until;
+           << " backfilled until : " << b2a_hex(backfilled_until);
 
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
@@ -1310,7 +1309,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   TRACE("UpdateTransaction");
 
   if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 
   if (req->state().status() == TransactionStatus::CREATED &&
@@ -1448,7 +1447,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   TRACE("AbortTransaction");
 
   if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 
   UpdateClock(*req, server_->Clock());
@@ -2049,7 +2048,9 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       break;
     }
     case FlushTabletsRequestPB::COMPACT: {
-      AdminCompactionOptions options { /* should_wait = */ true };
+      AdminCompactionOptions options(
+          ShouldWait::kTrue,
+          rocksdb::SkipCorruptDataBlocksUnsafe(req->remove_corrupt_data_blocks_unsafe()));
       if (HasVectorIndex(*req)) {
         options.vector_index_ids = std::make_shared<TableIds>(
             req->all_vector_indexes() ? TableIds{} : CopyVectorIndexIds(*req));
@@ -2296,6 +2297,12 @@ void TabletServiceAdminImpl::UpgradeYsql(
     const UpgradeYsqlRequestPB* req,
     UpgradeYsqlResponsePB* resp,
     rpc::RpcContext context) {
+  if (!FLAGS_enable_ysql) {
+    LOG(INFO) << "YSQL is not enabled. Skipping YSQL upgrade.";
+    context.RespondSuccess();
+    return;
+  }
+
   LOG(INFO) << "Starting YSQL upgrade";
 
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
@@ -2426,7 +2433,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): handle or create issue for catalog version being uint64 vs int64.
   const std::string num_lagging_backends_query = Format(
       "SELECT count(*) FROM pg_stat_activity WHERE"
-      " backend_type != 'walsender' AND catalog_version < $0 AND datid = $1$2",
+      " backend_type != 'walsender' AND backend_type != 'yb-conn-mgr walsender'"
+      " AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?
        Format(" AND pid != $0", req->requestor_pg_backend_pid()) :
@@ -3455,6 +3463,13 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       auto* tablet_lock_info = resp->add_tablet_lock_infos();
       tablet_lock_info->set_is_advisory_lock_tablet(
           tablet_peer->tablet_metadata()->table_type() != PGSQL_TABLE_TYPE);
+      auto tablet_ptr_res = tablet_peer->shared_tablet_safe();
+      if (!tablet_ptr_res.ok()) {
+        resp->Clear();
+        SetupErrorAndRespond(resp->mutable_error(), tablet_ptr_res.status(), &context);
+        return;
+      }
+      auto tablet_ptr = *tablet_ptr_res;
       Status s = Status::OK();
       if (req->transactions_by_tablet().count(tablet_id) > 0) {
         std::map<TransactionId, SubtxnSet> transactions;
@@ -3475,12 +3490,12 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
           }
           transactions.emplace(std::make_pair(*id_or_status, *aborted_subtxns_or_status));
         }
-        s = tablet_peer->shared_tablet()->GetLockStatus(
+        s = tablet_ptr->GetLockStatus(
             transactions, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
             req->max_txn_locks_per_tablet());
       } else {
         DCHECK(!limit_resp_to_txns.empty());
-        s = tablet_peer->shared_tablet()->GetLockStatus(
+        s = tablet_ptr->GetLockStatus(
             limit_resp_to_txns, tablet_lock_info, req->max_single_shard_waiter_start_time_us(),
             req->max_txn_locks_per_tablet());
       }
@@ -3547,7 +3562,11 @@ void TabletServiceImpl::CancelTransaction(
 
     auto leader_term = *res;
     auto txn_found = false;
-    auto tablet_ptr = tablet_peer->shared_tablet();
+    auto tablet_ptr_res = tablet_peer->shared_tablet_safe();
+    if (!tablet_ptr_res) {
+      return SetupErrorAndRespond(resp->mutable_error(), tablet_ptr_res.status(), &context);
+    }
+    auto tablet_ptr = *tablet_ptr_res;
     auto future = MakeFuture<Result<TransactionStatusResult>>(
         [txn_id, tablet_peer, leader_term, tablet_ptr, &txn_found](auto callback) {
       txn_found = tablet_ptr->transaction_coordinator()->CancelTransactionIfFound(
@@ -3664,7 +3683,7 @@ void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
   if (!FLAGS_enable_object_locking_for_table_locks) {
-    SetupErrorAndRespond(
+    return SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }
@@ -3674,7 +3693,7 @@ void TabletServiceImpl::AcquireObjectLocks(
 
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
-    SetupErrorAndRespond(
+    return SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
   }
   const auto deadline = context.GetClientDeadline();
@@ -3687,7 +3706,7 @@ void TabletServiceImpl::ReleaseObjectLocks(
     const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
   if (!PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
-    SetupErrorAndRespond(
+    return SetupErrorAndRespond(
         resp->mutable_error(),
         STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
   }

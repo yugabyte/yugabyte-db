@@ -17,6 +17,7 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/xcluster_util.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
@@ -519,8 +520,10 @@ class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
 
     source_namespace2_table_ = producer_tables_.back();
     target_namespace2_table_ = consumer_tables_.back();
-    source_namespace2_id_ = VERIFY_RESULT(GetNamespaceId(producer_client(), namespace_name2_));
-    target_namespace2_id_ = VERIFY_RESULT(GetNamespaceId(consumer_client(), namespace_name2_));
+    source_namespace2_id_ =
+        VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name2_));
+    target_namespace2_id_ =
+        VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace_name2_));
 
     return Status::OK();
   }

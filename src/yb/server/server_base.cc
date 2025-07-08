@@ -773,22 +773,22 @@ size_t ServerGroupNum(size_t server_idx) {
   return (server_idx - 1) / FLAGS_TEST_nodes_per_cloud;
 }
 
-void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index) {
+void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t server_index) {
   if (!FLAGS_TEST_check_broadcast_address) {
     return;
   }
 
-  CHECK_GE(index, kMinServerIdx);
-  CHECK_LE(index, kMaxServers);
+  CHECK_GE(server_index, kMinServerIdx);
+  CHECK_LE(server_index, kMaxServers);
 
-  auto server_group = ServerGroupNum(index);
+  auto server_group = ServerGroupNum(server_index);
   for (int other_server_idx = kMinServerIdx; other_server_idx <= kMaxServers; ++other_server_idx) {
     // We group servers by 2. When servers belongs to the same group, they should use
     // private ip for communication, otherwise public ip should be used.
     bool same_group = ServerGroupNum(other_server_idx) == server_group;
     auto broken_address = CHECK_RESULT(
         HostToAddress(TEST_RpcAddress(other_server_idx, Private(!same_group))));
-    LOG(INFO) << "Break " << index << " => " << broken_address;
+    LOG(INFO) << "Break server #" << server_index << " <=> " << broken_address;
     messenger->BreakConnectivityWith(broken_address);
     auto working_address = CHECK_RESULT(
         HostToAddress(TEST_RpcAddress(other_server_idx, Private(same_group))));

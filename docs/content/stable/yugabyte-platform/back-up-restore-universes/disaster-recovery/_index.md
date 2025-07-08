@@ -141,7 +141,7 @@ For example, use xCluster Replication for the following deployments:
 
 Note that a universe configured for xCluster DR cannot be used for xCluster Replication, and vice versa. Although xCluster DR uses xCluster Replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
-(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster Replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
+(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster Replication](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/).)
 
 {{<lead link="../../../architecture/docdb-replication/async-replication/">}}
 [xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)

@@ -61,12 +61,12 @@ func (a *AuthAPIClient) GetRoleBindings() ybaclient.RBACManagementApiApiGetRoleB
 
 // ListRoleBindingRest uses REST API to call list role binding functionality
 func (a *AuthAPIClient) ListRoleBindingRest(
-	userUUID, operation string,
+	userUUID, command, operation string,
 ) (
 	map[string]([]ybaclient.RoleBinding), error,
 ) {
 	token := viper.GetString("apiToken")
-	errorTag := fmt.Errorf("RBAC: Role Bindings, Operation: %s", operation)
+	errorTag := fmt.Errorf("%s, Operation: %s", command, operation)
 
 	var req *http.Request
 

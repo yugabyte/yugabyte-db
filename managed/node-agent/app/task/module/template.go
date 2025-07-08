@@ -8,8 +8,9 @@ import (
 	"node-agent/util"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/noirbizarre/gonja"
+	"github.com/nikolalohinski/gonja"
 )
 
 func CopyFile(
@@ -24,10 +25,13 @@ func CopyFile(
 		return err
 	}
 	templatePath := filepath.Join(util.TemplateDir(), templateSubpath)
+	util.FileLogger().Infof(ctx, "Resolving template file %s", templatePath)
 	output, err := ResolveTemplate(ctx, values, templatePath)
 	if err != nil {
+		util.FileLogger().Errorf(ctx, "Resolution failed for template file %s", templatePath)
 		return err
 	}
+	output = strings.TrimSpace(output)
 	file, err := os.OpenFile(destination, os.O_TRUNC|os.O_RDWR|os.O_CREATE, mod)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Error in creating file %s - %s", destination, err.Error())

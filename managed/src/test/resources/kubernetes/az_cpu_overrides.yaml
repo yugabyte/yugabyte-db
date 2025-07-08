@@ -1,0 +1,20 @@
+PlacementAZ 1: |
+  resource:
+    tserver:
+      requests:
+        cpu: 10
+      limits:
+        cpu: 20
+PlacementAZ 2: |
+  resource:
+    tserver:
+      requests:
+        memory: 10Gi
+      limits:
+        memory: 10Gi
+    master:
+      resource:
+        requests:
+          cpu: 6
+        limits:
+          cpu: 10

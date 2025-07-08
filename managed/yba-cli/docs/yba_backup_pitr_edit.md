@@ -14,7 +14,7 @@ yba backup pitr edit [flags]
 
 ```
 yba backup pitr edit --universe-name <universe-name> --uuid <pitr-uuid> \
-	--retention-period <retention-period>
+	--retention-in-secs <retention-in-secs>
 ```
 
 ### Options

@@ -32,13 +32,12 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
       return STATUS_FORMAT(IllegalState, "Attempt to insert value to immutable vector");
     }
     RETURN_NOT_OK(impl().DoInsert(vector_id, v));
-    has_entries_ = true;
     return Status::OK();
   }
 
-  Status SaveToFile(const std::string& path) override {
+  Result<VectorIndexIfPtr<Vector, DistanceResult>> SaveToFile(const std::string& path) override {
     immutable_ = true;
-    if (!has_entries_) {
+    if (impl().Size() == 0) {
       return STATUS_FORMAT(IllegalState, "Attempt to save empty index: $0", path);
     }
     // TODO(vector_index) Reload via memory mapped file
@@ -48,16 +47,12 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   Status LoadFromFile(const std::string& path, size_t max_concurrent_reads) override {
     immutable_ = true;
     RETURN_NOT_OK(impl().DoLoadFromFile(path, max_concurrent_reads));
-    has_entries_ = true;
     return Status::OK();
   }
 
   Result<std::vector<VectorWithDistance<DistanceResult>>> Search(
       const Vector& query_vector, const SearchOptions& options)
       const override {
-    if (!has_entries_) {
-      return std::vector<VectorWithDistance<DistanceResult>>();
-    }
     return impl().DoSearch(query_vector, options);
   }
 
@@ -75,7 +70,6 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return *static_cast<const Impl*>(this);
   }
 
-  std::atomic<bool> has_entries_{false};
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
 };

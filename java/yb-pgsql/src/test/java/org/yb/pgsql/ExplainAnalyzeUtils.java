@@ -46,7 +46,9 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_VALUES_SCAN = "Values Scan";
   public static final String NODE_YB_BITMAP_TABLE_SCAN = "YB Bitmap Table Scan";
   public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
+  public static final String INDEX_SCAN_DIRECTION_FORWARD = "Forward";
   public static final String INDEX_SCAN_DIRECTION_BACKWARD = "Backward";
+  public static final String INDEX_SCAN_DIRECTION_ARBITRARY = "NoMovement";
 
   public static final String PLAN = "Plan";
 
@@ -118,7 +120,7 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder estimatedNextsAndPrevs(ValueChecker<Double> checker);
 
     // Roundtrips Estimation
-    PlanCheckerBuilder estimatedTableRoundtrips(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedTableRoundtrips(Checker checker);
     PlanCheckerBuilder estimatedIndexRoundtrips(ValueChecker<Double> checker);
 
     // Estimated Docdb Result Width
@@ -129,7 +131,11 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder workersLaunched(ValueChecker<Long> checker);
 
     // DocDB Metric
-    PlanCheckerBuilder metric(String key, ValueChecker<Double> checker);
+    PlanCheckerBuilder readMetrics(ObjectChecker checker);
+  }
+
+  public interface MetricsCheckerBuilder extends ObjectCheckerBuilder {
+    MetricsCheckerBuilder metric(String key, ValueChecker<Double> checker);
   }
 
   public static final class ExplainAnalyzeOptionsBuilder {
@@ -267,7 +273,7 @@ public class ExplainAnalyzeUtils {
     return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false);
   }
 
-  private static PlanCheckerBuilder makePlanBuilder() {
+  public static PlanCheckerBuilder makePlanBuilder() {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
   }
 

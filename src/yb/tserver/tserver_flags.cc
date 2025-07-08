@@ -26,3 +26,7 @@ DEFINE_UNKNOWN_uint64(tserver_master_replication_factor, 0,
     "but could be specified explicitly together with passing one or more master service domain "
     "name and port through tserver_master_addrs for masters auto-discovery when running on "
     "Kubernetes.");
+
+DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_auto_analyze, false,
+    "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
+    "which have changed more than a configurable threshold.");

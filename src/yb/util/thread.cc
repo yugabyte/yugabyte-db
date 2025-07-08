@@ -147,12 +147,12 @@ struct ThreadDescriptor {
   boost::intrusive::list_member_hook<> category_link{};
 };
 
-void SetNext(QueueLink* link, QueueLink* next) {
-  link->next = next;
+void SetNext(QueueLink& link, QueueLink* next) {
+  link.next = next;
 }
 
-QueueLink* GetNext(QueueLink* link) {
-  return link->next;
+QueueLink* GetNext(QueueLink& link) {
+  return link.next;
 }
 
 namespace {

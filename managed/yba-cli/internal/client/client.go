@@ -264,6 +264,33 @@ func (a *AuthAPIClient) IsCLISupported() {
 	SetHostVersion(version)
 }
 
+// CheckValidYBAVersionForCommand checks if the command is supported for the current YBA version
+func (a *AuthAPIClient) CheckValidYBAVersionForCommand(
+	cmd string,
+	stableVersion string,
+	previewVersion string,
+) {
+	minVersion := YBAMinimumVersion{
+		Stable:  stableVersion,
+		Preview: previewVersion,
+	}
+	allowed, version, err := a.CheckValidYBAVersion(minVersion)
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+
+	if !allowed {
+		errMessage := fmt.Sprintf(
+			"Command '%s' is not supported for YugabyteDB Anywhere Host version %s. "+
+				"Please use a version greater than or equal to Stable: %s, Preview: %s\n",
+			cmd,
+			version,
+			minVersion.Stable,
+			minVersion.Preview)
+		logrus.Fatalln(formatter.Colorize(errMessage, formatter.RedColor))
+	}
+}
+
 func getConnectionTransport() (*http.Transport, error) {
 	useInsecure := viper.GetBool("insecure")
 	caCertPath := viper.GetString("ca-cert")

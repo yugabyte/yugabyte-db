@@ -466,10 +466,9 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
     // No ybctids are provided. Instruct "doc_op_" to abandon the execution and not querying
     // any data from tablet server.
     doc_op_->AbandonExecution();
-  } else {
-    RSTATUS_DCHECK_EQ(
-        VERIFY_RESULT(doc_op_->Execute()),
-        RequestSent::kTrue, IllegalState, "YSQL read operation was not sent");
+  } else if (VERIFY_RESULT(doc_op_->Execute()) != RequestSent::kTrue) {
+    // Requests weren't sent, there is no data to fetch
+    doc_op_->AbandonExecution();
   }
 
   return Status::OK();

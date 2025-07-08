@@ -58,8 +58,9 @@ class MockTableReader : public TableReader {
     assert(false);
   }
 
-  InternalIterator* NewIterator(const ReadOptions&, Arena* arena,
-                                bool skip_filters = false) override;
+  InternalIterator* NewIterator(
+      const ReadOptions&, Arena* arena, bool skip_filters,
+      SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) override;
 
   InternalIterator* NewIndexIterator(const ReadOptions& read_options) override {
     return nullptr;

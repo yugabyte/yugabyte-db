@@ -1105,47 +1105,22 @@
     showSection = true
 
 [[stable]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  [stable.params]
+    showSection = true
+
+[[stable]]
   name = "Troubleshoot"
   parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [[stable]]
   name = "Benchmark"
-  weight = 10
+  weight = 11
   identifier = "benchmark"
   url = "/stable/benchmark/"
-  [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
-  [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "Misc"
-  identifier = "misc"
-  parent = "reference"
-
-[[stable]]
-  name = "YEDIS"
-  weight = 1
-  url = "/preview/yedis/"
-  parent = "misc"
-
-[[stable]]
-  name = "Legal"
-  weight = 2
-  url = "/preview/legal/"
-  parent = "misc"
-
-[[stable]]
-  name = "Contribute"
-  weight = 13
-  identifier = "contribute"
-  url = "/preview/contribute/"
   [stable.params]
     showSection = true
 
@@ -1292,22 +1267,22 @@
     showSection = true
 
 [["v2024.1"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2024.1".params]
+    showSection = true
+
+[["v2024.1"]]
   name = "Troubleshoot"
   parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [["v2024.1"]]
   name = "Benchmark"
-  weight = 10
+  weight = 11
   identifier = "benchmark"
   url = "/v2024.1/benchmark/"
-  ["v2024.1".params]
-    showSection = true
-
-[["v2024.1"]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
   ["v2024.1".params]
     showSection = true
 
@@ -1389,6 +1364,159 @@
   ["v2024.1_api".params]
     showSection = true
 
+######### Menus for v2025.1
+
+[["v2025.1"]]
+  weight = 1
+  ["v2025.1".params]
+    productsDropdown = true
+
+[["v2025.1"]]
+  name = "Overview"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/v2025.1/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Quick Start"
+  weight = 4
+  identifier = "quick-start"
+  url = "/preview/quick-start-yugabytedb-managed/"
+  ["v2025.1".params]
+    classes = "separator"
+    showSection = true
+    hideChildren = true
+
+[["v2025.1"]]
+  name = "Explore"
+  weight = 5
+  identifier = "explore"
+  url = "/v2025.1/explore/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Develop"
+  weight = 6
+  identifier = "develop"
+  url = "/v2025.1/develop/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Secure"
+  weight = 8
+  identifier = "secure"
+  url = "/v2025.1/secure/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Launch and Manage"
+  weight = 9
+  identifier = "launch-and-manage"
+  url = "/v2025.1/launch-and-manage/"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2025.1".params]
+    showSection = true
+
+[["v2025.1"]]
+  name = "Troubleshoot"
+  parent = "launch-and-manage"
+  url = "/preview/troubleshoot/"
+
+[["v2025.1"]]
+  name = "Benchmark"
+  weight = 11
+  identifier = "benchmark"
+  url = "/v2025.1/benchmark/"
+  ["v2025.1".params]
+    showSection = true
+
+######### Menus (in "v2025.1") for YB Anywhere section
+
+[["v2025.1_yugabyte-platform"]]
+  weight = 1
+  ["v2025.1_yugabyte-platform".params]
+    productsDropdown = true
+
+[["v2025.1_yugabyte-platform"]]
+  name = "Overview"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2025.1_yugabyte-platform".params]
+    showSection = true
+    hideLink = true
+
+########## Menus (in v2024.1) for APIs
+
+[["v2025.1_api"]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/v2025.1/api/"
+  ["v2025.1_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2025.1_api"]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/v2025.1/api/ysql/"
+  ["v2025.1_api".params]
+    showSection = true
+
+[["v2025.1_api"]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-cassandra"
+  url = "/v2025.1/api/ycql/"
+  ["v2025.1_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2025.1_api"]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/v2025.1/api/ysqlsh/"
+  ["v2025.1_api".params]
+    showSection = true
+
+[["v2025.1_api"]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/v2025.1/api/ycqlsh/"
+  ["v2025.1_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2025.1_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "/v2025.1/yugabyte-platform/anywhere-automation/anywhere-api/"
+  ["v2025.1_api".params]
+    showSection = true
+
+[["v2025.1_api"]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
+  ["v2025.1_api".params]
+    showSection = true
+
 ########## Menus for 2.20
 
 [["v2.20"]]
@@ -1413,15 +1541,6 @@
     classes = "separator"
     showSection = true
     hideChildren = true
-
-#[["v2.20"]]
-#  name = "Key benefits"
-#  weight = 4
-#  identifier = "features"
-#  url = "/v2.20/features/"
-#  ["v2.20".params]
-#    showSection = true
-#    hideChildren = true
 
 [["v2.20"]]
   name = "Explore"
@@ -1456,47 +1575,22 @@
     showSection = true
 
 [["v2.20"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
   name = "Troubleshoot"
   parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
 
 [["v2.20"]]
   name = "Benchmark"
-  weight = 10
+  weight = 11
   identifier = "benchmark"
   url = "/v2.20/benchmark/"
-  ["v2.20".params]
-    showSection = true
-
-[["v2.20"]]
-  name = "Reference"
-  weight = 12
-  identifier = "reference"
-  ["v2.20".params]
-    showSection = true
-
-[["v2.20"]]
-  name = "Misc"
-  identifier = "misc"
-  parent = "reference"
-
-[["v2.20"]]
-  name = "YEDIS"
-  weight = 1
-  url = "/preview/yedis/"
-  parent = "misc"
-
-[["v2.20"]]
-  name = "Legal"
-  weight = 2
-  url = "/preview/legal/"
-  parent = "misc"
-
-[["v2.20"]]
-  name = "Contribute"
-  weight = 13
-  identifier = "contribute"
-  url = "/preview/contribute/"
   ["v2.20".params]
     showSection = true
 

@@ -46,6 +46,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/casts.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/trace_event.h"
@@ -662,7 +664,9 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   last_received_op_id_current_leader_ = OpId();
   next_index_ = new_preceding.index + 1;
 
-  auto abort_status = STATUS(Aborted, "Operation aborted by new leader");
+  auto abort_status = STATUS(
+      Aborted, "Operation aborted by new leader",
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER));
   for (auto it = pending_operations_.end(); it != preceding_op_iter;) {
     const ConsensusRoundPtr& round = *--it;
     auto op_id = OpId::FromPB(round->replicate_msg()->id());

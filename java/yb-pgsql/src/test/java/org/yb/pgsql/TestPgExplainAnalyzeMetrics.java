@@ -1,6 +1,11 @@
 package org.yb.pgsql;
 
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MODIFY_TABLE;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BATCHED_NESTED_LOOP;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_VALUES_SCAN;
 
 import java.sql.Statement;
 
@@ -44,15 +49,21 @@ public class TestPgExplainAnalyzeMetrics extends BasePgExplainAnalyzeTest {
 
   private interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
-    TopLevelCheckerBuilder metric(String key, ValueChecker<Long> checker);
+    TopLevelCheckerBuilder readMetrics(ObjectChecker checker);
+    TopLevelCheckerBuilder writeMetrics(ObjectChecker checker);
   }
 
   private interface PlanCheckerBuilder extends ObjectCheckerBuilder {
     PlanCheckerBuilder alias(String value);
-    PlanCheckerBuilder metric(String key, ValueChecker<Long> checker);
+    PlanCheckerBuilder readMetrics(ObjectChecker checker);
+    PlanCheckerBuilder writeMetrics(ObjectChecker checker);
     PlanCheckerBuilder nodeType(String value);
     PlanCheckerBuilder plans(Checker... checker);
     PlanCheckerBuilder relationName(String value);
+  }
+
+  private interface MetricsCheckerBuilder extends ObjectCheckerBuilder {
+    MetricsCheckerBuilder metric(String key, ValueChecker<Long> checker);
   }
 
   private static TopLevelCheckerBuilder makeTopLevelBuilder() {
@@ -63,24 +74,152 @@ public class TestPgExplainAnalyzeMetrics extends BasePgExplainAnalyzeTest {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
   }
 
+  private static MetricsCheckerBuilder makeMetricsBuilder() {
+    return JsonUtil.makeCheckerBuilder(MetricsCheckerBuilder.class, false);
+  }
+
   @Test
   public void testSeqScan() throws Exception {
     final String simpleQuery = String.format("SELECT * FROM %s", MAIN_TABLE);
-    final String queryWithExpr = String.format("SELECT * FROM %s WHERE v5 < 128", MAIN_TABLE);
 
     PlanCheckerBuilder SEQ_SCAN_PLAN = makePlanBuilder()
         .nodeType(NODE_SEQ_SCAN)
         .relationName(MAIN_TABLE)
         .alias(MAIN_TABLE)
-        .metric("rocksdb_number_db_seek", Checkers.greater(0))
-        .metric("docdb_keys_found", Checkers.greater(0));
+        .readMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.greater(0))
+            .metric("docdb_keys_found", Checkers.greater(0))
+            .build());
 
     Checker checker = makeTopLevelBuilder()
-        .metric("rocksdb_number_db_seek", Checkers.greater(0))
-        .metric("docdb_keys_found", Checkers.greater(0))
+        .readMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.greater(0))
+            .metric("docdb_keys_found", Checkers.greater(0))
+            .build())
         .plan(SEQ_SCAN_PLAN.build())
         .build();
 
     testExplainDebug(simpleQuery, checker);
+  }
+
+  @Test
+  public void testInsert() throws Exception {
+    final int primaryKey = NUM_PAGES * 1024;
+    final String simpleInsert = String.format("INSERT INTO %s VALUES (%d, %d, "
+        + "%d, %d, %d, %d)", MAIN_TABLE, primaryKey, primaryKey, primaryKey % 1024,
+        primaryKey, primaryKey, primaryKey % 128);
+
+    PlanCheckerBuilder insertNodeChecker = makePlanBuilder()
+        .nodeType(NODE_MODIFY_TABLE)
+        .relationName(MAIN_TABLE)
+        .alias(MAIN_TABLE);
+
+    PlanCheckerBuilder resultNodeChecker = makePlanBuilder()
+        .nodeType(NODE_RESULT)
+        .writeMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(1))
+            .build());
+
+    Checker checker = makeTopLevelBuilder()
+        .writeMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(1))
+            .build())
+        .plan(insertNodeChecker
+            .plans(resultNodeChecker.build())
+            .build())
+        .build();
+
+    testExplainDebug(simpleInsert, checker);
+  }
+
+  @Test
+  public void testUpdate() throws Exception {
+    final String simpleUpdate = String.format("UPDATE %s SET v1 = v1 + 1 "
+        + "WHERE k = 0", MAIN_TABLE);
+
+    PlanCheckerBuilder updateNodeChecker = makePlanBuilder()
+        .nodeType(NODE_MODIFY_TABLE)
+        .relationName(MAIN_TABLE)
+        .alias(MAIN_TABLE);
+
+    PlanCheckerBuilder resultNodeChecker = makePlanBuilder()
+        .writeMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(1))
+            .build());
+
+    Checker checker = makeTopLevelBuilder()
+        .writeMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(1))
+            .build())
+        .plan(updateNodeChecker
+            .plans(resultNodeChecker.build())
+            .build())
+        .build();
+
+    testExplainDebug(simpleUpdate, checker);
+  }
+
+  @Test
+  public void testDelete() throws Exception {
+    final String simpleDelete = String.format("DELETE FROM %s "
+        + "WHERE k = 0", MAIN_TABLE);
+
+    PlanCheckerBuilder deleteNodeChecker = makePlanBuilder()
+        .nodeType(NODE_MODIFY_TABLE)
+        .relationName(MAIN_TABLE)
+        .alias(MAIN_TABLE);
+
+    PlanCheckerBuilder resultNodeChecker = makePlanBuilder()
+        .writeMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(1))
+            .build());
+
+    Checker checker = makeTopLevelBuilder()
+        .writeMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(1))
+            .build())
+        .plan(deleteNodeChecker
+            .plans(resultNodeChecker.build())
+            .build())
+        .build();
+
+    testExplainDebug(simpleDelete, checker);
+  }
+
+  @Test
+  public void testReadWrite() throws Exception {
+    final String tableName = "test_table";
+    try (Statement stmt = connection.createStatement()) {
+        stmt.execute(String.format("CREATE TABLE %s (k INT, v INT, PRIMARY KEY (k ASC)) "
+            + "SPLIT AT VALUES ((100))", tableName));
+        stmt.execute(String.format("INSERT INTO %s VALUES (1, 1)", tableName));
+    }
+
+    final String readWriteQuery = String.format(
+        "WITH cte AS (INSERT INTO %s VALUES (50, 50), (150, 150) RETURNING k)"
+        + "SELECT * FROM %s",
+        tableName, tableName);
+
+    Checker checker = makeTopLevelBuilder()
+        .readMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(2))
+            .metric("docdb_keys_found", Checkers.equal(1))
+            .build())
+        .writeMetrics(makeMetricsBuilder()
+            .metric("rocksdb_number_db_seek", Checkers.equal(2))
+            .build())
+        .plan(makePlanBuilder()
+            .nodeType(NODE_SEQ_SCAN)
+            .plans(
+                makePlanBuilder()
+                    .nodeType(NODE_MODIFY_TABLE)
+                    .plans(
+                        makePlanBuilder()
+                            .nodeType(NODE_VALUES_SCAN)
+                            .build())
+                    .build())
+            .build())
+        .build();
+    testExplainDebug(readWriteQuery, checker);
   }
 }

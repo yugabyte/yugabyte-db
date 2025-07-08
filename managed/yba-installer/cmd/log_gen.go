@@ -62,7 +62,7 @@ other useful data.`,
 			filepath.Join(common.GetDataRoot(), "logs/application.log"),
 			filepath.Join(common.GetDataRoot(), "logs/audit.log"),
 			filepath.Join(common.GetDataRoot(), "logs/postgres.log"),
-			filepath.Join(common.GetDataRoot(), "prometheus/prometheus.log"),
+			filepath.Join(common.GetDataRoot(), "logs/prometheus.log"),
 			filepath.Join(common.GetActiveSymlink(), "yb-platform/conf/yb-platform.conf"),
 			filepath.Join(common.GetActiveSymlink(), "prometheus/conf/prometheus.yml"),
 
@@ -105,7 +105,7 @@ other useful data.`,
 		var osInfoBuf bytes.Buffer
 		osInfoBuf.WriteString("Operating System: " + common.OSName() + "\n")
 		osInfoBuf.WriteString("Python Version: " + common.PythonVersion() + "\n")
-		osInfoBuf.WriteString("Postgres Version: " + services[PostgresServiceName].Version() + "\n")
+		osInfoBuf.WriteString("Postgres Version: " + serviceManager.ServiceByName(PostgresServiceName).Version() + "\n")
 		osInfoBuf.WriteString("CPU Count: " + fmt.Sprintf("%d", runtime.NumCPU()) + "\n")
 		osInfoBuf.WriteString("Memory: " + common.MemoryHuman())
 		osInfo := osInfoBuf.String()

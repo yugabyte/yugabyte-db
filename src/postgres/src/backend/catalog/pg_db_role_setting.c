@@ -235,6 +235,18 @@ ApplySetting(Snapshot snapshot, Oid databaseid, Oid roleid,
 				F_OIDEQ,
 				ObjectIdGetDatum(roleid));
 
+	/*
+	 * YB: During postgres backend init, we may be in the midst of prefetching
+	 * where we use a consistent read time matching the read time of the tserver
+	 * response cache. However, any tables consulted during GUC validation are not
+	 * guaranteed to be part of the prefetched list. So we turn off prefetching
+	 * temporarily until we complete GUC validation. These reads can technically
+	 * be inconsistent with the response cache snapshot but that is better than
+	 * failing the reads due to an old snapshot.
+	 */
+	bool yb_pause_prefetching = IsInitProcessingMode() &&
+		*YBCGetGFlags()->ysql_enable_read_request_caching;
+
 	scan = systable_beginscan(relsetting, DbRoleSettingDatidRolidIndexId, true,
 							  snapshot, 2, keys);
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
@@ -253,7 +265,13 @@ ApplySetting(Snapshot snapshot, Oid databaseid, Oid roleid,
 			 * right to insert an option into pg_db_role_setting was checked
 			 * when it was inserted.
 			 */
+			if (yb_pause_prefetching)
+				YBCPauseSysTablePrefetching();
+
 			ProcessGUCArray(a, PGC_SUSET, source, GUC_ACTION_SET);
+
+			if (yb_pause_prefetching)
+				YBCResumeSysTablePrefetching();
 		}
 	}
 

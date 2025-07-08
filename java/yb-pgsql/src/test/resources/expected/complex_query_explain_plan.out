@@ -30,7 +30,7 @@ Limit  (cost=15492405236.63..15492405249.38 rows=100 width=192) ()
                                       ->  YB Batched Nested Loop Join  (cost=0.00..210.83 rows=1000 width=16) ()
                                             Join Filter: (o.id = oi.order_id)
                                             ->  Seq Scan on order_items oi  (cost=0.00..100.00 rows=1000 width=8) ()
-                                                  Storage Table Read Requests: 3
+                                                  Storage Table Read Requests: 1
                                                   Storage Table Read Execution Time: 0.000 ms
                                             ->  Index Scan using orders_pkey on orders o  (cost=0.00..0.13 rows=1 width=16) (never executed)
                                                   Index Cond: (id = ANY (ARRAY[oi.order_id, $3, $4, ..., $1025]))

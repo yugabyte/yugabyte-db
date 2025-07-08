@@ -39,4 +39,5 @@ yba oidc [flags]
 * [yba oidc configure](yba_oidc_configure.md)	 - Configure OIDC configuration for YBA
 * [yba oidc describe](yba_oidc_describe.md)	 - Describe OIDC configuration for YBA
 * [yba oidc disable](yba_oidc_disable.md)	 - Disable OIDC configuration for YBA
+* [yba oidc login](yba_oidc_login.md)	 - Login to YBA using OIDC authentication
 

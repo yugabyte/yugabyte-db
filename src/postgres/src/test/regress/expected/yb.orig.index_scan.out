@@ -1651,6 +1651,19 @@ SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1
 ----+----+----+---
 (0 rows)
 
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1, r2, r3) > (1,2,3) AND v IS NOT NULL;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=0 loops=1)
+   Index Cond: ((ROW(r1, r2, r3) <= ROW(1, 1, 5)) AND (ROW(r1, r2, r3) > ROW(1, 2, 3)))
+   Storage Filter: (v IS NOT NULL)
+(3 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1, r2, r3) > (1,2,3) AND v IS NOT NULL;
+ r1 | r2 | r3 | v 
+----+----+----+---
+(0 rows)
+
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
@@ -4216,7 +4229,7 @@ explain (analyze, dist, costs off, timing off, summary off)
    Index Cond: (i < 5)
    Rows Removed by Index Recheck: 996
    Heap Fetches: 0
-   Storage Index Read Requests: 6
+   Storage Index Read Requests: 2
    Storage Index Rows Scanned: 1003
 (6 rows)
 

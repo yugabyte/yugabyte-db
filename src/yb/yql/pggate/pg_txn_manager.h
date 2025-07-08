@@ -46,7 +46,7 @@ YB_DEFINE_ENUM(
   ((SERIALIZABLE, 3))
 );
 
-YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
+YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
@@ -96,9 +96,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
   Status SetupPerformOptions(
-      tserver::PgPerformOptionsPB* options,
-      EnsureReadTimeIsSet ensure_read_time = EnsureReadTimeIsSet::kFalse,
-      bool non_transactional_buffered_write = false);
+      tserver::PgPerformOptionsPB* options, std::optional<ReadTimeAction> read_time_action = {});
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;

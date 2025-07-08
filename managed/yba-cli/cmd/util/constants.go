@@ -137,6 +137,12 @@ const (
 	// required to use New Release via YBA CLI
 	YBAAllowNewReleaseMinPreviewVersion = "2.23.1.0-b27"
 
+	// YBAAllowNewAttachDetachMinStableVersion and
+	// YBAAllowNewAttachDetachMinPreviewVersion specify the minimum
+	// stable and preview versions for attach/detach feature on YBA CLI
+	YBAAllowNewAttachDetachMinStableVersion  = "2025.2.0.0-b1"
+	YBAAllowNewAttachDetachMinPreviewVersion = "2.27.0.0-b151"
+
 	MinCLIStableVersion  = "2024.1.0.0-b4"
 	MinCLIPreviewVersion = "2.21.0.0-b545"
 )

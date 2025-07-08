@@ -17,23 +17,25 @@
 #include <memory>
 #include <vector>
 
-#include "yb/tablet/tablet_retention_policy.h"
-#include "yb/util/env.h"
-#include "yb/util/metrics.h"
-#include "yb/util/threadpool.h"
-#include "yb/rocksdb/env.h"
-
 #include "yb/client/client_fwd.h"
 
 #include "yb/consensus/log_fwd.h"
 
 #include "yb/docdb/local_waiting_txn_registry.h"
 
+#include "yb/hnsw/hnsw_fwd.h"
+
 #include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/env.h"
 
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_retention_policy.h"
+
+#include "yb/util/env.h"
+#include "yb/util/metrics.h"
+#include "yb/util/threadpool.h"
 
 namespace rocksdb {
 class Cache;
@@ -112,6 +114,7 @@ struct TabletInitData {
   rpc::Messenger* messenger = nullptr;
   VectorIndexThreadPoolProvider vector_index_thread_pool_provider = {};
   VectorIndexPriorityThreadPoolProvider vector_index_priority_thread_pool_provider = {};
+  hnsw::BlockCachePtr vector_index_block_cache = {};
 };
 
 } // namespace tablet

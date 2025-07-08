@@ -33,6 +33,7 @@ COPY x (a, b, c, d, e) from stdin;
 10005	26	36	46	56
 \.
 
+-- Note: expect more rows with Connection Manager, pg_stat_progress_copy stores one row per backend
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
 
@@ -209,6 +210,7 @@ COPY t FROM stdin;
 4	4
 \.
 
+-- Note: expect more rows with Connection Manager, pg_stat_progress_copy stores one row per backend
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
           tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
 

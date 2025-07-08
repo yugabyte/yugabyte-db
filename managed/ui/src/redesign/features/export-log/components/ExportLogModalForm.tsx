@@ -301,12 +301,12 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
     return (
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-        <Box display={'flex'} flexDirection={'row'} alignItems={'center'} mt={3}>
-          <YBLabel>{t('exportAuditLog.lokiEndpoint')}</YBLabel>
-
-        <Box ml={1}>
-          <YBTooltip title={t('exportAuditLog.lokiEndpointTooltip')}><img src={InfoIcon} /></YBTooltip>
-          </Box>
+        <Box display={'flex'} flexDirection={'row'} alignItems={'center'} mt={4}>
+          <YBLabel width="200px">{t('exportAuditLog.lokiEndpoint')} &nbsp;
+            <YBTooltip title={t('exportAuditLog.lokiEndpointTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
         </Box>
           <YBInputField
             control={control}
@@ -322,13 +322,13 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-        <Box display={'flex'} flexDirection={'row'} alignItems={'center'} mt={3}>
-            <YBLabel>{t('exportAuditLog.lokiOrganizationID')}</YBLabel>
-            <Box ml={1}>
-              <YBTooltip title={t('exportAuditLog.lokiOrganizationIDTooltip')}>
-                <img src={InfoIcon} alt="Info" style={{ cursor: 'pointer' }} />
-              </YBTooltip>
-              </Box>
+          <Box display={'flex'} flexDirection={'row'} alignItems={'center'} mt={3}>
+            <Typography variant="body2">
+              {t('exportAuditLog.lokiOrganizationID')} &nbsp;
+            </Typography>
+            <YBTooltip title={t('exportAuditLog.lokiOrganizationIDTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
           </Box>
           <YBInputField
             control={control}

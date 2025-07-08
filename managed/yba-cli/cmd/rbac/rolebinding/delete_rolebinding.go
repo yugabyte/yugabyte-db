@@ -94,7 +94,7 @@ var deleteRoleBindingCmd = &cobra.Command{
 		}
 
 		rList, err := authAPI.ListRoleBindingRest(
-			userUUID,
+			userUUID, "RBAC: Role Bindings",
 			"Delete - List Role Bindings")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))

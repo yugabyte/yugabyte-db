@@ -80,6 +80,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
@@ -813,6 +815,14 @@ Status TSTabletManager::Init() {
   waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::PollWaitingTxnRegistry, this));
 
+  vector_index_block_cache_ = std::make_shared<hnsw::BlockCache>(
+      *tablet_options_.env,
+      server_->mem_tracker(),
+      server_->metric_entity(),
+      GetTargetBlockCacheSize(kDefaultTserverBlockCacheSizePercentage),
+      GetDbBlockCacheNumShardBits()
+  );
+
   return Status::OK();
 }
 
@@ -914,12 +924,8 @@ void TSTabletManager::CleanupSplitTablets() {
 Status TSTabletManager::WaitForAllBootstrapsToFinish(MonoDelta timeout) {
   CHECK_EQ(state(), MANAGER_RUNNING);
 
-  if (timeout.Initialized()) {
-    if (!open_tablet_pool_->WaitFor(timeout)) {
-      return STATUS(TimedOut, "Timeout waiting for all bootstraps to finish");
-    }
-  } else {
-    open_tablet_pool_->Wait();
+  if (!open_tablet_pool_->WaitFor(timeout)) {
+    return STATUS(TimedOut, "Timeout waiting for all bootstraps to finish");
   }
 
   Status s = Status::OK();
@@ -1225,14 +1231,11 @@ Status TSTabletManager::ApplyTabletSplit(
     fs_manager_->SetTabletPathByDataPath(tcmeta.tablet_id, data_root_dir);
   }
 
-  bool successfully_completed = false;
-  auto se = ScopeExit([&] {
-    if (!successfully_completed) {
+  CancelableScopeExit unregister_wal_se{[&] {
       for (const auto& tcmeta : tcmetas) {
         UnregisterDataWalDir(table_id, tcmeta.tablet_id, data_root_dir, wal_root_dir);
       }
-    }
-  });
+  }};
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
       fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
@@ -1293,7 +1296,7 @@ Status TSTabletManager::ApplyTabletSplit(
         tcmeta.transition_deleter)));
   }
 
-  successfully_completed = true;
+  unregister_wal_se.Cancel();
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation has been applied";
   ts_split_op_apply_->Increment();
   return Status::OK();
@@ -1375,12 +1378,9 @@ Status TSTabletManager::DoApplyCloneTablet(
       fs_manager_, target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
   fs_manager_->SetTabletPathByDataPath(target_tablet_id, data_root_dir);
 
-  bool successfully_created_target = false;
-  auto se = ScopeExit([&] {
-    if (!successfully_created_target) {
-      UnregisterDataWalDir(target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
-    }
-  });
+  CancelableScopeExit unregister_wal_se{[&] {
+    UnregisterDataWalDir(target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
+  }};
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
       fs_manager_, target_tablet_id, fs_manager_->uuid(), *committed_raft_config,
@@ -1468,7 +1468,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
   RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
       &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result)));
-  successfully_created_target = true;
+  unregister_wal_se.Cancel();
 
   return Status::OK();
 }
@@ -1910,7 +1910,7 @@ Status TSTabletManager::DeleteTablet(
   RETURN_NOT_OK(tablet_peer->Shutdown(
       should_abort_active_txns, tablet::DisableFlushOnShutdown::kTrue));
 
-  yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
+  auto last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
   if (!keep_data) {
     Status s = DeleteTabletData(meta,
@@ -1946,6 +1946,7 @@ Status TSTabletManager::DeleteTablet(
                        meta->data_root_dir(),
                        meta->wal_root_dir());
 
+  LOG_WITH_PREFIX_AND_FUNC(INFO) << "6";
   return Status::OK();
 }
 
@@ -2122,6 +2123,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .vector_index_priority_thread_pool_provider = [this](auto type) {
           return VectorIndexPriorityThreadPool(type);
         },
+        .vector_index_block_cache = vector_index_block_cache_,
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -2230,15 +2232,26 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 Status TSTabletManager::TriggerAdminCompaction(
   const TabletPtrs& tablets, const AdminCompactionOptions& options) {
   CountDownLatch latch(tablets.size());
+  Status first_compaction_error;
+  std::mutex first_compaction_error_mutex;
   std::vector<TabletId> tablet_ids;
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
 
-  tablet::AdminCompactionOptions tablet_compaction_options {
+  tablet::AdminCompactionOptions tablet_compaction_options{
       .compaction_completion_callback =
-          options.should_wait ? latch.CountDownCallback() : std::function<void()>{},
+          options.should_wait ? [&latch, &first_compaction_error,
+                                 &first_compaction_error_mutex](const Status& status) {
+            {
+              std::lock_guard lock(first_compaction_error_mutex);
+              if (first_compaction_error.ok()) {
+                first_compaction_error = status;
+              }
+            }
+            latch.CountDown();
+          } : StdStatusCallback{},
       .vector_index_ids = options.vector_index_ids,
-  };
+      .skip_corrupt_data_blocks_unsafe = options.skip_corrupt_data_blocks_unsafe};
 
   for (auto tablet : tablets) {
     RETURN_NOT_OK(tablet->TriggerAdminFullCompactionIfNeeded(tablet_compaction_options));
@@ -2251,9 +2264,17 @@ Status TSTabletManager::TriggerAdminCompaction(
 
   if (options.should_wait) {
     latch.Wait();
-    LOG(INFO) << yb::Format(
-        "Admin compaction finished for tablets $0, $1 bytes took $2 seconds", tablet_ids,
-        total_size, ToSeconds(CoarseMonoClock::Now() - start_time));
+    std::lock_guard lock(first_compaction_error_mutex);
+    const auto log_message = Format(
+        "Admin compaction $0 for tablets $1, $2 bytes took $3 seconds",
+        first_compaction_error.ok() ? "finished" : "failed", tablet_ids, total_size,
+        ToSeconds(CoarseMonoClock::Now() - start_time));
+    if (first_compaction_error.ok()) {
+      LOG(INFO) << log_message;
+    } else {
+      LOG(WARNING) << log_message << ": " << first_compaction_error;
+      return first_compaction_error;
+    }
   }
 
   return Status::OK();

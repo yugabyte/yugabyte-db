@@ -57,6 +57,7 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   // not reused, and upper_bound is configured instead to continue reading from the correct tablet.
   // This approach is not applicable for index read requests.
   const auto& paging_state = res.paging_state();
+  VLOG_WITH_FUNC(1) << "Response paging state: " << paging_state.ShortDebugString();
   if (&top_level_req == req &&
       !top_level_req.is_forward_scan() &&
       table.num_hash_key_columns() == 0 &&
@@ -64,16 +65,9 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
       !paging_state.has_next_row_key()) {
     const auto& current_next_partition_key = paging_state.next_partition_key();
 
-    // Need to check lower bound here because DocDB can check upper bound only.
-    dockv::KeyEntryValues lower_bound, _;
-    RETURN_NOT_OK(client::GetRangePartitionBounds(table.schema(), top_level_req, &lower_bound, &_));
-    if (!lower_bound.empty()) {
-      dockv::DocKey current_key(table.schema());
-      VERIFY_RESULT(current_key.DecodeFrom(
-          current_next_partition_key, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
-      if (current_key.CompareTo(dockv::DocKey(std::move(lower_bound))) < 0) {
-        return false; // No need to continue, lower bound was reached.
-      }
+    // Need to check lower bound here because DocDB fails to do so.
+    if (req->has_lower_bound() && current_next_partition_key < req->lower_bound().key()) {
+      return false;
     }
 
     // Setting up upper bound for backward scan for the next request, returning false to indicate

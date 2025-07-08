@@ -32,6 +32,7 @@
 
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
@@ -43,6 +44,7 @@
 #include "yb/master/state_with_tablets.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/tablet_split_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/poller.h"
 #include "yb/rpc/scheduler.h"
@@ -132,6 +134,10 @@ DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
 
 DEFINE_test_flag(bool, fatal_on_snapshot_verify, true,
                  "Whether to use DFATAL to log error messages when verifying a snapshot.");
+
+DEFINE_test_flag(bool, skip_sys_catalog_tablet_restore, false,
+                 "Skips restoring the sys catalog tablet even when restoring a snapshot in a "
+                 "schedule.");
 
 namespace yb {
 namespace master {
@@ -924,33 +930,22 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  std::optional<int64_t> ComputeDbOid(RestorationState* restoration) REQUIRES(mutex_) {
-    std::optional<int64_t> db_oid;
-    bool contains_sequences_data = false;
-    for (const auto& id_and_type : restoration->MasterMetadata()) {
-      if (id_and_type.second == SysRowEntryType::NAMESPACE &&
-          id_and_type.first == kPgSequencesDataNamespaceId) {
-        contains_sequences_data = true;
-      }
+  // todo(zdrudi): Change this to Result and have callers bail if we fail to compute the db oid.
+  std::optional<int64_t> ComputeDbOid(const RestorationState& restoration) REQUIRES(mutex_) {
+    auto snapshot_result = FindSnapshot(restoration.snapshot_id());
+    if (!snapshot_result) {
+      return std::nullopt;
     }
-    if (contains_sequences_data) {
-      for (const auto& id_and_type : restoration->MasterMetadata()) {
-        if (id_and_type.second == SysRowEntryType::NAMESPACE &&
-            id_and_type.first != kPgSequencesDataNamespaceId) {
-          auto db_oid_res = GetPgsqlDatabaseOid(id_and_type.first);
-          LOG_IF(DFATAL, !db_oid_res.ok())
-              << "Unable to obtain db_oid for namespace id "
-              << id_and_type.first << ": " << db_oid_res.status();
-          db_oid = static_cast<int64_t>(*db_oid_res);
-          LOG(INFO) << "DB OID of restoring database " << *db_oid;
-          // TODO(Sanket): In future can enhance to pass a list of db_oids.
-          break;
-        }
-      }
-      LOG_IF(DFATAL, !db_oid)
-          << "Unable to fetch db oid for the restoring database";
+    auto namespace_id_result = snapshot_result->GetNamespaceId();
+    if (!namespace_id_result) {
+      return std::nullopt;
     }
-    return db_oid;
+    auto result = GetPgsqlDatabaseOid(*namespace_id_result);
+    if (result) {
+      return *result;
+    } else {
+      return std::nullopt;
+    }
   }
 
   void SysCatalogLoaded(int64_t leader_term) {
@@ -995,7 +990,7 @@ class MasterSnapshotCoordinator::Impl {
             }
           }
 
-          auto db_oid = ComputeDbOid(restoration.get());
+          auto db_oid = ComputeDbOid(*restoration);
           postponed_restores.push_back(RestorationData {
             .snapshot_id = restoration->snapshot_id(),
             .restoration_id = restoration->restoration_id(),
@@ -1486,7 +1481,7 @@ class MasterSnapshotCoordinator::Impl {
         std::unordered_set<TabletId> tablets_snapshot(tablets.begin(), tablets.end());
         std::optional<int64_t> db_oid = std::nullopt;
         if (!snapshot->schedule_id().IsNil()) {
-          db_oid = ComputeDbOid(r.get());
+          db_oid = ComputeDbOid(*r);
         }
         r->PrepareOperations(&restore_operations, tablets_snapshot, db_oid);
       }
@@ -2055,6 +2050,24 @@ class MasterSnapshotCoordinator::Impl {
                       MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
       }
       restore_sys_catalog = phase == RestorePhase::kInitial && !snapshot.schedule_id().IsNil();
+
+      if (restore_sys_catalog) {
+        // If we're in the initial phase of a snapshot schedule restore, check if this namespace is
+        // an xcluster target. If so we don't want to restore the sys catalog tablet because
+        // xcluster has its own mechanism (ddl replication) responsible for rolling back DDLs. In
+        // this case we also need to set the db_oid because in the normal restore snapshot schedule
+        // flow the db_oid is only passed to this function when phase != kInitial.
+        auto namespace_id_result = snapshot.GetNamespaceId();
+        // todo(zdrudi): We don't bail on error here because the clone flow sometimes supplies an
+        // empty snapshot.
+        // See GH27621.
+        if (namespace_id_result.ok() &&
+            (PREDICT_FALSE(FLAGS_TEST_skip_sys_catalog_tablet_restore) ||
+             cm_->GetXClusterManager()->IsNamespaceInAutomaticModeTarget(*namespace_id_result))) {
+          db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(*namespace_id_result));
+          restore_sys_catalog = false;
+        }
+      }
       if (restore_sys_catalog) {
         RETURN_NOT_OK(ForwardRestoreCheck(snapshot, restore_at, restoration_id));
       }
@@ -2066,10 +2079,10 @@ class MasterSnapshotCoordinator::Impl {
         // from external backups where we don't need to restore the sys catalog.
         auto restoration = std::make_unique<RestorationState>(
             &context_, restoration_id, &snapshot, restore_at,
-            snapshot.schedule_id().IsNil() ? IsSysCatalogRestored::kTrue :
-                                             IsSysCatalogRestored::kFalse,
-            GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
-                        FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
+            restore_sys_catalog ? IsSysCatalogRestored::kFalse : IsSysCatalogRestored::kTrue,
+            GetRpcLimit(
+                FLAGS_max_concurrent_restoration_rpcs,
+                FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
         restoration_ptr = restorations_.emplace(std::move(restoration)).first->get();
         last_restorations_update_ht_ = context_.Clock()->Now();
       } else {

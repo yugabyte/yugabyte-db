@@ -101,6 +101,9 @@ Status ValidateAutoFlagsInternal(
     } else if (
         !is_valid && old_compatible_auto_flag_config_version != kInvalidAutoFlagsConfigVersion) {
       // We are not compatible with the source universe anymore.
+      LOG(WARNING) << "xCluster replication group " << replication_group_id
+                   << " is not compatible with the source universe AutoFlags. Upgrade the universe "
+                      "to a version that is equal to or higher than the source universe";
       producer_entry->set_compatible_auto_flag_config_version(kInvalidAutoFlagsConfigVersion);
       cluster_config_changed = true;
     }

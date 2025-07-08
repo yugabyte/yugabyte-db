@@ -696,6 +696,10 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "false"));
 
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_log_heap_snapshot_on_exit_threshold", "-1"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_log_heap_snapshot_on_exit_threshold", "100"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_log_heap_snapshot_on_exit_threshold", "100"));
+
   // Verify changing non-runtime flag fails
   ASSERT_NOK(SetFlagOnAllTServers("max_connections", "47"));
 }

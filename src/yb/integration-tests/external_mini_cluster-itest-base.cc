@@ -46,26 +46,31 @@ Status ExternalMiniClusterITestBase::StartCluster(ExternalMiniClusterOptions opt
   return Status::OK();
 }
 
-void ExternalMiniClusterITestBase::TearDown() {
+void ExternalMiniClusterITestBase::TearDownCluster() {
   client_.reset();
-  if (cluster_) {
-    if (HasFatalFailure()) {
-      LOG(INFO) << "Found fatal failure";
-      for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-        if (!cluster_->tablet_server(i)->IsProcessAlive()) {
-          LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
-          continue;
-        }
-        LOG(INFO) << "Attempting to dump stacks of TS " << i << " with UUID "
-                  << cluster_->tablet_server(i)->uuid() << " and pid "
-                  << cluster_->tablet_server(i)->pid();
-        WARN_NOT_OK(
-            PstackWatcher::DumpPidStacks(cluster_->tablet_server(i)->pid()),
-            "Couldn't dump stacks");
-      }
-    }
-    cluster_->Shutdown();
+  if (!cluster_) {
+    return;
   }
+  if (HasFatalFailure()) {
+    LOG(INFO) << "Found fatal failure";
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+      if (!cluster_->tablet_server(i)->IsProcessAlive()) {
+        LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
+        continue;
+      }
+      LOG(INFO) << "Attempting to dump stacks of TS " << i << " with UUID "
+                << cluster_->tablet_server(i)->uuid() << " and pid "
+                << cluster_->tablet_server(i)->pid();
+      WARN_NOT_OK(
+          PstackWatcher::DumpPidStacks(cluster_->tablet_server(i)->pid()), "Couldn't dump stacks");
+    }
+  }
+  cluster_->Shutdown();
+}
+
+void ExternalMiniClusterITestBase::TearDown() {
+  TearDownCluster();
+
   YBTest::TearDown();
   ts_map_.clear();
 }

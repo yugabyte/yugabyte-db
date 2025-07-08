@@ -101,14 +101,6 @@ void SetPartitionKey(const Slice& value, PgsqlWriteRequestPB* request) {
   request->set_partition_key(value.cdata(), value.size());
 }
 
-void SetKey(const Slice& value, LWPgsqlPartitionBound* bound) {
-  bound->dup_key(value);
-}
-
-void SetKey(const Slice& value, PgsqlPartitionBound* bound) {
-  bound->set_key(value.cdata(), value.size());
-}
-
 template <typename Req>
 void GetPartitionKey(const Req& request, std::string* partition_key) {
   if (request.has_partition_key()) {
@@ -261,8 +253,6 @@ Status InitRangePartitionKey(
   // 1. Not specified range condition - Full scan.
   // 2. paging_state -- Set by server to continue the same request.
   // 3. upper and lower bound -- Set by PgGate to fetch rows within a boundary.
-  // 4. range column values -- Given to fetch rows for one set of specific range values.
-  // 5. condition expr -- Given to fetch rows that satisfy specific conditions.
 
   if (request->has_paging_state() &&
       request->paging_state().has_next_partition_key()) {
@@ -272,36 +262,17 @@ Status InitRangePartitionKey(
     // A special case for backward scan: partition is selected on base of upper bound.
     const auto& key = VERIFY_RESULT_REF(FindPartitionKeyByUpperBound(partitions, *request));
     SetPartitionKey(key, request);
-  } else if (request->has_lower_bound() || request->has_upper_bound()) {
+  } else if (request->has_lower_bound()) {
     // If the read request provides a scan boundary, use that to derive the partition key.
     SetPartitionKey(request->lower_bound().key(), request);
   } else {
-    // Inspect filters in the request to produce scan boundaries; fall back to full scan, otherwise.
-    vector<dockv::KeyEntryValue> lower_range_components, upper_range_components;
-    RETURN_NOT_OK(GetRangePartitionBounds(
-        schema, *request, &lower_range_components, &upper_range_components));
-    if (lower_range_components.empty() && upper_range_components.empty()) {
-      // Full scan: start from first or last partition depending on scan direction.
-      if (request->is_forward_scan()) {
-        request->clear_partition_key();
-      } else {
-        SetPartitionKey(partitions.back(), request);
-      }
-      return Status::OK();
-    }
-    auto upper_bound = dockv::DocKey(std::move(upper_range_components)).Encode().ToStringBuffer();
+    // Full scan: start from first or last partition depending on scan direction.
     if (request->is_forward_scan()) {
-      SetPartitionKey(dockv::DocKey(std::move(lower_range_components)).Encode().AsSlice(), request);
-      if (!upper_bound.empty()) {
-        SetKey(upper_bound, request->mutable_upper_bound());
-        request->mutable_upper_bound()->set_is_inclusive(true);
-      }
+      request->clear_partition_key();
     } else {
-      // Backward scan should go from upper bound to lower. But because DocDB can check upper bound
-      // only, lower bound is not set here. Lower bound will be checked on client side in the
-      // ReviewResponsePagingState function.
-      SetPartitionKey(upper_bound, request);
+      SetPartitionKey(partitions.back(), request);
     }
+    return Status::OK();
   }
 
   return Status::OK();

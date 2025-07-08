@@ -11,13 +11,15 @@
 // under the License.
 //
 
+#include <gmock/gmock.h>
 
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
-#include "yb/util/flags.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/logging_test_util.h"
 
 DECLARE_bool(TEST_simulate_EnsureSequenceUpdatesAreInWal_failure);
@@ -110,7 +112,7 @@ class XClusterAutomaticModeTest : public XClusterDDLReplicationTestBase {
     std::vector<NamespaceId> sequence_alias_ids;
     for (const auto& ns : namespace_names) {
       sequence_alias_ids.push_back(xcluster::GetSequencesDataAliasForNamespace(
-          VERIFY_RESULT(GetNamespaceId(producer_client(), ns))));
+          VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), ns))));
     }
     return WaitForReplicationDrain(
         0, kRpcTimeout, /*target_time=*/std::nullopt, sequence_alias_ids);
@@ -134,8 +136,8 @@ TEST_F(XClusterAutomaticModeTest, StraightforwardSequenceReplication) {
   const std::string namespace1{"yugabyte"};
   ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false, namespace1));
   ASSERT_EQ(
-      ASSERT_RESULT(GetNamespaceId(producer_client(), namespace1)),
-      ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace1)));
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace1)),
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace1)));
 
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
   ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
@@ -154,6 +156,52 @@ TEST_F(XClusterAutomaticModeTest, StraightforwardSequenceReplication) {
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace1));
 }
 
+TEST_F(XClusterAutomaticModeTest, SequenceMetricsUseAliases) {
+  // Setup simple automatic replication with sequences so there will
+  // be metrics for sequences_data.
+  ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false,  namespace_name));
+  ASSERT_OK(SetUpSequences(&producer_cluster_,  namespace_name));
+  ASSERT_OK(SetUpSequences(&consumer_cluster_,  namespace_name));
+  ASSERT_OK(CheckpointReplicationGroupOnNamespaces({ namespace_name}));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(BumpSequences(&producer_cluster_,  namespace_name));
+  ASSERT_OK(WaitForSequencesReplicationDrain({ namespace_name}));
+  auto namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(),  namespace_name));
+
+  // Fetch Prometheus metrics from producer.
+  std::string addr =
+     ToString(producer_cluster_.mini_cluster_->mini_tablet_server(0)->bound_http_addr());
+  EasyCurl c;
+  faststring buf;
+  ASSERT_OK(c.FetchURL(Format("http://$0/prometheus-metrics", addr), &buf));
+
+  // Check each metric.
+  int xcluster_metric_count = 0;
+  std::string buffer = buf.ToString() + '\n';
+  std::string::size_type start = 0;
+  std::string::size_type end = 0;
+  for (start = 0; (end = buffer.find('\n', start)) != std::string::npos; start = end + 1) {
+    std::string line = buffer.substr(start, end - start);
+    // We only care about xCluster metrics for sequences_data.
+    if (line.find("metric_type=\"xcluster") == std::string::npos) {
+      continue;
+    }
+    if (line.find("sequences_data") == std::string::npos) {
+      continue;
+    }
+
+    xcluster_metric_count++;
+    using ::testing::HasSubstr;
+    EXPECT_THAT(line, HasSubstr(Format("namespace_name=\"$0\"",  namespace_name)));
+    EXPECT_THAT(line, HasSubstr("table_name=\"sequences_data\""));
+    EXPECT_THAT(
+        line, HasSubstr(Format(
+                  "table_id=\"$0\"", xcluster::GetSequencesDataAliasForNamespace(namespace_id))));
+  }
+  EXPECT_GT(xcluster_metric_count, 0);
+}
+
 TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithFiltering) {
   // Unpacked is a harder test case for this code.  With unpacked rows, a single update to a
   // sequence will generate multiple RocksDB key value pairs.  This is harder for the xCluster code
@@ -166,11 +214,11 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithFiltering) {
   const std::string namespace2{"yugabyte2"};
   ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/false, namespace1, namespace2));
   ASSERT_EQ(
-      ASSERT_RESULT(GetNamespaceId(producer_client(), namespace1)),
-      ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace1)));
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace1)),
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace1)));
   ASSERT_EQ(
-      ASSERT_RESULT(GetNamespaceId(producer_client(), namespace2)),
-      ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace2)));
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace2)),
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace2)));
 
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
   ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
@@ -248,8 +296,8 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithTransform) {
   const std::string namespace1{"db_with_differing_oids"};
   ASSERT_OK(SetUpClusters(/*use_different_database_oids=*/true, namespace1));
   ASSERT_NE(
-      ASSERT_RESULT(GetNamespaceId(producer_client(), namespace1)),
-      ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace1)));
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace1)),
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace1)));
 
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace1));
   ASSERT_OK(SetUpSequences(&consumer_cluster_, namespace1));
@@ -301,7 +349,7 @@ TEST_F(XClusterAutomaticModeTest, SequencePausingAndSafeTime) {
 
   auto sequences_stream_id =
       ASSERT_RESULT(GetCDCStreamID(xcluster::GetSequencesDataAliasForNamespace(
-          ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_name)))));
+          ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name)))));
   ASSERT_OK(PauseResumeXClusterProducerStreams({sequences_stream_id}, /*is_paused=*/true));
   ASSERT_OK(
       StringWaiterLogSink("Replication is paused from the producer for stream").WaitFor(300s));
@@ -329,7 +377,7 @@ TEST_F(XClusterAutomaticModeTest, SequencePausingIsolation) {
   auto pause_one_namespace_temporarily = [&](NamespaceName namespace_to_pause,
                                              NamespaceName other_namespace) {
     auto namespace_to_pause_id =
-        ASSERT_RESULT(GetNamespaceId(producer_client(), namespace_to_pause));
+        ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_to_pause));
     LOG(INFO) << "***** Pausing namespace: " << namespace_to_pause
               << " ID: " << namespace_to_pause_id;
     auto sequences_stream_id = ASSERT_RESULT(
@@ -456,7 +504,8 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingAddingNamespac
   // sequences in the middle of the backup/restore step.
   ASSERT_OK(SetUpSequences(&producer_cluster_, namespace2));
   auto source_xcluster_client = client::XClusterClient(*producer_client());
-  auto source_db_id = ASSERT_RESULT(GetNamespaceId(producer_client(), namespace2));
+  auto source_db_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace2));
   ASSERT_OK(source_xcluster_client.AddNamespaceToOutboundReplicationGroup(
       kReplicationGroupId, source_db_id));
   // Wait for checkpointing to finish.
@@ -465,7 +514,8 @@ TEST_F(XClusterAutomaticModeTest, SequenceReplicationBootstrappingAddingNamespac
   ASSERT_OK(BumpSequences(&producer_cluster_, namespace2));
   ASSERT_OK(RestoreToConsumer({namespace2}));
   // Note that RestoreToConsumer re-creates the namespace so we can't get the ID before now.
-  auto target_db_id = ASSERT_RESULT(GetNamespaceId(consumer_client(), namespace2));
+  auto target_db_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace2));
   ASSERT_OK(AddNamespaceToXClusterReplication(source_db_id, target_db_id));
 
   ASSERT_OK(VerifySequencesSameOnBothSides(namespace2));
@@ -518,7 +568,7 @@ class XClusterSequenceDDLOrdering : public XClusterDDLReplicationTestBase {
     // Wait for sequences_data replication to drain.
     std::vector<NamespaceId> sequence_alias_ids;
     sequence_alias_ids.push_back(xcluster::GetSequencesDataAliasForNamespace(
-        VERIFY_RESULT(GetNamespaceId(producer_client(), namespace_name))));
+        VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name))));
     RETURN_NOT_OK(
         WaitForReplicationDrain(0, kRpcTimeout, /*target_time=*/std::nullopt, sequence_alias_ids));
 

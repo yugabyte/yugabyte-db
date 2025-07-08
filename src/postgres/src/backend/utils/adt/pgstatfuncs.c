@@ -857,7 +857,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			 * date.
 			 */
 			if (beentry->st_xact_start_timestamp != 0 &&
-				beentry->st_backendType != B_WAL_SENDER)
+				beentry->st_backendType != B_WAL_SENDER &&
+				beentry->st_backendType != YB_YSQL_CONN_MGR_WAL_SENDER)
 				values[8] = TimestampTzGetDatum(beentry->st_xact_start_timestamp);
 			else
 				nulls[8] = true;

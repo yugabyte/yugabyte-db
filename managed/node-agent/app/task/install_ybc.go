@@ -110,7 +110,7 @@ func (h *InstallYbcHandler) execConfigureYBCCommands(
 		{
 			"setup-bin-symlink",
 			fmt.Sprintf(
-				"unlink %s > /dev/null 2>&1; ln -sf %s %s",
+				"rm -rf %s && ln -sf %s %s",
 				filepath.Join(ybcControllerDir, "bin"),
 				filepath.Join(ybcSoftwareDir, "bin"),
 				filepath.Join(ybcControllerDir, "bin"),
@@ -130,7 +130,7 @@ func (h *InstallYbcHandler) execConfigureYBCCommands(
 		{
 			"create-logs-dir-symlinks",
 			fmt.Sprintf(
-				"unlink %s > /dev/null 2>&1; ln -sf %s %s",
+				"rm -rf %s && ln -sf %s %s",
 				filepath.Join(ybcControllerDir, "logs"),
 				filepath.Join(mountPoint, "ybc-data/controller/logs"),
 				filepath.Join(ybcControllerDir, "logs"),
@@ -170,16 +170,13 @@ func (h *InstallYbcHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespons
 	pkgFolder := helpers.ExtractArchiveFolderName(pkgName)
 
 	// 2) figure out home dir
-	home := ""
-	if h.param.GetYbHomeDir() != "" {
-		home = h.param.GetYbHomeDir()
-	} else {
+	if h.param.GetYbHomeDir() == "" {
 		err := errors.New("ybHomeDir is required")
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
 
-	ybcSoftwareDir := filepath.Join(home, "yb-software", pkgFolder)
+	ybcSoftwareDir := filepath.Join(h.param.GetYbHomeDir(), "yb-software", pkgFolder)
 	ybcControllerDir := filepath.Join(h.param.GetYbHomeDir(), "controller")
 	// 3) Put the ybc software at the desired location.
 	ybcPackagePath := filepath.Join(h.param.GetRemoteTmp(), pkgName)

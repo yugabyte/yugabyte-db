@@ -157,8 +157,6 @@ class TSManager {
   // The callback is removed after it is called once.
   void SetTSCountCallback(int min_count, TSCountCallback callback);
 
-  void SetLeaseExpiredCallback(LeaseExpiredCallback callback);
-
   size_t NumDescriptors() const;
 
   size_t NumLiveDescriptors() const;

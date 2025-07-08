@@ -88,7 +88,8 @@ public class V383 {
       UPDATE_ROLE_BINDINGS,
       UPDATE_PROFILE,
       SUPER_ADMIN_ACTIONS,
-      XCLUSTER
+      XCLUSTER,
+      DEBUG
     }
 
     public ResourceType resourceType;

@@ -272,6 +272,9 @@ YB_NODE_CLOCKBOUND_STATUS = MetricDefinition(
 YB_EARLYOOM_KILLS_COUNT = MetricDefinition(
     "yb_earlyoom_kills_count",
     "Number of process kills initiated by earlyoom during last hour")
+YB_THP_SETTINGS_CHECK = MetricDefinition(
+    "yb_thp_settings_check",
+    "Check that THP settings are applied")
 
 ###################################################################################################
 # Reporting
@@ -395,10 +398,10 @@ class Entry:
         self.has_warning = None
         self.ignore_result = False
 
-    def fill_and_return_entry(self, details, has_error=False, metrics=None):
+    def fill_and_return_entry(self, details, has_error=False, has_warning=False, metrics=None):
         self.details = details
         self.has_error = has_error
-        self.has_warning = False
+        self.has_warning = has_warning
         self.metrics = metrics
         return self
 
@@ -564,7 +567,7 @@ class NodeChecker():
                  is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
-                 enable_earlyoom, topk_other_processes, topk_mem_threshold_percent):
+                 enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -605,6 +608,7 @@ class NodeChecker():
         self.verbose = verbose
         self.topk_other_processes = topk_other_processes
         self.topk_mem_threshold_percent = topk_mem_threshold_percent
+        self.check_thp = check_thp
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -2082,6 +2086,33 @@ class NodeChecker():
                 ["OpenTelemetry health check failed: {}".format(ex)], has_error=True
             )
 
+    def check_thp_settings(self):
+        logging.info("Checking THP settings on node {}".format(self.node))
+
+        e = self._new_entry("THP settings check")
+        msgs = []
+        cmd = "cat /sys/kernel/mm/transparent_hugepage/enabled"
+        res = self._check_output(cmd)
+        if "[always]" not in res:
+            msgs.append("/sys/kernel/mm/transparent_hugepage/enabled is {} (should have [always])"
+                        .format(res))
+
+        cmd = "cat /sys/kernel/mm/transparent_hugepage/defrag"
+        res = self._check_output(cmd)
+        if "[defer+madvise]" not in res:
+            msgs.append("/sys/kernel/mm/transparent_hugepage/defrag is {} \
+                        (should have [defer+madvise])".format(res))
+
+        cmd = "cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none"
+        res = self._check_output(cmd)
+        if res != "0":
+            msgs.append("/sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none is {} \
+                        (should have 0)".format(res))
+
+        metric = Metric.from_definition(YB_THP_SETTINGS_CHECK)
+        metric.add_value(0 if len(msgs) > 0 else 1)
+        return e.fill_and_return_entry(msgs, has_error=False, has_warning=len(msgs) > 0,
+                                       metrics=[metric])
 
     def _check_unit_for_preexec(self, service, user=True):
         cmd = ""
@@ -2623,6 +2654,7 @@ class NodeInfo:
         self.clockbound_enabled = data["clockboundEnabled"]
         self.topk_other_processes = data["topKOtherProcesses"]
         self.topk_mem_threshold_percent = data["topKMemThresholdPercent"]
+        self.check_thp = data["checkTHP"]
 
 
 def main():
@@ -2672,7 +2704,7 @@ def main():
         n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
-        n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent)
+        n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
     coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
@@ -2790,6 +2822,9 @@ def main():
     if n.topk_other_processes > 0:
         # This should be run after TOTAL is calculated (we don't want it to be included in total).
         coordinator.add_check(checker, "check_other_process_stats")
+
+    if not n.is_k8s and n.check_thp:
+        coordinator.add_check(checker, "check_thp_settings")
 
     entries = coordinator.run()
     for e in entries:

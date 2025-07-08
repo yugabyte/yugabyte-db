@@ -78,6 +78,15 @@
 #define YB_RELCACHE_MSGS (1)
 
 /*
+ * Postgres code uses process-level storage (e.g. static variables) to store
+ * long-lived data in a backend process. During expression pushdown, we may be
+ * reading & writing to the same variable from multiple threads in the same
+ * process, so using process-level storage is not safe. We use thread-local
+ * storage to ensure thread safety for these variables.
+ */
+#define YB_THREAD_LOCAL __thread
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -144,11 +153,11 @@ extern int32_t yb_follower_read_staleness_ms;
 		HeapTuple   pg_db_tuple; \
 		SysScanDesc pg_db_scan = systable_beginscan( \
 			pg_db, \
-			InvalidOid /* indexId */, \
-			false /* indexOK */, \
-			NULL /* snapshot */, \
-			0 /* nkeys */, \
-			NULL /* key */); \
+			InvalidOid /* indexId */ , \
+			false /* indexOK */ , \
+			NULL /* snapshot */ , \
+			0 /* nkeys */ , \
+			NULL /* key */ ); \
 		while (HeapTupleIsValid(pg_db_tuple = systable_getnext(pg_db_scan))) \
 		{ \
 
@@ -196,8 +205,6 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
 extern bool IsYBSystemColumn(int attrNum);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
-
-extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
@@ -678,6 +685,12 @@ extern char *yb_default_replica_identity;
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
 
+/*
+ * If set to true, force a full catalog cache refresh before
+ * executing the next top level statement.
+ */
+extern bool yb_test_preload_catalog_tables;
+
 /* GUC variable yb_test_stay_in_global_catalog_version_mode. */
 extern bool yb_test_stay_in_global_catalog_version_mode;
 
@@ -819,9 +832,14 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
+extern bool YBIsDdlTransactionBlockEnabled();
 extern int	YBGetDdlNestingLevel();
-extern NodeTag YBGetDdlOriginalNodeTag();
+extern NodeTag YBGetCurrentStmtDdlNodeTag();
+extern bool YBIsCurrentStmtDdl();
+extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern void YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
+											  CommandTag commandTag);
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 extern bool YbTrackPgTxnInvalMessagesForAnalyze();
@@ -838,7 +856,7 @@ typedef enum YbSysCatalogModificationAspect
 	/*
 	 * Indicates if the statement runs in an autonomous transaction when
 	 * transactional DDL support is enabled.
-	 * Always unset if TEST_ysql_yb_ddl_transaction_block_enabled is false.
+	 * Always unset if yb_ddl_transaction_block_enabled is false.
 	 */
 	YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE = 8,
 } YbSysCatalogModificationAspect;
@@ -865,7 +883,7 @@ typedef enum YbDdlMode
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
-extern void YBSetDdlState(YbDdlMode mode);
+extern void YBAddDdlTxnState(YbDdlMode mode);
 extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
@@ -874,6 +892,7 @@ typedef struct YbDdlModeOptional
 	YbDdlMode	value;
 } YbDdlModeOptional;
 
+extern YbDdlMode YBGetCurrentDdlMode();
 extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
 									  ProcessUtilityContext context);
 void		YBAddModificationAspects(YbDdlMode mode);
@@ -1380,5 +1399,7 @@ extern bool YbIsInvalidationMessageEnabled();
 extern bool YbRefreshMatviewInPlace();
 
 extern void YbForceSendInvalMessages();
+
+extern long YbGetPeakRssKb();
 
 #endif							/* PG_YB_UTILS_H */

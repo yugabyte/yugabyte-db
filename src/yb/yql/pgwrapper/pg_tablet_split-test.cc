@@ -73,6 +73,8 @@ DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_int32(ysql_select_parallelism);
+DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
 DECLARE_bool(TEST_pause_before_full_compaction);
@@ -348,6 +350,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
       "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, $0) i) t2;", kNumRows));
 
   ASSERT_OK(cluster_->FlushTablets());
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_ms) =
       narrow_cast<int32_t>(ToMilliseconds(kScanAfterSplitDuration + 60s) / kNumRows);
@@ -362,8 +365,6 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
     LOG(INFO) << "Rows count: " << *rows_count_result;
     ASSERT_EQ(kNumRows, *rows_count_result);
   });
-
-  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
 
   // Wait for test tablet scan start. It could be delayed, because FLAGS_TEST_fetch_next_delay_ms
   // impacts master perf as well.
@@ -776,6 +777,43 @@ TEST_F(PgTabletSplitTest, TestMetaCacheLookupsPostSplit) {
   ASSERT_NE(remote_child->tablet_id(), parent_tablet_id);
 }
 
+class PgManyTabletsSelect : public PgTabletSplitTest {
+ protected:
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_select_parallelism) = 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = 1_MB;
+
+    PgTabletSplitTest::SetUp();
+  }
+};
+
+TEST_F(PgManyTabletsSelect, AnalyzeTableWithLargeRows) {
+  const auto table_name = "big_table";
+  const auto rows = 1000;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(wide TEXT) SPLIT INTO $1 TABLETS",
+      table_name, FLAGS_ysql_select_parallelism));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT repeat('a', 1100) FROM generate_series(1, $1)", table_name, rows));
+  // 1100 bytes per row * 1000 rows ~= 1.1 MB total size.
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_fetch_row_limit = 0"));
+
+  const auto explain_str = ASSERT_RESULT(conn.FetchAllAsString(Format(
+      "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM $0 WHERE wide = wide", table_name)));
+  LOG(INFO) << "Explain output: " << explain_str;
+
+  rapidjson::Document explain_json;
+  explain_json.Parse(explain_str.c_str());
+
+  // The response is too large to fit in one request (RPC_MAX_SIZE_LIMIT), so it is split into two
+  ASSERT_EQ(explain_json[0]["Storage Read Requests"].GetInt(), 2);
+  ASSERT_EQ(explain_json[0]["Plan"]["Actual Rows"].GetInt(), rows);
+}
+
 class PgPartitioningVersionTest :
     public PgTabletSplitTest,
     public testing::WithParamInterface<uint32_t> {
@@ -798,7 +836,7 @@ class PgPartitioningVersionTest :
 
     // Make sure SST files appear to be able to split
     RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
-    return InvokeSplitTabletRpcAndWaitForDataCompacted(peer->tablet_id());
+    return InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), peer->tablet_id());
   }
 
   Result<TabletRecordsInfo> GetTabletRecordsInfo(
@@ -969,7 +1007,7 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
     // Make sure SST files appear to be able to split
     ASSERT_OK(WaitForAnySstFiles(peer));
 
-    auto status = InvokeSplitTabletRpc(peer->tablet_id());
+    auto status = InvokeSplitTabletRpc(cluster_.get(), peer->tablet_id());
     if (partitioning_version == 0) {
       // Index tablet split is not supported for old index tables with range partitioning
       ASSERT_EQ(status.IsNotSupported(), true) << "Unexpected status: " << status.ToString();
@@ -1048,7 +1086,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       LOG(INFO) << "Split key: " << AsString(split_key);
 
       // Split index table.
-      ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(parent_peer->tablet_id()));
+      ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+          cluster_.get(), parent_peer->tablet_id()));
       ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
       // Keep current numbers of records persisted in tablets for further analyses.
@@ -1159,7 +1198,8 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     LOG(INFO) << "Split key values: t0 = \"" << idx1_t0 << "\", i0 = " << idx1_i0;
 
     // Split unique index table (idx1).
-    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(parent_peer->tablet_id()));
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+        cluster_.get(), parent_peer->tablet_id()));
     ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
     // Turn compaction off to make all subsequent deletes are kept in regular db.

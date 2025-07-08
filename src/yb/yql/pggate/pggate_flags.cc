@@ -151,6 +151,11 @@ DEPRECATE_FLAG(int32, ysql_max_write_restart_attempts, "12_2023");
 // left redundant, so D37419 removed it. See commit summary for details.
 DEPRECATE_FLAG(bool, ysql_disable_portal_run_context, "08_2024");
 
+DEFINE_NON_RUNTIME_uint32(
+    yb_max_recursion_depth, 2000,
+    "Maximum recursion depth for YSQL functions. Currently, this affects only expression pushdown "
+    "for regex functions. ");
+
 #ifdef NDEBUG
 constexpr bool kEnableReadCommitted = false;
 #else

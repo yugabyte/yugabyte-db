@@ -679,6 +679,12 @@ TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnId) {
   const std::string table_name = "test_table";
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
 
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return !VERIFY_RESULT(HasLocksMaster());
+      },
+      10s * kTimeMultiplier, "Wait for master to be release locks asynchronously"));
+
   ASSERT_OK(conn1.Execute("BEGIN"));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));

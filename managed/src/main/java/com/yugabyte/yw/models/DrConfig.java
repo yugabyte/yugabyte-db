@@ -110,7 +110,8 @@ public class DrConfig extends Model {
 
     // Create a corresponding xCluster object.
     XClusterConfig xClusterConfig =
-        drConfig.addXClusterConfig(sourceUniverseUUID, targetUniverseUUID, ConfigType.Txn);
+        drConfig.addXClusterConfig(
+            sourceUniverseUUID, targetUniverseUUID, ConfigType.Txn, false /* isAutomaticDdlMode */);
     xClusterConfig.updateTables(tableIds, tableIds /* tableIdsNeedBootstrap */);
     drConfig.save();
     return drConfig;
@@ -124,7 +125,8 @@ public class DrConfig extends Model {
       UUID targetUniverseUUID,
       BootstrapParams.BootstrapBackupParams bootstrapBackupParams,
       PitrParams pitrParams,
-      Set<String> sourceNamespaceIds) {
+      Set<String> sourceNamespaceIds,
+      boolean isAutomaticDdlMode) {
     DrConfig drConfig = new DrConfig();
     drConfig.name = name;
     drConfig.setCreateTime(new Date());
@@ -136,7 +138,8 @@ public class DrConfig extends Model {
     drConfig.setPitrSnapshotIntervalSec(pitrParams.snapshotIntervalSec);
 
     XClusterConfig xClusterConfig =
-        drConfig.addXClusterConfig(sourceUniverseUUID, targetUniverseUUID, ConfigType.Db);
+        drConfig.addXClusterConfig(
+            sourceUniverseUUID, targetUniverseUUID, ConfigType.Db, isAutomaticDdlMode);
     xClusterConfig.updateNamespaces(sourceNamespaceIds);
     drConfig.save();
     return drConfig;
@@ -148,12 +151,11 @@ public class DrConfig extends Model {
     super.update();
   }
 
-  public XClusterConfig addXClusterConfig(UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    return addXClusterConfig(sourceUniverseUUID, targetUniverseUUID, ConfigType.Txn);
-  }
-
   public XClusterConfig addXClusterConfig(
-      UUID sourceUniverseUUID, UUID targetUniverseUUID, ConfigType type) {
+      UUID sourceUniverseUUID,
+      UUID targetUniverseUUID,
+      ConfigType type,
+      boolean isAutomaticDdlMode) {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(
             this.getNewXClusterConfigName(sourceUniverseUUID, targetUniverseUUID),
@@ -167,9 +169,13 @@ public class DrConfig extends Model {
     xClusterConfig.setTableType(TableType.YSQL);
     // Dr is only based on transactional or db scoped replication.
     xClusterConfig.setType(type);
+    if (type == ConfigType.Db) {
+      xClusterConfig.setAutomaticDdlMode(isAutomaticDdlMode);
+    } else {
+      xClusterConfig.setAutomaticDdlMode(false);
+    }
     xClusterConfig.update();
     this.setModifyTime(new Date());
-
     return xClusterConfig;
   }
 

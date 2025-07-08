@@ -39,6 +39,9 @@
  */
 #include "regcustom.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 
 /*
@@ -516,13 +519,14 @@ struct fns
 	int			FUNCPTR(stack_too_deep, (void));
 };
 
+extern YB_THREAD_LOCAL int yb_regex_recursion_depth;
+
 #define CANCEL_REQUESTED(re)  \
 	((*((struct fns *) (re)->re_fns)->cancel_requested) ())
 
-#define STACK_TOO_DEEP(re)	\
-	((*((struct fns *) (re)->re_fns)->stack_too_deep) ())
-
-
+#define STACK_TOO_DEEP(re)	(IsMultiThreadedMode() ? \
+	yb_regex_recursion_depth > *YBCGetGFlags()->yb_max_recursion_depth : \
+	(*((struct fns *) (re)->re_fns)->stack_too_deep) ())
 /*
  * the insides of a regex_t, hidden behind a void *
  */

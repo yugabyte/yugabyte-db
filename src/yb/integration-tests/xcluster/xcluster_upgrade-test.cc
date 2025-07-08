@@ -12,14 +12,11 @@
 
 #include "yb/client/table.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/integration-tests/xcluster/xcluster_external_mini_cluster_base.h"
 #include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/util/flags/auto_flags_util.h"
 
 DECLARE_int32(replication_factor);
 DECLARE_int32(limit_auto_flag_promote_for_new_universe);

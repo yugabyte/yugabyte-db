@@ -36,6 +36,7 @@ public class ConfigureOOMServiceOnNode extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     public AdditionalServicesStateData.EarlyoomConfig earlyoomConfig;
+    public boolean earlyoomEnabled;
   }
 
   @Override
@@ -67,7 +68,7 @@ public class ConfigureOOMServiceOnNode extends NodeTaskBase {
     ConfigureServiceInput input =
         ConfigureServiceInput.newBuilder()
             .setService(Service.EARLYOOM)
-            .setEnabled(earlyoomConfig.isEnabled())
+            .setEnabled(taskParams().earlyoomEnabled)
             .setConfig(
                 ServiceConfig.newBuilder()
                     .setYbHomeDir(homeDir)

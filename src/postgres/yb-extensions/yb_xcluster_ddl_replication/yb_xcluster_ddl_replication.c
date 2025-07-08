@@ -90,6 +90,38 @@ static bool IsInIgnoreList(EventTriggerData *trig_data);
  */
 static bool yb_should_replicate_ddl = false;
 
+/*
+ * Assign hooks.
+ */
+
+/*
+ * The GUC variables `enable_manual_ddl_replication` and
+ * `TEST_replication_role_override` cannot be supported using connection
+ * manager due to how GUC variables are supported through connection manager.
+ * Any modifications to these variables should cause the connection to become
+ * sticky so as to not allow internal changes to the variables to occur while
+ * not servicing an active client connection.
+ *
+ * These assign hooks have no purpose if connection manager is not being used.
+ */
+
+static void
+assign_enable_manual_ddl_replication(bool newval, void *extra)
+{
+	if (!YbIsClientYsqlConnMgr())
+		return;
+	elog(LOG, "Making connection sticky for setting enable_manual_ddl_replication");
+	yb_ysql_conn_mgr_sticky_guc = true;
+}
+
+static void
+assign_TEST_replication_role_override(int newval, void *extra)
+{
+	if (!YbIsClientYsqlConnMgr())
+		return;
+	elog(LOG, "Making connection sticky for setting TEST_replication_role_override");
+	yb_ysql_conn_mgr_sticky_guc = true;
+}
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -109,7 +141,7 @@ _PG_init(void)
 							 false,
 							 PGC_USERSET,
 							 0,
-							 NULL, NULL, NULL);
+							 NULL, assign_enable_manual_ddl_replication, NULL);
 
 	DefineCustomStringVariable("yb_xcluster_ddl_replication.ddl_queue_primary_key_ddl_end_time",
 							   gettext_noop("Internal use only: Used by HandleTargetDDLEnd function."),
@@ -137,7 +169,7 @@ _PG_init(void)
 							 replication_role_overrides,
 							 PGC_SUSET,
 							 0,
-							 NULL, NULL, NULL);
+							 NULL, assign_TEST_replication_role_override, NULL);
 }
 
 void

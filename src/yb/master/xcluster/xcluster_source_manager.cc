@@ -13,6 +13,8 @@
 
 #include "yb/master/xcluster/xcluster_source_manager.h"
 
+#include <algorithm>
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
@@ -517,7 +519,7 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
   explicit XClusterCreateStreamContextImpl(
       CatalogManager& catalog_manager, XClusterSourceManager& xcluster_manager)
       : catalog_manager_(catalog_manager), xcluster_manager_(xcluster_manager) {}
-  virtual ~XClusterCreateStreamContextImpl() { Rollback(); }
+  ~XClusterCreateStreamContextImpl() override { Rollback(); }
 
   void Commit() override {
     for (auto& stream : streams_) {
@@ -993,7 +995,7 @@ Result<bool> XClusterSourceManager::ProcessSplitChildStreams(
       LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
                 << ". Reason: Consumer finished processing parent tablet after split.";
       ++count_streams_deleted;
-      entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+      entries_to_delete.emplace_back(tablet_id, stream_id);
     }
   }
 
@@ -1206,6 +1208,26 @@ Status XClusterSourceManager::RemoveStreamsFromSysCatalog(
 
 Status XClusterSourceManager::MarkIndexBackfillCompleted(
     const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) {
+  // Clear any remaining xcluster_table_info information; only the xcluster_backfill_hybrid_time
+  // field should be left at this point.
+  std::vector<TableId> sorted_index_ids{index_ids.begin(), index_ids.end()};
+  std::ranges::sort(sorted_index_ids);
+  std::vector<scoped_refptr<TableInfo>> index_infos;
+  for (const auto& index_id : sorted_index_ids) {
+    auto index_info = VERIFY_RESULT(catalog_manager_.FindTableById(index_id));
+    index_infos.push_back(std::move(index_info));
+  }
+  std::vector<TableInfo::WriteLock> index_locks;
+  for (const auto& index_info : index_infos) {
+    auto index_lock = index_info->LockForWrite();
+    index_lock.mutable_data()->pb.clear_xcluster_table_info();
+    index_locks.push_back(std::move(index_lock));
+  }
+  RETURN_NOT_OK(sys_catalog_.Upsert(epoch, index_infos));
+  for (auto& index_lock : index_locks) {
+    index_lock.Commit();
+  }
+
   // Checkpoint xCluster streams of indexes after the backfill completes. The backfilled data is not
   // replicated, and the target cluster performs its own backfill, so we can skip streaming changes
   // before the backfill completion.

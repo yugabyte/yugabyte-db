@@ -32,6 +32,49 @@
               },
               "restartSeconds": {
                 "type": "integer"
+              },
+              "remoteWrite": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "configs":{
+                    "type": "array"
+                  }
+                }
+              },
+              "scrapeConfig": {
+                "type": "object",
+                "properties": {
+                  "node-agent": {
+                    "type": "object",
+                    "properties": {
+                      "scheme": {
+                        "type": "string",
+                        "enum": ["http", "https"]
+                      }
+                    }
+                  },
+                  "node": {
+                    "type": "object",
+                    "properties": {
+                      "scheme": {
+                        "type": "string",
+                        "enum": ["http", "https"]
+                      }
+                    }
+                  },
+                  "yugabyte": {
+                    "type": "object",
+                    "properties": {
+                      "scheme": {
+                        "type": "string",
+                        "enum": ["http", "https"]
+                      }
+                    }
+                  }
+                }
               }
             },
             "required": ["scrapeInterval", "scrapeTimeout", "port", "maxConcurrency",

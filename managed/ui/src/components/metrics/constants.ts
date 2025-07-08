@@ -115,6 +115,7 @@ export const MetricTypesWithOperations = {
       'tserver_consensus_rpcs_per_sec',
       'tserver_change_config',
       'tserver_remote_bootstraps',
+      'tserver_remote_bootstrap_bandwidth',
       'tserver_consensus_rpcs_latency',
       'tserver_change_config_latency',
       'tserver_context_switches',

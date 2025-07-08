@@ -1254,7 +1254,6 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
     string id = status.tablet_id();
-    const auto& tablet = peer->shared_tablet();
     string tablets_disk_size_html = GetOnDiskSizeInHtml(
         yb::tablet::TabletOnDiskSizeInfo::FromPB(status)
     );
@@ -1264,6 +1263,7 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
                             ->PartitionDebugString(*peer->status_listener()->partition(),
                                                    *tablet_metadata->schema());
 
+    const auto& tablet = peer->shared_tablet();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
 
     // TODO: Would be nice to include some other stuff like memory usage.

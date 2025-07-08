@@ -52,7 +52,7 @@ static void expand_single_inheritance_child(PlannerInfo *root,
 											Index *childRTindex_p);
 static Bitmapset *translate_col_privs(const Bitmapset *parent_privs,
 									  List *translated_vars,
-									  bool is_yb_relation);
+									  AttrNumber yb_min_attr);
 static Bitmapset *translate_col_privs_multilevel(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 RelOptInfo *parent_rel,
@@ -565,17 +565,17 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 	 */
 	if (childOID != parentOID)
 	{
-		bool		is_yb_relation = IsYBRelation(parentrel);
+		AttrNumber	yb_min_attr = YBGetFirstLowInvalidAttributeNumber(parentrel);
 
 		childrte->selectedCols = translate_col_privs(parentrte->selectedCols,
 													 appinfo->translated_vars,
-													 is_yb_relation);
+													 yb_min_attr);
 		childrte->insertedCols = translate_col_privs(parentrte->insertedCols,
 													 appinfo->translated_vars,
-													 is_yb_relation);
+													 yb_min_attr);
 		childrte->updatedCols = translate_col_privs(parentrte->updatedCols,
 													appinfo->translated_vars,
-													is_yb_relation);
+													yb_min_attr);
 	}
 	else
 	{
@@ -726,25 +726,24 @@ get_rel_all_updated_cols(PlannerInfo *root, RelOptInfo *rel)
 static Bitmapset *
 translate_col_privs(const Bitmapset *parent_privs,
 					List *translated_vars,
-					bool is_yb_relation)
+					AttrNumber yb_min_attr)
 {
 	Bitmapset  *child_privs = NULL;
 	bool		whole_row;
 	int			attno;
 	ListCell   *lc;
-	const int	firstLowInvalidAttrNumber = YBGetFirstLowInvalidAttrNumber(is_yb_relation);
 
 	/* System attributes have the same numbers in all tables */
-	for (attno = firstLowInvalidAttrNumber + 1; attno < 0; attno++)
+	for (attno = yb_min_attr + 1; attno < 0; attno++)
 	{
-		if (bms_is_member(attno - firstLowInvalidAttrNumber,
+		if (bms_is_member(attno - yb_min_attr,
 						  parent_privs))
 			child_privs = bms_add_member(child_privs,
-										 attno - firstLowInvalidAttrNumber);
+										 attno - yb_min_attr);
 	}
 
 	/* Check if parent has whole-row reference */
-	whole_row = bms_is_member(InvalidAttrNumber - firstLowInvalidAttrNumber,
+	whole_row = bms_is_member(InvalidAttrNumber - yb_min_attr,
 							  parent_privs);
 
 	/* And now translate the regular user attributes, using the vars list */
@@ -757,10 +756,10 @@ translate_col_privs(const Bitmapset *parent_privs,
 		if (var == NULL)		/* ignore dropped columns */
 			continue;
 		if (whole_row ||
-			bms_is_member(attno - firstLowInvalidAttrNumber,
+			bms_is_member(attno - yb_min_attr,
 						  parent_privs))
 			child_privs = bms_add_member(child_privs,
-										 var->varattno - firstLowInvalidAttrNumber);
+										 var->varattno - yb_min_attr);
 	}
 
 	return child_privs;
@@ -801,7 +800,8 @@ translate_col_privs_multilevel(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	/* Now translate for this child. */
-	return translate_col_privs(parent_cols, appinfo->translated_vars, parent_rel->is_yb_relation);
+	return translate_col_privs(parent_cols, appinfo->translated_vars,
+							   YBGetFirstLowInvalidAttributeNumberFromOid(appinfo->parent_reloid));
 }
 
 /*

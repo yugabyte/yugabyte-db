@@ -63,6 +63,23 @@ public class TableInfoUtil {
             && table.getNamespace().getName().equals(SYSTEM_PLATFORM_DB));
   }
 
+  // It will be used for table listing in xCluster codebase.
+  public static boolean isXClusterSystemTable(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+    return isDdlQueueTable(table) || isSequencesDataTable(table);
+  }
+
+  public static boolean isDdlQueueTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+    return table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
+        && table.getName().equals("ddl_queue");
+  }
+
+  public static boolean isSequencesDataTable(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
+    return table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
+        && table.getName().equals("sequences_data");
+  }
+
   public static boolean isSystemRedis(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
     return table.getTableType() == CommonTypes.TableType.REDIS_TABLE_TYPE
         && table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION

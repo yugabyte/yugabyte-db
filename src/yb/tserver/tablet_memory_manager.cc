@@ -150,9 +150,19 @@ class LRUCacheGC : public GarbageCollector {
   std::shared_ptr<rocksdb::Cache> cache_;
 };
 
+size_t GetLogCacheSize(tablet::TabletPeer* peer) {
+  auto consensus_result = peer->GetRaftConsensus();
+  if (!consensus_result) {
+    return 0;
+  }
+  return consensus_result.get()->LogCacheSize();
+}
+
+}  // namespace
+
 // Evaluates the target block cache size based on the db_block_cache_size_percentage and
 // db_block_cache_size_bytes flags, as well as the passed default_block_cache_size_percentage.
-int64_t GetTargetBlockCacheSize(const int32_t default_block_cache_size_percentage) {
+int64_t GetTargetBlockCacheSize(int32_t default_block_cache_size_percentage) {
   int32_t target_block_cache_size_percentage =
       (FLAGS_db_block_cache_size_percentage == DB_CACHE_SIZE_USE_DEFAULT) ?
       default_block_cache_size_percentage : FLAGS_db_block_cache_size_percentage;
@@ -174,16 +184,6 @@ int64_t GetTargetBlockCacheSize(const int32_t default_block_cache_size_percentag
   }
   return target_block_cache_size_bytes;
 }
-
-size_t GetLogCacheSize(tablet::TabletPeer* peer) {
-  auto consensus_result = peer->GetRaftConsensus();
-  if (!consensus_result) {
-    return 0;
-  }
-  return consensus_result.get()->LogCacheSize();
-}
-
-}  // namespace
 
 TabletMemoryManager::TabletMemoryManager(
     tablet::TabletOptions* options,

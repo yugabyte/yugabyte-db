@@ -119,6 +119,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
           "This generally happens in the background during a WAL log roll, or remote bootstrap.";
     case WaitStateCode::kMVCC_WaitForSafeTime:
       return "A read/write rpc is waiting for the safe time to be at least the desired read-time.";
+    case WaitStateCode::kWaitForReadTime:
+      return "A read/write rpc is waiting for the current time to catch up to passed read time.";
     case WaitStateCode::kLockedBatchEntry_Lock:
       return "A read/write rpc is waiting for a DocDB row level lock.";
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
@@ -152,6 +154,12 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kRemoteBootstrap_RateLimiter:
       return "A remote bootstrap client is slowing down due to rate limiter throttling "
           "network access to remote bootstrap server.";
+    case WaitStateCode::kSnapshot_WaitingForFlush:
+      return "A snapshot operation is waiting for flush.";
+    case WaitStateCode::kSnapshot_CleanupSnapshotDir:
+      return "A snapshot operation is cleaning a snapshot directory.";
+    case WaitStateCode::kSnapshot_RestoreCheckpoint:
+      return "A snapshot operation is restoring a database checkpoint.";
     case WaitStateCode::kRaft_WaitingForReplication:
       return "A write rpc is waiting for Raft replication.";
     case WaitStateCode::kRaft_ApplyingEdits:
@@ -188,6 +196,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "RocksDB is waiting for a compaction to complete.";
     case WaitStateCode::kRocksDB_NewIterator:
       return "RocksDB is waiting for a new iterator to be created.";
+    case WaitStateCode::kRocksDB_CreateCheckpoint:
+      return "RocksDB is creating a database checkpoint.";
     case WaitStateCode::kYCQL_Parse:
       return "YCQL is parsing a query.";
     case WaitStateCode::kYCQL_Read:
@@ -206,6 +216,24 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "YB client is waiting on an RPC sent to the master.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
+}
+
+bool AshIsPGClass(ash::Class class_id) {
+  switch (class_id) {
+    // PG class
+    case ash::Class::kTServerWait:
+      return true;
+    // YB Client/TServer classes
+    case ash::Class::kYCQLQuery:
+    case ash::Class::kClient:
+    case ash::Class::kRpc:
+    case ash::Class::kConsensus:
+    case ash::Class::kTabletWait:
+    case ash::Class::kRocksDB:
+    case ash::Class::kCommon:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(ash::Class, class_id);
 }
 
 }  // namespace
@@ -402,8 +430,24 @@ uint32_t WaitStateInfo::AshEncodeWaitStateCodeWithComponent(uint32_t component, 
   return (component << YB_ASH_COMPONENT_POSITION) | code;
 }
 
-uint32_t WaitStateInfo::AshRemoveComponentFromWaitStateCode(uint32_t code) {
-  return (~(0xffffffff << YB_ASH_COMPONENT_POSITION)) & code;
+uint32_t WaitStateInfo::AshNormalizeComponentForTServerEvents(uint32_t code,
+    bool component_bits_set) {
+  // Note: If component_bits_set is false, we assume it to be a tserver wait event code.
+
+  // While populating the wait_event_code in yb_wait_event_desc, component for wait
+  // events is not available. Events in yb_active_session_history has the component set.
+  // So to allow a join between yb_wait_event_desc and yb_active_session_history, encode
+  // the component as 0xFF for all tserver events
+  constexpr uint8_t kAshClassMask = (1 << YB_ASH_CLASS_BITS) - 1;
+  uint8_t class_id = narrow_cast<uint8_t>(code >> YB_ASH_CLASS_POSITION) & kAshClassMask;
+  uint8_t comp_id = narrow_cast<uint8_t>(code >> YB_ASH_COMPONENT_POSITION);
+
+  const bool is_pg_event = (component_bits_set && comp_id == 0) ||
+    AshIsPGClass(static_cast<ash::Class>(class_id));
+
+  if (!is_pg_event)
+    return ((1 << YB_ASH_COMPONENT_BITS) - 1) << YB_ASH_COMPONENT_POSITION | code;
+  return code;
 }
 
 //
@@ -520,6 +564,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kMVCC_WaitForSafeTime:
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+    case WaitStateCode::kWaitForReadTime:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kCreatingNewTablet:
@@ -558,6 +603,9 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kWAL_Append:
     case WaitStateCode::kWAL_Sync:
     case WaitStateCode::kConsensusMeta_Flush:
+    case WaitStateCode::kSnapshot_WaitingForFlush:
+    case WaitStateCode::kSnapshot_CleanupSnapshotDir:
+    case WaitStateCode::kSnapshot_RestoreCheckpoint:
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kReplicaState_TakeUpdateLock:
@@ -567,6 +615,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kRocksDB_OpenFile:
     case WaitStateCode::kRocksDB_WriteToFile:
     case WaitStateCode::kRocksDB_CloseFile:
+    case WaitStateCode::kRocksDB_CreateCheckpoint:
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kRocksDB_Flush:

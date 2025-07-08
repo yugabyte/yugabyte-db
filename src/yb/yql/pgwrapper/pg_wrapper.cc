@@ -262,6 +262,10 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
+DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
+    "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
+    "'off', and 'on'");
+
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
     "Maximum number of rows to fetch per scan.");
 
@@ -371,6 +375,12 @@ DEFINE_RUNTIME_PG_FLAG(
 
 TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, advanced);
 TAG_FLAG(ysql_yb_query_diagnostics_disable_database_connection_bgworker, hidden);
+
+DEFINE_RUNTIME_PG_FLAG(
+    int32, yb_log_heap_snapshot_on_exit_threshold, -1,
+    "When a process exits, log a peak heap snapshot showing the "
+    "approximate memory usage of each malloc call stack if its peak RSS "
+    "is greater than or equal to this threshold in KB. Set to -1 to disable.");
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -521,6 +531,10 @@ static bool ValidateDocumentDB(const char* flag_name, bool value) {
 }
 
 DEFINE_validator(ysql_enable_documentdb, &ValidateDocumentDB);
+
+// Keep the value list in sync with `yb_cost_model_options` in `guc.c`.
+DEFINE_validator(ysql_yb_enable_cbo,
+    FLAG_IN_SET_VALIDATOR("off", "on", "legacy_mode", "legacy_stats_mode"));
 
 namespace {
 // Append any Pg gFlag with non default value, or non-promoted AutoFlag
@@ -971,8 +985,12 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
 
   Status initdb_status = initdb_subprocess.Run();
   if (!initdb_status.ok()) {
-    LOG(ERROR) << "Initdb failed. Initdb log file path: "
-               << boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", getenv("TEST_TMPDIR"));
+    auto log_path = initdb_log_path;
+    auto tmpdir_var = getenv("TEST_TMPDIR");
+    if (tmpdir_var != nullptr) {
+      log_path = boost::replace_all_copy(initdb_log_path, "${TEST_TMPDIR}", tmpdir_var);
+    }
+    LOG(ERROR) << "Initdb failed. Initdb log file path: " << log_path;
     return initdb_status;
   }
 

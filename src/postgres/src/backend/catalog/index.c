@@ -1160,82 +1160,87 @@ index_create(Relation heapRelation,
 	 * to make a constraint either.
 	 *
 	 * YB NOTE:
-	 * For system relations, we do not need to do anything.
+	 * During YSQL upgrade, we do create the constraints for system indexes.
+	 * This negates the need to do an ALTER TABLE ADD UNIQUE/PK USING INDEX
+	 * later (that initdb does).
 	 */
 	if (!IsBootstrapProcessingMode())
 	{
 		ObjectAddress myself,
 					referenced;
 		ObjectAddresses *addrs;
+		bool		yb_is_catalog_rel = IsYBRelation(heapRelation) &&
+			IsCatalogRelation(heapRelation);
 
 		ObjectAddressSet(myself, RelationRelationId, indexRelationId);
-		if (!IsYBRelation(heapRelation) || !IsCatalogRelation(heapRelation))
+
+		if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0)
 		{
-			if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0)
-			{
-				char		constraintType;
-				ObjectAddress localaddr;
+			char		constraintType;
+			ObjectAddress localaddr;
 
-				if (isprimary)
-					constraintType = CONSTRAINT_PRIMARY;
-				else if (indexInfo->ii_Unique)
-					constraintType = CONSTRAINT_UNIQUE;
-				else if (is_exclusion)
-					constraintType = CONSTRAINT_EXCLUSION;
-				else
-				{
-					elog(ERROR, "constraint must be PRIMARY, UNIQUE or EXCLUDE");
-					constraintType = 0; /* keep compiler quiet */
-				}
-
-				localaddr = index_constraint_create(heapRelation,
-													indexRelationId,
-													parentConstraintId,
-													indexInfo,
-													indexRelationName,
-													constraintType,
-													constr_flags,
-													allow_system_table_mods,
-													is_internal);
-				if (constraintId)
-					*constraintId = localaddr.objectId;
-			}
+			if (isprimary)
+				constraintType = CONSTRAINT_PRIMARY;
+			else if (indexInfo->ii_Unique)
+				constraintType = CONSTRAINT_UNIQUE;
+			else if (is_exclusion)
+				constraintType = CONSTRAINT_EXCLUSION;
 			else
 			{
-				bool		have_simple_col = false;
-
-				addrs = new_object_addresses();
-
-				/* Create auto dependencies on simply-referenced columns */
-				for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
-				{
-					if (indexInfo->ii_IndexAttrNumbers[i] != 0)
-					{
-						ObjectAddressSubSet(referenced, RelationRelationId,
-											heapRelationId,
-											indexInfo->ii_IndexAttrNumbers[i]);
-						add_exact_object_address(&referenced, addrs);
-						have_simple_col = true;
-					}
-				}
-
-				/*
-				 * If there are no simply-referenced columns, give the index an
-				 * auto dependency on the whole table.  In most cases, this will
-				 * be redundant, but it might not be if the index expressions and
-				 * predicate contain no Vars or only whole-row Vars.
-				 */
-				if (!have_simple_col)
-				{
-					ObjectAddressSet(referenced, RelationRelationId,
-									 heapRelationId);
-					add_exact_object_address(&referenced, addrs);
-				}
-
-				record_object_address_dependencies(&myself, addrs, DEPENDENCY_AUTO);
-				free_object_addresses(addrs);
+				elog(ERROR, "constraint must be PRIMARY, UNIQUE or EXCLUDE");
+				constraintType = 0; /* keep compiler quiet */
 			}
 
+			localaddr = index_constraint_create(heapRelation,
+												indexRelationId,
+												parentConstraintId,
+												indexInfo,
+												indexRelationName,
+												constraintType,
+												constr_flags,
+												allow_system_table_mods,
+												is_internal);
+			if (constraintId)
+				*constraintId = localaddr.objectId;
+		}
+		else if (!yb_is_catalog_rel)
+		{
+			bool		have_simple_col = false;
+
+			addrs = new_object_addresses();
+
+			/* Create auto dependencies on simply-referenced columns */
+			for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+			{
+				if (indexInfo->ii_IndexAttrNumbers[i] != 0)
+				{
+					ObjectAddressSubSet(referenced, RelationRelationId,
+										heapRelationId,
+										indexInfo->ii_IndexAttrNumbers[i]);
+					add_exact_object_address(&referenced, addrs);
+					have_simple_col = true;
+				}
+			}
+
+			/*
+			 * If there are no simply-referenced columns, give the index an
+			 * auto dependency on the whole table.  In most cases, this will
+			 * be redundant, but it might not be if the index expressions and
+			 * predicate contain no Vars or only whole-row Vars.
+			 */
+			if (!have_simple_col)
+			{
+				ObjectAddressSet(referenced, RelationRelationId,
+								 heapRelationId);
+				add_exact_object_address(&referenced, addrs);
+			}
+
+			record_object_address_dependencies(&myself, addrs, DEPENDENCY_AUTO);
+			free_object_addresses(addrs);
+		}
+
+		if (!yb_is_catalog_rel)
+		{
 			/*
 			 * If this is an index partition, create partition dependencies on
 			 * both the parent index and the table.  (Note: these must be *in
@@ -2148,10 +2153,25 @@ index_constraint_create(Relation heapRelation,
 	 *
 	 * Note that the constraint has a dependency on the table, so we don't
 	 * need (or want) any direct dependency from the index to the table.
+	 *
+	 * YB note:
+	 * For constraint on catalog relations, initdb assigns an oid in
+	 * [FirstGenbkiObjectId, FirstUnpinnedObjectId), making them pinned objects
+	 * and hence dependencies on them are not explicity recorded. Migration
+	 * during YSQL upgrade, on the other hand, assigns them oid in
+	 * [FirstUnpinnedObjectId, FirstNormalObjectId) making them unpinned objects
+	 * (GH #27514). Calling recordDependencyOn() would add the dependency
+	 * in pg_depend. It requires additional work to do this correctly for shared
+	 * catalog relations. Adding this dependency is not even required because
+	 * ALTER TABLE ... DROP CONSTRAINT on catalog relations is not supported.
+	 * So, just skip it.
 	 */
-	ObjectAddressSet(myself, ConstraintRelationId, conOid);
-	ObjectAddressSet(idxaddr, RelationRelationId, indexRelationId);
-	recordDependencyOn(&idxaddr, &myself, DEPENDENCY_INTERNAL);
+	if (!(IsYsqlUpgrade && IsCatalogRelation(heapRelation)))
+	{
+		ObjectAddressSet(myself, ConstraintRelationId, conOid);
+		ObjectAddressSet(idxaddr, RelationRelationId, indexRelationId);
+		recordDependencyOn(&idxaddr, &myself, DEPENDENCY_INTERNAL);
+	}
 
 	/*
 	 * Also, if this is a constraint on a partition, give it partition-type

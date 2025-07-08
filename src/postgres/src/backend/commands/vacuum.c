@@ -457,8 +457,11 @@ vacuum(List *relations, VacuumParams *params,
 	 * commit the transaction started in PostgresMain() here, and start
 	 * another one before exiting to match the commit waiting for us back in
 	 * PostgresMain().
+	 *
+	 * YB: Handle the commit later while starting the new transaction. See the
+	 * call to YbCommitTransactionCommandIntermediate.
 	 */
-	if (use_own_xacts)
+	if (!IsYugaByteEnabled() && use_own_xacts)
 	{
 		Assert(!in_outer_xact);
 
@@ -506,7 +509,15 @@ vacuum(List *relations, VacuumParams *params,
 				 */
 				if (use_own_xacts)
 				{
-					StartTransactionCommand();
+					/*
+					 * YB: Commit the earlier transaction remembering the ddl
+					 * state, start a new one and set the stored ddl state.
+					 */
+					if (IsYugaByteEnabled())
+						YbCommitTransactionCommandIntermediate();
+					else
+						StartTransactionCommand();
+
 					/* functions in indexes may want a snapshot set */
 					PushActiveSnapshot(GetTransactionSnapshot());
 				}
@@ -514,12 +525,12 @@ vacuum(List *relations, VacuumParams *params,
 				analyze_rel(vrel->oid, vrel->relation, params,
 							vrel->va_cols, in_outer_xact, vac_strategy);
 
-				if (use_own_xacts)
+				if (!IsYugaByteEnabled() && use_own_xacts)
 				{
 					PopActiveSnapshot();
 					CommitTransactionCommand();
 				}
-				else
+				else if (!use_own_xacts)
 				{
 					/*
 					 * If we're not using separate xacts, better separate the
@@ -543,13 +554,18 @@ vacuum(List *relations, VacuumParams *params,
 	 */
 	if (use_own_xacts)
 	{
-		/* here, we are not in a transaction */
+		if (IsYugaByteEnabled())
+			YbCommitTransactionCommandIntermediate();
+		else
+		{
+			/* here, we are not in a transaction */
 
-		/*
-		 * This matches the CommitTransaction waiting for us in
-		 * PostgresMain().
-		 */
-		StartTransactionCommand();
+			/*
+			 * This matches the CommitTransaction waiting for us in
+			 * PostgresMain().
+			 */
+			StartTransactionCommand();
+		}
 	}
 
 	if ((params->options & VACOPT_VACUUM) && !IsAutoVacuumWorkerProcess())

@@ -35,7 +35,7 @@ var RegisterCmd = &cobra.Command{
 		var email, password, confirmPassword string
 		var name, code string
 		var data []byte
-		url := viperVariablesInAuth(cmd, force)
+		url := ViperVariablesInAuth(cmd, force)
 		if !force {
 			// Prompt for the name
 			fmt.Printf("Enter name: ")
@@ -183,7 +183,7 @@ var RegisterCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		authUtil(url, r.GetApiToken(), showToken)
+		InitializeAuthenticatedSession(url, r.GetApiToken(), showToken)
 	},
 }
 

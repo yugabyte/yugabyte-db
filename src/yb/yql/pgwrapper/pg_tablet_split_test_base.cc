@@ -54,20 +54,7 @@
 
 using namespace std::literals;
 
-namespace yb {
-namespace pgwrapper {
-
-namespace {
-
-constexpr std::chrono::duration<int64> kRpcTimeout = std::chrono::seconds(60) * kTimeMultiplier;
-
-bool IsTabletInCollection(const master::TabletInfoPtr& tablet, const master::TabletInfos& tablets) {
-  return tablets.end() != std::find_if(
-      tablets.begin(), tablets.end(),
-      [&tablet](const master::TabletInfoPtr& p) { return p->tablet_id() == tablet->tablet_id(); });
-}
-
-} // namespace
+namespace yb::pgwrapper {
 
 Result<master::TabletInfoPtr> SelectFirstTabletPolicy::operator()(
     const PartitionKeyTabletMap& tablets) {
@@ -145,34 +132,6 @@ Status PgTabletSplitTestBase::SplitSingleTabletAndWaitForActiveChildTablets(
   return WaitForSplitCompletion(table_id, /* expected_active_leaders = */ 2);
 }
 
-Status PgTabletSplitTestBase::InvokeSplitTabletRpc(const std::string& tablet_id) {
-  auto master_admin_proxy = master::MasterAdminProxy(
-      proxy_cache_.get(), VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
-
-  master::SplitTabletRequestPB req;
-  req.set_tablet_id(tablet_id);
-
-  rpc::RpcController controller;
-  controller.set_timeout(kRpcTimeout);
-  master::SplitTabletResponsePB resp;
-  RETURN_NOT_OK(master_admin_proxy.SplitTablet(req, &resp, &controller));
-  if (resp.has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-  }
-  return Status::OK();
-}
-
-Status PgTabletSplitTestBase::InvokeSplitTabletRpcAndWaitForDataCompacted(
-    const std::string& tablet_id) {
-  const auto catalog_mgr = VERIFY_RESULT(catalog_manager());
-  const auto tablet = VERIFY_RESULT(catalog_mgr->GetTabletInfo(tablet_id));
-
-  // Get current number of tablets for the table.
-  const auto table = catalog_mgr->GetTableInfo(tablet->table()->id());
-
-  return DoInvokeSplitTabletRpcAndWaitForDataCompacted(table, tablet);
-}
-
 Status PgTabletSplitTestBase::InvokeSplitsAndWaitForDataCompacted(
     const TableId& table_id, SelectTabletCallback select_tablet) {
   // Get initial tables.
@@ -196,7 +155,7 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForDataCompacted(
     parent = tablet;
 
     // Invoke split tablet RPC and wait for the split is done.
-    RETURN_NOT_OK(DoInvokeSplitTabletRpcAndWaitForDataCompacted(table, tablet));
+    RETURN_NOT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), table, tablet));
   }
 
   return Status::OK();
@@ -225,41 +184,6 @@ size_t PgTabletSplitTestBase::NumTabletServers() {
   return 1;
 }
 
-Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForDataCompacted(
-    const master::TableInfoPtr& table, const master::TabletInfoPtr& tablet) {
-  // Keep current tablets.
-  const auto tablets = VERIFY_RESULT(table->GetTablets());
-
-  // Sanity check that tablet belongs to the table.
-  if (!IsTabletInCollection(tablet, tablets)) {
-    return STATUS(InvalidArgument, "The tablet does not belong to table's tablets list.");
-  }
-
-  // Send split RPC.
-  RETURN_NOT_OK(InvokeSplitTabletRpc(tablet->tablet_id()));
-
-  // Wait for new tablets are added.
-  RETURN_NOT_OK(WaitForTableActiveTabletLeadersPeers(
-      cluster_.get(), table->id(), tablets.size() + 1));
-
-  // Wait until split is replicated across all tablet servers.
-  RETURN_NOT_OK(WaitAllReplicasReady(
-      cluster_.get(), table->id(), MonoDelta::FromSeconds(20) * kTimeMultiplier));
-
-  // Select new tablets ids
-  const auto all_tablets = VERIFY_RESULT(table->GetTablets());
-  std::vector<TabletId> new_tablet_ids;
-  new_tablet_ids.reserve(all_tablets.size());
-  for (const auto& t : all_tablets) {
-    if (!IsTabletInCollection(t, tablets)) {
-      new_tablet_ids.push_back(t->tablet_id());
-    }
-  }
-
-  // Wait for new peers are fully compacted.
-  return WaitForPeersPostSplitCompacted(cluster_.get(), new_tablet_ids);
-}
-
 Result<PartitionKeyTabletMap> GetTabletsByPartitionKey(const master::TableInfoPtr& table) {
   // Get tablets and keep in sorted order, we assume partition_key cannot be changed
   // as we are holding a std::string_view to partition_key_start.
@@ -271,5 +195,4 @@ Result<PartitionKeyTabletMap> GetTabletsByPartitionKey(const master::TableInfoPt
   return tablets;
 }
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

@@ -250,4 +250,12 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "If enabled, user will be notified on password reset",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableEarlyoomFeature =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_earlyoom",
+          ScopeType.CUSTOMER,
+          "Enables Earlyoom Installation on Nodes",
+          "Enables Earlyoom Installation on Nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

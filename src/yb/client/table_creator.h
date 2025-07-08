@@ -25,7 +25,6 @@
 
 #include "yb/gutil/macros.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/util/monotime.h"
@@ -255,7 +254,7 @@ class YBTableCreator {
   TableId xcluster_source_table_id_;
 
   // Set by DDL Replication as a set time to perform index backfill.
-  uint64_t xcluster_backfill_hybrid_time_;
+  uint64_t xcluster_backfill_hybrid_time_ = 0;
 
   const TransactionMetadata* txn_ = nullptr;
 

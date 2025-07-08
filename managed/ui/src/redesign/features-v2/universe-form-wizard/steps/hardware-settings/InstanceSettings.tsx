@@ -8,14 +8,14 @@
  */
 
 import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { FormProvider, useForm } from 'react-hook-form';
+import { mui } from '@yugabyte-ui-library/core';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
-import { FormProvider, useForm } from 'react-hook-form';
 import { InstanceSettingProps } from './dtos';
-import { mui } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { CPUArchField } from '../../fields';
 // import { useTranslation } from 'react-i18next';
@@ -23,21 +23,27 @@ import { CPUArchField } from '../../fields';
 const { Box } = mui;
 
 export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const [
+    { instanceSettings },
+    { moveToNextPage, moveToPreviousPage, saveInstanceSettings }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   //   const { t } = useTranslation('translation', {
   //     keyPrefix: 'createUniverseV2.resilienceAndRegions'
   //   });
 
-  const methods = useForm<InstanceSettingProps>({});
+  const methods = useForm<InstanceSettingProps>({
+    defaultValues: instanceSettings
+  });
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
-        moveToNextPage();
+        methods.handleSubmit((data) => {
+          saveInstanceSettings(data);
+          moveToNextPage();
+        })();
       },
       onPrev: () => {
         moveToPreviousPage();
@@ -72,3 +78,5 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
     </FormProvider>
   );
 });
+
+InstanceSettings.displayName = 'InstanceSettings';

@@ -206,6 +206,45 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
+  public void ysqlDumpAllRoleProfiles() throws Exception {
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonFlag("ysql_enable_profile", "true");
+      cb.addCommonTServerFlag("ysql_hba_conf_csv",
+          "host all yugabyte_test 0.0.0.0/0 trust," +
+          "host all yugabyte 0.0.0.0/0 trust," +
+          "host all all 0.0.0.0/0 md5");
+    });
+    LOG.info("created mini cluster");
+
+    ysqlDumpTester(
+        "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb.orig.ysql_dumpall_profile_and_role_profiles.sql"
+        /* inputFileRelativePath */,
+        "data/yb_ysql_dumpall_profile_and_role_profiles.data.sql"
+        /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dumpall_profile_and_role_profiles.out"
+        /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.ON);
+
+    // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
+    // like CREATE ROLE postgres
+    verifyYsqlDump(
+      false /*importDump*/,
+      "" /* verifyDbName */,
+      "results/yb.orig.ysql_dumpall_profile_and_role_profiles.out"
+      /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.sql"
+      /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
+      /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
+      /* outputDescribeFileRelativePath */
+    );
+  }
+
+  @Test
   public void ysqlDumpWithoutYbMetadata() throws Exception {
 
     ysqlDumpTester(

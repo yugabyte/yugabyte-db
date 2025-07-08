@@ -27,13 +27,13 @@ type: docs
   </li>
   <li >
     <a href="../async-transactional-setup-manual/" class="nav-link active">
-      Manual
+      Fully Manual
     </a>
   </li>
 </ul>
 
 {{< warning title="Warning" >}}
-Manual mode xCluster replication is not recommended due to the operational complexity involved.
+Fully Manual xCluster replication is deprecated and not recommended due to the operational complexity involved.
 {{< /warning >}}
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
@@ -263,4 +263,4 @@ You should see output similar to the following:
 ]
 ```
 
-Default time reported in xCluster safe time is year 2112. You need to wait until the xCluster safe time on the Standby advances beyond setup replication clock time.
+You need to wait until the xCluster safe time on the Standby advances beyond setup replication clock time.

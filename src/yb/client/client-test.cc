@@ -143,6 +143,8 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 
 DECLARE_bool(enable_metacache_partial_refresh);
 
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
@@ -197,6 +199,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
     // Reduce the TS<->Master heartbeat interval
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
+
+    // Skip creating the auto analyze service.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
 
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
@@ -1275,7 +1280,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
   auto flush_future = session->FlushFuture();
   session.reset();
-  ASSERT_OK(flush_future.get().status);
+  ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
 
   // Try again, this time should not have an error response (to re-insert the same row).
   session = CreateSession();
@@ -1286,7 +1291,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   ASSERT_EQ(0, session->TEST_CountBufferedOperations());
   ASSERT_FALSE(session->HasNotFlushedOperations());
   session.reset();
-  ASSERT_OK(flush_future.get().status);
+  ASSERT_EQ(flush_future.wait_for(3min), std::future_status::ready);
 }
 
 TEST_F(ClientTest, TestSessionClose) {

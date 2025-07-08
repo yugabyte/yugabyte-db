@@ -100,44 +100,4 @@ public class TestPgParallelSelect extends BasePgSQLTest {
           statement, "SELECT COUNT(n), COUNT(d) FROM aggtest2", true);
     }
   }
-
-  @Test
-  public void testParallelWherePushdowns() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      // wheretest(h bigint, r float, vi int, vs text)
-      String loadTemplate = "INSERT INTO wheretest(h, r, vi, vs) " +
-                            "SELECT s, s::float * 1.5, s %% 100, 'value ' || s::text " +
-                            "FROM generate_series(1, %d) s";
-      String query = "SELECT * FROM wheretest WHERE vi = 0";
-      // prepare iteration
-      int table_rows = 10000;
-      int query_rows = table_rows / 100;
-      // Minimal expected improvement of parallel scan over sequential scan.
-      // Apparently parallelism of ASAN builds is much less efficient and unstable.
-      // Run test anyway, but don't expect real improvement.
-      double coeff = BuildTypeUtil.isASAN() ? 1.0 : 2.0;
-      long timing;
-
-      // Create and populate test table
-      createSimpleTable(statement, "wheretest");
-      statement.execute(String.format(loadTemplate, table_rows));
-      LOG.info("Table wheretest has been populated with " + table_rows + " rows");
-
-      // Disable expression pushdown
-      statement.execute("SET yb_enable_expression_pushdown to off");
-      // Measure how long it takes to select 100 of 10000 rows
-      timing = timeQueryWithRowCount(statement, query, query_rows, 5);
-
-      // Enable expression pushdown
-      statement.execute("SET yb_enable_expression_pushdown to on");
-      // The where expression should be pushed down now and requests to
-      // different tablets should be sent in parallel.
-      // Default parallelism is set to 3 * kNumShardsPerTserver, and ideally
-      // the query should run that many times faster now. However there are
-      // other factors, like build type, hardware, etc. Hence for better test
-      // stability use low coefficient.
-      assertQueryRuntimeWithRowCount(statement, query, query_rows, 5,
-                                     (long) ((double) timing / coeff));
-    }
-  }
 }

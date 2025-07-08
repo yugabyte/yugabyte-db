@@ -19,11 +19,12 @@ import {
   DatabaseSettings,
   GeneralSettings,
   InstanceSettings,
-  NodesAvailabilty,
+  NodesAvailability,
   ResilienceAndRegions,
   SecuritySettings,
   OtherAdvancedSettings,
-  ProxySettings
+  ProxySettings,
+  ReviewAndSummary
 } from './steps';
 
 const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
@@ -37,12 +38,13 @@ const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
     [CreateUniverseSteps.RESILIENCE_AND_REGIONS]: (
       <ResilienceAndRegions ref={currentComponentRef} />
     ),
-    [CreateUniverseSteps.NODES_AND_AVAILABILITY]: <NodesAvailabilty ref={currentComponentRef} />,
+    [CreateUniverseSteps.NODES_AVAILABILITY]: <NodesAvailability ref={currentComponentRef} />,
     [CreateUniverseSteps.INSTANCE]: <InstanceSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.DATABASE]: <DatabaseSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.SECURITY]: <SecuritySettings ref={currentComponentRef} />,
     [CreateUniverseSteps.ADVANCED_PROXY]: <ProxySettings ref={currentComponentRef} />,
-    [CreateUniverseSteps.ADVANCED_OTHER]: <OtherAdvancedSettings ref={currentComponentRef} />
+    [CreateUniverseSteps.ADVANCED_OTHER]: <OtherAdvancedSettings ref={currentComponentRef} />,
+    [CreateUniverseSteps.REVIEW]: <ReviewAndSummary ref={currentComponentRef} />
   });
   useImperativeHandle(forwardRef, () => currentComponentRef.current, [
     currentComponentRef.current,

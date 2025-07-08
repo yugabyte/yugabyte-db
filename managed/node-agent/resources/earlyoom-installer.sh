@@ -70,8 +70,13 @@ EOF
       ARTIFACT="earlyoom-linux-arm64.tar.gz"
   fi
   mkdir -p "${TMP_DIR}/earlyoom"
-  tar -xzf "third-party/${ARTIFACT}" -C "${TMP_DIR}/earlyoom/" --no-same-owner
-  EXTRACTED_DIR=$(ls -d /${TMP_DIR}/earlyoom/*/ | head -n 1)
+
+  THIRDPARTY_DIR="${SCRIPT_DIR}/thirdparty"
+  if [ ! -d "$THIRDPARTY_DIR" ]; then
+      THIRDPARTY_DIR="${SCRIPT_DIR}/../thirdparty"
+  fi
+  tar -xzf "${THIRDPARTY_DIR}/${ARTIFACT}" -C "${TMP_DIR}/earlyoom/" --no-same-owner
+  EXTRACTED_DIR=$(ls -d ${TMP_DIR}/earlyoom/*/ | head -n 1)
 
   if [ "$SUDO_ACCESS" = "true" ]; then\
     cp $SCRIPT_DIR/configure_earlyoom_service.sh $TMP_DIR/
