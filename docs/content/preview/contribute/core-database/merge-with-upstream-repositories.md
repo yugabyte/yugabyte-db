@@ -594,14 +594,14 @@ First, please get a good understanding of git remotes.
 
 YugabyteDB's [yugabyte/postgres][repo-postgres] repo does not have all branches of upstream PostgreSQL nor is it guaranteed to be synced.
 The common case workflow is to have at least two remotes: one for [yugabyte/postgres][repo-postgres] and one for upstream PostgreSQL.
-The upstream PostgreSQL remote can be set up in several ways:
+The upstream PostgreSQL remote can be set up in one of several ways:
 
 - Git protocol (faster): `git://git.postgresql.org/git/postgresql.git`
 - HTTP protocol: `https://git.postgresql.org/git/postgresql.git`
 - HTTP protocol (mirror): `https://github.com/postgres/postgres`
 
 Fetch commits from the upstream PostgreSQL repository, and do work on branches based off commits in the [yugabyte/postgres][repo-postgres] repository.
-An example `git remote -v` output after setting up the two remotes:
+Here is an example `git remote -v` output after setting up the two remotes:
 
 ```
 pg      git://git.postgresql.org/git/postgresql.git (fetch)
