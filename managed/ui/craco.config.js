@@ -1,5 +1,6 @@
 const { ESBuildMinifyPlugin } = require('esbuild-loader');
 const { getLoaders, loaderByName, removeLoaders, addAfterLoader } = require('@craco/craco');
+const path = require('path');
 
 const throwError = (message) =>
   throwUnexpectedConfigError({
@@ -83,6 +84,9 @@ module.exports = {
       });
 
       return webpackConfig;
+    },
+    alias: {
+      '@app': path.resolve(__dirname, 'src')
     }
   }
 };

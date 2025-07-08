@@ -28,6 +28,7 @@ import {
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from './fields/FieldNames';
+import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
@@ -54,7 +55,7 @@ export type createUniverseFormProps = {
 };
 
 export const initialCreateUniverseFormState: createUniverseFormProps = {
-  activeStep: CreateUniverseSteps.SECURITY,
+  activeStep: CreateUniverseSteps.GENERAL_SETTINGS,
   resilienceAndRegionsSettings: {
     [RESILIENCE_TYPE]: ResilienceType.REGULAR,
     [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
@@ -82,6 +83,18 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     gFlags: [],
     enableConnectionPooling: false,
     enablePGCompatibitilty: false
+  },
+  instanceSettings: {
+    arch: ArchitectureType.X86_64,
+    imageBundleUUID: '',
+    useSpotInstance: true,
+    instanceType: null,
+    masterInstanceType: null,
+    deviceInfo: null,
+    masterDeviceInfo: null,
+    tserverK8SNodeResourceSpec: null,
+    masterK8SNodeResourceSpec: null,
+    keepMasterTserverSame: true
   }
 };
 

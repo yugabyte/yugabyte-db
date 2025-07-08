@@ -1,25 +1,19 @@
 import { FC } from 'react';
+import { toUpper } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
-import { CloudType } from '../../../../helpers/dtos';
 import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
 import { useQuery } from 'react-query';
-import { ProviderConfig } from '../../steps/general-settings/dtos';
+import { ProviderType } from '../../steps/general-settings/dtos';
 
 const { Box } = mui;
 
 interface TimeSyncProps {
   disabled: boolean;
-  provider: ProviderConfig;
+  provider: ProviderType;
 }
-
-const PROVIDER_FRIENDLY_NAME = {
-  [CloudType.aws]: 'AWS',
-  [CloudType.gcp]: 'GCP',
-  [CloudType.azu]: 'Azure'
-};
 
 const TIME_SYNC_FIELD = 'useTimeSync';
 
@@ -30,7 +24,7 @@ export const TimeSyncField: FC<TimeSyncProps> = ({ provider }) => {
   const { data } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
   const isChronyEnabled = !!data?.find((p) => p?.uuid === provider?.uuid)?.details?.setUpChrony;
 
-  const stringMap = { provider: PROVIDER_FRIENDLY_NAME[provider?.code] };
+  const stringMap = { provider: toUpper(provider?.code) };
 
   return (
     <Box

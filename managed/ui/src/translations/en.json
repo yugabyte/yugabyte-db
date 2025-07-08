@@ -581,7 +581,21 @@
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
-        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes"
+        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
+        "spotInstance": "{{cloudType}} Spot Instance",
+        "useAwsSpotInstance": "Use {{cloudType}} spot instances",
+        "volumeInfoPerNode": "Volume Info / Node",
+        "provisionedIopsPerNode": "Provisioned IOPS / Node ",
+        "provisionedThroughputPerNode": "Provisioned Throughput / Node",
+        "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
+        "memory": "Memory",
+        "volumeInfoPerPod": "Volume Info / Pod",
+        "clusterInstance": "Cluster Instance",
+        "tserver": "T-Server Instance",
+        "master": "Master Server Instance (Optional)",
+        "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
+        "cantChangeLater": "This CANNOT be changed after creation",
+        "masterNote": "<1>Note!</1> CPU Architecture, Linux version and AWS Spot intense usage are global settings and can not be overridden. You can change these settings from the “Default Instance Configuration”."
       },
       "securityConfig": {
         "title": "Security Configurations",
