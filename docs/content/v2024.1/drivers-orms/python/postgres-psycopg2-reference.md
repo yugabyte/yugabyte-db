@@ -17,7 +17,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
-      <i class="fa-brands fa-java" aria-hidden="true"></i>
+      <img src="/icons/yugabyte.svg"></i>
       Yugabyte Psycopg2
     </a>
   </li>
@@ -25,6 +25,12 @@ type: docs
     <a href="../postgres-psycopg2-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PG Psycopg2
+    </a>
+  </li>
+  <li >
+    <a href="../postgres-psycopg3-reference/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PG Psycopg3
     </a>
   </li>
 </ul>
