@@ -1457,8 +1457,9 @@ By default, yugabyted uses IPv4. To start a universe with an IPv6 address, speci
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
+Alternatively, you can provide an IPv6 address. For example:
+
 ```sh
-# Using IPv6
 ./bin/yugabyted start --advertise_address=::1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
