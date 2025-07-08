@@ -1453,13 +1453,13 @@ Create a single-node universe with a given [base directory](#base-directory). Yo
 By default, yugabyted uses IPv4. To start a universe with an IPv6 address, specify `::1` for the `--advertise_address`.
 
 ```sh
-# Using IPv4
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
+Alternatively, you can provide an IPv6 address. For example:
+
 ```sh
-# Using IPv6
 ./bin/yugabyted start --advertise_address=::1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
