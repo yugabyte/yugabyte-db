@@ -584,7 +584,35 @@ The problem is that those issue number references are for the subtree's reposito
 This isn't too big of a problem since most of YugabyteDB's issues on low numbers are already closed, and these subtrees's issue numbers tend to be relatively low.
 However, when it does happen, the issues that were inadvertently closed need to manually be reopened.
 
+### Git multiple remotes
+
+When it comes to merging upstream repositories, you will likely have to manage multiple remote repositories.
+This section will illustrate a workflow for that using the PostgreSQL repository as an example.
+
+First, please get a good understanding of git remotes.
+[This short article](https://dev.to/hashcode01/add-a-second-remote-origin-to-git-35a7) covers the concept well.
+
+YugabyteDB's [yugabyte/postgres][repo-postgres] repo does not have all branches of upstream PostgreSQL nor is it guaranteed to be synced.
+The common case workflow is to have at least two remotes: one for [yugabyte/postgres][repo-postgres] and one for upstream PostgreSQL.
+The upstream PostgreSQL remote can be set up in several ways:
+
+- Git protocol (faster): `git://git.postgresql.org/git/postgresql.git`
+- HTTP protocol: `https://git.postgresql.org/git/postgresql.git`
+- HTTP protocol (mirror): `https://github.com/postgres/postgres`
+
+Fetch commits from the upstream PostgreSQL repository, and do work on branches based off commits in the [yugabyte/postgres][repo-postgres] repository.
+An example `git remote -v` output after setting up the two remotes:
+
+```
+pg      git://git.postgresql.org/git/postgresql.git (fetch)
+pg      git://git.postgresql.org/git/postgresql.git (push)
+yb      ssh://<user>@github.com/yugabyte/postgres (fetch)
+yb      ssh://<user>@github.com/yugabyte/postgres (push)
+```
+
 ### Find PostgreSQL back-patch commits
+
+First, [fetch all PostgreSQL commits](#git-multiple-remotes) so that they are available for local search.
 
 When PostgreSQL back-patches a commit, the commit message is generally unchanged.
 Therefore, one way to find all back-patches of a given commit is by filtering on the commit title: `git --grep '<title>' --all`.
