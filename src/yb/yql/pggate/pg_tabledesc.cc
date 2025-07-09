@@ -45,7 +45,7 @@ PgTableDesc::PgTableDesc(
 
 Status PgTableDesc::Init() {
   RETURN_NOT_OK(SchemaFromPB(resp_.schema(), &schema_));
-  schema_packing_.emplace(TableType::PGSQL_TABLE_TYPE, schema_);
+  schema_packing_.emplace(yb::TableType::PGSQL_TABLE_TYPE, schema_);
   size_t idx = 0;
   for (const auto& column : schema().columns()) {
     attr_num_map_.emplace_back(column.order(), idx++);

@@ -504,7 +504,15 @@ typedef struct PgExecEventMetric {
   int64_t count;
 } YBCPgExecEventMetric;
 
-typedef struct PgExecStats {
+typedef struct {
+  uint64_t version;
+  uint64_t gauges[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
+  int64_t counters[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
+  YBCPgExecEventMetric
+      events[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+} YBCPgExecStorageMetrics;
+
+typedef struct {
   YBCPgExecReadWriteStats tables;
   YBCPgExecReadWriteStats indices;
   YBCPgExecReadWriteStats catalog;
@@ -512,11 +520,8 @@ typedef struct PgExecStats {
   uint64_t num_flushes;
   uint64_t flush_wait;
 
-  uint64_t storage_metrics_version;
-  uint64_t storage_gauge_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
-  int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
-  YBCPgExecEventMetric
-      storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
+  YBCPgExecStorageMetrics read_metrics;
+  YBCPgExecStorageMetrics write_metrics;
 
   uint64_t rows_removed_by_recheck;
 } YBCPgExecStats;
