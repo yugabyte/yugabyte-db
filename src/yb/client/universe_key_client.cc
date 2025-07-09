@@ -89,11 +89,8 @@ Result<encryption::UniverseKeyRegistryPB> UniverseKeyClient::GetFullUniverseKeyR
   auto secure_context =
       VERIFY_RESULT(rpc::SetupInternalSecureContext(local_hosts, root_dir, &messenger_builder));
   auto messenger = VERIFY_RESULT(messenger_builder.Build());
-  auto se = ScopeExit([&] {
-    if (messenger) {
-      messenger->Shutdown();
-    }
-  });
+  auto se =
+      messenger ? MakeOptionalScopeExit([&messenger] { messenger->Shutdown(); }) : std::nullopt;
   if (PREDICT_FALSE(FLAGS_TEST_running_test)) {
     std::vector<HostPort> host_ports;
     RETURN_NOT_OK(HostPort::ParseStrings(local_hosts, 0 /* default_port */, &host_ports));

@@ -1418,12 +1418,12 @@ Result<PgOidToOidMap> SysCatalogTable::ReadPgClassColumnWithOidValueMap(
   return result_oid_map;
 }
 
-Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(const PgOid database_oid,
-                                                             const PgOid table_oid,
-                                                             const string& column_name) {
+Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(
+    const PgOid database_oid, const PgOid table_oid, const string& column_name,
+    const ReadHybridTime& read_time) {
   TRACE_EVENT0("master", "ReadPgClassColumnWithOidValue");
 
-  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, read_time));
   const auto& schema = read_data.schema();
 
   const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
@@ -1508,11 +1508,12 @@ Result<PgOidToStringMap> SysCatalogTable::ReadPgNamespaceNspnameMap(const PgOid 
 }
 
 Result<string> SysCatalogTable::ReadPgNamespaceNspname(const PgOid database_oid,
-                                                       const PgOid relnamespace_oid) {
+                                                       const PgOid relnamespace_oid,
+                                                       const ReadHybridTime& read_time) {
   TRACE_EVENT0("master", "ReadPgNamespaceNspname");
 
   auto read_data =
-      VERIFY_RESULT(TableReadData(database_oid, kPgNamespaceTableOid, ReadHybridTime()));
+      VERIFY_RESULT(TableReadData(database_oid, kPgNamespaceTableOid, read_time));
   const auto& schema = read_data.schema();
 
   const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
@@ -1847,11 +1848,27 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
   }
 
   TRACE_EVENT0("master", "ReadYsqlCatalogInvalationMessages");
+  DbOidVersionToMessageListMap messages;
+  RETURN_NOT_OK(ReadWithRestarts(
+      [this, &messages](
+          const ReadHybridTime& read_ht, HybridTime* read_restart_ht) -> Status {
+        return SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
+            read_ht, read_restart_ht, messages);
+      }));
+  return messages;
+}
+
+Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
+    const ReadHybridTime& read_time,
+    HybridTime* read_restart_ht,
+    DbOidVersionToMessageListMap& messages) {
 
   auto read_data = VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgYbInvalidationMessagesTableOid,
-                                 ReadHybridTime()));
+                                 read_time));
   const auto& schema = read_data.schema();
-
+  auto tablet = tablet_peer()->shared_tablet();
+  SCHECK(tablet, ShutdownInProgress, "SysConfig is shutting down.");
+  messages.clear();
   const auto db_oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName)).rep();
   const auto current_version_col_id = VERIFY_RESULT(
       schema.ColumnIdByName(kCurrentVersionColumnName)).rep();
@@ -1867,8 +1884,6 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
   // Loop through the pg_yb_invalidation_messages catalog table. Each row in this table represents
   // a list of invalidation messages associated with a pair of (db_oid, current_version).
   // Populate 'messages' with (db_oid, current_version, messages).
-
-  DbOidVersionToMessageListMap messages;
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
     // Fetch the db_oid.
     const auto db_oid_col = source_row.GetValue(db_oid_col_id);
@@ -1892,9 +1907,9 @@ SysCatalogTable::ReadYsqlCatalogInvalationMessages() {
     // There should not be any duplicate (db_oid, current_version) because it is a primary key.
     DCHECK(insert_result.second);
   }
-  return messages;
+  *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
+  return Status::OK();
 }
-
 
 Status SysCatalogTable::WriteBatchIfNeeded(size_t max_batch_bytes,
                                            size_t rows_so_far,

@@ -20,6 +20,8 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/server/clock.h"
 #include "yb/server/server_fwd.h"
 
@@ -34,15 +36,16 @@ class ThreadPool;
 
 namespace tserver {
 
-YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
-
 struct ObjectLockContext {
   ObjectLockContext(
       TransactionId txn_id, SubTransactionId subtxn_id, uint64_t database_oid,
-      uint64_t relation_oid, uint64_t object_oid, uint64_t object_sub_oid,
-      TableLockType lock_type)
-      : txn_id(txn_id), subtxn_id(subtxn_id), database_oid(database_oid),
-        relation_oid(relation_oid), object_oid(object_oid), object_sub_oid(object_sub_oid),
+      uint64_t relation_oid, uint64_t object_oid, uint64_t object_sub_oid, TableLockType lock_type)
+      : txn_id(txn_id),
+        subtxn_id(subtxn_id),
+        database_oid(database_oid),
+        relation_oid(relation_oid),
+        object_oid(object_oid),
+        object_sub_oid(object_sub_oid),
         lock_type(lock_type) {}
 
   YB_STRUCT_DEFINE_HASH(
@@ -81,7 +84,8 @@ class TSLocalLockManager {
  public:
   TSLocalLockManager(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
-      server::RpcServerBase& messenger_server, ThreadPool* thread_pool);
+      server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      docdb::ObjectLockSharedStateManager* shared_manager = nullptr);
   ~TSLocalLockManager();
 
   // Tries acquiring object locks with the specified modes and registers them against the given
@@ -97,7 +101,7 @@ class TSLocalLockManager {
   // TODO: Augment the 'pg_locks' path to show the acquired/waiting object/table level locks.
   void AcquireObjectLocksAsync(
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-      StdStatusCallback&& callback, WaitForBootstrap wait = WaitForBootstrap::kTrue);
+      StdStatusCallback&& callback);
 
   // When subtxn id is set, releases all locks tagged against <txn, subtxn>. Else releases all
   // object locks owned by <txn>.
@@ -122,8 +126,8 @@ class TSLocalLockManager {
   void PopulateObjectLocks(
       google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const;
 
-  size_t TEST_GrantedLocksSize() const;
-  size_t TEST_WaitingLocksSize() const;
+  size_t TEST_GrantedLocksSize();
+  size_t TEST_WaitingLocksSize();
   void TEST_MarkBootstrapped();
   std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
       TEST_GetLockStateMapForTxn(const TransactionId& txn) const;

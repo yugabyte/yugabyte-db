@@ -7,13 +7,8 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import {
-  YBSelectProps,
-  mui,
-  YBAutoComplete,
-  YBLabel,
-  YBTooltip
-} from '@yugabyte-ui-library/core';
+import { ChangeEvent } from 'react';
+import { mui, YBAutoComplete, YBLabel, YBSelectProps, YBTooltip } from '@yugabyte-ui-library/core';
 import {
   Controller,
   FieldValues,
@@ -22,21 +17,22 @@ import {
   useFormContext,
   useWatch
 } from 'react-hook-form';
-import { api, DBReleasesQueryKey } from '../../../../features/universe/universe-form/utils/api';
 import { useQuery } from 'react-query';
-import {
-  DEFAULT_ADVANCED_CONFIG,
-  YBSoftwareMetadata
-} from '../../../../features/universe/universe-form/utils/dto';
+import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
+import { isVersionStable } from '../../../../../utils/universeUtilsTyped';
+import { ReleaseState } from '../../../../features/releases/components/dtos';
+import { MAX_RELEASE_TAG_CHAR } from '../../../../features/releases/helpers/utils';
 import {
   getActiveDBVersions,
   sortVersionStrings
 } from '../../../../features/universe/universe-form/form/fields/DBVersionField/DBVersionHelper';
-import { isVersionStable } from '../../../../../utils/universeUtilsTyped';
-import { ReleaseState } from '../../../../features/releases/components/dtos';
-import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
-import { MAX_RELEASE_TAG_CHAR } from '../../../../features/releases/helpers/utils';
-import { ChangeEvent } from 'react';
+import { api, DBReleasesQueryKey } from '../../../../features/universe/universe-form/utils/api';
+import {
+  DEFAULT_ADVANCED_CONFIG,
+  YBSoftwareMetadata
+} from '../../../../features/universe/universe-form/utils/dto';
+import { PROVIDER_CONFIGURATION } from '../FieldNames';
+import InfoMessageIcon from '../../../../assets/info-message.svg';
 
 const { Box } = mui;
 
@@ -92,7 +88,7 @@ const renderOption = (
             <span>
               {option.releaseTag.length > MAX_RELEASE_TAG_CHAR && (
                 <YBTooltip title={option.releaseTag} arrow placement="top">
-                  <>Icon</>
+                  <img src={InfoMessageIcon} alt="info" />
                 </YBTooltip>
               )}
             </span>
@@ -123,16 +119,11 @@ export const DatabaseVersionField = <T extends FieldValues>({
   sx
 }: DatabaseVersionFieldProps<T>) => {
   const { control, getValues, setValue } = useFormContext<T>();
-  const provider = useWatch({ name: 'providerConfiguration' });
+  const provider = useWatch({ name: PROVIDER_CONFIGURATION });
 
   const { data, isLoading } = useQuery(
     [DBReleasesQueryKey.provider(provider?.uuid), null],
-    () =>
-      api.getDBVersions(
-        true,
-        null,
-        true
-      ),
+    () => api.getDBVersions(true, null, true),
     {
       enabled: !!provider?.uuid,
       onSuccess: (data) => {
@@ -176,7 +167,7 @@ export const DatabaseVersionField = <T extends FieldValues>({
       )
     : [];
 
-  const handleChange = (e: ChangeEvent<{}>, option: any) => {
+  const handleChange = (_e: ChangeEvent<{}>, option: any) => {
     setValue(name, option?.value ?? DEFAULT_ADVANCED_CONFIG.ybSoftwareVersion, {
       shouldValidate: true
     });

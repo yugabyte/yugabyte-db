@@ -114,6 +114,9 @@ DEFINE_test_flag(bool, skip_index_backfill, false,
 DEFINE_test_flag(bool, block_do_backfill, false,
     "Block DoBackfill from proceeding.");
 
+DEFINE_test_flag(bool, simulate_empty_indexes_during_backfill, false,
+    "Simulates BackfillTable::indexes_to_build() to return an empty set.");
+
 DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
     "Skips updating an index table to GC delete markers and sending of the corresponding RPC "
     "to the TServer.");
@@ -701,11 +704,17 @@ BackfillTable::BackfillTable(
 
 const std::unordered_set<TableId> BackfillTable::indexes_to_build() const {
   std::unordered_set<TableId> indexes_to_build;
+  if (PREDICT_FALSE(FLAGS_TEST_simulate_empty_indexes_during_backfill)) {
+    LOG_WITH_PREFIX(WARNING) << "Simulating empty indexes.";
+    return indexes_to_build;
+  }
   {
     auto l = indexed_table_->LockForRead();
     const auto& indexed_table_pb = l.data().pb;
     if (indexed_table_pb.backfill_jobs_size() == 0) {
       // Some other task already marked the backfill job as done.
+      LOG_WITH_PREFIX(INFO) << "No backfill jobs found for table " << indexed_table_->ToString()
+                            << ". Cannot determine indexes to build.";
       return {};
     }
     DCHECK(indexed_table_pb.backfill_jobs_size() == 1) << "For now we only expect to have up to 1 "
@@ -714,6 +723,17 @@ const std::unordered_set<TableId> BackfillTable::indexes_to_build() const {
       if (kv_pair.second == BackfillJobPB::IN_PROGRESS) {
         indexes_to_build.insert(kv_pair.first);
       }
+    }
+
+    if (indexes_to_build.empty()) {
+      std::vector<std::string> details;
+      const auto& backfill_state = indexed_table_pb.backfill_jobs(0).backfill_state();
+      std::transform(
+          backfill_state.begin(), backfill_state.end(), std::back_inserter(details),
+          [](const auto& kv_pair) {
+            return Substitute("$0: $1", kv_pair.first, BackfillJobPB::State_Name(kv_pair.second));
+          });
+      LOG_WITH_PREFIX(WARNING) << "No indexes to build. backfill_state: " << yb::ToString(details);
     }
   }
   return indexes_to_build;
@@ -1081,8 +1101,10 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
     for (const auto& kv_pair : indexed_table_pb.backfill_jobs(0).backfill_state()) {
       VLOG(2) << "Reading backfill_state for " << kv_pair.first << " as "
               << BackfillJobPB_State_Name(kv_pair.second);
-      DCHECK_NE(kv_pair.second, BackfillJobPB::IN_PROGRESS)
-          << __func__ << " is expected to be only called after all indexes are done.";
+      if (PREDICT_TRUE(!FLAGS_TEST_simulate_empty_indexes_during_backfill)) {
+        DCHECK_NE(kv_pair.second, BackfillJobPB::IN_PROGRESS)
+            << __func__ << " is expected to be only called after all indexes are done.";
+      }
       const bool success = (kv_pair.second == BackfillJobPB::SUCCESS);
       all_success &= success;
       permissions_to_set.emplace(
@@ -1499,7 +1521,8 @@ std::string BackfillChunk::description() const {
 bool BackfillChunk::SendRequest(int attempt) {
   VLOG(1) << __PRETTY_FUNCTION__;
   if (indexes_being_backfilled_.empty()) {
-    TransitionToCompleteState();
+    TransitionToFailedState(
+        MonitoredTaskState::kRunning, STATUS(IllegalState, "No indexes remaining to backfill."));
     return false;
   }
 

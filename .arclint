@@ -175,8 +175,14 @@
     "regress_test": {
       "type": "script-and-regex",
       "include": [
-        "(^src/postgres/.+/(specs|sql|expected)/yb[^/]*$)",
-        "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*yb[^/]*$)"
+        "(^src/postgres/.+/(specs|sql|expected)/[^/]+$)",
+        "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*[^/]*$)"
+      ],
+      "exclude": [
+        "(^src/postgres/third-party-extensions/documentdb/pg_documentdb/sql/.*$)",
+        "(^src/postgres/third-party-extensions/documentdb/pg_documentdb_core/sql/.*$)",
+        "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",
+        "(^src/postgres/third-party-extensions/pgvector/sql/.*$)"
       ],
       "script-and-regex.script": "src/lint/regress_test.sh",
       "script-and-regex.regex":

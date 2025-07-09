@@ -19,9 +19,44 @@ set -u
 
 . "${BASH_SOURCE%/*}/common.sh"
 
-if ! [[ "$1" =~ /yb[^/]+$ ]]; then
-  echo "Unexpected file $1" >&2
-  exit 1
+# Ensure upstream tests match upstream.
+if ! [[ "$1" =~ /yb[^/]+$ ]] && \
+   [[ "$1" != src/postgres/yb-extensions/* ]]; then
+  diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1")
+  exit_code=$?
+  if [ $exit_code -ne 0 ]; then
+    if [ $exit_code -ne 2 ]; then
+      # The following messages are not emitted to stderr because those messages
+      # may be buried under a large python stacktrace also emitted to stderr.
+      if [ -z "$diff_result" ]; then
+        echo "Unexpected failure, exit code $exit_code"
+      else
+        echo "$diff_result"
+      fi
+      exit 1
+    fi
+
+    echo 'error:bad_filename_for_yb_file:'\
+'This is a YB-introduced file, but the linter does not recognize it as such.'\
+' If it is YB-introduced, rename the file better (such as with "yb" prefix).'\
+' If the file is from an upstream repository, update'\
+' upstream_repositories.csv. The corresponding commit in'\
+' upstream_repositories.csv should exist either locally in ~/code/<repo_name>'\
+' or remotely in the corresponding remote repository (and you need internet'\
+' access in that case).:1:'"$(head -1)"
+  else
+    grep -Eo '^[0-9]+' <<<"$diff_result" \
+      | while read -r lineno; do
+          echo 'error:upstream_regress_test_modified:'\
+'Upstream-owned regress test should not be modified,'\
+' or upstream_repositories.csv should be updated.:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
+        done
+  fi
+
+  # Remaining rules do not apply to this file as they are for non-upstream
+  # tests.
+  exit
 fi
 
 # Trailing whitespace.  Avoid enforcing it for lines not owned by YB such as
@@ -148,7 +183,7 @@ if [[ "$1" =~ /yb.port.[^/]+$ ]]; then
       echo "Unexpected case for $1" >&2
       exit 1
   esac
-elif ! [[ "$1" =~ /yb.(depd|orig).[^/]+$ ]]; then
+elif [[ "$1" =~ /yb[^/]+$ ]] && ! [[ "$1" =~ /yb.(depd|orig).[^/]+$ ]]; then
   echo 'error:bad_regress_test_file_prefix:'\
 "${1##*/}"' has "yb" prefix but does not fit into any known category among '\
 '"yb.depd.", "yb.orig.", or "yb.port.":1:'"$(head -1 "$1")"

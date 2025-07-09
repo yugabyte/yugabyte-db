@@ -119,6 +119,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
           "This generally happens in the background during a WAL log roll, or remote bootstrap.";
     case WaitStateCode::kMVCC_WaitForSafeTime:
       return "A read/write rpc is waiting for the safe time to be at least the desired read-time.";
+    case WaitStateCode::kWaitForReadTime:
+      return "A read/write rpc is waiting for the current time to catch up to passed read time.";
     case WaitStateCode::kLockedBatchEntry_Lock:
       return "A read/write rpc is waiting for a DocDB row level lock.";
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
@@ -152,6 +154,12 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kRemoteBootstrap_RateLimiter:
       return "A remote bootstrap client is slowing down due to rate limiter throttling "
           "network access to remote bootstrap server.";
+    case WaitStateCode::kSnapshot_WaitingForFlush:
+      return "A snapshot operation is waiting for flush.";
+    case WaitStateCode::kSnapshot_CleanupSnapshotDir:
+      return "A snapshot operation is cleaning a snapshot directory.";
+    case WaitStateCode::kSnapshot_RestoreCheckpoint:
+      return "A snapshot operation is restoring a database checkpoint.";
     case WaitStateCode::kRaft_WaitingForReplication:
       return "A write rpc is waiting for Raft replication.";
     case WaitStateCode::kRaft_ApplyingEdits:
@@ -188,6 +196,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "RocksDB is waiting for a compaction to complete.";
     case WaitStateCode::kRocksDB_NewIterator:
       return "RocksDB is waiting for a new iterator to be created.";
+    case WaitStateCode::kRocksDB_CreateCheckpoint:
+      return "RocksDB is creating a database checkpoint.";
     case WaitStateCode::kYCQL_Parse:
       return "YCQL is parsing a query.";
     case WaitStateCode::kYCQL_Read:
@@ -554,6 +564,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kMVCC_WaitForSafeTime:
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+    case WaitStateCode::kWaitForReadTime:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kCreatingNewTablet:
@@ -592,6 +603,9 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kWAL_Append:
     case WaitStateCode::kWAL_Sync:
     case WaitStateCode::kConsensusMeta_Flush:
+    case WaitStateCode::kSnapshot_WaitingForFlush:
+    case WaitStateCode::kSnapshot_CleanupSnapshotDir:
+    case WaitStateCode::kSnapshot_RestoreCheckpoint:
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kReplicaState_TakeUpdateLock:
@@ -601,6 +615,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kRocksDB_OpenFile:
     case WaitStateCode::kRocksDB_WriteToFile:
     case WaitStateCode::kRocksDB_CloseFile:
+    case WaitStateCode::kRocksDB_CreateCheckpoint:
       return WaitStateType::kDiskIO;
 
     case WaitStateCode::kRocksDB_Flush:

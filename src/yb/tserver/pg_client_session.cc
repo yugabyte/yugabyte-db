@@ -48,6 +48,8 @@
 #include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
@@ -73,6 +75,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -765,10 +768,7 @@ struct PerformData : public PgResponseCacheWaiter {
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
       // In case of write operations, increase mutation counters for non-index relations.
-      if (!op.op->read_only() &&
-          !op.op->table()->IsIndex() &&
-          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
-          pg_node_level_mutation_counter) {
+      if (!op.op->read_only() && !op.op->table()->IsIndex() && pg_node_level_mutation_counter) {
         const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op.op).table()->id();
 
         VLOG_WITH_PREFIX(4)
@@ -1109,20 +1109,15 @@ class TransactionProvider {
 Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperations(
     PgPerformRequestPB* req, client::YBSession* session, rpc::Sidecars* sidecars,
     const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
-    bool has_distributed_txn, CoarseTimePoint deadline,
-    TransactionProvider& transaction_provider,
+    bool has_distributed_txn,
+    const LWFunction<Result<TransactionMetadata>()>& object_locking_txn_meta_provider,
     bool is_object_locking_enabled) {
   auto write_time = HybridTime::FromPB(req->write_time());
   std::pair<PgClientSessionOperations, VectorIndexQueryPtr> result;
   auto& ops = result.first;
   ops.reserve(req->ops().size());
   client::YBTablePtr table;
-  bool finished = false;
-  auto se = ScopeExit([&finished, session] {
-    if (!finished) {
-      session->Abort();
-    }
-  });
+  CancelableScopeExit abort_se{[session] { session->Abort(); }};
   const auto read_from_followers = req->options().read_from_followers();
   bool has_write_ops = false;
   for (auto& op : *req->mutable_ops()) {
@@ -1172,11 +1167,10 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
     session->Apply(pg_client_session_operation.op);
   }
   if (has_write_ops && !has_distributed_txn && is_object_locking_enabled) {
-    session->SetObjectLockingTxnMeta(
-        VERIFY_RESULT(transaction_provider.NextTxnMetaForPlain(deadline)));
+    session->SetObjectLockingTxnMeta(VERIFY_RESULT(object_locking_txn_meta_provider()));
   }
 
-  finished = true;
+  abort_se.Cancel();
   return result;
 }
 
@@ -1373,6 +1367,34 @@ bool IsReadPointResetRequested(const PgPerformOptionsPB& options) {
   return options.has_read_time() && !options.read_time().has_read_ht();
 }
 
+class ObjectLockOwnerInfo {
+ public:
+  ObjectLockOwnerInfo(
+      PgSessionLockOwnerTagShared& shared, docdb::ObjectLockOwnerRegistry& registry,
+      const TransactionId& txn_id)
+      : shared_(shared), guard_(registry.Register(txn_id)), txn_id_(txn_id) {
+    UpdateShared(guard_.tag());
+  }
+
+  ~ObjectLockOwnerInfo() {
+    UpdateShared({});
+  }
+
+  const TransactionId& txn_id() const {
+    return txn_id_;
+  }
+
+ private:
+  void UpdateShared(docdb::SessionLockOwnerTag tag) {
+    ParentProcessGuard g;
+    shared_.Get() = tag;
+  }
+
+  PgSessionLockOwnerTagShared& shared_;
+  docdb::ObjectLockOwnerRegistry::RegistrationGuard guard_;
+  TransactionId txn_id_;
+};
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -1394,6 +1416,12 @@ class PgClientSession::Impl {
         read_point_history_(PrefixLogger(id_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
+
+  void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared) {
+    DCHECK(!object_lock_shared_);
+    DCHECK(lock_owner_registry());
+    object_lock_shared_ = &object_lock_shared;
+  }
 
   Status CreateTable(
       const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
@@ -1987,30 +2015,27 @@ class PgClientSession::Impl {
     using pggate::PgDocData;
     using pggate::PgWireDataHeader;
 
-    const int64_t inc_by = req.inc_by();
-    const bool use_sequence_cache = FLAGS_ysql_sequence_cache_method == "server";
-    std::shared_ptr<PgSequenceCache::Entry> entry;
-    // On exit we should notify a waiter for this sequence id that it is available.
-    auto se = ScopeExit([&entry, use_sequence_cache] {
-      if (use_sequence_cache && entry) {
-        entry->NotifyWaiter();
-      }
-    });
-    if (use_sequence_cache) {
+    const auto inc_by = req.inc_by();
+    std::shared_ptr<PgSequenceCache::Entry> cache_entry;
+    if (FLAGS_ysql_sequence_cache_method == "server") {
       const PgObjectId sequence_id(
           narrow_cast<uint32_t>(req.db_oid()), narrow_cast<uint32_t>(req.seq_oid()));
-      entry = VERIFY_RESULT(
+      cache_entry = VERIFY_RESULT(
           sequence_cache().GetWhenAvailable(sequence_id, ToSteady(context->GetClientDeadline())));
+      DCHECK(cache_entry);
+    }
+    // On exit we should notify a waiter for this sequence id that it is available.
+    auto se = cache_entry
+        ? MakeOptionalScopeExit([&cache_entry] { cache_entry->NotifyWaiter(); }) : std::nullopt;
 
-      // If the cache has a value, return immediately.
-      std::optional<int64_t> sequence_value = entry->GetValueIfCached(inc_by);
-      if (sequence_value.has_value()) {
-        // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the
-        // first and last value are the same.
-        resp->set_first_value(*sequence_value);
-        resp->set_last_value(*sequence_value);
-        return Status::OK();
-      }
+    // If the cache has a value, return immediately.
+    if (auto sequence_value = cache_entry ? cache_entry->GetValueIfCached(inc_by) : std::nullopt;
+        sequence_value) {
+      // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the
+      // first and last value are the same.
+      resp->set_first_value(*sequence_value);
+      resp->set_last_value(*sequence_value);
+      return Status::OK();
     }
 
     PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
@@ -2068,9 +2093,9 @@ class PgClientSession::Impl {
     }
     auto last_value = PgDocData::ReadNumber<int64_t>(&cursor);
 
-    if (use_sequence_cache) {
-      entry->SetRange(first_value, last_value);
-      std::optional<int64_t> optional_sequence_value = entry->GetValueIfCached(inc_by);
+    if (cache_entry) {
+      cache_entry->SetRange(first_value, last_value);
+      auto optional_sequence_value = cache_entry->GetValueIfCached(inc_by);
 
       RSTATUS_DCHECK(
           optional_sequence_value.has_value(), InternalError,
@@ -2406,7 +2431,7 @@ class PgClientSession::Impl {
     }
     auto txn_meta_res = setup_session_result.session_data.transaction
         ? setup_session_result.session_data.transaction->GetMetadata(deadline).get()
-        : transaction_provider_.NextTxnMetaForPlain(deadline);
+        : NextObjectLockingTxnMeta(deadline);
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(1)
@@ -2443,7 +2468,7 @@ class PgClientSession::Impl {
           if (txn) {
             RETURN_NOT_OK(txn->metadata());
           } else {
-            RETURN_NOT_OK(session_impl->transaction_provider_.NextTxnMetaForPlain(deadline));
+            RETURN_NOT_OK(session_impl->NextObjectLockingTxnMeta(deadline));
           }
           return Status::OK();
         });
@@ -2519,6 +2544,10 @@ class PgClientSession::Impl {
 
   const std::string instance_uuid() const {
     return context_.instance_uuid;
+  }
+
+  docdb::ObjectLockOwnerRegistry* lock_owner_registry() const {
+    return context_.lock_owner_registry;
   }
 
   PrefixLogger LogPrefix() const { return PrefixLogger{id_}; }
@@ -2650,7 +2679,8 @@ class PgClientSession::Impl {
 
     std::tie(data->ops, data->vector_index_query) = VERIFY_RESULT(PrepareOperations(
         &data->req, session, &data->sidecars, tables, vector_index_query_data_,
-        data->transaction != nullptr /* has_distributed_txn */, deadline, transaction_provider_,
+        data->transaction != nullptr /* has_distributed_txn */,
+        make_lw_function([this, deadline] { return NextObjectLockingTxnMeta(deadline); }),
         IsObjectLockingEnabled()));
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
@@ -3284,8 +3314,7 @@ class PgClientSession::Impl {
         }
         return MergeStatus(std::move(commit_status), std::move(status));
       }
-      if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
-          pg_node_level_mutation_counter()) {
+      if (pg_node_level_mutation_counter()) {
         // Gather # of mutated rows for each table (count only the committed sub-transactions).
         auto table_mutations = txn->GetTableMutationCounts();
         VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "
@@ -3315,6 +3344,10 @@ class PgClientSession::Impl {
       return Status::OK();
     }
 
+    const bool is_final_release = !subtxn_id;
+    auto unregister_scope = is_final_release && txn
+        ? MakeOptionalScopeExit([this] { object_lock_owner_.reset(); }) : std::nullopt;
+
     const auto has_exclusive_locks =
         kind == PgClientSessionKind::kDdl || plain_session_has_exclusive_object_locks_.load();
     if (has_exclusive_locks && kind == PgClientSessionKind::kPlain && !subtxn_id) {
@@ -3323,7 +3356,7 @@ class PgClientSession::Impl {
     }
     auto txn_meta_res = txn
         ? txn->GetMetadata(deadline).get()
-        : transaction_provider_.NextTxnMetaForPlain(deadline, !subtxn_id);
+        : NextObjectLockingTxnMeta(deadline, is_final_release);
     RETURN_NOT_OK(txn_meta_res);
     return DoReleaseObjectLocks(
         txn_meta_res->transaction_id, subtxn_id, deadline, has_exclusive_locks);
@@ -3365,6 +3398,21 @@ class PgClientSession::Impl {
 
   [[nodiscard]] bool IsObjectLockingEnabled() const { return ts_lock_manager() != nullptr; }
 
+  Result<TransactionMetadata> NextObjectLockingTxnMeta(
+      CoarseTimePoint deadline, bool is_final_release = false) {
+    auto txn_meta = VERIFY_RESULT(
+        transaction_provider_.NextTxnMetaForPlain(deadline, is_final_release));
+    RegisterLockOwner(txn_meta.transaction_id);
+    return txn_meta;
+  }
+
+  void RegisterLockOwner(const TransactionId& txn_id) {
+    if (object_lock_shared_ && (!object_lock_owner_ || object_lock_owner_->txn_id() != txn_id)) {
+      object_lock_owner_.emplace(
+          *object_lock_shared_, *DCHECK_NOTNULL(lock_owner_registry()), txn_id);
+    }
+  }
+
   client::YBClient& client_;
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
@@ -3392,6 +3440,9 @@ class PgClientSession::Impl {
 
   std::atomic<bool> plain_session_has_exclusive_object_locks_{false};
   VectorIndexQueryPtr vector_index_query_data_;
+
+  std::optional<ObjectLockOwnerInfo> object_lock_owner_;
+  PgSessionLockOwnerTagShared* object_lock_shared_ = nullptr;
 };
 
 PgClientSession::PgClientSession(
@@ -3407,6 +3458,10 @@ PgClientSession::~PgClientSession() = default;
 
 uint64_t PgClientSession::id() const {
   return impl_->id();
+}
+
+void PgClientSession::SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared) {
+  impl_->SetupSharedObjectLocking(object_lock_shared);
 }
 
 Status PgClientSession::Perform(

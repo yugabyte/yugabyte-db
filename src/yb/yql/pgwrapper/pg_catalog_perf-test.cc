@@ -16,10 +16,8 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <unordered_map>
 
 #include "yb/common/json_util.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
@@ -32,7 +30,6 @@
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -388,7 +385,7 @@ class ClientConnectionsCountFetcher {
           return curl_.FetchURL(url_, &buf).ok();
         },
         5s, "Requesting /rpcz", initial_delay_));
-    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.c_str(), buf.size())));
+    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.char_data(), buf.size())));
     size_t result = 0;
     for (const auto& conn : VERIFY_RESULT(GetMemberAsArray(doc, "connections"))) {
       if (VERIFY_RESULT(GetMemberAsStr(conn, "backend_type")) == "client backend") {

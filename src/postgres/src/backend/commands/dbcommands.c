@@ -1888,6 +1888,27 @@ yb_removing_database_from_system:
 	 */
 	if (IsYugaByteEnabled())
 	{
+		/*
+		 * YB: If attempting to drop a database when Connection Manager is
+		 * enabled, sleep until guarantee of shared memory being updated for
+		 * appropriate read of logical connection count.
+		 *
+		 * It is still possible for there to be race conditions between
+		 * updating the logical connection count and dropping the database,
+		 * but this helps resolve issues with attempting to immediately drop
+		 * a database after connecting to another database with Connection
+		 * Manager.
+		 */
+		if (YbIsClientYsqlConnMgr())
+		{
+			uint32_t sleep = *(YBCGetGFlags()->ysql_conn_mgr_stats_interval) * 1000 * 1000;
+
+			elog(LOG_SERVER_ONLY,
+				 "connection manager: adding sleep of %d microseconds "
+				 "before DROP DATABASE",
+				 sleep);
+			pg_usleep(sleep);
+		}
 		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
 
 		/*

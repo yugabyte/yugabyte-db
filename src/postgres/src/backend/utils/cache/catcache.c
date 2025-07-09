@@ -1838,6 +1838,8 @@ YbSetAdditionalNegCacheIds(List *neg_cache_ids)
 		pfree(yb_addnl_neg_cache_ids.ids_array);
 
 	yb_addnl_neg_cache_ids.size = list_length(neg_cache_ids);
+	if (!CacheMemoryContext)
+		CreateCacheMemoryContext();
 	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 
 	yb_addnl_neg_cache_ids.ids_array = (uint32_t *) palloc(sizeof(uint32_t) * yb_addnl_neg_cache_ids.size);

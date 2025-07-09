@@ -17,11 +17,10 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_reader_redis.h"
-#include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_test_base.h"
 
 #include "yb/dockv/doc_key.h"
 
@@ -47,8 +46,7 @@ DECLARE_int32(max_nexts_to_avoid_seek);
 
 #define ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(str) ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(str))
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::DocKey;
 using dockv::DocPath;
@@ -97,8 +95,7 @@ class DocDBTest : public DocDBTestBase {
     SeedRandom();
   }
 
-  ~DocDBTest() override {
-  }
+  ~DocDBTest() override = default;
 
   Schema CreateSchema() override {
     return Schema();
@@ -588,7 +585,7 @@ void Append(const char* a, const char* b, faststring* out) {
 }
 
 void PushBack(const faststring& value, std::vector<std::string>* out) {
-  out->emplace_back(value.c_str(), value.size());
+  out->emplace_back(value.char_data(), value.size());
 }
 
 void Append(const char* a, const char* b, boost::container::small_vector_base<char>* out) {
@@ -662,5 +659,4 @@ Result<bool> DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(
   return false;
 }
 
-}  // namespace docdb
-}  // namespace yb
+} // namespace yb::docdb

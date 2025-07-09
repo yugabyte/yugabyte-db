@@ -3,8 +3,6 @@ title: Query Planner
 headerTitle: Query Planner / CBO
 linkTitle: Query Planner
 headcontent: Understand how the planner chooses the optimal path for query execution
-tags:
-  feature: early-access
 menu:
   preview:
     identifier: query-planner
@@ -25,20 +23,13 @@ YugabyteDB implements a simple rules-based optimizer (RBO) for YCQL. It operates
 
 YugabyteDB's YSQL API uses a simple heuristics-based optimizer to determine the most efficient execution plan for a query. It relies on basic statistics, like table sizes, and applies heuristics to estimate the cost of different plans. The cost model is based on PostgreSQL's approach, using data such as row counts and index availability, and assigns some heuristic costs to the number of result rows depending on the type of scan. Although this works well for most queries, because this model was designed for single-node databases like PostgreSQL, it doesn't account for YugabyteDB's distributed architecture or take cluster topology into consideration during query planning.
 
-## Cost based optimizer (YSQL)
+## Cost-based optimizer (YSQL)
 
-To account for the distributed nature of the data, YugabyteDB has implemented a Cost based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster topology.
+To account for the distributed nature of the data, YugabyteDB has implemented a cost-based optimizer (CBO) for YSQL that uses an advanced cost model. The model considers accurate table statistics, the cost of network round trips, operations on lower level storage layer, and the cluster topology.
 
-{{<tip>}}
+The YugabyteDB CBO is disabled by default.
 
-The YugabyteDB CBO is {{<tags/feature/ea idea="483">}} and disabled by default. To enable it, turn ON the [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) configuration parameter as follows:
-
-```sql
--- Enable for current session
-SET yb_enable_base_scans_cost_model = TRUE;
-```
-
-{{</tip>}}
+For more information on configuring CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 ### Plan search algorithm
 
@@ -90,7 +81,7 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 
 ### Best practices
 
-- If your table already has rows, and you create an additional index (for example, `create index i on t (k);`), you must re-run analyze to populate the index `pg_class.reltuples` with the correct row count. [Issue](https://github.com/yugabyte/yugabyte-db/issues/25394)
+- If your table already has rows, and you create an additional index (for example, `create index i on t (k);`), you must re-run analyze to populate the index `pg_class.reltuples` with the correct row count. {{<issue 25394>}}
 
     If you need to create a new index to replace a old one while your application is running, create the new one first, run analyze, then drop the old one.
 

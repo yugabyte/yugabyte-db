@@ -192,7 +192,7 @@
       Group={{ yamlPath "service_username" }}
       {{ end }}
       Type=simple
-      ExecStart= {{ .PromDir }}/prometheus \
+      ExecStart= /bin/sh -c "{{ .PromDir }}/prometheus \
       --config.file {{ .ConfFileLocation }} \
       --storage.tsdb.path {{ .DataDir }}/storage \
       --storage.tsdb.retention.time={{ yamlPath "prometheus.retentionTime" }} \
@@ -204,16 +204,11 @@
       --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
       --query.max-samples={{ yamlPath "prometheus.maxSamples" }} \
-      --query.timeout={{ yamlPath "prometheus.timeout" }}
+      --query.timeout={{ yamlPath "prometheus.timeout" }} &>> {{ .LogDir }}/prometheus.log"
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
       OOMScoreAdjust={{ yamlPath "prometheus.oomScoreAdjust"}}
-      {{ $systemdLog := systemdLogMethod }}
-      {{ if ne $systemdLog "" }}
-      StandardOutput={{ $systemdLog }}:{{ .LogDir }}/prometheus.log
-      StandardError={{ $systemdLog }}:{{ .LogDir }}/prometheus.log
-      {{ end }}
 
       [Install]
       WantedBy=multi-user.target

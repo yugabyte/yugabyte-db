@@ -119,6 +119,27 @@ The `SKIP n` option skips the first `n` rows of the file. `n` must be a non-nega
 
 Default: 0, no rows are skipped.
 
+## Copy with fast-path transaction for colocated tables
+
+YugabyteDB supports a fast-path mode for the COPY command on colocated tables (v2.25.1 and later), which can significantly improve performance during data import.
+
+### Enable fast-path COPY
+
+The fast-path copy feature is disabled by default. To enable it for your current PostgreSQL session, run:
+
+ ```plpgsql
+ SET yb_fast_path_for_colocated_copy = on;
+ ```
+
+The fast-path COPY is applied only when all of the following conditions are met:
+
+1. The `yb_fast_path_for_colocated_copy` setting is enabled.
+2. The `ROWS_PER_TRANSACTION` option is not specified in the COPY command.
+3. The target table does not have any triggers, rules, or foreign key constraints defined.
+4. The COPY command is executed **outside** of an explicit transaction.
+
+With fast-path enabled, the unit of atomicity is determined by `ysql_session_max_batch_size` rather than `ROWS_PER_TRANSACTION`. For example, if `ysql_session_max_batch_size` is set to 3072, which means at most 3072 writes will be included in the same batch. For a table without indexes, this results in an atomic unit of 3072 rows. For a table with two indexes, the unit of atomicity will be 1024 rows which ensure the 1024 rows and their indexes are written atomically. Only use fast-path COPY if this level of atomicity aligns with your requirements.
+
 ## Examples
 
 The examples below assume a table like this:

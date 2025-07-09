@@ -2273,11 +2273,11 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *replication-group-id*: The replication group identifier.
 * *namespace_names*: Comma-separated list of namespaces.
-* `automatic_ddl_mode`: Use Automatic xCluster mode.
+* `automatic_ddl_mode`: Use Automatic xCluster mode. {{<tags/feature/ea idea="2176">}}
 
 #### is_xcluster_bootstrap_required
 
-Checks if the databases of a previously checkpointed replication group requires a bootstrap(backup/restore) of the database to the target universe.
+Checks if the databases of a previously checkpointed replication group requires a bootstrap (backup/restore) of the database to the target universe.
 
 **Syntax**
 

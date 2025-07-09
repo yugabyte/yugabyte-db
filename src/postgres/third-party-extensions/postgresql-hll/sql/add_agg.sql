@@ -1,6 +1,7 @@
 -- ----------------------------------------------------------------
 -- Regression tests for add aggregate hashval function.
 -- ----------------------------------------------------------------
+
 SELECT hll_set_output_version(1);
 
 DROP TABLE IF EXISTS test_khvengxf;

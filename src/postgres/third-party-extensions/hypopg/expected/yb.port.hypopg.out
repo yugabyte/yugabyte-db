@@ -40,12 +40,12 @@ WHERE e ~ 'Index.*<\d+>lsm_hypo.*'; -- YB: change btree to lsm
      1
 (1 row)
 
--- Should use hypothetical index
+-- YB: New cost model (correctly) picks SeqScan + Sort over IndexScan
 SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo ORDER BY id') e
 WHERE e ~ 'Index.*<\d+>lsm_hypo.*'; -- YB: change btree to lsm
  count 
 -------
-     1
+     0
 (1 row)
 
 -- Should not use hypothetical index

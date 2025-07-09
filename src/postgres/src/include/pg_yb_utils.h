@@ -206,8 +206,6 @@ extern bool IsYBSystemColumn(int attrNum);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
-extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
-
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
@@ -686,6 +684,12 @@ extern char *yb_default_replica_identity;
  * the new table is created.
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
+
+/*
+ * If set to true, force a full catalog cache refresh before
+ * executing the next top level statement.
+ */
+extern bool yb_test_preload_catalog_tables;
 
 /* GUC variable yb_test_stay_in_global_catalog_version_mode. */
 extern bool yb_test_stay_in_global_catalog_version_mode;

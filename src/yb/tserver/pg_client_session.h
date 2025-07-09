@@ -26,12 +26,15 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -94,6 +97,7 @@ struct PgClientSessionContext {
   PgSharedMemoryPool& shared_mem_pool;
   const EventStatsPtr& stats_exchange_response_size;
   const std::string& instance_uuid;
+  docdb::ObjectLockOwnerRegistry* lock_owner_registry;
 };
 
 class LeaseEpochValidator {
@@ -118,6 +122,8 @@ class PgClientSession final {
   ~PgClientSession();
 
   uint64_t id() const;
+
+  void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
 
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
                  const PgTablesQueryResult& tables);

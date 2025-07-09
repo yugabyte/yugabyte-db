@@ -22,10 +22,10 @@ body {
 
     >span.tritiery-btn:not(.btn-priority) {
       font-style: normal;
-      gap: 8px;
+      gap: 4px;
       cursor: pointer;
       display: flex;
-      padding: 4px 15px 4px 12px;
+      padding: 4px 12px 4px 12px;
       background: linear-gradient(91deg, #ED35EC 3.97%, #ED35C5 33%, #5E60F0 50%);
       background-clip: text;
       -webkit-background-clip: text;
@@ -39,7 +39,6 @@ body {
       border-radius: 8px;
 
       >img {
-        width: 18px ;
         margin-left: 0;
 
         @media(max-width:419px) {

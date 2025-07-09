@@ -516,6 +516,10 @@ class PgDocReadOp : public PgDocOp {
   const PgsqlReadOp& GetTemplateReadOp() { return *read_op_; }
 
  private:
+  // Check request conditions if they allow to limit the scan range
+  // Returns true if resulting range is not empty, false otherwise
+  Result<bool> SetScanBounds();
+
   // Create protobuf requests using template_op_.
   Result<bool> DoCreateRequests() override;
 

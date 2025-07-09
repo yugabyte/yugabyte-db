@@ -66,6 +66,7 @@ using strings::Substitute;
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
 DEFINE_RUNTIME_AUTO_bool(
     use_parent_table_id_field, kLocalPersisted, false, true,
@@ -1352,11 +1353,13 @@ std::string DdlLogEntry::id() const {
 // ================================================================================================
 
 std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
-ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance) {
+ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) {
   auto l = LockForWrite();
   {
     std::lock_guard l(mutex_);
-    last_ysql_lease_refresh_ = MonoTime::Now();
+    // When doing this mutation we cannot be sure the tserver receives the response.
+    // So we cannot safely reduce the lease deadline, only extend it.
+    ysql_lease_deadline_ = std::max(ysql_lease_deadline_, MonoTime::Now() + lease_ttl);
   }
   if (l->pb.lease_info().live_lease() &&
       l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
@@ -1373,13 +1376,15 @@ void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
   MetadataCowWrapper<PersistentObjectLockInfo>::Load(metadata);
   {
     std::lock_guard l(mutex_);
-    last_ysql_lease_refresh_ = MonoTime::Now();
+    ysql_lease_deadline_ =
+        MonoTime::Now() +
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms));
   }
 }
 
-MonoTime ObjectLockInfo::last_ysql_lease_refresh() const {
+MonoTime ObjectLockInfo::ysql_lease_deadline() const {
   std::lock_guard l(mutex_);
-  return last_ysql_lease_refresh_;
+  return ysql_lease_deadline_;
 }
 
 // ================================================================================================

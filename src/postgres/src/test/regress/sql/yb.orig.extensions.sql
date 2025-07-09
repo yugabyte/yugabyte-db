@@ -69,3 +69,45 @@ CREATE EXTENSION yb_test_extension SCHEMA "has space";
 \c yugabyte
 
 DROP DATABASE test_yb_extensions WITH (FORCE);
+
+--
+-- GH-26857 - Validate that the yb_extension role has the necessary privileges
+-- to create/alter/delete extensions.
+--
+CREATE USER non_db_admin_user INHERIT CREATEROLE CREATEDB BYPASSRLS LOGIN;
+GRANT pg_read_all_stats, pg_signal_backend, yb_extension, yb_fdw, yb_db_admin TO non_db_admin_user;
+GRANT CREATE ON SCHEMA public to non_db_admin_user WITH GRANT OPTION;
+
+-- Set up objects required to alter the extension.
+CREATE SCHEMA test_schema;
+GRANT CREATE ON SCHEMA test_schema to non_db_admin_user WITH GRANT OPTION;
+
+CREATE FUNCTION test_func (a INT) RETURNS INT
+LANGUAGE PLPGSQL AS $$
+BEGIN
+	RETURN a;
+END;
+$$;
+
+ALTER FUNCTION test_func (a INT) OWNER TO non_db_admin_user;
+CREATE ACCESS METHOD dummy_am_yb_user TYPE INDEX HANDLER bthandler;
+
+\c yugabyte non_db_admin_user
+-- A non-admin user is not allowed to create/drop access methods unless it is a
+-- part of an extension script. Postgres does not have a command to alter an
+-- access method.
+CREATE ACCESS METHOD dummy_am_non_db_admin_user TYPE INDEX HANDLER bthandler;
+DROP ACCESS METHOD dummy_am_non_db_admin_user;
+
+CREATE EXTENSION vector;
+ALTER EXTENSION vector SET SCHEMA test_schema;
+-- A non-admin user is not allowed to create/drop access methods as part of
+-- altering an extension.
+ALTER EXTENSION vector ADD ACCESS METHOD dummy_am_yb_user;
+ALTER EXTENSION vector ADD ACCESS METHOD am_not_found;
+ALTER EXTENSION vector DROP ACCESS METHOD dummy_am_yb_user;
+ALTER EXTENSION vector ADD FUNCTION test_func(INT);
+ALTER EXTENSION vector DROP FUNCTION func_not_found(TEXT);
+ALTER EXTENSION vector DROP FUNCTION test_func(INT);
+DROP EXTENSION vector CASCADE;
+\c yugabyte

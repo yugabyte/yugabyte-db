@@ -429,6 +429,7 @@ typedef struct {
   const uint32_t* ysql_max_invalidation_message_queue_size;
   const uint32_t* ysql_max_replication_slots;
   const uint32_t* yb_max_recursion_depth;
+  const uint32_t* ysql_conn_mgr_stats_interval;
 } YbcPgGFlagsAccessor;
 
 typedef struct {

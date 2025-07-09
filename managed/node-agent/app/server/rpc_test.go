@@ -35,7 +35,6 @@ var (
 )
 
 func init() {
-	rand.Seed(time.Now().Unix())
 }
 
 func randomString(length int) string {

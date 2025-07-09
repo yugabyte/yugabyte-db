@@ -1685,6 +1685,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable compression for message sent over node agent channel.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeAgentDisableBgInstallPostMigration =
+      new ConfKeyInfo<>(
+          "yb.node_agent.disable_bg_install_post_migration",
+          ScopeType.GLOBAL,
+          "Disable Node Agent Background Installation After Migration",
+          "Install node agent synchronously during a task instead after migration if it is true.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
       new ConfKeyInfo<>(
           "yb.task.enable_task_runtime_info_on_retry",
@@ -1692,5 +1700,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Task Runtime Info on Retry",
           "Use the runtime info from the previously failed task on retry",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> gcpBlobDeleteRetryCount =
+      new ConfKeyInfo<>(
+          "yb.gcp.blob_delete_retry_count",
+          ScopeType.GLOBAL,
+          "GCP Blob Delete Retry Count",
+          "Number of times to retry deleting blobs in GCP. This is used to handle the case where"
+              + " the blob deletion fails due to some transient error.",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

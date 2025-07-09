@@ -75,7 +75,12 @@ DEFINE_test_flag(int32, sleep_amidst_iterating_blockers_ms, 0,
     "Time for which the thread sleeps in each iteration while looping over the computed wait-for "
     "probes and sending information to the waiters.");
 
+DEFINE_test_flag(int32, delay_forwarding_waiting_probes_ms, 0,
+    "Time for which the thread sleeps before initiating/fowarding wait-for probes.");
+
 DECLARE_uint64(transaction_heartbeat_usec);
+
+DECLARE_bool(TEST_hide_details_for_pg_regress);
 
 namespace yb {
 namespace tablet {
@@ -307,6 +312,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     if (probe_latency_) {
       sent_at_ = CoarseMonoClock::Now();
     }
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_forwarding_waiting_probes_ms);
     VLOG(4) << "Sending probes for txn: " << probe_origin_txn_id_
             << " from detector: " << origin_detector_id_
             << " with probe_num:" << probe_num_
@@ -893,7 +899,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           resp,
           Format("Increment version for txns in deadlock cycle $0", deadlock_debug_msg.str()));
     }
-    auto deadlock_msg = Format(
+    const auto deadlock_msg = FLAGS_TEST_hide_details_for_pg_regress
+        ? "Transaction aborted due to a deadlock"
+        : Format(
         "Transaction $0 aborted due to a deadlock: $1",
         newest_txn_id.ToString(), deadlock_debug_msg.str());
     VLOG_WITH_PREFIX(1) << deadlock_msg;

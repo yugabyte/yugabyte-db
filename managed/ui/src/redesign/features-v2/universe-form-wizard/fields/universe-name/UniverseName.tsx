@@ -7,7 +7,6 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-// import { YBInputField, YBInputFieldProps } from '@yugabyte-ui-library/core';
 import { YBInputFieldProps, yba } from '@yugabyte-ui-library/core';
 import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
 

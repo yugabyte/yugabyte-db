@@ -52,6 +52,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/docdb/object_lock_shared_fwd.h"
+
 #include "yb/encryption/encryption_fwd.h"
 
 #include "yb/gutil/atomicops.h"
@@ -205,6 +207,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
   ConcurrentPointerReference<TServerSharedData> SharedObject() override { return shared_object(); }
+
+  docdb::ObjectLockSharedStateManager* ObjectLockSharedStateManager() const override {
+    return object_lock_shared_state_manager_.get();
+  }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
   Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
@@ -660,6 +666,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Lock Manager to maintain table/object locking activity in memory.
   tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
+
+  std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

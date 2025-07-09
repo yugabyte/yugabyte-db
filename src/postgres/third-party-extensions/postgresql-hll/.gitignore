@@ -6,3 +6,5 @@ regression.out
 regression.diffs
 results
 .deps/
+
+/*.sql

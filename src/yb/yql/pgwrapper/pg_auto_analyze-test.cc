@@ -44,8 +44,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_bool(ysql_enable_table_mutation_counter);
-DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
 DECLARE_uint32(ysql_auto_analyze_threshold);
@@ -76,7 +75,7 @@ namespace {
 class PgAutoAnalyzeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_table_mutation_counter) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = true;
 
     // Set low values for the node level mutation reporting and the cluster level persisting
     // intervals. This ensures that the aggregate mutations are frequently applied to the underlying
@@ -88,8 +87,6 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_force_early_ddl_serialization) = true;
 
     PgMiniTestBase::SetUp();
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_service) = true;
 
     ASSERT_OK(CreateClient());
     ASSERT_OK(client_->WaitForCreateTableToFinish(kAutoAnalyzeFullyQualifiedTableName));

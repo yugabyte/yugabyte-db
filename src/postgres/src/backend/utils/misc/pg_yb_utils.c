@@ -389,17 +389,24 @@ IsYBSystemColumn(int attrNum)
 }
 
 AttrNumber
-YBGetFirstLowInvalidAttrNumber(bool is_yb_relation)
-{
-	return (is_yb_relation ?
-			YBFirstLowInvalidAttributeNumber :
-			FirstLowInvalidHeapAttributeNumber);
-}
-
-AttrNumber
 YBGetFirstLowInvalidAttributeNumber(Relation relation)
 {
-	return (IsYBRelation(relation) ?
+	/*
+	 * Foreign tables contain a superset of columns that a foreign server is
+	 * allowed to populate. These are usually user defined columns. With
+	 * postgres_fdw (a foreign data wrapper that points to a server that speaks
+	 * the postgres wire protocol), a foreign server may be yet another
+	 * YugabyteDB instance. In this case, the foreign table (param: relation)
+	 * is simply a pointer to a YugabyteDB table on the foreign cluster, which
+	 * of course has a ybctid system column. The ybctid column is used
+	 * extensively by postgres_fdw implicitly to perform updates and deletes.
+	 * It is not very convenient to check what FDW a foreign table belongs to.
+	 * Furthermore, all foreign tables (irrespective of FDW) are currently
+	 * created with a ybctid column. Therefore, assume that that all foreign
+	 * tables have a ybctid column and return the YB-specific offset.
+	 */
+	return (IsYBRelation(relation) ||
+			relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE ?
 			YBFirstLowInvalidAttributeNumber :
 			FirstLowInvalidHeapAttributeNumber);
 }
@@ -2154,6 +2161,7 @@ char	   *yb_test_fail_index_state_change = "";
 char	   *yb_default_replica_identity = "CHANGE";
 
 bool		yb_test_fail_table_rewrite_after_creation = false;
+bool		yb_test_preload_catalog_tables = false;
 
 bool		yb_test_stay_in_global_catalog_version_mode = false;
 
@@ -2808,10 +2816,20 @@ YbCheckNewSharedCatalogVersionOptimization(bool is_breaking_change,
 
 	if (yb_test_delay_set_local_tserver_inval_message_ms > 0)
 		pg_usleep(yb_test_delay_set_local_tserver_inval_message_ms * 1000L);
-	HandleYBStatus(YBCPgSetTserverCatalogMessageList(MyDatabaseId,
-													 is_breaking_change,
-													 new_version,
-													 &message_list));
+	YbcStatus	status = YBCPgSetTserverCatalogMessageList(MyDatabaseId,
+														   is_breaking_change,
+														   new_version,
+														   &message_list);
+	if (YBCStatusIsTryAgain(status))
+	{
+		const char *reason = YBCStatusMessageBegin(status);
+		elog(LOG, "failed to set local tserver catalog message list, "
+				  "waiting for heartbeats instead: %s", reason);
+		YBCFreeStatus(status);
+		YbWaitForSharedCatalogVersionToCatchup(new_version);
+	}
+	else
+		HandleYBStatus(status);
 }
 
 static int

@@ -75,7 +75,7 @@ Example Output:
 
 `safe_time_lag_sec` represents the time in seconds between the current time and `safe_time`. This indicates how long the Primary universe has been unavailable.
 
-`safe_time_skew_sec` represents the difference in seconds between the most and least caught up tablet on the Standby universe. It serves as a measure of estimated data that will be lost on failover.
+`safe_time_skew_sec` represents the difference in seconds between the most and least caught up tablet on the Standby universe. Unless the replication lag was high before the failure, it serves as a measure of estimated data that will be lost on failover.
 
 Determine whether the estimated data loss is acceptable. If you know the exact time the Primary universe went down, you can compare it to the `safe_time`. Otherwise, use `safe_time_skew_sec` as a rough measure to estimate the data loss.
 
@@ -202,10 +202,10 @@ Restore the database to the `safe_time`:
 ### Fix up sequences and serial columns
 
 {{< note >}}
-_Not applicable for Automatic mode_
+Skip this step if you are using xCluster replication automatic mode.
 {{< /note >}}
 
-Because xCluster does not replicate sequence data, you need to manually adjust the sequence next values on universe B after failover to ensure consistency with the tables using them.
+xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually adjust the sequence next values on universe B after failover to ensure consistency with the tables using them.
 
 For example, if you have a SERIAL column in a table and the highest value in that column after failover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
 
@@ -221,7 +221,7 @@ After completing the preceding steps, the former Standby (B) is the new Primary 
 
 If the former Primary universe (A) doesn't come back and you end up creating a new cluster in place of A, follow the steps in [Set up transactional xCluster](../async-transactional-setup-automatic/).
 
-If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the databases on A need to be dropped and recreated from a backup of B (Bootstrap). Before dropping the databases on A, you can analyze them to determine the exact data that was lost by the failover.
+If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the databases on A need to be dropped and recreated from a backup of B (bootstrap). Before dropping the databases on A, you can analyze them to determine the exact data that was lost by the failover.
 
 When you are ready to drop the databases on A, proceed to the next steps.
 

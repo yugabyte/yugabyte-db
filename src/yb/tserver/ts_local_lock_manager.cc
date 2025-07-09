@@ -45,6 +45,8 @@ DECLARE_uint64(refresh_waiter_timeout_ms);
 
 namespace yb::tserver {
 
+YB_STRONGLY_TYPED_BOOL(WaitForBootstrap);
+
 // This class tracks object locks specifically for the pg_locks view.
 // An alternative would be to extract and decrypt locks directly from ObjectLockManager,
 // but for simplicity, we decided to maintain a separate tracker here.
@@ -217,9 +219,10 @@ class TSLocalLockManager::Impl {
  public:
   Impl(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
-      server::RpcServerBase& messenger_server, ThreadPool* thread_pool)
+      server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      docdb::ObjectLockSharedStateManager* shared_manager)
       : clock_(clock), server_(tablet_server), messenger_base_(messenger_server),
-        object_lock_manager_(thread_pool, messenger_server),
+        object_lock_manager_(thread_pool, messenger_server, shared_manager),
         poller_("TSLocalLockManager", std::bind(&Impl::Poll, this)) {}
 
   ~Impl() = default;
@@ -268,6 +271,17 @@ class TSLocalLockManager::Impl {
     }
   }
 
+  Status WaitUntilBootstrapped(CoarseTimePoint deadline) {
+    LOG(INFO) << "Waiting until object lock manager is bootstrapped.";
+    return Wait(
+        [this]() -> bool {
+          bool ret = is_bootstrapped_;
+          VTRACE(2, "Is bootstrapped: $0", ret);
+          return ret;
+        },
+        deadline, "Waiting to Bootstrap.");
+  }
+
   Status PrepareAndExecuteAcquire(
       const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
       StdStatusCallback& callback, WaitForBootstrap wait) {
@@ -277,14 +291,7 @@ class TSLocalLockManager::Impl {
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     VLOG(3) << object_lock_owner.ToString() << " Acquiring lock : " << req.ShortDebugString();
     if (wait) {
-      VTRACE(1, "Waiting for bootstrap.");
-      RETURN_NOT_OK(Wait(
-          [this]() -> bool {
-            bool ret = is_bootstrapped_;
-            VTRACE(2, "Is bootstrapped: $0", ret);
-            return ret;
-          },
-          deadline, "Waiting to Bootstrap."));
+      RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
     }
     TRACE("Through wait for bootstrap.");
     ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
@@ -368,10 +375,10 @@ class TSLocalLockManager::Impl {
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
     RETURN_NOT_OK(CheckShutdown());
+    RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
-    VLOG(3) << object_lock_owner.ToString()
-            << " Releasing locks : " << req.ShortDebugString();
+    VLOG(3) << object_lock_owner.ToString() << " Releasing locks : " << req.ShortDebugString();
 
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
     RETURN_NOT_OK(WaitToApplyIfNecessary(req, deadline));
@@ -473,11 +480,11 @@ class TSLocalLockManager::Impl {
     return is_bootstrapped_;
   }
 
-  size_t TEST_GrantedLocksSize() const {
+  size_t TEST_GrantedLocksSize() {
     return object_lock_manager_.TEST_GrantedLocksSize();
   }
 
-  size_t TEST_WaitingLocksSize() const {
+  size_t TEST_WaitingLocksSize() {
     return object_lock_manager_.TEST_WaitingLocksSize();
   }
 
@@ -497,8 +504,8 @@ class TSLocalLockManager::Impl {
     }
     for (const auto& acquire_req : entries.lock_entries()) {
       // This call should not block on anything.
-      CoarseTimePoint deadline = CoarseMonoClock::Now() + 1s;
-      RETURN_NOT_OK(AcquireObjectLocks(acquire_req, deadline, tserver::WaitForBootstrap::kFalse));
+      RETURN_NOT_OK(AcquireObjectLocks(
+          acquire_req, CoarseMonoClock::Now() + 1s, tserver::WaitForBootstrap::kFalse));
     }
     MarkBootstrapped();
     return Status::OK();
@@ -529,16 +536,18 @@ class TSLocalLockManager::Impl {
 
 TSLocalLockManager::TSLocalLockManager(
     const server::ClockPtr& clock, TabletServerIf* tablet_server,
-    server::RpcServerBase& messenger_server, ThreadPool* thread_pool)
+    server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+    docdb::ObjectLockSharedStateManager* shared_manager)
       : impl_(new Impl(
-            clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool))) {}
+          clock, CHECK_NOTNULL(tablet_server), messenger_server, CHECK_NOTNULL(thread_pool),
+          shared_manager)) {}
 
 TSLocalLockManager::~TSLocalLockManager() {}
 
 void TSLocalLockManager::AcquireObjectLocksAsync(
     const tserver::AcquireObjectLockRequestPB& req, CoarseTimePoint deadline,
-    StdStatusCallback&& callback, WaitForBootstrap wait) {
-  impl_->DoAcquireObjectLocksAsync(req, deadline, std::move(callback), wait);
+    StdStatusCallback&& callback) {
+  impl_->DoAcquireObjectLocksAsync(req, deadline, std::move(callback), WaitForBootstrap::kTrue);
 }
 
 Status TSLocalLockManager::ReleaseObjectLocks(
@@ -570,7 +579,7 @@ void TSLocalLockManager::DumpLocksToHtml(std::ostream& out) {
   return impl_->DumpLocksToHtml(out);
 }
 
-size_t TSLocalLockManager::TEST_GrantedLocksSize() const {
+size_t TSLocalLockManager::TEST_GrantedLocksSize() {
   return impl_->TEST_GrantedLocksSize();
 }
 
@@ -587,7 +596,7 @@ void TSLocalLockManager::PopulateObjectLocks(
   impl_->PopulateObjectLocks(object_lock_infos);
 }
 
-size_t TSLocalLockManager::TEST_WaitingLocksSize() const {
+size_t TSLocalLockManager::TEST_WaitingLocksSize() {
   return impl_->TEST_WaitingLocksSize();
 }
 
@@ -604,4 +613,4 @@ std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
   return impl_->TEST_GetLockStateMapForTxn(txn);
 }
 
-} // namespace yb::tserver
+}  // namespace yb::tserver

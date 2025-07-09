@@ -119,6 +119,9 @@ DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_wait_timeout_ms, 10000,
   "sending/receiving the packets at the socket in ysql connection manager. It is seen"
   " asan builds requires large wait timeout than other builds");
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 1,
+  "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
+
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
@@ -2288,7 +2291,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
-      .yb_max_recursion_depth = &FLAGS_yb_max_recursion_depth
+      .yb_max_recursion_depth = &FLAGS_yb_max_recursion_depth,
+      .ysql_conn_mgr_stats_interval =
+          &FLAGS_ysql_conn_mgr_stats_interval
   };
   // clang-format on
   return &accessor;

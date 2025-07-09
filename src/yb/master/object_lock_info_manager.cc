@@ -917,7 +917,8 @@ Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
   // Sanity check that the tserver has already registered with the same instance_seqno.
   RETURN_NOT_OK(master_.ts_manager()->LookupTS(req.instance()));
   auto object_lock_info = GetOrCreateObjectLockInfo(req.instance().permanent_uuid());
-  auto lock_variant = object_lock_info->RefreshYsqlOperationLease(req.instance());
+  auto lock_variant = object_lock_info->RefreshYsqlOperationLease(
+      req.instance(), MonoDelta::FromMilliseconds(master_ttl));
   if (auto* lease_info = std::get_if<SysObjectLockEntryPB::LeaseInfoPB>(&lock_variant)) {
     resp.mutable_info()->set_lease_epoch(lease_info->lease_epoch());
     if (!req.has_current_lease_epoch() || lease_info->lease_epoch() != req.current_lease_epoch()) {
@@ -1090,12 +1091,10 @@ void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs() {
       infos_with_expired_lease_epochs;
   {
     LockGuard lock(mutex_);
-    auto lease_ttl =
-        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms));
     for (const auto& [_, object_info] : object_lock_infos_map_) {
       auto object_info_lock = object_info->LockForRead();
       if (object_info_lock->pb.lease_info().live_lease() &&
-          current_time.GetDeltaSince(object_info->last_ysql_lease_refresh()) > lease_ttl) {
+          current_time > object_info->ysql_lease_deadline()) {
         expiring_leases.push_back(object_info);
       } else {
         for (const auto& [lease_epoch, _] : object_info_lock->pb.lease_epochs()) {
@@ -1117,8 +1116,7 @@ void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs() {
   for (const auto& object_info : expiring_leases) {
     auto object_info_lock = object_info->LockForWrite();
     if (object_info_lock->pb.lease_info().live_lease() &&
-        current_time.GetDeltaSince(object_info->last_ysql_lease_refresh()) >
-            MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms))) {
+        current_time > object_info->ysql_lease_deadline()) {
       LOG(INFO) << Format(
           "Tserver $0, instance seqno $1 with ysql lease epoch $2 has just lost its lease",
           object_info->id(), object_info_lock->pb.lease_info().instance_seqno(),
@@ -1295,8 +1293,7 @@ Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
   // Update Local State.
   launched_ = true;
   local_lock_manager->AcquireObjectLocksAsync(
-      req_, GetClientDeadline(),
-      [shared_this = shared_from_this()](Status s) {
+      req_, GetClientDeadline(), [shared_this = shared_from_this()](Status s) {
         if (s.ok()) {
           s = shared_this->DoPersistRequest();
         }
@@ -1306,7 +1303,7 @@ Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
           return;
         }
         shared_this->LaunchRpcs();
-      }, tserver::WaitForBootstrap::kFalse);
+      });
   return Status::OK();
 }
 

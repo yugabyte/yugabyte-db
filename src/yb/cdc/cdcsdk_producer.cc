@@ -504,7 +504,7 @@ Status DoPopulateBeforeImage(
     return Status::OK();
   }
 
-  auto tablet = tablet_peer->shared_tablet();
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   auto docdb = tablet->doc_db();
   auto pending_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
 
@@ -3122,10 +3122,8 @@ Status GetChangesForCDCSDK(
   if (FLAGS_cdc_populate_safepoint_record && !pending_intents && from_op_id.write_id() != -1) {
     // Do not consider safe point record for throughput metrics calculations.
     RETURN_NOT_OK(PopulateCDCSDKSafepointOpRecord(
-        safe_time.ToUint64(),
-        tablet_peer->tablet()->metadata()->table_name(),
-        resp->add_cdc_sdk_proto_records(),
-        *tablet_peer->tablet()->schema().get()));
+        safe_time.ToUint64(), tablet_ptr->metadata()->table_name(),
+        resp->add_cdc_sdk_proto_records(), *tablet_ptr->schema().get()));
     VLOG(2) << "Added Safepoint Record";
   }
 
