@@ -308,19 +308,6 @@ Replica count can be changed using the following command. Note that only the YB-
 helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
 
-### Service account for backup
-
-In AWS, you can attach a service account to database pods; the account can then be used to access storage. The service account used for the database pods should have annotations for the IAM role. The service account to be used can be applied to the DB pods as helm override with provider/universe level overrides. The IAM role used should be sufficient to access S3.
-
-To enable IAM roles for pods, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-
-For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation, and [Authenticate to Google Cloud APIs from GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the Google Cloud documentation.
-
-```yaml
-tserver:
-  serviceAccount: <KSA_NAME>
-```
-
 ### Readiness probes
 
 Readiness probes provide readiness checks for your Kubernetes deployment. Probes are compatible with both direct Helm deployments and [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides), and work with TLS enabled or restricted authorization environments. Use the probes to ensure pods are ready before being marked as available. The probes verify connectivity using ysqlsh for YSQL and ycqlsh for YCQL.
