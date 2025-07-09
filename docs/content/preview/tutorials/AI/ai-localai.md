@@ -17,7 +17,7 @@ This tutorial shows how you can use [LocalAI](https://localai.io/) to create an 
 
 ## Prerequisites
 
-* YugabyteDB [v2.25+](https://download.yugabyte.com/)
+* YugabyteDB [v2.25.1](https://download.yugabyte.com/) or later
 * [LocalAI](https://localai.io/basics/getting_started/)
 * Python 3
 * Docker
@@ -355,8 +355,7 @@ if __name__ == "__main__":
     main()
 ```
 
-The search speed is further increased by using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type. This application uses cosine distance for indexing, as the backend query is using cosine similarity search.
-This application is straightforward.
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
 
 ```sql
 # sql/schema.sql
