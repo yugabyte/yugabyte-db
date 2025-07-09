@@ -27,7 +27,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-google
 
 - A Google Cloud account with appropriate permissions
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install)
-- A YugabyteDB cluster running [v2.25+](https://download.yugabyte.com/)
+- A YugabyteDB cluster running [v2.25.1](https://download.yugabyte.com/) or later
 - [Node.js](https://github.com/nodejs/release#release-schedule) v18 or later
 - The latest version of [Docker](https://docs.docker.com/desktop/)
 - [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
@@ -198,10 +198,9 @@ const dbRes = await pool.query(
 
 ![YugaLodgings Application Search Results](/images/tutorials/google/google-vertex-ai/yugalodgings-search-results.png "YugaLodgings Application Search Results")
 
-The search speed is further increased by using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing). YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type. This application uses cosine distance for indexing, as the backend query is using cosine similarity search.
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
 
 ```sql
-
 # sql/1_airbnb_embeddings.sql
 
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -212,7 +211,6 @@ ALTER TABLE airbnb_listing
 CREATE INDEX NONCONCURRENTLY ON airbnb_listing USING ybhnsw (description_embedding vector_cosine_ops);
 ```
 
-## Review the application
 
 ## Wrap-up
 
