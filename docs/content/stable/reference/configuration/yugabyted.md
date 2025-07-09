@@ -752,7 +752,7 @@ Create a local single-node cluster with encryption in transit and authentication
 ./bin/yugabyted start --secure
 ```
 
-Create a local single-node universe with IPv6 address:
+{{<tags/feature/ea idea="1854">}} Create a local single-node universe with IPv6 address:
 
 ```sh
 ./bin/yugabyted start --advertise_address ::1
@@ -1344,16 +1344,14 @@ If the cluster has more than three nodes, execute a `destroy --base_dir=<path to
 
 Create a single-node universe with a given [base directory](#base-directory). You need to provide a fully-qualified directory path for the `base_dir` parameter.
 
-By default, yugabyted uses IPv4. To start a universe with an IPv6 address, specify `::1` for the `--advertise_address`.
-
 ```sh
-# Using IPv4
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
+Alternatively, you can provide an IPv6 address ({{<tags/feature/ea idea="1854">}}). For example:
+
 ```sh
-# Using IPv6
 ./bin/yugabyted start --advertise_address=::1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
@@ -1363,12 +1361,6 @@ To create secure single-node cluster with [encryption in transit](../../../secur
 ```sh
 # Using IPv4
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
-```
-
-```sh
-# Using IPv6
-./bin/yugabyted start --secure --advertise_address=::1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 

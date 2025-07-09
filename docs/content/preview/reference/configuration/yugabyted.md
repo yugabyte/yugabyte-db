@@ -1450,18 +1450,16 @@ If the universe has more than three nodes, execute a `destroy --base_dir=<path t
 
 Create a single-node universe with a given [base directory](#base-directory). You need to provide a fully-qualified directory path for the `base_dir` parameter.
 
-By default, yugabyted uses IPv4. To start a universe with an IPv6 address, specify `::1` for the `--advertise_address`.
-
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
 Alternatively, you can provide an IPv6 address. For example:
 
 ```sh
 ./bin/yugabyted start --advertise_address=::1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
 To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
@@ -1469,14 +1467,10 @@ To create secure single-node cluster with [encryption in transit](../../../secur
 ```sh
 # Using IPv4
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-```sh
-# Using IPv6
-./bin/yugabyted start --secure --advertise_address=::1 \
-    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
-```
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 
 ### Create certificates for a secure local multi-node universe
 
