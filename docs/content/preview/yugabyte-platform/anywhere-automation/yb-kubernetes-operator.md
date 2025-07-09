@@ -277,7 +277,7 @@ spec:
 
 #### Service account for backup
 
-You can attach a service account to database pods; the account can then be used to access storage in S3 or GCS. The service account used for the database pods should have annotations for the IAM role. The service account to be used can be applied to the database pods as a Helm override with provider- or universe- level overrides.
+You can attach a service account to database pods to be used to access storage in S3 or GCS. The service account used for the database pods should have annotations for the IAM role. The service account to be used can be applied to the database pods as a Helm override with provider- or universe- level overrides.
 
 **AWS**
 
@@ -323,11 +323,11 @@ The storage config CR should have IAM as the credential source.
 apiVersion: operator.yugabyte.io/v1alpha1
 kind: StorageConfig
 metadata:
-  name: s3-config-operator
+  name: gcs-config-operator
 spec:
-  config_type: STORAGE_S3
+  config_type: STORAGE_GCS
   data:
-    BACKUP_LOCATION: s3://backups.yugabyte.com/test
+    BACKUP_LOCATION: gs://gcp-bucket/test_backups
     USE_IAM: true //For IAM based access on GCP/S3
 ```
 
