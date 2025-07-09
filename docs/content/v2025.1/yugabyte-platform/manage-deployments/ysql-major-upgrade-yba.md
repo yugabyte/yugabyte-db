@@ -52,7 +52,7 @@ Back up your cluster at this time. Refer to [Backup](../../../reference/configur
 
 During the upgrade process, until the upgrade is finalized or rolled back, the following operations are not allowed:
 
-- DDL
+- DDLs
 - G-Flags changes
 - Restore a backup or point-in-time-recovery (PITR)
 - Configure YSQL
@@ -65,4 +65,4 @@ Keep in mind the following additional caveats for backups and PITR:
 
 - Backups taken during the monitoring phase of a YSQL major upgrade cannot be restored on the same universe after rollback. Backups taken before the upgrade can be used for restore.
 
-- You can't perform PITR on the universe using old snapshots after rolling back the YSQL major upgrade, or after finalizing the upgrade.
+- You can't perform PITR on the universe to a time when the upgrade was running. This applies even if the upgrade was rolled back. After an upgrade is finalized, you cannot perform PITR to any time before the upgrade.
