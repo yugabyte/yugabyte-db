@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Region;
@@ -297,5 +298,20 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS);
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testResumeUniverseRetries() {
+    setupUniverse(false, 3);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Resume,
+        CustomerTask.TargetType.Universe,
+        taskParams.getUniverseUUID(),
+        TaskType.ResumeUniverse,
+        taskParams);
   }
 }

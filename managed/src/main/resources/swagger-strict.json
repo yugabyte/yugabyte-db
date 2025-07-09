@@ -12401,7 +12401,9 @@
             "Terminated",
             "Rebooting",
             "HardRebooting",
-            "VMImageUpgrade"
+            "VMImageUpgrade",
+            "InstanceStopping",
+            "InstanceStopped"
           ],
           "example" : "Provisioned",
           "type" : "string"
@@ -12658,7 +12660,9 @@
             "Terminated",
             "Rebooting",
             "HardRebooting",
-            "VMImageUpgrade"
+            "VMImageUpgrade",
+            "InstanceStopping",
+            "InstanceStopped"
           ],
           "example" : "Provisioned",
           "type" : "string"

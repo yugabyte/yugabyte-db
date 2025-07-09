@@ -11,8 +11,11 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -21,7 +24,10 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class ResumeUniverse extends UniverseDefinitionTaskBase {
+  private volatile RuntimeInfo runtimeInfo;
 
   @Inject
   protected ResumeUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -37,8 +43,20 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         extends UniverseDefinitionTaskParams.BaseConverter<ResumeUniverse.Params> {}
   }
 
+  /** Task runtime progress info. */
+  public static class RuntimeInfo {
+    @JsonProperty("certsUpdated")
+    boolean certsUpdated;
+  }
+
   public Params params() {
     return (Params) taskParams;
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    runtimeInfo = getRuntimeInfo(RuntimeInfo.class);
   }
 
   @Override
@@ -48,7 +66,11 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
 
-      createResumeUniverseTasks(universe, params().customerUUID);
+      createResumeUniverseTasks(
+          universe,
+          params().customerUUID,
+          !runtimeInfo.certsUpdated,
+          u -> updateRuntimeInfo(RuntimeInfo.class, info -> info.certsUpdated = true));
 
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
 
