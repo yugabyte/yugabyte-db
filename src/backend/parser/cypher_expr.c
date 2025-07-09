@@ -106,16 +106,16 @@ static List *cast_agtype_args_to_target_type(cypher_parsestate *cpstate,
                                              Form_pg_proc procform,
                                              List *fargs,
                                              Oid *target_types);
-static Node *cast_to_target_type(cypher_parsestate *cpstate, Node *expr,
-                                 Oid source_oid, Oid target_oid);
 static Node *wrap_text_output_to_agtype(cypher_parsestate *cpstate,
                                         FuncExpr *fexpr);
 static Form_pg_proc get_procform(FuncCall *fn, bool err_not_found);
 static char *get_mapped_extension(Oid func_oid);
 static bool is_extension_external(char *extension);
-static bool is_pgvector_datatype(char *typename);
 static char *construct_age_function_name(char *funcname);
 static bool function_exists(char *funcname, char *extension);
+static Node *coerce_expr_flexible(ParseState *pstate, Node *expr,
+                                  Oid source_oid, Oid target_oid,
+                                  int32 t_typemod, bool error_out);
 
 /* transform a cypher expression */
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
@@ -1539,6 +1539,7 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     List *fname;
     FuncCall *fnode;
     ParseState *pstate;
+    TypeName *target_typ;
 
     /* verify input parameter */
     Assert (cpstate != NULL);
@@ -1547,98 +1548,137 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     /* create the qualified function name, schema first */
     fname = list_make1(makeString("ag_catalog"));
     pstate = &cpstate->pstate;
+    target_typ = ctypecast->typname;
+    
+    if (list_length(target_typ->names) == 1)
+    {
+        char *typecast = strVal(linitial(target_typ->names));
 
-    /* append the name of the requested typecast function */
-    if (pg_strcasecmp(ctypecast->typecast, "edge") == 0)
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_EDGE));
+        /* append the name of the requested typecast function */
+        if (pg_strcasecmp(typecast, "edge") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_EDGE));
+        }
+        else if (pg_strcasecmp(typecast, "path") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PATH));
+        }
+        else if (pg_strcasecmp(typecast, "vertex") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_VERTEX));
+        }
+        else if (pg_strcasecmp(typecast, "numeric") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_NUMERIC));
+        }
+        else if (pg_strcasecmp(typecast, "float") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_FLOAT));
+        }
+        else if (pg_strcasecmp(typecast, "int") == 0 ||
+                 pg_strcasecmp(typecast, "integer") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_INT));
+        }
+        else if (pg_strcasecmp(typecast, "pg_float8") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_FLOAT8));
+        }
+        else if (pg_strcasecmp(typecast, "pg_bigint") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_BIGINT));
+        }
+        else if ((pg_strcasecmp(typecast, "bool") == 0 ||
+                 pg_strcasecmp(typecast, "boolean") == 0))
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_BOOL));
+        }
+        else if (pg_strcasecmp(typecast, "pg_text") == 0)
+        {
+            fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_TEXT));
+        }
+        else
+        {
+            goto fallback_coercion;
+        }
+
+        /* make a function call node */
+        fnode = makeFuncCall(fname, list_make1(ctypecast->expr), COERCE_SQL_SYNTAX,
+        ctypecast->location);
+
+        /* return the transformed function */
+        return transform_FuncCall(cpstate, fnode);
     }
-    else if (pg_strcasecmp(ctypecast->typecast, "path") == 0)
+
+fallback_coercion:
     {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PATH));
-    }
-    else if (pg_strcasecmp(ctypecast->typecast, "vertex") == 0)
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_VERTEX));
-    }
-    else if (pg_strcasecmp(ctypecast->typecast, "numeric") == 0)
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_NUMERIC));
-    }
-    else if (pg_strcasecmp(ctypecast->typecast, "float") == 0)
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_FLOAT));
-    }
-    else if (pg_strcasecmp(ctypecast->typecast, "int") == 0 ||
-             pg_strcasecmp(ctypecast->typecast, "integer") == 0)
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_INT));
-    }
-    else if (pg_strcasecmp(ctypecast->typecast, "pg_float8") == 0)
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_FLOAT8));
-    }
-    else if (pg_strcasecmp(ctypecast->typecast, "pg_bigint") == 0)
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_BIGINT));
-    }
-    else if ((pg_strcasecmp(ctypecast->typecast, "bool") == 0 ||
-             pg_strcasecmp(ctypecast->typecast, "boolean") == 0))
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_BOOL));
-    }
-    else if (pg_strcasecmp(ctypecast->typecast, "pg_text") == 0)
-    {
-        fname = lappend(fname, makeString(FUNC_AGTYPE_TYPECAST_PG_TEXT));
-    }
-    else if (is_pgvector_datatype(ctypecast->typecast))
-    {
-        TypeName *target_typname;
         Oid source_oid;
         Oid target_oid;
+        int32 t_typmod = -1;
         Node *expr;
 
         /* transform the expr before casting */
         expr = transform_cypher_expr_recurse(cpstate,
                                              ctypecast->expr);
 
-        /* get the source and target oids */
-        target_typname = makeTypeNameFromNameList(list_make1(
-                                            makeString(ctypecast->typecast)));
-        target_oid = typenameTypeId(pstate, target_typname);
+        typenameTypeIdAndMod(pstate, target_typ, &target_oid, &t_typmod);
         source_oid = exprType(expr);
 
-        if (source_oid == AGTYPEOID)
-        {
-            /* 
-             * Cast to text and then to target type, since we cant
-             * directly cast agtype to pgvector datatypes.
-             */
-            expr = cast_to_target_type(cpstate, expr, source_oid, TEXTOID);
-            expr = cast_to_target_type(cpstate, expr, TEXTOID, target_oid);
-        }
-        else
-        {
-            /* try a direct cast, it will error out if not possible */
-            expr = cast_to_target_type(cpstate, expr, source_oid, target_oid);
-        }
+        /* errors out if cast not possible */
+        expr = coerce_expr_flexible(pstate, expr, source_oid, target_oid,
+                                    t_typmod, true);
 
         return expr;
     }
-    /* if none was found, error out */
-    else
+}
+
+/*
+ * Helper function to coerce an expression to the target type. If
+ * no direct cast exists, it attempts to cast through text if the
+ * source or target type is agtype. This improves interoperability
+ * with types from other extensions.
+ */
+static Node *coerce_expr_flexible(ParseState *pstate, Node *expr,
+                                  Oid source_oid, Oid target_oid,
+                                  int32 t_typmod, bool error_out)
+{
+    const Oid text_oid = TEXTOID;
+    Node *result;
+
+    if (expr == NULL)
+        return NULL;
+
+    /* Try a direct cast */
+    result = coerce_to_target_type(pstate, expr, source_oid, target_oid,
+                                   t_typmod, COERCION_EXPLICIT,
+                                   COERCE_EXPLICIT_CAST, -1);
+    if (result != NULL)
+        return result;
+
+    /* Try cast via TEXT if either side is AGTYPE */
+    if (source_oid == AGTYPEOID || target_oid == AGTYPEOID)
+    {
+        Node *to_text = coerce_to_target_type(pstate, expr, source_oid, text_oid,
+                                              -1, COERCION_EXPLICIT,
+                                              COERCE_EXPLICIT_CAST, -1);
+        if (to_text != NULL)
+        {
+            result = coerce_to_target_type(pstate, to_text, text_oid, target_oid,
+                                           t_typmod, COERCION_EXPLICIT,
+                                           COERCE_EXPLICIT_CAST, -1);
+            if (result != NULL)
+                return result;
+        }
+    }
+
+    if (error_out)
     {
         ereport(ERROR,
                 (errmsg_internal("typecast \'%s\' not supported",
-                                 ctypecast->typecast)));
+                                 format_type_be(target_oid))));
     }
 
-    /* make a function call node */
-    fnode = makeFuncCall(fname, list_make1(ctypecast->expr), COERCE_SQL_SYNTAX,
-                         ctypecast->location);
-
-    /* return the transformed function */
-    return transform_FuncCall(cpstate, fnode);
+    return NULL;
 }
 
 static Node *transform_external_ext_FuncCall(cypher_parsestate *cpstate,
@@ -1703,7 +1743,6 @@ static List *cast_agtype_args_to_target_type(cypher_parsestate *cpstate,
     char *funcname = NameStr(procform->proname);
     int nargs = procform->pronargs;
     ListCell *lc = NULL;
-    int i = 0;
 
     /* verify the length of args are same */
     if (list_length(fargs) != nargs)
@@ -1717,65 +1756,18 @@ static List *cast_agtype_args_to_target_type(cypher_parsestate *cpstate,
     /* iterate through the function's args */
     foreach (lc, fargs)
     {
-        char *target_typname;
         Node *expr = lfirst(lc);
         Oid source_oid = exprType(expr);
-        Oid target_oid = target_types[i];
+        Oid target_oid = target_types[foreach_current_index(lc)];
 
-        /* get the typename from target_oid */
-        target_typname = format_type_be(target_oid);
-
-        /* cast the agtype to the target type */
-        if (source_oid == AGTYPEOID && is_pgvector_datatype(target_typname))
-        {
-            /* 
-             * There is no cast from agtype to vector, so we first
-             * cast agtype to text and then text to vector.
-             */
-            expr = cast_to_target_type(cpstate, expr, source_oid, TEXTOID);
-            expr = cast_to_target_type(cpstate, expr, TEXTOID, target_oid);
-        }
-        /* additional casts can be added here for other types */
-        else
-        {
-            /* try a direct cast, it will error out if not possible */
-            expr = cast_to_target_type(cpstate, expr, source_oid, target_oid);
-        }
+        /* errors out if cast not possible */
+        expr = coerce_expr_flexible(&cpstate->pstate, expr, source_oid,
+                                     target_oid, -1, true);
 
         lfirst(lc) = expr;
-        i++;
     }
 
     return fargs;
-}
-
-/*
- * Cast an input type to an output type, error out if not possible.
- * Thanks to Taha for this idea.
- */
-static Node *cast_to_target_type(cypher_parsestate *cpstate, Node *expr,
-                                 Oid source_oid, Oid target_oid)
-{
-    ParseState *pstate = &cpstate->pstate;
-
-    /* can we cast from source to target oid? */
-    if (can_coerce_type(1, &source_oid, &target_oid, COERCION_EXPLICIT))
-    {
-        /* coerce the source to the target */
-        expr = coerce_type(pstate, expr, source_oid, target_oid, -1,
-                           COERCION_EXPLICIT, COERCE_EXPLICIT_CAST, -1);
-    }
-    /* error out if we can't cast */
-    else
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_UNDEFINED_FUNCTION),
-                 errmsg("cannot cast type %s to %s", format_type_be(source_oid),
-                 format_type_be(target_oid))));
-    }
-
-    /* return the casted expression */
-    return expr;
 }
 
 /*
@@ -1909,13 +1901,6 @@ static bool is_extension_external(char *extension)
 {
     return ((extension != NULL) &&
             (pg_strcasecmp(extension, "age") != 0));
-}
-
-static bool is_pgvector_datatype(char *typename)
-{
-    return (pg_strcasecmp(typename, "vector") ||
-            pg_strcasecmp(typename, "halfvec") ||
-            pg_strcasecmp(typename, "sparsevec"));
 }
 
 /* Returns age_ prefiexed lower case function name */

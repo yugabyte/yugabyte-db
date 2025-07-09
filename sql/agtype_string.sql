@@ -52,6 +52,12 @@ CREATE FUNCTION ag_catalog.age_eq_tilde(agtype, agtype)
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE OPERATOR =~ (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.age_eq_tilde
+);
+
 CREATE FUNCTION ag_catalog.age_is_valid_label_name(agtype)
     RETURNS boolean
     LANGUAGE c

@@ -1114,7 +1114,10 @@ char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
 }
 
 /*
- * common worker for above two functions
+ * Common worker for above two functions.
+ * If extend is set to true, the function will append
+ * ::vertex, ::edge or ::path based on the type of
+ * container.
  */
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
                                       int estimated_len, bool indent,
@@ -3205,9 +3208,10 @@ Datum agtype_to_text(PG_FUNCTION_ARGS)
     /* check that we have a scalar value */
     if (!AGT_ROOT_IS_SCALAR(arg_agt))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                 errmsg("agtype argument must resolve to a scalar value")));
+        char *out;
+        out = agtype_to_cstring(NULL, &arg_agt->root, VARSIZE(arg_agt));
+        PG_FREE_IF_COPY(arg_agt, 0);
+        return CStringGetTextDatum(out);
     }
 
     /* get the arg parameter */

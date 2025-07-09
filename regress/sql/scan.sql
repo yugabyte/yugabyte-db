@@ -41,7 +41,7 @@ SELECT * FROM cypher('scan', $$
 /* unterminated /* comment
 RETURN 0
 $$) AS t(a int);
--- recover syntax highlighting */
+-- recover syntax highlighting */ */
 
 --
 -- single-line comment

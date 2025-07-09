@@ -1055,15 +1055,20 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
         TargetEntry *te = lfirst(lt);
         Node *expr = (Node *)te->expr;
         Oid current_type;
+        int32 current_typmod;
         Oid target_type;
+        int32 target_typmod;
 
         Assert(!te->resjunk);
 
         current_type = exprType(expr);
+        current_typmod = exprTypmod(expr);
         target_type = lfirst_oid(lc2);
-        if (current_type != target_type)
+        target_typmod = lfirst_int(lc3);
+
+        if ((current_type != target_type) ||
+            (current_typmod != target_typmod))
         {
-            int32 target_typmod = lfirst_int(lc3);
             Node *new_expr;
 
             /*

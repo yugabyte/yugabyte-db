@@ -726,8 +726,8 @@ SELECT prepend_node('list01', 'b');
 SELECT * FROM show_list_use_vle('list01');
                                        node                                        
 -----------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "node", "properties": {"content": "a"}}::vertex
  {"id": 1407374883553282, "label": "node", "properties": {"content": "b"}}::vertex
+ {"id": 1407374883553281, "label": "node", "properties": {"content": "a"}}::vertex
 (2 rows)
 
 -- prepend a node 'c'
@@ -741,9 +741,9 @@ SELECT prepend_node('list01', 'c');
 SELECT * FROM show_list_use_vle('list01');
                                        node                                        
 -----------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "node", "properties": {"content": "a"}}::vertex
- {"id": 1407374883553282, "label": "node", "properties": {"content": "b"}}::vertex
  {"id": 1407374883553283, "label": "node", "properties": {"content": "c"}}::vertex
+ {"id": 1407374883553282, "label": "node", "properties": {"content": "b"}}::vertex
+ {"id": 1407374883553281, "label": "node", "properties": {"content": "a"}}::vertex
 (3 rows)
 
 DROP FUNCTION show_list_use_vle;

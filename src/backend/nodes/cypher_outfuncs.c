@@ -319,7 +319,7 @@ void out_cypher_typecast(StringInfo str, const ExtensibleNode *node)
     DEFINE_AG_NODE(cypher_typecast);
 
     WRITE_NODE_FIELD(expr);
-    WRITE_STRING_FIELD(typecast);
+    WRITE_NODE_FIELD(typname);
     WRITE_LOCATION_FIELD(location);
 }
 

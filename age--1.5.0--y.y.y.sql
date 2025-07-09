@@ -60,8 +60,8 @@ CREATE OPERATOR @>> (
   RIGHTARG = agtype,
   FUNCTION = ag_catalog.agtype_contains_top_level,
   COMMUTATOR = '<<@',
-  RESTRICT = contsel,
-  JOIN = contjoinsel
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
 );
 
 CREATE FUNCTION ag_catalog.agtype_contained_by_top_level(agtype, agtype)
@@ -77,9 +77,103 @@ CREATE OPERATOR <<@ (
   RIGHTARG = agtype,
   FUNCTION = ag_catalog.agtype_contained_by_top_level,
   COMMUTATOR = '@>>',
-  RESTRICT = contsel,
-  JOIN = contjoinsel
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
 );
+
+/*
+ * We have to drop and recreate the operators, because
+ * commutator is not modifiable using ALTER OPERATOR. 
+ */
+ALTER EXTENSION age
+    DROP OPERATOR ? (agtype, agtype);
+ALTER EXTENSION age
+    DROP OPERATOR ? (agtype, text);
+ALTER EXTENSION age
+    DROP OPERATOR ?| (agtype, agtype);
+ALTER EXTENSION age
+    DROP OPERATOR ?| (agtype, text[]);
+ALTER EXTENSION age
+    DROP OPERATOR ?& (agtype, agtype[]);
+ALTER EXTENSION age
+    DROP OPERATOR ?& (agtype, text);
+
+DROP OPERATOR ? (agtype, agtype), ? (agtype, text),
+              ?| (agtype, agtype), ?| (agtype, text[]),
+              ?& (agtype, agtype[]), ?& (agtype, text);
+
+CREATE OPERATOR ? (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_exists_agtype,
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
+);
+
+CREATE OPERATOR ? (
+  LEFTARG = agtype,
+  RIGHTARG = text,
+  FUNCTION = ag_catalog.agtype_exists,
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
+);
+
+CREATE OPERATOR ?| (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_exists_any_agtype,
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
+);
+
+CREATE OPERATOR ?| (
+  LEFTARG = agtype,
+  RIGHTARG = text[],
+  FUNCTION = ag_catalog.agtype_exists_any,
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
+);
+
+CREATE OPERATOR ?& (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_exists_all_agtype,
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
+);
+
+CREATE OPERATOR ?& (
+  LEFTARG = agtype,
+  RIGHTARG = text[],
+  FUNCTION = ag_catalog.agtype_exists_all,
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
+);
+
+ALTER EXTENSION age
+    ADD OPERATOR ? (agtype, agtype);
+ALTER EXTENSION age
+    ADD OPERATOR ? (agtype, text);
+ALTER EXTENSION age
+    ADD OPERATOR ?| (agtype, agtype);
+ALTER EXTENSION age
+    ADD OPERATOR ?| (agtype, text[]);
+ALTER EXTENSION age
+    ADD OPERATOR ?& (agtype, agtype[]);
+ALTER EXTENSION age
+    ADD OPERATOR ?& (agtype, text);
+
+ALTER OPERATOR @> (agtype, agtype)
+  SET (RESTRICT = matchingsel, JOIN = matchingjoinsel);
+
+ALTER OPERATOR @> (agtype, agtype)
+  SET (RESTRICT = matchingsel, JOIN = matchingjoinsel);
+
+ALTER OPERATOR <@ (agtype, agtype)
+  SET (RESTRICT = matchingsel, JOIN = matchingjoinsel);
+
+ALTER OPERATOR <@ (agtype, agtype)
+  SET (RESTRICT = matchingsel, JOIN = matchingjoinsel);
 
 /*
  * Since there is no option to add or drop operator from class,
@@ -87,7 +181,10 @@ CREATE OPERATOR <<@ (
  * Reference: https://www.postgresql.org/docs/current/sql-alteropclass.html
  */
 
-DROP OPERATOR CLASS ag_catalog.gin_agtype_ops;
+ALTER EXTENSION age
+    DROP OPERATOR CLASS ag_catalog.gin_agtype_ops USING gin;
+
+DROP OPERATOR CLASS ag_catalog.gin_agtype_ops USING gin;
 
 CREATE OPERATOR CLASS ag_catalog.gin_agtype_ops
 DEFAULT FOR TYPE agtype USING gin AS
@@ -107,6 +204,9 @@ DEFAULT FOR TYPE agtype USING gin AS
   FUNCTION 6 ag_catalog.gin_triconsistent_agtype(internal, int2, agtype, int4,
                                                  internal, internal, internal),
 STORAGE text;
+
+ALTER EXTENSION age
+    ADD OPERATOR CLASS ag_catalog.gin_agtype_ops USING gin;
 
 -- this function went from variadic "any" to just "any" type
 CREATE OR REPLACE FUNCTION ag_catalog.age_tostring("any")
@@ -168,3 +268,9 @@ AS 'MODULE_PATHNAME';
 
 CREATE CAST (agtype[] AS agtype)
     WITH FUNCTION ag_catalog.agtype_array_to_agtype(agtype[]);
+
+CREATE OPERATOR =~ (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.age_eq_tilde
+);

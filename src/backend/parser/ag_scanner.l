@@ -124,7 +124,7 @@ whitespace [\t\n\v\f\r ]+
  * Therefore, the rule has been modified so that it can match such comments.
  */
 %x mlcomment
-mlcstart  "/*"
+mlcstart  \/\*{op_chars}*
 mlcchars  [^*]+|\*+
 mlcstop    \*+\/
 slcomment "//"[^\n\r]*
@@ -228,20 +228,15 @@ param \${id}
  * These are tokens that are used as operators and language constructs in
  * Cypher, and some of them are structural characters in JSON.
  */
-left_contains  "<@"
-right_contains "@>"
-any_exists     "?|"
-all_exists     "?&"
-concat         "||"
-access_path    "#>"
 lt_gt          "<>"
 lt_eq          "<="
 gt_eq          ">="
 dot_dot        ".."
 plus_eq        "+="
-eq_tilde       "=~"
 typecast       "::"
-self           [?%()*+,\-./:;<=>[\]^{|}]
+self           [%()*+,\-./:;<=>[\]^{|}]
+op_chars	   [\!\@\#\^\&\|\~\?\+\*\/\%\<\>\=]
+operator	   {op_chars}+
 
 other .
 
@@ -339,6 +334,11 @@ ag_token token;
     /* update location in case of unterminated comment */
     update_location();
     BEGIN(mlcomment);
+    yyless(2);
+}
+
+<mlcomment>{mlcstart} {
+    yyless(2);
 }
 
 <mlcomment>{mlcchars} {
@@ -649,54 +649,6 @@ ag_token token;
     return token;
 }
 
-{concat} {
-    update_location();
-    token.type = AG_TOKEN_CONCAT;
-    token.value.s = yytext;
-    token.location = get_location();
-    return token;
-}
-
-{access_path} {
-    update_location();
-    token.type = AG_TOKEN_ACCESS_PATH;
-    token.value.s = yytext;
-    token.location = get_location();
-    return token;
-}
-
-{any_exists} {
-    update_location();
-    token.type = AG_TOKEN_ANY_EXISTS;
-    token.value.s = yytext;
-    token.location = get_location();
-    return token;
-}
-
-{left_contains} {
-    update_location();
-    token.type = AG_TOKEN_LEFT_CONTAINS;
-    token.value.s = yytext;
-    token.location = get_location();
-    return token;
-}
-
-{right_contains} {
-    update_location();
-    token.type = AG_TOKEN_RIGHT_CONTAINS;
-    token.value.s = yytext;
-    token.location = get_location();
-    return token;
-}
-
-{all_exists} {
-    update_location();
-    token.type = AG_TOKEN_ALL_EXISTS;
-    token.value.s = yytext;
-    token.location = get_location();
-    return token;
-}
-
 {lt_gt} {
     update_location();
     token.type = AG_TOKEN_LT_GT;
@@ -737,14 +689,6 @@ ag_token token;
     return token;
 }
 
-{eq_tilde} {
-    update_location();
-    token.type = AG_TOKEN_EQ_TILDE;
-    token.value.s = yytext;
-    token.location = get_location();
-    return token;
-}
-
 {typecast} {
     update_location();
     token.type = AG_TOKEN_TYPECAST;
@@ -757,6 +701,151 @@ ag_token token;
     update_location();
     token.type = AG_TOKEN_CHAR;
     token.value.c = yytext[0];
+    token.location = get_location();
+    return token;
+}
+
+{op_chars} {
+    update_location();
+    token.type = AG_TOKEN_OP;
+    token.value.s = yytext;
+    token.location = get_location();
+    return token;
+}
+
+{operator} {
+    /* Borrowed from PG and adjusted for our scanner */
+
+    /*
+     * Check for embedded slash-star or slash-slash; those
+     * are comment starts, so operator must stop there.
+     * Note that slash-star or slash-slash at the first
+     * character will match a prior rule, not this one.
+     */
+    int			nchars = yyleng;
+    char	   *slashstar = strstr(yytext, "/*");
+    char	   *slashslash = strstr(yytext, "//");
+
+    if (slashstar && slashslash)
+    {
+        /* if both appear, take the first one */
+        if (slashstar > slashslash)
+            slashstar = slashslash;
+    }
+    else if (!slashstar)
+        slashstar = slashslash;
+    if (slashstar)
+        nchars = slashstar - yytext;
+
+    /*
+     * For SQL compatibility, '+' and '-' cannot be the
+     * last char of a multi-char operator unless the operator
+     * contains chars that are not in SQL operators.
+     * The idea is to lex '=-' as two operators, but not
+     * to forbid operator names like '?-' that could not be
+     * sequences of SQL operators.
+     */
+    if (nchars > 1 &&
+        (yytext[nchars - 1] == '+' ||
+         yytext[nchars - 1] == '-'))
+    {
+        int			ic;
+
+        for (ic = nchars - 2; ic >= 0; ic--)
+        {
+            char c = yytext[ic];
+            if (c == '~' || c == '!' || c == '@' ||
+                c == '#' || c == '^' || c == '&' ||
+                c == '|' || c == '`' || c == '?' ||
+                c == '%')
+                break;
+        }
+        if (ic < 0)
+        {
+            /*
+             * didn't find a qualifying character, so remove
+             * all trailing [+-]
+             */
+            do {
+                nchars--;
+            } while (nchars > 1 &&
+                    (yytext[nchars - 1] == '+' ||
+                    yytext[nchars - 1] == '-'));
+        }
+    }
+
+    update_location();
+
+    if (nchars < yyleng)
+    {
+        /* Strip the unwanted chars from the token */
+        yyless(nchars);
+        /*
+         * If what we have left is only one char, and it's
+         * one of the characters matching "self", then
+         * return it as a character token the same way
+         * that the "self" rule would have.
+         */
+        if (nchars == 1 &&
+            strchr("%()*+,-./:;<=>[\\]^{|}", yytext[0]))
+        {
+            token.type = AG_TOKEN_CHAR;
+            token.value.c = yytext[0];
+            token.location = get_location();
+            return token;
+        }
+
+        /*
+         * Likewise, if what we have left is two chars, and
+         * those match the tokens ">=", "<=", "=>", "<>" or
+         * "!=", then we must return the appropriate token
+         * rather than the generic Op.
+         */
+        if (nchars == 2)
+        {
+            if (yytext[0] == '>' && yytext[1] == '=')
+                token.type = AG_TOKEN_GT_EQ;
+            else if (yytext[0] == '<' && yytext[1] == '=')
+                token.type = AG_TOKEN_LT_EQ;
+            else if (yytext[0] == '<' && yytext[1] == '>')
+                token.type = AG_TOKEN_LT_GT;
+            else if (yytext[0] == '+' && yytext[1] == '=')
+                token.type = AG_TOKEN_PLUS_EQ;
+            /*
+             * These operators (!=, =>) are not allowed as user-defined
+             * operators in PG because they are reserved as valid tokens
+             * with predefined semantics. As a result, we also reject
+             * them here. However, if a specific use case arises, we
+             * could allow them with custom handling.
+             */
+            else if ((yytext[0] == '!' && yytext[1] == '=') ||
+                     (yytext[0] == '=' && yytext[1] == '>'))
+                ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                                scan_errmsg("unexpected character"),
+                                scan_errposition()));
+            else
+                goto handle_generic_op;
+
+            token.value.s = yytext;
+            token.location = get_location();
+            return token;
+        }
+    }
+
+handle_generic_op:
+    /*
+     * Complain if operator is too long.  Unlike the case
+     * for identifiers, we make this an error not a notice-
+     * and-truncate, because the odds are we are looking at
+     * a syntactic mistake anyway.
+     */
+    if (nchars >= NAMEDATALEN)
+        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                    scan_errmsg("operator too long"),
+                    scan_errposition()));
+
+    token.type = AG_TOKEN_OP;
+    token.value.s = yytext;
     token.location = get_location();
     return token;
 }

@@ -52,7 +52,7 @@ RETURN 0
 "
 LINE 2: /* unterminated /* comment
         ^
--- recover syntax highlighting */
+-- recover syntax highlighting */ */
 --
 -- single-line comment
 --
@@ -208,9 +208,9 @@ $$) AS t(a agtype, b agtype);
 SELECT * FROM cypher('scan', $$
 RETURN 0xF~
 $$) AS t(a int);
-ERROR:  unexpected character at or near "~"
-LINE 2: RETURN 0xF~
-                  ^
+ERROR:  syntax error at end of input
+LINE 3: $$) AS t(a int);
+        ^
 -- an invalid character after the leading "0x"
 SELECT * FROM cypher('scan', $$
 RETURN 0x~

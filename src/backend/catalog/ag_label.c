@@ -197,12 +197,27 @@ Datum _label_name(PG_FUNCTION_ARGS)
                         errmsg("graph_oid and label_id must not be null")));
 
     graph = PG_GETARG_OID(0);
+    
+    /* Check if the graph OID is valid */
+    if (!graph_namespace_exists(graph))
+    {
+        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT),
+                        errmsg("graph with oid %u does not exist", graph)));
+    }
 
     label_id = (int32)(((uint64)AG_GETARG_GRAPHID(1)) >> ENTRY_ID_BITS);
 
     label_cache = search_label_graph_oid_cache(graph, label_id);
 
     label_name = NameStr(label_cache->name);
+
+    /* If label_name is not found, error out */
+    if (label_name == NULL)
+    {
+        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT),
+                        errmsg("label with id %d does not exist in graph %u",
+                               label_id, graph)));
+    }
 
     if (IS_AG_DEFAULT_LABEL(label_name))
         PG_RETURN_CSTRING("");

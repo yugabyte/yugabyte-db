@@ -69,11 +69,11 @@
 %token <string> IDENTIFIER
 %token <string> PARAMETER
 %token <string> BQIDENT
+%token <string> OP
 %token <character> CHAR
 
 /* operators that have more than 1 character */
-%token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ EQ_TILDE CONCAT
-%token ACCESS_PATH LEFT_CONTAINS RIGHT_CONTAINS ANY_EXISTS ALL_EXISTS
+%token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ
 
 /* keywords in alphabetical order */
 %token <keyword> ALL ANALYZE AND AS ASC ASCENDING
@@ -86,7 +86,7 @@
                  LIMIT
                  MATCH MERGE
                  NOT NULL_P
-                 OPTIONAL OR ORDER
+                 OPERATOR OPTIONAL OR ORDER
                  REMOVE RETURN
                  SET SKIP STARTS
                  THEN TRUE_P
@@ -168,9 +168,17 @@
 
 /* names */
 %type <string> property_key_name var_name var_name_opt label_name
-%type <string> symbolic_name schema_name
+%type <string> symbolic_name schema_name type_name
 %type <keyword> reserved_keyword safe_keywords conflicted_keywords
 %type <list> func_name
+
+/* types */
+%type <node> generic_type
+%type <list> opt_type_modifiers
+
+/* operator */
+%type <string> all_op math_op
+%type <list> qual_op any_operator
 
 /* precedence: lowest to highest */
 %left UNION
@@ -179,8 +187,8 @@
 %left XOR
 %right NOT
 %left '=' NOT_EQ '<' LT_EQ '>' GT_EQ
-%left '@' '|' '&' '?' LEFT_CONTAINS RIGHT_CONTAINS ANY_EXISTS ALL_EXISTS
-%left '+' '-' CONCAT
+%left '+' '-'
+%left OP OPERATOR
 %left '*' '/' '%'
 %left '^'
 %nonassoc IN IS
@@ -235,7 +243,7 @@ static Node *make_bool_const(bool b, int location);
 static Node *make_null_const(int location);
 
 /* typecast */
-static Node *make_typecast_expr(Node *expr, char *typecast, int location);
+static Node *make_typecast_expr(Node *expr, Node *typname, int location);
 
 /* functions */
 static Node *make_function_expr(List *func_name, List *exprs, int location);
@@ -512,7 +520,6 @@ yield_item:
             $$ = (Node *)n;
         }
     ;
-
 
 semicolon_opt:
     /* empty */
@@ -1578,33 +1585,13 @@ expr:
         {
             $$ = build_comparison_expression($1, $3, ">=", @2);
         }
-    | expr LEFT_CONTAINS expr
+    | expr qual_op expr     %prec OP
         {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "<@", $1, $3, @2);
+            $$ = (Node *) makeA_Expr(AEXPR_OP, $2, $1, $3, @2);
         }
-    | expr RIGHT_CONTAINS expr
+    | qual_op expr          %prec OP
         {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "@>", $1, $3, @2);
-        }
-    | expr '?' expr %prec '.'
-        {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "?", $1, $3, @2);
-        }
-    | expr ANY_EXISTS expr
-        {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "?|", $1, $3, @2);
-        }
-    | expr ALL_EXISTS expr
-        {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "?&", $1, $3, @2);
-        }
-    | expr CONCAT expr
-        {
-            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "||", $1, $3, @2);
-        }
-    | expr ACCESS_PATH expr
-        {
-	        $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "#>", $1, $3, @2);
+            $$ = (Node *) makeA_Expr(AEXPR_OP, $1, NULL, $2, @1);
         }
     | expr '+' expr
         {
@@ -1696,11 +1683,6 @@ expr:
 
             $$ = (Node *)n;
         }
-    | expr EQ_TILDE expr
-        {
-            $$ = make_function_expr(list_make1(makeString("eq_tilde")),
-                                    list_make2($1, $3), @2);
-        }
     | expr '[' expr ']'
         {
             A_Indices *i;
@@ -1791,6 +1773,31 @@ expr:
 
                 $$ = append_indirection($1, (Node*)string);
             }
+            /* allow indirection with a typecast */
+            else if ((IsA($1, ColumnRef) || IsA($1, A_Indirection)) && 
+                     (IsA($3, ExtensibleNode) &&
+                      is_ag_node($3, cypher_typecast)))
+            {
+                cypher_typecast *tc = (cypher_typecast *)$3;
+
+                if (IsA(tc->expr, ColumnRef))
+                {
+                    ColumnRef *cr = (ColumnRef *)tc->expr;
+                    List *fields = cr->fields;
+                    String *string = linitial(fields);
+
+                    tc->expr = append_indirection($1, (Node *)string);
+
+                    $$ = (Node *)tc;
+                }
+                else
+                {
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("invalid indirection syntax"),
+                             ag_scanner_errposition(@1, scanner)));
+                }
+            }
             else if (IsA($1, FuncCall) && IsA($3, A_Indirection))
             {
                 ereport(ERROR,
@@ -1814,7 +1821,7 @@ expr:
         {
             $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "->", $1, $4, @2);
         }
-    | expr TYPECAST symbolic_name
+    | expr TYPECAST generic_type
         {
             $$ = make_typecast_expr($1, $3, @2);
         }
@@ -2354,6 +2361,10 @@ label_name:
     schema_name
     ;
 
+type_name:
+    schema_name
+    ;
+
 symbolic_name:
     IDENTIFIER
     ;
@@ -2371,6 +2382,82 @@ reserved_keyword:
     safe_keywords
     | conflicted_keywords
     ;
+
+/*
+ * types
+ */
+generic_type:
+    type_name opt_type_modifiers
+        {
+            TypeName *typname;
+
+            typname = makeTypeName($1);
+            typname->typmods = $2;
+            typname->location = @1;
+
+            $$ = (Node *) typname;
+        }
+    ;
+
+opt_type_modifiers:
+    '(' expr_list ')'
+        {
+            $$ = $2;
+        }
+    | /* empty */
+        {
+            $$ = NIL;
+        }
+    ;
+
+/*
+ * operators
+ */
+any_operator:
+        all_op
+            {
+                $$ = list_make1(makeString($1));
+            }
+        | symbolic_name
+            {
+                $$ = list_make1(makeString($1));
+            }
+        | schema_name '.' any_operator
+            {
+                $$ = lcons(makeString($1), $3);
+            }
+	;
+
+all_op:	
+        OP
+        | math_op
+	;
+
+math_op:
+        '+'									{ $$ = "+"; }
+        | '-'								{ $$ = "-"; }
+        | '*'								{ $$ = "*"; }
+        | '/'								{ $$ = "/"; }
+        | '%'								{ $$ = "%"; }
+        | '^'								{ $$ = "^"; }
+        | '<'								{ $$ = "<"; }
+        | '>'								{ $$ = ">"; }
+        | '='								{ $$ = "="; }
+        | LT_EQ						        { $$ = "<="; }
+        | GT_EQ					            { $$ = ">="; }
+        | NOT_EQ					    	{ $$ = "<>"; }
+    ;
+
+qual_op:
+        OP
+            {
+                $$ = list_make1(makeString($1));
+            }
+        | OPERATOR '(' any_operator ')'
+            {
+                $$ = $3;
+            }
+	;
 
 /*
  * All keywords need to be copied and properly terminated with a null before
@@ -2406,6 +2493,7 @@ safe_keywords:
     | MATCH      { $$ = pnstrdup($1, 6); }
     | MERGE      { $$ = pnstrdup($1, 6); }
     | NOT        { $$ = pnstrdup($1, 3); }
+    | OPERATOR   { $$ = pnstrdup($1, 8); }
     | OPTIONAL   { $$ = pnstrdup($1, 8); }
     | OR         { $$ = pnstrdup($1, 2); }
     | ORDER      { $$ = pnstrdup($1, 5); }
@@ -2674,13 +2762,13 @@ static Node *make_null_const(int location)
 /*
  * typecast
  */
-static Node *make_typecast_expr(Node *expr, char *typecast, int location)
+static Node *make_typecast_expr(Node *expr, Node *typname, int location)
 {
     cypher_typecast *node;
 
     node = make_ag_node(cypher_typecast);
     node->expr = expr;
-    node->typecast = typecast;
+    node->typname = (TypeName *) typname;
     node->location = location;
 
     return (Node *)node;

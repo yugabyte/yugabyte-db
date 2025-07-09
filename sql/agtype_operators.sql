@@ -33,8 +33,8 @@ CREATE OPERATOR @> (
   RIGHTARG = agtype,
   FUNCTION = ag_catalog.agtype_contains,
   COMMUTATOR = '<@',
-  RESTRICT = contsel,
-  JOIN = contjoinsel
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
 );
 
 CREATE FUNCTION ag_catalog.agtype_contained_by(agtype, agtype)
@@ -50,8 +50,8 @@ CREATE OPERATOR <@ (
   RIGHTARG = agtype,
   FUNCTION = ag_catalog.agtype_contained_by,
   COMMUTATOR = '@>',
-  RESTRICT = contsel,
-  JOIN = contjoinsel
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
 );
 
 CREATE FUNCTION ag_catalog.agtype_contains_top_level(agtype, agtype)
@@ -67,8 +67,8 @@ CREATE OPERATOR @>> (
   RIGHTARG = agtype,
   FUNCTION = ag_catalog.agtype_contains_top_level,
   COMMUTATOR = '<<@',
-  RESTRICT = contsel,
-  JOIN = contjoinsel
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
 );
 
 CREATE FUNCTION ag_catalog.agtype_contained_by_top_level(agtype, agtype)
@@ -84,6 +84,6 @@ CREATE OPERATOR <<@ (
   RIGHTARG = agtype,
   FUNCTION = ag_catalog.agtype_contained_by_top_level,
   COMMUTATOR = '@>>',
-  RESTRICT = contsel,
-  JOIN = contjoinsel
+  RESTRICT = matchingsel,
+  JOIN = matchingjoinsel
 );

@@ -184,3 +184,16 @@ char *get_graph_namespace_name(const char *graph_name)
 {
     return get_namespace_name(get_graph_namespace(graph_name));
 }
+
+bool graph_namespace_exists(Oid graph_oid)
+{
+    graph_cache_data *cache_data;
+
+    cache_data = search_graph_namespace_cache(graph_oid);
+    if (cache_data)
+    {
+        return true;    
+    }
+
+    return false;
+}
