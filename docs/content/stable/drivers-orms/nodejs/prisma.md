@@ -112,7 +112,7 @@ npm install -g prisma
     - `schema.prisma` consists of configurations and data models for the project.
     - `.env` defines the environment variable `DATABASE_URL` which is used in configuring the database.
 
-1. Update the generator-client block in your schema to include the driverAdapters Preview feature:
+1. Update the generator-client block in your schema to include the `driverAdapters` Preview feature:
     
     ```sh
     generator client {
