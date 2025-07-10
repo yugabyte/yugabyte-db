@@ -88,7 +88,7 @@ yugabyte=# \c ysql_prisma;
 Modify the `DATABASE_URL` in the `.env` file according to your cluster configuration:
 
 ```sh
-DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
+DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?ybServersRefreshInterval=10&loadBalance=true"
 ```
 
 If you have a YugabyteDB Aeon cluster, do the following:
@@ -106,7 +106,7 @@ If you have a YugabyteDB Aeon cluster, do the following:
 1. Modify the `DATABASE_URL` by including  the `cert_path` as the relative path of `cert.pem` with respect to the `/prisma` folder:
 
     ```sh
-    DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"
+    DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>&?ybServersRefreshInterval=10&loadBalance=true"
     ```
 
 ## Apply the migrations
