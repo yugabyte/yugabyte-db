@@ -302,7 +302,7 @@ void HandleTransactionsPage(
     const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-  auto tablet = peer->shared_tablet();
+  auto tablet = peer->shared_tablet_maybe_null();
   if (!tablet) {
     *output << "Tablet " << EscapeForHtmlToString(tablet_id) << " not running";
     return;
@@ -388,7 +388,7 @@ void HandleRocksDBPage(
   std::stringstream *output = &resp->output;
   *output << "<h1>RocksDB for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *output << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -403,7 +403,7 @@ void HandleWaitQueuePage(
   std::stringstream *out = &resp->output;
   *out << "<h1>Waiters for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *out << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -427,7 +427,7 @@ void HandleInMemoryLocksPage(
   *out << "<h1>In-Memory Locks for Tablet "
        << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto tablet_result = peer->shared_tablet_safe();
+  auto tablet_result = peer->shared_tablet();
   if (!tablet_result.ok()) {
     *out << EscapeForHtmlToString(tablet_result.status().ToString());
     return;
@@ -585,7 +585,7 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     vector<OperationStatusPB> inflight;
 
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet == nullptr) {
       continue;
     }
@@ -706,7 +706,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
       .state = peer->HumanReadableState()
     };
 
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
     bool is_hidden = status.is_hidden();
 
@@ -799,7 +799,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     string table_name = status.table_name();
     string table_id = status.table_id();
     string tablet_id_or_link;
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet != nullptr) {
       tablet_id_or_link = TabletLink(id);
     } else {
@@ -1263,7 +1263,7 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
                             ->PartitionDebugString(*peer->status_listener()->partition(),
                                                    *tablet_metadata->schema());
 
-    const auto& tablet = peer->shared_tablet();
+    const auto& tablet = peer->shared_tablet_maybe_null();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
 
     // TODO: Would be nice to include some other stuff like memory usage.

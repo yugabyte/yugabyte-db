@@ -492,8 +492,9 @@ TEST_F(CDCServiceTest, TestCompoundKey) {
   std::string tablet_id = GetTablet(table.name());
 
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
-  auto schema =
-      ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
+  auto schema = ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))
+                    ->shared_tablet_maybe_null()
+                    ->schema();
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
@@ -791,8 +792,9 @@ TEST_F(CDCServiceTest, TestGetChanges) {
   std::string tablet_id = GetTablet();
 
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
-  auto schema =
-      ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
+  auto schema = ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))
+                    ->shared_tablet_maybe_null()
+                    ->schema();
 
   // Use proxy for to most accurately simulate normal requests.
   const auto& proxy = tserver->proxy();
@@ -1559,8 +1561,9 @@ TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {
   std::string tablet_id = GetTablet();
 
   auto tserver = cluster_->mini_tablet_server(0)->server();
-  auto schema =
-      ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))->shared_tablet()->schema();
+  auto schema = ASSERT_RESULT(tserver->tablet_manager()->GetTablet(tablet_id))
+                    ->shared_tablet_maybe_null()
+                    ->schema();
 
   const auto& proxy = tserver->proxy();
 

@@ -1641,6 +1641,22 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
+## Cost-based optimizer flag
+
+Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO).
+
+See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
+
+##### ysql_yb_enable_cbo
+
+{{<tags/feature/ea idea="483">}}Available in v2024.2.4 or later. Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+Default: `legacy_mode`
+
 ## Advanced flags
 
 ##### --allowed_preview_flags_csv

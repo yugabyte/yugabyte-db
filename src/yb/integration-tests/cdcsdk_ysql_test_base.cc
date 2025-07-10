@@ -2569,10 +2569,11 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     const std::string& table_id) {
     int count = 0;
     for (const auto& peer : peers) {
-      if (peer->tablet()->metadata()->table_id() != table_id) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet || tablet->metadata()->table_id() != table_id) {
         continue;
       }
-      auto db = peer->tablet()->regular_db();
+      auto db = tablet->regular_db();
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
@@ -2627,7 +2628,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         [&]() -> Result<bool> {
           auto peers = ListTabletPeers(test_cluster_.mini_cluster_.get(), ListPeersFilter::kAll);
           for (const auto &peer : peers) {
-            auto tablet = peer->shared_tablet();
+            auto tablet = peer->shared_tablet_maybe_null();
             auto participant = tablet ? tablet->transaction_participant() : nullptr;
             if (!participant) {
               continue;
@@ -3592,7 +3593,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         301 /* start */, 401 /* end */, &test_cluster_,
         {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-    CHECK_OK(test_cluster()->mini_master(0)->tablet_peer()->tablet()->ForceManualRocksDBCompact());
+    CHECK_OK(ASSERT_RESULT(test_cluster()->mini_master(0)->tablet_peer()->shared_tablet())
+                 ->ForceManualRocksDBCompact());
 
     xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -4280,8 +4282,12 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       const int& tablet_idx) {
     for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
       for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        auto tablet = peer->shared_tablet_maybe_null();
+        if (!tablet) {
+          continue;
+        }
         if (peer->tablet_id() == tablets[tablet_idx].tablet_id()) {
-          return peer->tablet()->transaction_participant()->GetHistoricalMaxOpId();
+          return tablet->transaction_participant()->GetHistoricalMaxOpId();
         }
       }
     }
@@ -4744,7 +4750,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         if (peer->tablet_id() != tablet_id) {
           continue;
         }
-        auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+        auto tablet = VERIFY_RESULT(peer->shared_tablet());
         auto intent_count = VERIFY_RESULT(tablet->CountIntents());
         auto intent_sst_file_count = tablet->intents_db()->GetCurrentVersionNumSSTFiles();
 

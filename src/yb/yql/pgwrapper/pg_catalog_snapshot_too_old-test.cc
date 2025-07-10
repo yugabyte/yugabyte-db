@@ -90,7 +90,8 @@ class PgSnapshotTooOldTest : public PgMiniTestBase {
 
   void TestDefaultTablespaceGUC() {
     auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
+    auto sys_catalog_tablet =
+        ASSERT_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
 
     PGConn conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat(R"_tblsp_(

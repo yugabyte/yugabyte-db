@@ -181,7 +181,7 @@ void RemoteBootstrapSessionTest::TabletPeerStateChangedCallback(
 }
 
 void RemoteBootstrapSessionTest::PopulateTablet() {
-  auto tablet_ptr = ASSERT_RESULT(tablet_peer_->shared_tablet_safe());
+  auto tablet_ptr = ASSERT_RESULT(tablet_peer_->shared_tablet());
   for (int32_t i = 0; i < 1000; i++) {
     WriteRequestPB req;
     req.set_tablet_id(tablet_peer_->tablet_id());

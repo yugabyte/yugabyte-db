@@ -392,7 +392,7 @@ void FullStackInsertScanTest::FlushToDisk() {
     ts->maintenance_manager()->Shutdown();
     auto peers = ts->tablet_manager()->GetTabletPeers();
     for (const std::shared_ptr<TabletPeer>& peer : peers) {
-      Tablet* tablet = peer->tablet();
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
     }
   }

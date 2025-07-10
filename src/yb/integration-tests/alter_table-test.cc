@@ -307,14 +307,16 @@ INSTANTIATE_TEST_CASE_P(BatchSize, ReplicatedAlterTableTest, ::testing::Values(1
 // on the TS handling the tablet of the altered table.
 // TODO: create and verify multiple tablets when the client will support that.
 TEST_P(AlterTableTest, TestTabletReports) {
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_EQ(0, tablet->metadata()->primary_table_schema_version());
   ASSERT_OK(AddNewI32Column(kTableName, "new-i32"));
-  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  ASSERT_EQ(1, tablet->metadata()->primary_table_schema_version());
 }
 
 // Verify that adding an existing column will return an "already present" error
 TEST_P(AlterTableTest, TestAddExistingColumn) {
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_EQ(0, tablet->metadata()->primary_table_schema_version());
 
   {
     Status s = AddNewI32Column(kTableName, "c1");
@@ -322,14 +324,15 @@ TEST_P(AlterTableTest, TestAddExistingColumn) {
     ASSERT_STR_CONTAINS(s.ToString(), "The column already exists: c1");
   }
 
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  ASSERT_EQ(0, tablet->metadata()->primary_table_schema_version());
 }
 
 // Adding a nullable column with no default value should be equivalent
 // to a NULL default.
 TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
   InsertRows(0, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -348,7 +351,8 @@ TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
 // Verify that, if a tablet server is down when an alter command is issued,
 // it will eventually receive the command when it restarts.
 TEST_P(AlterTableTest, TestAlterOnTSRestart) {
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_EQ(0, tablet->metadata()->primary_table_schema_version());
 
   ShutdownTS();
 
@@ -374,13 +378,15 @@ TEST_P(AlterTableTest, TestAlterOnTSRestart) {
   // Restart the TS and wait for the new schema
   RestartTabletServer();
   ASSERT_OK(WaitAlterTableCompletion(kTableName, 50));
-  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_EQ(1, tablet->metadata()->primary_table_schema_version());
 }
 
 // Verify that nothing is left behind on cluster shutdown with pending async tasks
 TEST_P(AlterTableTest, TestShutdownWithPendingTasks) {
   DontVerifyClusterBeforeNextTearDown();
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_EQ(0, tablet->metadata()->primary_table_schema_version());
 
   ShutdownTS();
 
@@ -402,7 +408,8 @@ TEST_P(AlterTableTest, TestRestartTSDuringAlter) {
     return;
   }
 
-  ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_EQ(0, tablet->metadata()->primary_table_schema_version());
 
   Status s = AddNewI32Column(kTableName, "new-i32", MonoDelta::FromMilliseconds(1));
   ASSERT_TRUE(s.IsTimedOut());
@@ -415,7 +422,7 @@ TEST_P(AlterTableTest, TestRestartTSDuringAlter) {
 
   // Wait for the new schema
   ASSERT_OK(WaitAlterTableCompletion(kTableName, 50));
-  ASSERT_EQ(1, tablet_peer_->tablet()->metadata()->primary_table_schema_version());
+  ASSERT_EQ(1, tablet->metadata()->primary_table_schema_version());
 }
 
 TEST_P(AlterTableTest, TestGetSchemaAfterAlterTable) {
@@ -541,7 +548,8 @@ TEST_P(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   LOG(INFO) << "Inserting rows";
   InsertRows(0, 3);
 
-  std::string docdb_dump = tablet_peer_->tablet()->TEST_DocDBDumpStr();
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  std::string docdb_dump = tablet->TEST_DocDBDumpStr();
   // DocDB should not be empty right now.
   ASSERT_NE(0, docdb_dump.length());
 
@@ -550,9 +558,9 @@ TEST_P(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   LOG(INFO) << "Forcing compaction";
-  CHECK_OK(tablet_peer_->tablet()->ForceManualRocksDBCompact());
+  CHECK_OK(tablet->ForceManualRocksDBCompact());
 
-  docdb_dump = tablet_peer_->tablet()->TEST_DocDBDumpStr();
+  docdb_dump = tablet->TEST_DocDBDumpStr();
 
   LOG(INFO) << "Checking that docdb is empty";
   ASSERT_EQ("", docdb_dump);
@@ -569,7 +577,8 @@ TEST_P(AlterTableTest, TestLogSchemaReplay) {
   UpdateRow(1, { {"c1", 0} });
 
   LOG(INFO) << "Flushing RocksDB";
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   UpdateRow(0, { {"c1", 1}, {"c2", 10001} });
 
@@ -613,7 +622,8 @@ TEST_P(AlterTableTest, TestRenameTableAndAdd) {
 TEST_P(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   InsertRows(1, 1);
 
   UpdateRow(0, { {"c1", 10001} });
@@ -669,13 +679,14 @@ TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
 
   int expected_wal_retention_secs = max(FLAGS_log_min_seconds_to_retain, kWalRetentionSecs);
 
-  ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_EQ(kWalRetentionSecs, tablet->metadata()->wal_retention_secs());
   ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
 
   // Test that the wal retention time gets set correctly in the metadata and in the log objects.
   ASSERT_NO_FATALS(RestartTabletServer());
 
-  ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
+  ASSERT_EQ(kWalRetentionSecs, tablet->metadata()->wal_retention_secs());
   ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
 }
 
@@ -688,10 +699,10 @@ TEST_P(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   ASSERT_OK(AddNewI32Column(kTableName, "c2"));
   InsertRows(0, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   InsertRows(1, 1);
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
-
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());

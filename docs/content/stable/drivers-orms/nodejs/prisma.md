@@ -74,7 +74,13 @@ To create a basic Node.js project and install the `prisma` package, do the follo
 1. Install the Prisma package:
 
     ```sh
-    npm install prisma
+    npm install prisma@6.8.2
+    ```
+
+1. Install the Yugabyte prisma-adapter package:
+
+    ```sh
+    npm install @yugabytedb/prisma-adapter@6.8.2-yb-2
     ```
 
     {{< note title="Note" >}}
@@ -106,10 +112,19 @@ npm install -g prisma
     - `schema.prisma` consists of configurations and data models for the project.
     - `.env` defines the environment variable `DATABASE_URL` which is used in configuring the database.
 
+1. Update the generator-client block in your schema to include the `driverAdapters` Preview feature:
+    
+    ```sh
+    generator client {
+      provider        = "prisma-client-js"
+      previewFeatures = ["driverAdapters"]
+    }
+    ```
+
 1. Configure the `DATABASE_URL` environment variable in the `.env` file to connect with a YugabyteDB cluster.
 
     ```sh
-    DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
+    DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?ybServersRefreshInterval=10&loadBalance=true"
     ```
 
 If you have a YugabyteDB Aeon cluster, modify the `DATABASE_URL` using the following steps:
@@ -127,7 +142,7 @@ If you have a YugabyteDB Aeon cluster, modify the `DATABASE_URL` using the follo
 1. Modify the `DATABASE_URL` by including  the `cert_path` as the relative path to `cert.pem` with respect to the `/prisma` folder:
 
     ```sh
-    DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"
+    DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>&ybServersRefreshInterval=10&loadBalance=true"
     ```
 
 ### Step 3: Create and migrate a Prisma model
@@ -163,8 +178,12 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
 
     ```js
     const { PrismaClient } = require('@prisma/client')
+    const { PrismaPg } = require('@yugabytedb/prisma-adapter')
 
-    const prisma = new PrismaClient()
+    const connectionString = `${process.env.DATABASE_URL}`
+    const adapter = new PrismaPg({ connectionString })
+
+    const prisma = new PrismaClient({ adapter })
 
     async function example() {
 

@@ -725,7 +725,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return Status::OK();
   }
 
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   auto latch = std::make_shared<CountDownLatch>(1);
   auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
@@ -792,7 +792,7 @@ Schema SysCatalogTable::BuildTableSchema() {
 Status SysCatalogTable::GetTableSchema(
     const TableId& table_id, const ReadHybridTime read_hybrid_time, Schema* current_schema,
     uint32_t* schema_version) {
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
@@ -873,7 +873,7 @@ void SysCatalogTable::InitLocalRaftPeerPB() {
 Status SysCatalogTable::Visit(VisitorBase* visitor) {
   TRACE_EVENT0("master", "Visitor::VisitAll");
 
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
@@ -918,7 +918,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 Status SysCatalogTable::ReadWithRestarts(
     const ReadRestartFn& read_fn, tablet::RequireLease require_lease) const {
   ReadHybridTime read_time;
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
@@ -993,7 +993,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
   auto read_data = VERIFY_RESULT(TableReadData(ysql_catalog_table_id, read_time));
   const auto& schema = read_data.schema();
   dockv::ReaderProjection projection(schema);
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   if (!tablet) {
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
@@ -1245,7 +1245,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     return STATUS(InternalError, "table_to_tablespace_map not initialized");
   }
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
 
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
@@ -1866,7 +1866,7 @@ Status SysCatalogTable::ReadYsqlCatalogInvalationMessagesImpl(
   auto read_data = VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgYbInvalidationMessagesTableOid,
                                  read_time));
   const auto& schema = read_data.schema();
-  auto tablet = tablet_peer()->shared_tablet();
+  auto tablet = tablet_peer()->shared_tablet_maybe_null();
   SCHECK(tablet, ShutdownInProgress, "SysConfig is shutting down.");
   messages.clear();
   const auto db_oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName)).rep();
@@ -1965,7 +1965,7 @@ Status SysCatalogTable::CopyPgsqlTables(
       "size mismatch between source tables and target tables");
 
   size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   const auto* meta = tablet->metadata();
   for (size_t i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
@@ -2004,7 +2004,7 @@ Status SysCatalogTable::DeleteAllYsqlCatalogTableRows(const std::vector<TableId>
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
 
   size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   const auto* meta = tablet->metadata();
   for (const auto& table_id : table_ids) {
     const std::shared_ptr<tablet::TableInfo> table_info =
@@ -2046,7 +2046,7 @@ const docdb::DocReadContext& SysCatalogTable::doc_read_context() {
 }
 
 Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries) {
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
 
   return EnumerateSysCatalog(
       tablet.get(), doc_read_context_->schema(), SysRowEntryType::DDL_LOG_ENTRY,
@@ -2260,7 +2260,7 @@ Result<tablet::TabletPtr> SysCatalogTable::Tablet() const {
   if (!tablet_peer) {
     return STATUS(ServiceUnavailable, "SysCatalog unavailable");
   }
-  return tablet_peer->shared_tablet_safe();
+  return tablet_peer->shared_tablet();
 }
 
 Result<PgTableReadData> SysCatalogTable::TableReadData(

@@ -473,7 +473,11 @@ TEST_F(CqlTest, CompactDeleteMarkers) {
   ASSERT_OK(WaitFor([this] {
     auto list = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : list) {
-      auto* participant = peer->tablet()->transaction_participant();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto* participant = tablet->transaction_participant();
       if (!participant) {
         continue;
       }
@@ -529,7 +533,11 @@ TEST_F_EX(CqlTest, RangeGC, CqlRF1Test) {
   ASSERT_OK(cluster_->CompactTablets());
 
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto* db = peer->tablet()->regular_db();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto* db = tablet->regular_db();
     if (!db) {
       continue;
     }
@@ -632,7 +640,11 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   // Find the counters for the tablet leader.
   tablet::TabletMetrics* tablet_metrics = nullptr;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto* metrics = peer->tablet()->metrics();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto* metrics = tablet->metrics();
     if (!metrics || metrics->Get(tablet::TabletCounters::kDocDBKeysFound) == 0) {
       continue;
     }
@@ -1576,7 +1588,7 @@ TEST_F(CqlTest, InsertHashAndRangePkWithReturnsStatusAsRow) {
   // Make sure `RETURNS STATUS AS ROW` doesn't iterate over rows (both obsolete and live) related to
   // the same hash column but different range columns.
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet->table_type() != TableType::YQL_TABLE_TYPE) {
       break;
     }

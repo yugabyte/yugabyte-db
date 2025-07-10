@@ -994,7 +994,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
     });
     ASSERT_EQ(peers.size(), 1);
     auto peer = peers[0];
-    auto tablet = peer->tablet();
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(tablet->transaction_participant()->ResolveIntents(
         peer->clock().Now(), CoarseTimePoint::max()));
     auto current_ht = clock_->Now();

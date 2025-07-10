@@ -131,7 +131,7 @@ class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
       const auto tablet_peers = ts_tablet_manager->GetTabletPeersWithTableId(test_table_id_);
       TSTabletManager::TabletPtrs test_tablet_ptrs;
       for (const auto& tablet_peer : tablet_peers) {
-        test_tablet_ptrs.push_back(tablet_peer->shared_tablet());
+        test_tablet_ptrs.push_back(tablet_peer->shared_tablet_maybe_null());
       }
       ASSERT_OK(ts_tablet_manager->TriggerAdminCompaction(
           test_tablet_ptrs, AdminCompactionOptions { should_wait }));

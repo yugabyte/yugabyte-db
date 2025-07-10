@@ -48,7 +48,7 @@ Result<bool> IsDataPresent(tablet::TabletPeerPtr tablet_peer) {
   // inserted data but then deleted it before adding the table to replication, which we cannot
   // detect by scanning the WAL.
 
-  const auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  const auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
   auto table_ids = tablet->metadata()->GetAllColocatedTables();
   const dockv::ReaderProjection empty_projection;
 
