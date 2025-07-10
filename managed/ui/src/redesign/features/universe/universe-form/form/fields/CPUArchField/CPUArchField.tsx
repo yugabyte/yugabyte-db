@@ -55,7 +55,6 @@ export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
 
   // TODO: When anyone changes this conditon, please ensure to change
   // in  api.getDBVersions in DBVersionField.tsx
-  if (provider?.code !== CloudType.aws) return null;
 
   const handleSelect = (option: typeof supportedArch[number]) => {
     setValue(CPU_ARCHITECTURE_FIELD, option.value, {

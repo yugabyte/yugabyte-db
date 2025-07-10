@@ -207,14 +207,6 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 			),
 		},
 		{
-			"place-new-otel-collector-config-file",
-			fmt.Sprintf(
-				"mv %s %s",
-				h.param.GetOtelColConfigFile(),
-				otelCollectorConfigFile,
-			),
-		},
-		{
 			"create-aws-creds-dir",
 			fmt.Sprintf("mkdir -p %s/.aws", ybHome),
 		},
@@ -270,6 +262,20 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 				h.param.GetOtelColAwsSecretKey(),
 				awsCredsFile,
 				awsCredsFile,
+			),
+		})
+	}
+
+	if h.param.GetOtelColConfigFile() != "" {
+		steps = append(steps, struct {
+			Desc string
+			Cmd  string
+		}{
+			"place-new-otel-collector-config-file",
+			fmt.Sprintf(
+				"mv %s %s",
+				h.param.GetOtelColConfigFile(),
+				otelCollectorConfigFile,
 			),
 		})
 	}

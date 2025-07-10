@@ -68,7 +68,7 @@ JSONB type that encapsulates additional information about each lock, specific to
 
 YugabyteDB offers several YSQL configuration parameters to customize how locks are queried and displayed, so you can tailor the lock information as needed. `yb_locks_min_txn_age` and `yb_locks_max_transactions` control the filtering and limitation of transactions in lock queries.
 
-### yb_locks_min_txn_age
+##### yb_locks_min_txn_age
 
 The `yb_locks_min_txn_age` parameter specifies the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the `pg_locks` view. By setting this parameter, you can focus on older transactions that may be more relevant to performance tuning or deadlock resolution efforts. Transactions that are started more recently than the specified duration are not shown, helping to reduce clutter and focus on potentially problematic transactions.
 
@@ -80,7 +80,7 @@ Example: Enter the following command to change the minimum transaction age to 5 
 SET session yb_locks_min_txn_age = 5000;
 ```
 
-### yb_locks_max_transactions
+##### yb_locks_max_transactions
 
 The `yb_locks_max_transactions` parameter sets the maximum number of transactions for which lock information is displayed when you query the pg_locks view. You can limit the output to the most relevant transactions, which is particularly beneficial in environments with high levels of concurrency and transactional activity. By controlling the volume of information returned, this parameter helps in managing the analysis of lock contention more effectively.
 
@@ -90,6 +90,18 @@ Example: Enter the following command to change the maximum number of transaction
 
 ```sh
 SET session yb_locks_max_transactions = 10;
+```
+
+##### yb_locks_txn_locks_per_tablet
+
+The `yb_locks_txn_locks_per_tablet` parameter sets the maximum number of rows per transaction per tablet to return in pg_locks. Set to 0 to return all results.
+
+Default: 200
+
+Example: Enter the following command to return a maximum of 10 rows per transaction per tablet:
+
+```sh
+SET session yb_locks_txn_locks_per_tablet = 10;
 ```
 
 ## Examples

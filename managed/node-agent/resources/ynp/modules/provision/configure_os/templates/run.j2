@@ -108,6 +108,12 @@ EOF
       echo "kernel.core_pattern=$CORE_PATTERN" | tee -a /etc/sysctl.conf > /dev/null
   fi
 
+  # Check if the setting exists with correct value in either location
+  if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf 2>/dev/null && \
+    ! grep -q "^vm.max_map_count=" "/etc/sysctl.d/99-vm-max-map-count.conf" 2>/dev/null; then
+    echo "vm.max_map_count={{ vm_max_map_count }}" | \
+      sudo tee -a /etc/sysctl.d/99-vm-max-map-count.conf > /dev/null
+  fi
   # Set max map count
   sysctl -w vm.max_map_count="{{ vm_max_map_count }}"
 

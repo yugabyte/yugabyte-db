@@ -1,4 +1,4 @@
-import { styled, Typography, Link } from '@material-ui/core';
+import { styled, Typography, Link, Box } from '@material-ui/core';
 
 export const StyledPanel = styled('div')(({ theme }) => ({
   padding: '0',
@@ -9,14 +9,14 @@ export const StyledPanel = styled('div')(({ theme }) => ({
 }));
 
 export const StyledHeader = styled(Typography)(({ theme }) => ({
-  padding: `10px ${theme.spacing(3)}px`,
+  padding: `24px ${theme.spacing(3)}px`,
   fontSize: 15,
   color: theme.palette.grey[900]
 }));
 
 export const StyledContent = styled('div')(({ theme }) => ({
-  padding: `${theme.spacing(1)}px ${theme.spacing(2.5)}px ${theme.spacing(2.5)}px ${theme.spacing(
-    2.5
+  padding: `${theme.spacing(0)}px ${theme.spacing(3)}px ${theme.spacing(3)}px ${theme.spacing(
+    3
   )}px`,
   display: 'flex',
   gap: theme.spacing(4),
@@ -31,4 +31,14 @@ export const StyledLink = styled(Link)(({ theme }) => ({
   textDecoration: 'underline',
   textDecorationStyle: 'solid',
   textUnderlinePosition: 'from-font'
+}));
+
+export const FieldContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  width: '548px',
+  height: 'auto',
+  backgroundColor: '#FBFCFD',
+  border: '1px solid #D7DEE4',
+  borderRadius: '8px'
 }));

@@ -80,11 +80,23 @@ class PgCatalogVersionTest : public LibPqTestBase {
       Format("--ysql_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
+      if (!enabled) {
+        cluster_->master(i)->mutable_flags()->push_back(
+            "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        cluster_->master(i)->mutable_flags()->push_back(
+            "--enable_object_locking_for_table_locks=false");
+      }
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->tablet_server(i)->mutable_flags()->push_back(db_catalog_version_gflag);
       for (const auto& flag : extra_tserver_flags) {
         cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
+      }
+      if (!enabled) {
+        cluster_->tablet_server(i)->mutable_flags()->push_back(
+            "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        cluster_->tablet_server(i)->mutable_flags()->push_back(
+            "--enable_object_locking_for_table_locks=false");
       }
     }
     ASSERT_OK(cluster_->Restart());
@@ -2332,8 +2344,7 @@ ALTER TABLE testtable ADD COLUMN value INT;
 TEST_F(PgCatalogVersionTest, InvalMessageSampleDDLs) {
   // Disable auto analyze to prevent unexpected invalidation messages.
   RestartClusterWithInvalMessageEnabled(
-      { "--ysql_enable_auto_analyze_service=false",
-        "--ysql_enable_table_mutation_counter=false",
+      { "--ysql_enable_auto_analyze=false",
         "--ysql_yb_invalidation_message_expiration_secs=36000" });
   const string sample_ddl_script =
         R"#(
@@ -3098,6 +3109,29 @@ TEST_F(PgCatalogVersionTest, InvalMessageWaitOnVersionGap) {
   // Verify that the incremental catalog cache refresh happened on conn3.
   // Before the fix of GHI 27822, there would be a full catalog cache refresh.
   VerifyCatCacheRefreshMetricsHelper(0 /* num_full_refreshes */, 1 /* num_delta_refreshes */);
+}
+
+// Test GUC yb_test_preload_catalog_tables=true triggers full catalog cache refresh.
+TEST_F(PgCatalogVersionTest, TestPreloadCatalogTables) {
+  RestartClusterWithInvalMessageEnabled({ "--ysql_pg_conf_csv=log_statement=all" });
+
+  // Note that yb_test_preload_catalog_tables=true does not invalidate tserver cache,
+  // so preloading will read the same catalog data from tserver cache as other active
+  // connections. A typical use is to start a new session, set this GUC, and then
+  // SELECT yb_mem_usage_sql_kb();
+  for (int i = 0; i < 5; ++i) {
+    auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+    // Make a new connection to get the default memory size.
+    conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+    auto defaultSize = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT yb_mem_usage_sql_kb()"));
+    ASSERT_OK(conn.Execute("SET yb_test_preload_catalog_tables=true"));
+    auto preloadSize = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT yb_mem_usage_sql_kb()"));
+    LOG(INFO) << "defaultSize: " << defaultSize << ", preloadSize: " << preloadSize;
+    // With preloading, we see significant increase in session memory.
+    ASSERT_GT(preloadSize, defaultSize * 5);
+  }
+  VerifyCatCacheRefreshMetricsHelper(5 /* num_full_refreshes */, 0 /* num_delta_refreshes */);
 }
 
 } // namespace pgwrapper

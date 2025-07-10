@@ -753,6 +753,12 @@ Create a local single-node universe with encryption in transit and authenticatio
 ./bin/yugabyted start --secure
 ```
 
+Create a local single-node universe with IPv6 address:
+
+```sh
+./bin/yugabyted start --advertise_address ::1
+```
+
 Create a single-node locally and join other nodes that are part of the same universe:
 
 ```sh
@@ -773,10 +779,10 @@ For more advanced examples, see [Examples](#examples).
 : Print the command-line help and exit.
 
 --advertise_address *bind-ip*
-: IP address or local hostname on which yugabyted will listen.
+: IP (v4 or v6) address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
+: The IP (v4 or v6) or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
 --config *path-to-config-file*
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
@@ -1442,21 +1448,29 @@ If the universe has more than three nodes, execute a `destroy --base_dir=<path t
 
 ### Create a single-node universe
 
-Create a single-node universe with a given [base directory](#base-directory). Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
+Create a single-node universe with a given [base directory](#base-directory). You need to provide a fully-qualified directory path for the `base_dir` parameter.
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-To create secure single-node universe with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
+Alternatively, you can provide an IPv6 address. For example:
 
 ```sh
+./bin/yugabyted start --advertise_address=::1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
+```
+
+To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
+
+```sh
+# Using IPv4
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="preview" >}}/data1
 ```
 
-When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 
 ### Create certificates for a secure local multi-node universe
 

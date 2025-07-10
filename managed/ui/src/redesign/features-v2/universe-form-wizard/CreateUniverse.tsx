@@ -45,8 +45,8 @@ export const CreateUniverse = () => {
           backgroundColor: '#1E154B',
           height: '64px',
           padding: '8px 24px',
-          alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          alignItems: 'center'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -103,7 +103,7 @@ export const CreateUniverse = () => {
                 variant="ybaPrimary"
                 size="large"
               >
-                {t(activeStep === 9 ? 'create' :'next', { keyPrefix: 'common' })}
+                {t(activeStep === 9 ? 'create' : 'next', { keyPrefix: 'common' })}
               </YBButton>
             </Grid>
           </Grid>

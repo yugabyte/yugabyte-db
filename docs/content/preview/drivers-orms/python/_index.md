@@ -19,6 +19,7 @@ The following projects can be used to implement Python applications using the Yu
 | ------- | ------------------------ | ------------------------ | ---------------------|
 | Yugabyte Psycopg2 Smart Driver [Recommended] | [Documentation](yugabyte-psycopg2/) <br /> [Reference](yugabyte-psycopg2-reference/)| 2.9.3 | 2.8 and above |
 | PostgreSQL Psycopg2 Driver | [Documentation](postgres-psycopg2/) <br /> [Reference](postgres-psycopg2-reference/) | 2.9.3 | 2.8 and above |
+| PostgreSQL Psycopg3 Driver | [Documentation](postgres-psycopg3/) <br /> [Reference](postgres-psycopg3-reference/) | 3.2.9 | 2.20 and above |
 | aiopg | [Documentation](aiopg/) | 1.4 | 2.8 and above |
 | YugabyteDB Python Driver for YCQL | [Documentation](ycql/) | [3.25.0](https://github.com/yugabyte/cassandra-python-driver/tree/master) | |
 

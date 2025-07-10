@@ -485,6 +485,23 @@ Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
   return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
 }
 
+class ActiveCompactionToken {
+ public:
+  explicit ActiveCompactionToken(std::atomic<size_t>& counter) : counter_(counter) {
+    ++counter;
+  }
+
+  ~ActiveCompactionToken() {
+    --counter_;
+  }
+
+  ActiveCompactionToken(const ActiveCompactionToken&) = delete;
+  void operator=(const ActiveCompactionToken&) = delete;
+
+ private:
+  std::atomic<size_t>& counter_;
+};
+
 } // namespace
 
 class Tablet::RocksDbListener : public rocksdb::EventListener {
@@ -4584,6 +4601,10 @@ bool Tablet::HasActiveFullCompaction() {
   return HasActiveFullCompactionUnlocked();
 }
 
+bool Tablet::HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
+  return num_active_full_compactions_ != 0;
+}
+
 void Tablet::TriggerPostSplitCompactionIfNeeded() {
   if (PREDICT_FALSE(FLAGS_TEST_skip_post_split_compaction)) {
     LOG(INFO) << "Skipping post split compaction due to FLAGS_TEST_skip_post_split_compaction";
@@ -4617,8 +4638,10 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
         full_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return full_compaction_task_pool_token_->SubmitFunc(
-      std::bind(&Tablet::TriggerManualCompactionSync, this, compaction_reason));
+  auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
+  return full_compaction_task_pool_token_->SubmitFunc([this, token, compaction_reason] {
+    WARN_NOT_OK(TriggerManualCompactionSync(compaction_reason), "Trigger manual compaction failed");
+  });
 }
 
 Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options) {
@@ -4632,7 +4655,8 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& 
         admin_triggered_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
-  return admin_full_compaction_task_pool_token_->SubmitFunc([this, options]() {
+  auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
+  return admin_full_compaction_task_pool_token_->SubmitFunc([this, token, options]() {
     // TODO(vector_index): since full vector index compaction is not optimized and may take a
     // significant amount of time, let's trigger it separately from regular manual compaction.
     // This logic should be revised later.

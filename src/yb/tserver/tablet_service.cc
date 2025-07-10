@@ -232,7 +232,7 @@ DEFINE_UNKNOWN_bool(enable_ysql, true,
     "specified or can be auto-detected). Also each tablet server will start a PostgreSQL "
     "server as a child process.");
 
-DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, yb::kIsDebug,
+DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, true,
     "Response with success when duplicate write request is detected, "
     "if case this request contains read time.");
 
@@ -472,9 +472,8 @@ Status PrintYSQLWriteRequest(
 
 template <class Req>
 void UpdateAshMetadataFrom(const Req* req) {
-  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_ash_metadata()) {
-    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 }
 
@@ -1310,7 +1309,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   TRACE("UpdateTransaction");
 
   if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 
   if (req->state().status() == TransactionStatus::CREATED &&
@@ -1448,7 +1447,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   TRACE("AbortTransaction");
 
   if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 
   UpdateClock(*req, server_->Clock());

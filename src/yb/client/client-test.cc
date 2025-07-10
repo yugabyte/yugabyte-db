@@ -143,6 +143,8 @@ METRIC_DECLARE_counter(rpcs_queue_overflow);
 
 DECLARE_bool(enable_metacache_partial_refresh);
 
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 
@@ -197,6 +199,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
     // Reduce the TS<->Master heartbeat interval
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
+
+    // Skip creating the auto analyze service.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
 
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();

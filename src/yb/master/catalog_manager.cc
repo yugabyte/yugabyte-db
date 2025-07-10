@@ -5195,7 +5195,7 @@ Status CatalogManager::CreateTestEchoService(const LeaderEpoch& epoch) {
 
 Status CatalogManager::CreatePgAutoAnalyzeService(const LeaderEpoch& epoch) {
   static bool pg_auto_analyze_service_created = false;
-  if (pg_auto_analyze_service_created) {
+  if (pg_auto_analyze_service_created || !FLAGS_enable_ysql) {
     return Status::OK();
   }
 

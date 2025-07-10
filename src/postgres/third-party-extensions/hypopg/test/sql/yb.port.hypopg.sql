@@ -31,7 +31,7 @@ SELECT schema_name, table_name, am_name FROM public.hypopg_list_indexes; -- YB: 
 SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
 WHERE e ~ 'Index.*<\d+>lsm_hypo.*'; -- YB: change btree to lsm
 
--- Should use hypothetical index
+-- YB: New cost model (correctly) picks SeqScan + Sort over IndexScan
 SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo ORDER BY id') e
 WHERE e ~ 'Index.*<\d+>lsm_hypo.*'; -- YB: change btree to lsm
 

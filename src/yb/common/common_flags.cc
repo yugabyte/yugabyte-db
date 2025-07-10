@@ -13,6 +13,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
@@ -144,6 +145,8 @@ DEFINE_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
     "This test flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
+DEFINE_validator(enable_object_locking_for_table_locks,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_db_catalog_version_mode));
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They

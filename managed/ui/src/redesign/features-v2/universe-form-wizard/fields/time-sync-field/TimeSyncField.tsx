@@ -1,20 +1,30 @@
 import { FC } from 'react';
+import { toUpper } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
+import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
+import { useQuery } from 'react-query';
+import { ProviderType } from '../../steps/general-settings/dtos';
 
 const { Box } = mui;
 
 interface TimeSyncProps {
   disabled: boolean;
+  provider: ProviderType;
 }
 
 const TIME_SYNC_FIELD = 'useTimeSync';
 
-export const TimeSyncField: FC<TimeSyncProps> = () => {
+export const TimeSyncField: FC<TimeSyncProps> = ({ provider }) => {
   const { control } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation();
+
+  const { data } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
+  const isChronyEnabled = !!data?.find((p) => p?.uuid === provider?.uuid)?.details?.setUpChrony;
+
+  const stringMap = { provider: toUpper(provider?.code) };
 
   return (
     <Box
@@ -26,8 +36,9 @@ export const TimeSyncField: FC<TimeSyncProps> = () => {
       <YBCheckboxField
         name={TIME_SYNC_FIELD}
         control={control}
-        label={'Use AWS time Sync'}
+        label={t('universeForm.instanceConfig.useTimeSync', stringMap)}
         size="large"
+        disabled={isChronyEnabled}
       />
     </Box>
   );

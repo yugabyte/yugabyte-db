@@ -206,8 +206,6 @@ DEFINE_UNKNOWN_int32(xcluster_svc_queue_length, 5000,
              "RPC queue length for the xCluster service");
 TAG_FLAG(xcluster_svc_queue_length, advanced);
 
-DECLARE_bool(ysql_enable_table_mutation_counter);
-
 DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
                         "Whether or not to allow encryption at rest to be enabled. Toggling this "
                         "flag does not turn on or off encryption at rest, but rather allows or "
@@ -265,6 +263,8 @@ TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
     "Delay set catalog version table mode by this many times of heartbeat responses "
     "after tserver starts");
+
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 
 namespace yb::tserver {
 
@@ -541,9 +541,8 @@ Status TabletServer::Init() {
     metrics_snapshotter_.reset(new MetricsSnapshotter(opts_, this));
   }
 
-  if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter)) {
+  if (FLAGS_ysql_enable_auto_analyze_infra)
     pg_table_mutation_count_sender_.reset(new TableMutationCountSender(this));
-  }
 
   if (!FLAGS_enable_ysql) {
     RETURN_NOT_OK(SkipSharedMemoryNegotiation());
@@ -710,20 +709,22 @@ Status TabletServer::RegisterServices() {
         RegisterService(FLAGS_stateful_svc_default_queue_length, std::move(test_echo_service)));
   }
 
-  auto connect_to_pg = [this](const std::string& database_name,
-                              const std::optional<CoarseTimePoint>& deadline) {
-    return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
-                                                  GetSharedMemoryPostgresAuthKey(),
-                                                  deadline).Connect();
-  };
-  auto pg_auto_analyze_service =
-      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
-                                                               connect_to_pg);
-  LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
-            << pg_auto_analyze_service.get();
-  RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
-  RETURN_NOT_OK(
-      RegisterService(FLAGS_stateful_svc_default_queue_length, std::move(pg_auto_analyze_service)));
+  if (FLAGS_ysql_enable_auto_analyze_infra) {
+    auto connect_to_pg = [this](const std::string& database_name,
+                                const std::optional<CoarseTimePoint>& deadline) {
+      return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
+                                                    GetSharedMemoryPostgresAuthKey(),
+                                                    deadline).Connect();
+    };
+    auto pg_auto_analyze_service =
+        std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
+                                                                  connect_to_pg);
+    LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
+              << pg_auto_analyze_service.get();
+    RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
+    RETURN_NOT_OK(RegisterService(FLAGS_stateful_svc_default_queue_length,
+                                  std::move(pg_auto_analyze_service)));
+  }
 
   if (FLAGS_enable_pg_cron) {
     auto pg_cron_leader_service = std::make_unique<stateful_service::PgCronLeaderService>(

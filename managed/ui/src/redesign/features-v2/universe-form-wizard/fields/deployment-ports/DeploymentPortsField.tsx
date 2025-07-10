@@ -9,10 +9,13 @@
  */
 
 import { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useFormContext, FieldPath } from 'react-hook-form';
 import { mui, YBInputField } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+import { YSQLFormSpec, YCQLFormSpec } from '../../steps/database-settings/dtos';
+import { CloudType } from '../../../../helpers/dtos';
 
 const { Box, styled, Typography } = mui;
 
@@ -20,6 +23,10 @@ import { ReactComponent as NextLineIcon } from '../../../../assets/next-line.svg
 
 interface DeploymentPortsProps {
   disabled: boolean;
+  providerCode: string;
+  ysql: YSQLFormSpec;
+  ycql: YCQLFormSpec;
+  enableConnectionPooling?: boolean;
 }
 
 const PortContainer = styled(Box)(({ theme }) => ({
@@ -40,103 +47,97 @@ const PortTitle = styled(Typography)(({ theme }) => ({
   color: '#4E5F6D'
 }));
 
-export const DeploymentPortsField: FC<DeploymentPortsProps> = ({ disabled }) => {
+export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
+  disabled,
+  ysql,
+  ycql,
+  providerCode,
+  enableConnectionPooling
+}) => {
   const { setValue, control } = useFormContext<OtherAdvancedProps>();
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
+  });
 
   const MASTER_PORTS = [
-    { id: 'masterHttpPort', visible: true, disabled: disabled, label: 'Master HTTP Port' },
-    { id: 'masterRpcPort', visible: true, disabled: disabled, label: 'Master RPC Port' }
+    { id: 'masterHttpPort', visible: true, disabled: disabled },
+    { id: 'masterRpcPort', visible: true, disabled: disabled }
   ];
 
   const TSERVER_PORTS = [
-    { id: 'tserverHttpPort', visible: true, disabled: disabled, label: 'T-Server HTTP Port' },
-    { id: 'tserverRpcPort', visible: true, disabled: disabled, label: 'T-Server RPC Port' }
+    { id: 'tserverHttpPort', visible: true, disabled: disabled },
+    { id: 'tserverRpcPort', visible: true, disabled: disabled }
   ];
 
   const YCQL_PORTS = [
     {
       id: 'yqlServerHttpPort',
-      visible: true, //ycqlEnabled,
-      disabled: disabled,
-      label: 'YCQL HTTP Port'
+      visible: ycql.enable,
+      disabled: disabled
     },
     {
       id: 'yqlServerRpcPort',
-      visible: true, //ycqlEnabled,
-      disabled: disabled,
-      label: 'YCQL Port'
+      visible: ycql.enable, //ycqlEnabled,
+      disabled: disabled
     }
   ].filter((ports) => ports.visible);
 
   const YSQL_PORTS = [
-    { id: 'ysqlServerHttpPort', visible: true, disabled: disabled, label: 'YSQL HTTP Port' }, //visible: ysqlEnabled,
+    { id: 'ysqlServerHttpPort', visible: ysql.enable, disabled: disabled }, //visible: ysqlEnabled,
     {
       id: 'ysqlServerRpcPort',
-      visible: true,
-      // visible: ysqlEnabled,
-      disabled: disabled,
-      // disabled: isEditMode || provider?.code == CloudType.kubernetes,
-      // tooltip: (
-      //   <Trans
-      //     i18nKey={'universeForm.advancedConfig.dbRPCPortTooltip'}
-      //     values={{ port: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort }}
-      //   />
-      // ),
-      label: 'YSQL Port'
+      visible: ysql.enable,
+      disabled: providerCode == CloudType.kubernetes
     },
     {
       id: 'internalYsqlServerRpcPort',
-      // visible: ysqlEnabled && connectionPoolingEnabled,
-      // disabled: isEditMode || provider?.code == CloudType.kubernetes,
-      visible: true,
-      disabled: disabled,
-      label: 'Internal YSQL Port'
+      visible: ysql.enable && enableConnectionPooling,
+      disabled: providerCode == CloudType.kubernetes
     }
   ].filter((ports) => ports.visible);
 
   const REDIS_PORTS = [
-    { id: 'redisServerHttpPort', visible: false, disabled: disabled, label: 'Redis HTTP Port' },
-    { id: 'redisServerRpcPort', visible: false, disabled: disabled, label: 'Redis HTTP Port' }
+    { id: 'redisServerHttpPort', visible: false, disabled: disabled },
+    { id: 'redisServerRpcPort', visible: false, disabled: disabled }
   ];
 
   const OTHER_PORTS = [
-    { id: 'nodeExporterPort', visible: true, disabled: disabled, label: 'Node Exporter Port' }, //visible: provider?.code !== CloudType.onprem,
+    { id: 'nodeExporterPort', visible: providerCode !== CloudType.onprem, disabled: disabled }, //visible: provider?.code !== CloudType.onprem,
     {
       id: 'ybControllerrRpcPort',
       visible: true,
-      disabled: disabled,
-      label: 'YB Controller RPC Port'
+      disabled: disabled
     }
   ];
 
   const PORT_GROUPS = [
     {
-      name: 'Master Server',
+      name: t('masterGroup'),
       PORTS_LIST: MASTER_PORTS,
       visible: MASTER_PORTS.length > 0
     },
     {
-      name: 'T-Server',
+      name: t('tServerGroup'),
       PORTS_LIST: TSERVER_PORTS,
       visible: TSERVER_PORTS.length > 0
     },
     {
-      name: 'YSQL',
+      name: t('ysqlGroup'),
       PORTS_LIST: YSQL_PORTS,
       visible: YSQL_PORTS.length > 0
     },
     {
-      name: 'YCQL',
+      name: t('ycqlGroup'),
       PORTS_LIST: YCQL_PORTS,
       visible: YCQL_PORTS.length > 0
     },
     {
-      name: 'Redis',
+      name: t('redisGroup'),
       PORTS_LIST: REDIS_PORTS,
       visible: REDIS_PORTS.length > 0
     },
     {
-      name: 'Others',
+      name: t('othersGroup'),
       PORTS_LIST: OTHER_PORTS,
       visible: OTHER_PORTS.length > 0
     }
@@ -158,7 +159,7 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({ disabled }) => 
                     <YBInputField
                       name={port.id as FieldPath<OtherAdvancedProps>}
                       control={control}
-                      label={port.label}
+                      label={t(port.id)}
                       defaultValue={Number(DEFAULT_COMMUNICATION_PORTS[port.id])}
                       helperText={'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[port.id])}
                       sx={{ width: '180px' }}
