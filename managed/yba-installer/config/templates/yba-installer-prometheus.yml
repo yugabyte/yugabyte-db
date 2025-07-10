@@ -59,6 +59,14 @@
           - files:
             - '{{ .DataDir }}/swamper_targets/node-agent.*.json'
 
+      - job_name: 'otel-collector'
+        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        scheme: {{ yamlPath "prometheus.scrapeConfig.otel-collector.scheme" }}
+        metrics_path: "/metrics"
+        file_sd_configs:
+          - files:
+              - '{{ .DataDir }}/swamper_targets/otel.*.json'
+
       - job_name: "node"
         scheme: {{ yamlPath "prometheus.scrapeConfig.node.scheme" }}
         file_sd_configs:

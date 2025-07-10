@@ -69,6 +69,9 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
                 mastersAndTservers.getForCluster(curCluster.uuid).tserversList);
           }
           updateAndPersistAuditLoggingConfigTask();
+
+          // Update the swamper target file.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 
