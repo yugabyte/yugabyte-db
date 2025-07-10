@@ -747,6 +747,47 @@ MemoryContextStatsDetail(MemoryContext context, int max_children,
 								 grand_totals.totalspace, grand_totals.nblocks,
 								 grand_totals.freespace, grand_totals.freechunks,
 								 grand_totals.totalspace - grand_totals.freespace)));
+
+	if (IsYugaByteEnabled())
+	{
+		YbTcmallocStats tcmallocStats;
+
+		YBCGetHeapConsumption(&tcmallocStats);
+
+		const char *labels[] = {
+			"YB TCMalloc heap size bytes: %lld",
+			"YB TCMalloc total physical bytes: %lld",
+			"YB TCMalloc current allocated bytes: %lld",
+			"YB TCMalloc pageheap free bytes: %lld",
+			"YB TCMalloc pageheap unmapped bytes: %lld",
+			"YB PGGate bytes: %lld"
+		};
+
+		int64_t values[] = {
+			tcmallocStats.heap_size_bytes,
+			tcmallocStats.total_physical_bytes,
+			tcmallocStats.current_allocated_bytes,
+			tcmallocStats.pageheap_free_bytes,
+			tcmallocStats.pageheap_unmapped_bytes,
+			(tcmallocStats.current_allocated_bytes - PgMemTracker.pg_cur_mem_bytes)
+		};
+
+		for (int i = 0; i < sizeof(labels) / sizeof(labels[0]); i++)
+		{
+			if (print_to_stderr)
+			{
+				fprintf(stderr, labels[i], values[i]);
+				fprintf(stderr, "\n");
+			}
+			else
+			{
+				ereport(LOG_SERVER_ONLY,
+						(errhidestmt(true),
+						 errhidecontext(true),
+						 errmsg_internal(labels[i], values[i])));
+			}
+		}
+	}
 }
 
 /*
