@@ -95,7 +95,7 @@ UPDATE ONLY accounts SET balance = balance + 100 WHERE account_id = 1;
 
 ## Limitations
 
-Table inheritance is {{<tags/feature/tp idea="2158">}} - report any problems at using issue {{<issue 27949>}}.
+Table inheritance is {{<tags/feature/tp idea="2158">}} - report any problems using issue {{<issue 27949>}}.
 
 - Dropping or adding a column to a parent fails when "local" column on child table exists. (Issue {{<issue 26094>}})
 - Crash while obtaining a row lock on a parent inheritance table with a child file_fdw table. (Issue {{<issue 27105>}})
