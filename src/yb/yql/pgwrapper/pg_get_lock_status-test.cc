@@ -721,6 +721,15 @@ TEST_F(PgGetLockStatusTest, ReceivesWaiterSubtransactionId) {
 
   ASSERT_OK(blocker_session.conn->CommitTransaction());
 
+  // Make sure the lock is released and shows up in pg_locks.
+  ASSERT_OK(WaitFor([&] {
+      auto count = CHECK_RESULT(blocker_session.conn->FetchRow<int64>(Format(
+          "SELECT COUNT(DISTINCT(ybdetails->>'subtransaction_id')) FROM pg_locks WHERE granted "
+          "AND ybdetails->>'subtransaction_id' != '1' AND ybdetails->>'transactionid'='$0'",
+          waiter.txn_id.ToString())));
+      return count == 1;
+    }, 3s * kTimeMultiplier, "Timed out waiting for lock to be released"));
+
   auto granted_subtxn_id = ASSERT_RESULT(blocker_session.conn->FetchRow<string>(Format(
     "SELECT DISTINCT(ybdetails->>'subtransaction_id') FROM pg_locks "
     "WHERE ybdetails->>'subtransaction_id' != '1' AND ybdetails->>'transactionid'='$0' AND granted",
