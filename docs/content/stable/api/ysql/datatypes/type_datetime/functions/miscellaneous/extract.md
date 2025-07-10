@@ -82,7 +82,7 @@ Three rows were removed manually:
 The remaining rows were re-ordered, and blank lines were added, to improve the readability.
 
 {{< tip title="Avoid using the 'abstime' and 'reltime' fields." >}}
-The [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) says this:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/15/datatype-datetime.html#DATATYPE-DATETIME-TABLE) says this:
 
 > The data types _abstime_ and _reltime_ are lower precision types which are used internally. Don't use these types in applications; these internal types might disappear in a future release.
 {{< /tip >}}
@@ -171,7 +171,7 @@ You can see that, in the normal way, the extracted value for the _months_ field 
 | _week_ | The number of the week of the year using the ISO 8601 week-numbering scheme. By definition, ISO weeks start on Mondays and the first week of a year contains 4-January of that year. In other words, the first Thursday of a year is in week 1 of that year. In the ISO week-numbering system, it is possible for early-January dates to be part of the 52nd or 53rd week of the previous year, and for late-December dates to be part of the first week of the next year. For example, _2005-01-01_ is part of the 53rd week of _2004_, and _2006-01-01_ is part of the 52nd week of _2005_, while _2012-12-31_ is part of the first week of _2013_. Use the _isoyear_ field together with the _week_ field to get consistent results. See the example immediately after this table. |
 | _isoyear_ | The ISO 8601 week-numbering year that the date falls in (not applicable to intervals). |
 | _epoch_ | For _timestamptz_ values, the result is the number of seconds since _1970-01-01 00:00:00 UTC_ (negative for values before that moment); and for _date_ and plain _timestamp_ values, the result is the number of seconds since _1970-01-01 00:00:00_. See the [demonstration](../../../date-time-data-types-semantics/type-timestamp/#the-demonstration) subsection and the discussion the parcedes it on the [plain _timestamp_ and _timestamptz_ data types](../../../date-time-data-types-semantics/type-timestamp/) page. For interval values, the result is the total number of seconds in the interval. See [The extract(epoch from interval_value) built-in function](../../../date-time-data-types-semantics/type-interval/justfy-and-extract-epoch/#the-extract-epoch-from-interval-value-built-in-function). Notice that the result of _extract(epoch from ...)_ is never sensitive to the session's timezone setting. |
-| _julian_ | The Julian Date corresponding to the _date_ or _timestamp[tz]_ value (not supported for _interval_ values). _timestamp[tz]_ values that are not local midnight result in a fractional value. See [Appendix B.7. Julian Dates](https://www.postgresql.org/docs/11/datetime-julian-dates.html) in the PostgreSQL documentation. |
+| _julian_ | The Julian Date corresponding to the _date_ or _timestamp[tz]_ value (not supported for _interval_ values). _timestamp[tz]_ values that are not local midnight result in a fractional value. See [Appendix B.7. Julian Dates](https://www.postgresql.org/docs/15/datetime-julian-dates.html) in the PostgreSQL documentation. |
 
 Demonstrate the recommended joint use of _isoyear_ and _week_ thus:
 

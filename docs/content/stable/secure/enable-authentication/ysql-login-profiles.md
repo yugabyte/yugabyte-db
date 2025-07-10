@@ -207,9 +207,9 @@ yugabyte=# \dgP
   - YbTserverKey
   - Peer
 
-  For more information on these authentication methods, refer to [Client Authentication](https://www.postgresql.org/docs/11/client-authentication.html) in the PostgreSQL documentation.
+  For more information on these authentication methods, refer to [Client Authentication](https://www.postgresql.org/docs/15/client-authentication.html) in the PostgreSQL documentation.
 
-- If the cluster SSL mode is `allow` or `prefer`, a single user login attempt can trigger two failed login attempts. For more information on SSL modes in PostgreSQL, refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation.
+- If the cluster SSL mode is `allow` or `prefer`, a single user login attempt can trigger two failed login attempts. For more information on SSL modes in PostgreSQL, refer to [SSL Support](https://www.postgresql.org/docs/15/libpq-ssl.html) in the PostgreSQL documentation.
 - The `\h` and `\dg` meta commands do not currently provide information about PROFILE and ROLE PROFILE catalog objects.
 
 Enhancements to login profiles are tracked in GitHub issue [#15676](https://github.com/yugabyte/yugabyte-db/issues/15676).

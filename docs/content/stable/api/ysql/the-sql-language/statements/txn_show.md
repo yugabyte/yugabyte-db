@@ -23,7 +23,7 @@ Use the `SHOW TRANSACTION ISOLATION LEVEL` statement to show the current transac
 
 ## Semantics
 
-Supports Serializable, Snapshot, and Read Committed {{<tags/feature/ea idea="1099">}} Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
+Supports Serializable, Snapshot, and Read Committed {{<tags/feature/ea>}} Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
 
 Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
@@ -31,7 +31,7 @@ Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_rea
 
 Show the current transaction isolation level.
 
-The `TRANSACTION ISOLATION LEVEL` returned is either `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, or `READ UNCOMMITTED`.
+The `TRANSACTION ISOLATION LEVEL` returned is either `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED` or `READ UNCOMMITTED`.
 
 ## See also
 

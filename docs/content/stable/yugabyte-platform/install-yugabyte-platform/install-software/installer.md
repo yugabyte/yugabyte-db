@@ -66,9 +66,9 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-    cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+    tar -xf yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+    cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
     ```
 
 1. Using sudo, run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
@@ -96,9 +96,9 @@ For more detailed installation instructions and information on how to use YBA In
 Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+tar -xf yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
 ```
 
 This bundle provides everything needed (except your license), to complete a fresh install of YBA:
@@ -203,7 +203,7 @@ Services:
   Systemd service |       Version |  Port |                            Log File Locations |  Running Status |
          postgres |         10.23 |  5432 |          /opt/yugabyte/data/logs/postgres.log |         Running |
        prometheus |        2.42.0 |  9090 |  /opt/yugabyte/data/prometheus/prometheus.log |         Running |
-      yb-platform |  {{<yb-version version="stable" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
+      yb-platform |  {{<yb-version version="preview" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 ```
 
@@ -312,7 +312,7 @@ Services:
   Systemd service |       Version |  Port |                            Log File Locations |  Running Status |
          postgres |         10.23 |  5432 |          /opt/yugabyte/data/logs/postgres.log |         Running |
        prometheus |        2.42.0 |  9090 |  /opt/yugabyte/data/prometheus/prometheus.log |         Running |
-      yb-platform |  {{<yb-version version="stable" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
+      yb-platform |  {{<yb-version version="preview" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 ```
 
 ### Upgrade
@@ -417,7 +417,7 @@ FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 
 ## Non-sudo installation
 
-{{<tags/feature/ea idea="1521">}}YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
+{{<tags/feature/ea>}}YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
 
 To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The target location for the installation defaults to the current user's home directory, instead of `/opt`, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 

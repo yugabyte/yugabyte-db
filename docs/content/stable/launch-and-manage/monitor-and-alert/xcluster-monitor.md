@@ -202,6 +202,10 @@ You can access the YB-Master and YB-Tserver UIs to monitor the health of xCluste
 <http://127.0.0.1:9000/xcluster>:
 ![Source YB-Tserver inbound](/images/deploy/xcluster/tserver-outbound.jpg)
 
+**YB-Tserver target**
+
+<http://127.0.0.1:9000/xcluster>
+
 ## Advanced troubleshooting
 
 For advanced troubleshooting, refer to the [Troubleshooting xCluster Replication](https://support.yugabyte.com/hc/en-us/articles/29809348650381-How-to-troubleshoot-xCluster-replication-lag-and-errors) guide.

@@ -134,12 +134,12 @@ $ helm repo update
 Validate that you have the updated Chart version.
 
 ```sh
-$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 ```output
 NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -253,21 +253,21 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-central1-a yugabytedb/yugabyte \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-a \
  -f overrides-us-central1-a.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-b \
  -f overrides-us-central1-b.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-c yugabytedb/yugabyte \
- --version {{<yb-version version="stable" format="short">}} \
+ --version {{<yb-version version="preview" format="short">}} \
  --namespace yb-demo-us-central1-c \
  -f overrides-us-central1-c.yaml --wait
 ```
@@ -339,14 +339,14 @@ To see the new configuration, go to `http://<external-ip>:7000/cluster-config` t
 
 ## 5. Connect using YugabyteDB shells
 
-To connect and use the YSQL Shell (`ysqlsh`), run the following command.
+To connect and use the YSQL Shell (ysqlsh), run the following command.
 
 ```sh
 $ kubectl exec -n yb-demo-us-central1-a -it yb-tserver-0 -- ysqlsh \
   -h yb-tserver-0.yb-tservers.yb-demo-us-central1-a
 ```
 
-To open the YCQL Shell (`ycqlsh`), run the following command:
+To open the YCQL Shell (ycqlsh), run the following command:
 
 ```sh
 $ kubectl exec -n yb-demo-us-central1-a -it yb-tserver-0 -- ycqlsh \

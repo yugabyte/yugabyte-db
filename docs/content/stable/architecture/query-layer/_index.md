@@ -83,3 +83,28 @@ As the executor requests rows from each node, that node fetches or computes the 
 This process continues recursively until the top node has received all the rows it needs to produce the final result. For a SELECT query, these final rows are sent to the client. For data modification queries like INSERT, UPDATE, or DELETE, the rows are used to make the requested changes in the database tables.
 
 The executor is designed to efficiently pull rows through the pipeline defined by the plan tree, processing rows in batches where possible for better performance.
+
+### Optimizations
+
+- **Incremental sort**. If an intermediate query result is known to be sorted by one or more leading keys of a required sort ordering, the additional sorting can be done considering only the remaining keys, if the rows are sorted in batches that have equal leading keys.
+
+- **Memoize results**. When only a small percentage of rows is checked on the inner side of a nested-loop join, the executor memoizes the results for improving performance.
+
+- **Disk-based hash aggregation**. Hash-based operations are generally more sensitive to memory availability and are highly efficient as long as the hash table fits within the memory specified by the work_mem parameter. When the hash table grows beyond the `work_mem` limit, the planner transitions to a disk-based hash aggregation plan. This avoids overloading memory and ensures that large datasets can be handled efficiently.
+
+## Query ID
+
+In YSQL, to provide a consistent way to track and identify specific queries across different parts of the system such as logs, performance statistics, and EXPLAIN plans, a unique identifier is generated for each query processed. The query ID is effectively a hash value based on the normalized form of the SQL query. This normalization process removes insignificant whitespace and converts literal values to placeholders, ensuring that semantically identical queries have the same ID. This provides the following benefits:
+
+- By providing a unique identifier for each query, it becomes much easier to analyze query performance and identify problematic queries.
+- Including query IDs in logs and performance statistics enables more detailed and accurate monitoring of database activity.
+- The EXPLAIN command, which shows the execution plan for a query, can also display the query ID. This helps to link the execution plan with the actual query execution statistics.
+- The pg_stat_statements extension (which is installed by default in YugabyteDB) can accurately track and report statistics even for queries with varying literal values (for example, different WHERE clause parameters). This makes it much easier to identify performance bottlenecks caused by specific query patterns.
+
+Generation of this unique query ID is controlled using the `compute_query_id` setting, which can have the following values:
+
+- on - Always compute query IDs.
+- off - Never compute query IDs.
+- auto (the default) - Automatically compute query IDs when needed, such as when pg_stat_statements is enabled (pg_stat_statements is enabled by default).
+
+You should enable `compute_query_id` to fully realize its benefits for monitoring and performance analysis.

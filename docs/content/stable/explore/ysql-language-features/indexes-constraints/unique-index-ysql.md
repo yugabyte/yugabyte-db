@@ -19,27 +19,14 @@ When a unique index is applied to two or more columns, the combined values in th
 ## Syntax
 
 ```sql
-CREATE UNIQUE INDEX index_name ON table_name(column_list);
+CREATE UNIQUE INDEX index_name ON table_name(column_list)  [ NULLS [ NOT ] DISTINCT ];
 ```
+
+When creating an unique index, by default, null values are not considered equal, allowing multiple nulls in the column. The NULLS NOT DISTINCT option modifies this and causes the index to treat nulls as equal.
 
 ## Setup
 
-The examples run on any YugabyteDB universe.
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
+{{% explore-setup-single-new %}}
 
 This example uses the `categories` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
 

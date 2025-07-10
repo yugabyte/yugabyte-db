@@ -32,7 +32,7 @@ The columns of the `yb_local_tablets` view are described in the following table.
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh).
 

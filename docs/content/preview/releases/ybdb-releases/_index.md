@@ -15,6 +15,7 @@ cascade:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2025.1](v2025.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2025.1" release >}} | {{< yb-eol-dates "v2025.1" EOM >}} | {{< yb-eol-dates "v2025.1" EOL >}} |
 | [v2.25](v2.25/) {{<tags/release/preview>}} | {{< yb-eol-dates "v2.25" release >}} | No support | n/a |
 | [v2024.2](v2024.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2024.2" release >}} | {{< yb-eol-dates "v2024.2" EOM >}} | {{< yb-eol-dates "v2024.2" EOL >}} |
 | [v2024.1](v2024.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2024.1" release >}} | {{< yb-eol-dates "v2024.1" EOM >}} | {{< yb-eol-dates "v2024.1" EOL >}} |

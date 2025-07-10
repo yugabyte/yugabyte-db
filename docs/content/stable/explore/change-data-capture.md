@@ -24,7 +24,7 @@ In databases, change data capture (CDC) is a set of software design patterns use
 
 - Compliance and auditing - Satisfy auditing and compliance requirements using CDC to maintain records of data changes.
 
-YugabyteDB's CDC implementation uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model, where publications (source tables) send changes to subscribers (target systems).
+YugabyteDB's CDC implementation uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/15/logical-replication.html), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model, where publications (source tables) send changes to subscribers (target systems).
 
 CDC via logical replication is supported in YugabyteDB starting from v2024.1.1.
 
@@ -110,7 +110,7 @@ Open a new shell and start pg_recvlogical to connect to the `yugabyte` database 
 
 Any changes that get replicated are printed to stdout.
 
-For more information about pg_recvlogical configuration, refer to the PostgreSQL [pg_recvlogical](https://www.postgresql.org/docs/11/app-pgrecvlogical.html) documentation.
+For more information about pg_recvlogical configuration, refer to the PostgreSQL [pg_recvlogical](https://www.postgresql.org/docs/15/app-pgrecvlogical.html) documentation.
 
 ### Verify replication
 
@@ -183,7 +183,7 @@ CREATE TABLE test (id INT PRIMARY KEY);
 Create a logical replication slot with the output plugin `test_decoding` and LSN type `HYBRID_TIME` using the following:
 
 ```sql
-SELECT * FROM pg_create_logical_replication_slot('test_logical_replication_slot', 'test_decoding', false, 'HYBRID_TIME');
+SELECT * FROM pg_create_logical_replication_slot('test_logical_replication_slot', 'test_decoding', false, false, 'HYBRID_TIME');
 ```
 
 ```output

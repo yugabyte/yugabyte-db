@@ -67,25 +67,25 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     To search for the available chart version, run the following command:
 
     ```sh
-    helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
+    helm search repo yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}}
     ```
 
     The latest Helm chart version and application version is displayed via the output similar to the following:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugaware {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
+    yugabytedb/yugaware {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugaWare is YugaByte Database's Orchestration a...
     ```
 
 1. Run the following `helm install` command to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version {{<yb-version version="preview" format="short">}} -n yb-platform --wait
     ```
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
 
-    To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator {{<tags/feature/ea idea="831">}}, see [Use YugabyteDB Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
+    To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, see [Use YugabyteDB Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
 
 1. Use the following command to check the service:
 
@@ -133,7 +133,7 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
 
 ```sh
 helm install yw-test yugabytedb/yugaware \
-  --version {{<yb-version version="stable" format="short">}} \
+  --version {{<yb-version version="preview" format="short">}} \
   -n yb-platform \
   --values yba-values.yaml \
   --wait
@@ -145,7 +145,7 @@ If you are looking for a customization which is not listed, you can view all the
 
 ### Use YugabyteDB Kubernetes Operator to automate YBA deployments
 
-The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<tags/feature/ea idea="831">}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
+The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
 
 Note that for YugabyteDB Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
 
@@ -162,7 +162,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
     ```sh
     # Modify the fields kubernetesOperatorNamespace and defaultUser username, email and password fields as required
     helm install yba yugabytedb/yugaware \
-      --version {{< yb-version version="stable" format="short">}} \
+      --version {{< yb-version version="preview" format="short">}} \
       --namespace yb-platform \
       --set yugaware.kubernetesOperatorEnabled=true \
       --set yugaware.kubernetesOperatorNamespace='yb-platform-test' \
@@ -193,7 +193,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
       enableNodeToNodeEncrypt: true
       enableClientToNodeEncrypt: true
       enableLoadBalancer: true
-      ybSoftwareVersion: "{{< yb-version version="stable" format="build">}}" <- This will be the YBA  version
+      ybSoftwareVersion: "{{< yb-version version="preview" format="build">}}" <- This will be the YBA  version
       enableYSQLAuth: false
       enableYCQL: true
       enableYCQLAuth: false
@@ -220,7 +220,7 @@ To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Op
 
     ```output
     NAME        STATE   SOFTWARE VERSION
-    demo-test   Ready   {{< yb-version version="stable" format="build">}}
+    demo-test   Ready   {{< yb-version version="preview" format="build">}}
     ```
 
 For more details, see [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
