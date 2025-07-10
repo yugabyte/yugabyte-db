@@ -275,7 +275,7 @@ spec:
 
 #### Scheduled backups
 
-This feature is {{<tags/feature/ea>}}. Backup schedules support taking full backups based on cron expressions or specified frequencies. They also allow you to configure incremental backups to run in between these full backups, providing finer-grained recovery points.
+This feature is {{<tags/feature/ea idea="1448">}}. Backup schedules support taking full backups based on cron expressions or specified frequencies. They also allow you to configure incremental backups to run in between these full backups, providing finer-grained recovery points.
 
 When an operator schedule triggers a backup, a corresponding CR is automatically created for that specific backup. The operator names this CR appropriately, and marks it with "ignore-reconciler-add".
 
@@ -416,7 +416,7 @@ No resources found in schedule-cr namespace.
 
 #### Incremental backups
 
-{{<tags/feature/ea>}}Use backup schedules to schedule full backups at specific intervals or using a cron expression. You can also configure incremental backups to run in between these full backups, providing finer-grained recovery points.
+{{<tags/feature/ea idea="1448">}}Use backup schedules to schedule full backups at specific intervals or using a cron expression. You can also configure incremental backups to run in between these full backups, providing finer-grained recovery points.
 
 This functionality creates a chain of references for your backups. Each incremental backup CR references its preceding backup in the chain, whether a full or another incremental backup. This chain always leads back to the initial full backup.
 
