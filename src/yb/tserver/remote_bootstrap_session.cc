@@ -559,7 +559,7 @@ Status RemoteBootstrapSession::ReadSuperblockFromDisk(tablet::RaftGroupReplicaSu
 }
 
 Result<tablet::TabletPtr> RemoteBootstrapSession::GetRunningTablet() {
-  auto tablet = tablet_peer_->shared_tablet();
+  auto tablet = tablet_peer_->shared_tablet_maybe_null();
   if (PREDICT_FALSE(!tablet)) {
     return STATUS(IllegalState, "Tablet is not running");
   }

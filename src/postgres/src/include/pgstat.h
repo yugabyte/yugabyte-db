@@ -552,8 +552,9 @@ typedef struct LocalPgBackendStatus
 	 */
 	TransactionId backend_xmin;
 
-	/* Backend's RSS memory usage */
+	/* Backend's memory usage */
 	int64_t		yb_backend_rss_mem_bytes;
+	int64_t		yb_backend_pss_mem_bytes;
 } LocalPgBackendStatus;
 
 #endif

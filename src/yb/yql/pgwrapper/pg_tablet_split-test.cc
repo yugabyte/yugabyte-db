@@ -190,7 +190,7 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
   Status WaitForIntentsAppliedAndFlush(tablet::TabletPeer* peer) {
     SCHECK_NOTNULL(peer);
     RETURN_NOT_OK(WaitForTableIntentsApplied(cluster_.get(), peer->tablet_metadata()->table_id()));
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     SCHECK_NOTNULL(tablet);
     return tablet->Flush(tablet::FlushMode::kSync);
   }
@@ -264,7 +264,8 @@ TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) 
   const auto& parent_peer = peers[0];
 
   ASSERT_OK(WaitForAnySstFiles(parent_peer));
-  const auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
+  auto tablet = ASSERT_RESULT(parent_peer->shared_tablet());
+  const auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
   const auto doc_key_hash = ASSERT_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
 
   ASSERT_OK(SplitSingleTablet(table_id));
@@ -517,7 +518,8 @@ TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
   ASSERT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
 
   // Have to make a low-level direct call of split middle key to verify an error.
-  auto result = peer->tablet()->GetEncodedMiddleSplitKey();
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  auto result = tablet->GetEncodedMiddleSplitKey();
   ASSERT_NOK(result);
   ASSERT_EQ(
       tserver::TabletServerError(result.status()),
@@ -613,7 +615,7 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   // Such limit will allow to compact [#1, #2] into one file as well as [#5, #6] into a different
   // single file. The order of files in the collection is preserved and sorted in accordance with
   // with the record age, form the newest to oldest files.
-  auto parent_tablet = peers.front()->shared_tablet();
+  auto parent_tablet = peers.front()->shared_tablet_maybe_null();
   const auto parent_files = parent_tablet->regular_db()->GetLiveFilesMetaData();
   const auto input_limit  = ASSERT_RESULT([&parent_files]() -> Result<uint64_t> {
     SCHECK_EQ(6, parent_files.size(), IllegalState, "");
@@ -654,7 +656,7 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   ASSERT_EQ(2, peers.size());
   uint64_t child_latest_file_id = 0;
   for (const auto& peer : peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     ASSERT_OK(WaitForIntentsAppliedAndFlush(peer.get()));
 
     // Sometime even sync flush is ended a bit earlier the version storage sees a new file. The
@@ -694,8 +696,9 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
     // 2) We expect at least one job.
     ASSERT_FALSE(jobs.second.empty());
     // Get type of DB.
-    bool is_intents = (jobs.first == peers.front()->shared_tablet()->intents_db() ||
-                       jobs.first == peers.back()->shared_tablet()->intents_db());
+    bool is_intents =
+        (jobs.first == ASSERT_RESULT(peers.front()->shared_tablet())->intents_db() ||
+         jobs.first == ASSERT_RESULT(peers.back()->shared_tablet())->intents_db());
     // 3) For intents we expect one empty job.
     if (is_intents) {
       ASSERT_EQ(1, jobs.second.size());
@@ -726,7 +729,7 @@ TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
   // preserved, where file with newer data but with smaller number should still be sorted to the
   // front of the collection.
   for (const auto& peer : peers) {
-    const auto files = peer->shared_tablet()->regular_db()->GetLiveFilesMetaData();
+    const auto files = ASSERT_RESULT(peer->shared_tablet())->regular_db()->GetLiveFilesMetaData();
     ASSERT_EQ(5, files.size());
     for (size_t n = 0; n < files.size(); ++n) {
       if (n == 0) {
@@ -828,8 +831,8 @@ class PgPartitioningVersionTest :
               Format("Expected to have 1 peer only, got {0}", peers.size()));
 
     auto peer = peers.front();
-    auto partitioning_version =
-        peer->tablet()->schema()->table_properties().partitioning_version();
+    auto tablet = VERIFY_RESULT(peer->shared_tablet());
+    auto partitioning_version = tablet->schema()->table_properties().partitioning_version();
     SCHECK_EQ(expected_partitioning_version, partitioning_version, IllegalState,
               Format("Unexpected paritioning version {0} vs {1}",
                       expected_partitioning_version, partitioning_version));
@@ -843,7 +846,11 @@ class PgPartitioningVersionTest :
       const std::vector<tablet::TabletPeerPtr>& peers) {
     TabletRecordsInfo result;
     for (const auto& peer : peers) {
-      auto db = peer->tablet()->doc_db();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto db = tablet->doc_db();
       ssize_t num_records = 0;
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
@@ -930,7 +937,11 @@ class PgPartitioningVersionTest :
     std::unordered_map<std::string, PartitionBounds> table_partitions;
     for (auto peer : peers) {
       // Make sure range partitioning is used.
-      const auto meta = peer->tablet()->metadata();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      const auto meta = tablet->metadata();
       SCHECK(meta->partition_schema()->IsRangePartitioning(), IllegalState,
              "Range partitioning is expected.");
 
@@ -1000,8 +1011,8 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
     ASSERT_EQ(1, peers.size());
 
     auto peer = peers.front();
-    auto partitioning_version =
-        peer->tablet()->schema()->table_properties().partitioning_version();
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto partitioning_version = tablet->schema()->table_properties().partitioning_version();
     ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
     // Make sure SST files appear to be able to split
@@ -1070,17 +1081,16 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       auto tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
       ASSERT_EQ(1, tablets.size());
       auto parent_peer = tablets.front();
-      const auto partitioning_version =
-          parent_peer->tablet()->schema()->table_properties().partitioning_version();
+      auto tablet = ASSERT_RESULT(parent_peer->shared_tablet());
+      const auto partitioning_version = tablet->schema()->table_properties().partitioning_version();
       ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
       // Make sure SST files appear to be able to split
       ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
       // Keep split key to check future writes are done to the correct tablet for unique index idx1.
-      const auto encoded_split_key =
-         ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
-      ASSERT_TRUE(parent_peer->tablet()->metadata()->partition_schema()->IsRangePartitioning());
+      const auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+      ASSERT_TRUE(tablet->metadata()->partition_schema()->IsRangePartitioning());
       dockv::SubDocKey split_key;
       ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
       LOG(INFO) << "Split key: " << AsString(split_key);
@@ -1175,16 +1185,16 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     ASSERT_EQ(1, tablets.size());
 
     auto parent_peer = tablets.front();
-    auto partitioning_version =
-        parent_peer->tablet()->schema()->table_properties().partitioning_version();
+    auto tablet = ASSERT_RESULT(parent_peer->shared_tablet());
+    auto partitioning_version = tablet->schema()->table_properties().partitioning_version();
     ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
     // Make sure SST files appear to be able to split
     ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
     // Keep split key to check future writes are done to the correct tablet for unique index idx1.
-    auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
-    ASSERT_TRUE(parent_peer->tablet()->metadata()->partition_schema()->IsRangePartitioning());
+    auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+    ASSERT_TRUE(tablet->metadata()->partition_schema()->IsRangePartitioning());
     dockv::SubDocKey split_key;
     ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
     LOG(INFO) << "Split key: " << AsString(split_key);

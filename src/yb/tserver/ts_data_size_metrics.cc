@@ -62,7 +62,7 @@ void TsDataSizeMetrics::Update() {
   InodeMap inode_map;
   auto tablet_peers = tablet_manager_->GetTabletPeers();
   for (const auto& tablet_peer : tablet_peers) {
-    auto shared_tablet = tablet_peer->shared_tablet();
+    auto shared_tablet = tablet_peer->shared_tablet_maybe_null();
     if (shared_tablet == nullptr) continue;
 
     // Count RegularDB, IntentsDB, and WAL files as active if and only if the tablet is not hidden.

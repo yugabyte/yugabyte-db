@@ -479,10 +479,12 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       for (size_t j = 0; j != source_infos.size(); ++j) {
         auto source_peer = tablet_manager->LookupTablet(source_infos[j]->id());
         EXPECT_NE(nullptr, source_peer);
-        auto source_dir = source_peer->tablet()->metadata()->rocksdb_dir();
+        auto source_tablet = VERIFY_RESULT(source_peer->shared_tablet());
+        auto source_dir = source_tablet->metadata()->rocksdb_dir();
         auto dest_peer = tablet_manager->LookupTablet(dest_infos[j]->id());
         EXPECT_NE(nullptr, dest_peer);
-        auto status = dest_peer->tablet()->ImportData(source_dir);
+        auto dest_tablet = VERIFY_RESULT(dest_peer->shared_tablet());
+        auto status = dest_tablet->ImportData(source_dir);
         if (!status.ok() && !status.IsNotFound()) {
           return status;
         }
@@ -539,7 +541,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     std::vector<std::shared_ptr<tablet::Tablet>> shared_tablets;
     {
       for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-        shared_tablets.push_back(peer->shared_tablet());
+        shared_tablets.push_back(peer->shared_tablet_maybe_null());
       }
     }
 
@@ -830,7 +832,11 @@ TEST_F(QLTabletTest, WaitFlush) {
   auto deadline = CoarseMonoClock::Now() + 20s * kTimeMultiplier;
   while (CoarseMonoClock::Now() <= deadline) {
     for (const auto& peer : peers) {
-      auto flushed_op_id = ASSERT_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto flushed_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
       auto latest_entry_op_id = peer->log()->GetLatestEntryOpId();
       ASSERT_LE(flushed_op_id.index, latest_entry_op_id.index);
     }
@@ -838,7 +844,11 @@ TEST_F(QLTabletTest, WaitFlush) {
   }
 
   for (const auto& peer : peers) {
-    auto flushed_op_id = ASSERT_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto flushed_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId()).regular;
     ASSERT_GE(flushed_op_id.index, 100);
   }
 
@@ -897,7 +907,8 @@ TEST_F(QLTabletTest, BoundaryValues) {
     ASSERT_EQ(1, peers.size());
     auto& peer = *peers[0];
     auto op_id = peer.log()->GetLatestEntryOpId();
-    auto* db = peer.tablet()->regular_db();
+    auto tablet = ASSERT_RESULT(peer.shared_tablet());
+    auto* db = tablet->regular_db();
     int64_t max_index = 0;
     int64_t min_index = std::numeric_limits<int64_t>::max();
     for (const auto& file : db->GetLiveFilesMetaData()) {
@@ -1141,13 +1152,14 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
     LOG(INFO) << "Leader: " << peers[0]->permanent_uuid();
     int stop_key = 0;
     for (;;) {
-      auto meta = peers[0]->tablet()->regular_db()->GetLiveFilesMetaData();
+      auto tablet = ASSERT_RESULT(peers[0]->shared_tablet());
+      auto meta = tablet->regular_db()->GetLiveFilesMetaData();
       LOG(INFO) << "Total files: " << meta.size();
 
       ++key;
       SetValue(session, key, ValueForKey(key), table1_);
       if (meta.size() <= original_rocksdb_level0_stop_writes_trigger) {
-        ASSERT_OK(peers[0]->tablet()->Flush(tablet::FlushMode::kSync));
+        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
         stop_key = key + 10;
       } else if (key >= stop_key) {
         break;
@@ -1338,13 +1350,14 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
         complete = false;
         break;
       }
-      auto cutoff = peer->tablet()->RetentionPolicy()->GetRetentionDirective()
-          .history_cutoff;
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
+      auto cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
       ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
       auto peer_history_cutoff = cutoff.primary_cutoff_ht;
       committed = std::max(peer_history_cutoff, committed);
-      auto min_allowed = std::min(peer->clock_ptr()->Now().AddMicroseconds(committed_delta_us),
-                                  peer->tablet()->mvcc_manager()->LastReplicatedHybridTime());
+      auto min_allowed = std::min(
+          peer->clock_ptr()->Now().AddMicroseconds(committed_delta_us),
+          tablet->mvcc_manager()->LastReplicatedHybridTime());
       if (peer_history_cutoff < min_allowed) {
         LOG(INFO) << "Committed did not catch up for " << peer->permanent_uuid() << ": "
                   << peer_history_cutoff << " vs " << min_allowed;
@@ -1380,8 +1393,8 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(peers.size(), 1);
-    auto cutoff =
-        peers[0]->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    auto tablet = ASSERT_RESULT(peers[0]->shared_tablet());
+    auto cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
     ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
     peer_committed[i] = cutoff.primary_cutoff_ht;
     LOG(INFO) << "Peer: " << peers[0]->permanent_uuid() << ", index: " << i
@@ -1399,15 +1412,16 @@ TEST_F(QLTabletTest, HistoryCutoff) {
         std::this_thread::sleep_for(100ms);
         continue;
       }
-      if (!tserver->GetXClusterContext()
-               .GetSafeTime(peers[0]->tablet()->metadata()->namespace_id())
-               .ok()) {
+      auto tablet = peers[0]->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      if (!tserver->GetXClusterContext().GetSafeTime(tablet->metadata()->namespace_id()).ok()) {
         std::this_thread::sleep_for(100ms);
         continue;
       }
       SCOPED_TRACE(Format("Peer: $0, index: $1", peers[0]->permanent_uuid(), i));
-      auto cutoff = peers[0]->tablet()->RetentionPolicy()->
-          GetRetentionDirective().history_cutoff;
+      auto cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
       ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
       ASSERT_GE(cutoff.primary_cutoff_ht, peer_committed[i]);
       break;
@@ -1469,7 +1483,7 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
 
   const auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   ASSERT_EQ(peers.size(), 1);
-  const auto& tablet = *ASSERT_NOTNULL(peers[0]->tablet());
+  const auto& tablet = *ASSERT_NOTNULL(peers[0]->shared_tablet_maybe_null());
 
   // We want some compactions to happen, so largest SST file will become large enough for its
   // approximate middle key to roughly split the whole tablet into two parts that are close in size.
@@ -1795,10 +1809,12 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
     };
 
     for (const auto& tablet_peer : ListTableTabletPeers(cluster_.get(), table->id())) {
-      sst_sizes[encoding].regular_table += ASSERT_RESULT(get_tablet_size(tablet_peer->tablet()));
+      auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+      sst_sizes[encoding].regular_table += ASSERT_RESULT(get_tablet_size(tablet.get()));
     }
     for (const auto& tablet_peer : ListTableTabletPeers(cluster_.get(), index_table->id())) {
-      sst_sizes[encoding].index_table += ASSERT_RESULT(get_tablet_size(tablet_peer->tablet()));
+      auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+      sst_sizes[encoding].index_table += ASSERT_RESULT(get_tablet_size(tablet.get()));
     }
   }
   ASSERT_GT(
@@ -1835,7 +1851,11 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
   ASSERT_OK(cluster_->FlushTablets());
   uint64_t files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    files_size += tablet->GetCurrentVersionSstFilesUncompressedSize();
   }
 
   ASSERT_OK(client_->NewTableAlterer(kTable1Name)->DropColumn(kStringColumn)->Alter());
@@ -1844,7 +1864,11 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
 
   uint64_t new_files_size = 0;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    new_files_size += tablet->GetCurrentVersionSstFilesUncompressedSize();
   }
 
   LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
@@ -1903,10 +1927,11 @@ TEST_F_EX(QLTabletTest, CorruptData, QLTabletRf1Test) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    if (!peer->tablet()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
       continue;
     }
-    auto* db = peer->tablet()->regular_db();
+    auto* db = tablet->regular_db();
     for (const auto& sst_file : db->GetLiveFilesMetaData()) {
       LOG(INFO) << "Found SST file: " << AsString(sst_file);
       const auto path_to_corrupt = sst_file.DataFilePath();
@@ -2105,7 +2130,7 @@ class GetTabletKeyRangesTest : public QLTabletRf1TestToggleEnablePackedRow {
 
     const auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     SCHECK_EQ(peers.size(), 1, InternalError, "Expected single tablet");
-    const auto tablet = peers[0]->shared_tablet();
+    const auto tablet = peers[0]->shared_tablet_maybe_null();
     SCHECK_NOTNULL(tablet);
     auto* db = tablet->regular_db();
 

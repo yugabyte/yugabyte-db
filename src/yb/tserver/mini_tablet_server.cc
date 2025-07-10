@@ -249,7 +249,7 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
     return Status::OK();
   }
   return ForAllTablets(this, [mode, flags](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }
@@ -262,7 +262,7 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     return Status::OK();
   }
   return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }
@@ -272,7 +272,7 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
 
 Status MiniTabletServer::SwitchMemtables() {
   return ForAllTablets(this, [](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }

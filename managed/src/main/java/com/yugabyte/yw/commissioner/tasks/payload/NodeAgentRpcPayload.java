@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -55,6 +56,8 @@ import com.yugabyte.yw.nodeagent.ServerControlType;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
 import com.yugabyte.yw.nodeagent.SetupCGroupInput;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -65,6 +68,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -314,8 +318,15 @@ public class NodeAgentRpcPayload {
       // For RR we don't setup master
       installSoftwareInputBuilder.addSymLinkFolders("tserver");
     } else {
-      installSoftwareInputBuilder.addSymLinkFolders("tserver");
-      installSoftwareInputBuilder.addSymLinkFolders("master");
+      String processType = taskParams.getProperty("processType");
+      if (processType == null || processType.isEmpty()) {
+        installSoftwareInputBuilder.addSymLinkFolders("tserver");
+        installSoftwareInputBuilder.addSymLinkFolders("master");
+      } else {
+        // This is needed for software upgrades flow, where-in we update
+        // the symlinks one after the other for master & t-servers.
+        installSoftwareInputBuilder.addSymLinkFolders(processType.toLowerCase());
+      }
     }
     installSoftwareInputBuilder.setRemoteTmp(customTmpDirectory);
     installSoftwareInputBuilder.setYbHomeDir(provider.getYbHome());
@@ -628,12 +639,64 @@ public class NodeAgentRpcPayload {
             Path tmpDirectoryPath =
                 FileUtils.getOrCreateTmpDirectory(
                     confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
-            Path localGflagFilePath =
-                tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
-            String providerUUID = userIntent.provider;
-            String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-            String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
-            nodeAgentClient.uploadFile(nodeAgent, localGflagFilePath.toString(), remoteGFlagPath);
+            Path localGflagDirPath = tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
+            // Validate directory exists
+            if (Files.isDirectory(localGflagDirPath)) {
+              String providerUUID = userIntent.provider;
+              String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
+              String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+
+              // Ensure remote directory exists
+              try {
+                // Delete the directory in case it exists.
+                nodeAgentClient.executeCommand(
+                    nodeAgent,
+                    Arrays.asList("rm", "-rf", remoteGFlagPath),
+                    ShellProcessContext.DEFAULT,
+                    true);
+                // Create the gflags_dir.
+                StringBuilder sb = new StringBuilder();
+                nodeAgentClient.executeCommand(
+                    nodeAgent,
+                    Arrays.asList(
+                        "umask", "022", "&&", "mkdir", "-m", "755", "-p", remoteGFlagPath),
+                    ShellProcessContext.DEFAULT,
+                    true);
+                log.info("Ensured remote directory exists: {}", remoteGFlagPath);
+              } catch (Exception e) {
+                throw new RuntimeException(
+                    "Failed to create remote directory: " + remoteGFlagPath, e);
+              }
+
+              // Upload all regular files
+              try (Stream<Path> paths = Files.list(localGflagDirPath)) {
+                paths
+                    .filter(Files::isRegularFile)
+                    .forEach(
+                        filePath -> {
+                          String remoteFilePath = remoteGFlagPath + filePath.getFileName();
+                          try {
+                            nodeAgentClient.uploadFile(
+                                nodeAgent,
+                                filePath.toString(),
+                                remoteFilePath,
+                                DEFAULT_CONFIGURE_USER,
+                                0,
+                                null);
+                            log.info(
+                                "Uploaded file {} to {}", filePath.getFileName(), remoteFilePath);
+                          } catch (Exception e) {
+                            throw new RuntimeException("Failed to upload file: " + filePath, e);
+                          }
+                        });
+              } catch (IOException e) {
+                throw new RuntimeException(
+                    "Failed to list local GFlag directory: " + localGflagDirPath, e);
+              }
+            } else {
+              log.warn(
+                  "GFlag directory {} does not exist or is not a directory", localGflagDirPath);
+            }
           }
         }
       }

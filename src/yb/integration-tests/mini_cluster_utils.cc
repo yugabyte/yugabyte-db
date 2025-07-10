@@ -46,7 +46,7 @@ size_t CountRunningTransactions(MiniCluster* cluster) {
   size_t result = 0;
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
   for (const auto &peer : peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet)
       continue;
     auto participant = tablet->transaction_participant();
@@ -65,7 +65,7 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
     auto status = Wait([server, &tablets] {
           tablets = server->tablet_manager()->GetTabletPeers();
           for (const auto& peer : tablets) {
-            if (peer->shared_tablet() == nullptr) {
+            if (peer->shared_tablet_maybe_null() == nullptr) {
               return false;
             }
           }
@@ -74,7 +74,7 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
     if (!status.ok()) {
       has_bad = true;
       for (const auto& peer : tablets) {
-        if (peer->shared_tablet() == nullptr) {
+        if (peer->shared_tablet_maybe_null() == nullptr) {
           LOG(ERROR) << Format(
               "T $1 P $0: Tablet object is not created",
               server->permanent_uuid(), peer->tablet_id());
@@ -84,7 +84,7 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
     }
     for (const auto& peer : tablets) {
       // Keep a ref to guard against Shutdown races.
-      auto tablet = peer->shared_tablet();
+      auto tablet = peer->shared_tablet_maybe_null();
       if (!tablet) continue;
       auto participant = tablet->transaction_participant();
       if (participant) {

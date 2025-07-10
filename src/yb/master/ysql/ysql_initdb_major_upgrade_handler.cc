@@ -344,7 +344,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog(
     return Status::OK();
   }
 
-  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_.tablet_peer()->shared_tablet_safe());
+  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_.tablet_peer()->shared_tablet());
   RETURN_NOT_OK(snapshot_writer->WriteSnapshot(
       sys_catalog_tablet.get(), FLAGS_initial_sys_catalog_snapshot_path));
 

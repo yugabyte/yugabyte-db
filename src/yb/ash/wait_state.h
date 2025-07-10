@@ -160,6 +160,9 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRemoteBootstrap_ReadDataFromFile)
     (kRemoteBootstrap_RateLimiter)
     (kWaitForReadTime)
+    (kSnapshot_WaitingForFlush)
+    (kSnapshot_CleanupSnapshotDir)
+    (kSnapshot_RestoreCheckpoint)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -180,6 +183,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_RateLimiter)
     (kRocksDB_WaitForSubcompaction)
     (kRocksDB_NewIterator)
+    (kRocksDB_CreateCheckpoint)
 
     // Wait states related to YCQL
     ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQuery)))
@@ -207,6 +211,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForLogBackgroundSync, 6))
   ((kQueryIdForYSQLBackgroundWorker, 7))
   ((kQueryIdForRemoteBootstrap, 8))
+  ((kQueryIdForSnapshot, 9))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -460,14 +465,19 @@ class WaitStateInfo {
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
 
   template <class PB>
-  static void UpdateMetadataFromPB(const PB& pb) {
+  static void UpdateCurrentMetadataFromPB(const PB& pb) {
     const auto& wait_state = CurrentWaitState();
     if (wait_state) {
-      // rpc_request_id is generated for each RPC, we don't populate it from PB
-      auto metadata = AshMetadata::FromPB(pb);
-      metadata.clear_rpc_request_id();
-      wait_state->UpdateMetadata(metadata);
+      wait_state->UpdateMetadataFromPB(pb);
     }
+  }
+
+  template <class PB>
+  void UpdateMetadataFromPB(const PB& pb) {
+    // rpc_request_id is generated for each RPC, we don't populate it from PB
+    auto metadata = AshMetadata::FromPB(pb);
+    metadata.clear_rpc_request_id();
+    UpdateMetadata(metadata);
   }
 
   template <class PB>

@@ -768,10 +768,7 @@ struct PerformData : public PgResponseCacheWaiter {
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
       // In case of write operations, increase mutation counters for non-index relations.
-      if (!op.op->read_only() &&
-          !op.op->table()->IsIndex() &&
-          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
-          pg_node_level_mutation_counter) {
+      if (!op.op->read_only() && !op.op->table()->IsIndex() && pg_node_level_mutation_counter) {
         const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op.op).table()->id();
 
         VLOG_WITH_PREFIX(4)
@@ -3317,8 +3314,7 @@ class PgClientSession::Impl {
         }
         return MergeStatus(std::move(commit_status), std::move(status));
       }
-      if (GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
-          pg_node_level_mutation_counter()) {
+      if (pg_node_level_mutation_counter()) {
         // Gather # of mutated rows for each table (count only the committed sub-transactions).
         auto table_mutations = txn->GetTableMutationCounts();
         VLOG_WITH_PREFIX(4) << "Incrementing global mutation count using table to mutations map: "

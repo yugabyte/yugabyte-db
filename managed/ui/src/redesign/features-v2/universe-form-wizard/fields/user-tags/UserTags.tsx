@@ -10,6 +10,7 @@
 
 import { FC } from 'react';
 import { useFormContext, useFieldArray, FieldArrayPath } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { mui, YBInputField, YBButton } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps, InstanceTag } from '../../steps/advanced-settings/dtos';
 import { StyledLink } from '../../components/DefaultComponents';
@@ -36,6 +37,10 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
 export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
   const { setValue, control } = useFormContext<OtherAdvancedProps>();
 
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.otherAdvancedSettings.userTags'
+  });
+
   const { fields, append, remove } = useFieldArray({
     control,
     name: USER_TAGS_FIELD
@@ -44,8 +49,8 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
   return (
     <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column', pt: 1, pb: 3 }}>
       <StyledSubText>
-        Assign custom metadata to help manage, bill, or audit the resources.
-        <StyledLink>Learn more</StyledLink>
+        {t('subText')}
+        <StyledLink>{t('learnMore')}</StyledLink>
       </StyledSubText>
       {fields.map((field, index) => {
         return (
@@ -56,16 +61,16 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
             <YBInputField
               name={`${USER_TAGS_FIELD}.${index}.name` as FieldArrayPath<InstanceTag>}
               sx={{ width: '440px' }}
-              label={index === 0 ? 'Tag name' : null}
+              label={index === 0 ? t('tagName') : null}
               control={control}
-              placeholder="Ex : Department"
+              placeholder={t('tagNamePlaceholder')}
             />
             <YBInputField
               name={`${USER_TAGS_FIELD}.${index}.value` as FieldArrayPath<InstanceTag>}
               sx={{ width: '440px' }}
-              label={index === 0 ? 'Tag value' : null}
+              label={index === 0 ? t('tagValue') : null}
               control={control}
-              placeholder="Ex : Dev"
+              placeholder={t('tagValuePlaceholder')}
             />
             <IconButton
               color="default"
@@ -86,7 +91,7 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
           disabled={disabled}
           startIcon={<CircleAddIcon />}
         >
-          Add User Tag
+          {t('addTag')}
         </YBButton>
       </Box>
     </Box>

@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import java.sql.Statement;
@@ -70,6 +71,9 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
     // The following logs are expected outputs from the pg_log_backend_memory_contexts function
     // These logs detail the PG backend process' PID followed by its memory contexts
     // [69974] LOG:  logging memory contexts of PID 69974
+    // [69974] LOG:  YB TCMalloc heap size bytes: 12345
+    // [69974] LOG:  YB TCMalloc total physical bytes: 12345
+    // [69974] LOG:  ...
     // [69974] LOG:  level: 0; TopMemoryContext: \
     //  389872 total in 8 blocks; 32480 free (6 chunks); 357392 used
     // [69974] LOG:  level: 1; pgstat TabStatusArray lookup hash table:
@@ -85,35 +89,37 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
       assertTrue("pg_log_backend_memory_contexts should output logs",
                 !logBackendMemoryContextsResults.isEmpty());
 
-      boolean foundBackendPid = false;
-      boolean foundTopMemoryContext = false;
       // With connection manager, getPgBackendPid can return the PID of any
       // backend process out of pool of physical connections it is maintaining.
       // Therefore running the test in NONE mode of connection manager to return
       // the same PID.
-      final String EXPECTED_LOG_START_STRING = String.format("logging memory contexts of PID %s",
-                                                            getPgBackendPid(connection));
-      final String EXPECTED_TOP_MEMORY_CONTEXT_STRING = "level: 0; TopMemoryContext";
+
+      // Look for the logs in the following order:
+      List<String> expectedMessages = new ArrayList<>();
+      expectedMessages.add(String.format("logging memory contexts of PID %s",
+                                         getPgBackendPid(connection)));
+      expectedMessages.add("level: 0; TopMemoryContext");
+      expectedMessages.add("Grand total: ");
+      expectedMessages.add("YB TCMalloc heap size bytes: ");
+      expectedMessages.add("YB TCMalloc total physical bytes: ");
+      expectedMessages.add("YB TCMalloc current allocated bytes: ");
+      expectedMessages.add("YB TCMalloc pageheap free bytes: ");
+      expectedMessages.add("YB TCMalloc pageheap unmapped bytes: ");
+      expectedMessages.add("YB PGGate bytes: ");
 
       for (String result : logBackendMemoryContextsResults) {
-        if (result.contains(EXPECTED_LOG_START_STRING)) {
-          foundBackendPid = true;
-        } else if (result.contains(EXPECTED_TOP_MEMORY_CONTEXT_STRING)) {
-          foundTopMemoryContext = true;
-          break; // TopMemoryContext is logged after backend PID
+        if (expectedMessages.isEmpty()) {
+          // If we have already found all expected messages, we can skip further checks.
+          break;
+        }
+        if (result.contains(expectedMessages.get(0))) {
+          expectedMessages.remove(0);
         }
       }
 
-      // With connection manager, getPgBackendPid can return the PID of any
-      // backend process out of pool of physical connections it is maintaining.
-      // Therefore running the test in NONE mode of connection manager to return
-      // the same PID.
-      assertTrue(String.format("pg_log_backend_memory_contexts should log the contexts " +
-                              "of a specific process with PID %s",
-                              getPgBackendPid(connection)),
-                foundBackendPid);
-      assertTrue("pg_log_backend_memory_contexts should log TopMemoryContext",
-                foundTopMemoryContext);
+      assertTrue(String.format("Expected to find all messages in pg_log_backend_memory_contexts %s",
+                               expectedMessages.toString()),
+                 expectedMessages.isEmpty());
     }
   }
 

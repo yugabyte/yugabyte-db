@@ -299,4 +299,4 @@ If you have bidirectional xCluster replication, then you should upgrade and fina
 
 ### Rotating CA certificates
 
-If you [rotate the CA certificate](../../../security/enable-encryption-in-transit/rotate-certificates/) on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.
+On Kubernetes, if you [rotate the CA certificate](../../../security/enable-encryption-in-transit/rotate-certificates/) on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.

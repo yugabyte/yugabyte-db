@@ -3473,12 +3473,11 @@ class YBBackupTestAutoAnalyze : public YBBackupTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back("--ysql_enable_auto_analyze_service=true");
-
-    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze_service=true");
-    options->extra_tserver_flags.push_back("--ysql_enable_table_mutation_counter=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=true");
     options->extra_tserver_flags.push_back("--ysql_node_level_mutation_reporting_interval_ms=10");
     options->extra_tserver_flags.push_back("--ysql_cluster_level_mutation_persist_interval_ms=10");
+    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
+                       "ysql_enable_auto_analyze");
   }
 };
 

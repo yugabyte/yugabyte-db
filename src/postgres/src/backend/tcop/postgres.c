@@ -4816,6 +4816,8 @@ YBCheckSharedCatalogCacheVersion()
 	if (need_global_cache_refresh)
 		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
 							  false /* is_retry */ );
+	else if (yb_test_preload_catalog_tables)
+		YBRefreshCache();
 }
 
 /*

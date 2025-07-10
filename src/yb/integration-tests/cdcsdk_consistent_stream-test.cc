@@ -1265,7 +1265,7 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto tablet_safe = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+        auto tablet_safe = VERIFY_RESULT(tablet_peer->shared_tablet());
         return tablet_safe->GetMinStartHTRunningTxnsForCDCProducer() == HybridTime::kMax;
       },
       MonoDelta::FromSeconds(60), "Timed out waiting for the commit of running txn."));

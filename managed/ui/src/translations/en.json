@@ -465,6 +465,7 @@
         "modalTitle": "Delete Read Replica of {{universeName}}"
       },
       "gFlags": {
+        "loadingGflagGroups": "Loading Gflag groups ...",
         "edit": "Edit",
         "preview": "Preview",
         "addFlag": "Add Flag",
@@ -485,6 +486,7 @@
         "JWKSModalNote": "Note: You can obtain JWKS from JWKS URI that is part of OIDC discover end point",
         "JWKSModalPlaceholder": "e.g. eyJraWQiOiJQQWc0NjVINmxZMC1XR1JwUm1ZbEloeEpXb2s5OG10LVZLcXV3VzNPazg0IiwiYWxnIjoiUlMyNTYifQeyJzdWIiOiIw MHUyYXBxMWNtSFlaM092ZDVkNyIsIm5hbWUiOiJKaW4gWWFuIiwiZW1haWwiOiJqeWFuQHl1Z2FieXRlLmNvbSIsInZlciI6MSwiaXNzIjoi",
         "noFlags": "There are no flags assigned to this universe ",
+        "noFlagsCreate": "You have not added any database configuration flags yet.",
         "removeFlag": "Remove Flag",
         "removeValue": "Remove Value",
         "selectedDBVersion": "Selected DB Version : ",
@@ -579,7 +581,21 @@
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
-        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes"
+        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
+        "spotInstance": "{{cloudType}} Spot Instance",
+        "useAwsSpotInstance": "Use {{cloudType}} spot instances",
+        "volumeInfoPerNode": "Volume Info / Node",
+        "provisionedIopsPerNode": "Provisioned IOPS / Node ",
+        "provisionedThroughputPerNode": "Provisioned Throughput / Node",
+        "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
+        "memory": "Memory",
+        "volumeInfoPerPod": "Volume Info / Pod",
+        "clusterInstance": "Cluster Instance",
+        "tserver": "T-Server Instance",
+        "master": "Master Server Instance (Optional)",
+        "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
+        "cantChangeLater": "This CANNOT be changed after creation",
+        "masterNote": "<1>Note!</1> CPU Architecture, Linux version and AWS Spot intense usage are global settings and can not be overridden. You can change these settings from the “Default Instance Configuration”."
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -3168,10 +3184,121 @@
           "rfFactor": "What is Replication Factor?",
           "rfFactorAns": "YugabyteDB replicates data across fault domains (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.",
           "FtAndRf": "Correlation between Fault Tolerance and Replication Factor",
-          "FtAndRfAns":"To achieve a FT of <highlight>f</highlight> fault domains, the primary cluster has to be configured with a RF of at least <highlight>2f + 1</highlight>.",
-          "tip":"<b>Tip!</b> When using Guided Mode, the required replication factor is automatically configured and applied based on your selected fault tolerance. ",
-          "learn":"<a>Learn more about Replication Factor</a> and <a2>Fault Tolerance.</a2>"
+          "FtAndRfAns": "To achieve a FT of <highlight>f</highlight> fault domains, the primary cluster has to be configured with a RF of at least <highlight>2f + 1</highlight>.",
+          "tip": "<b>Tip!</b> When using Guided Mode, the required replication factor is automatically configured and applied based on your selected fault tolerance. ",
+          "learn": "<a>Learn more about Replication Factor</a> and <a2>Fault Tolerance.</a2>"
         }
+      },
+      "databaseSettings": {
+        "interface": "Interface",
+        "features": "Features",
+        "advFlags": "Advanced Flags",
+        "enableYsqlOrYcql": "Need to enable at least one endpoint among YSQL and YCQL",
+        "ysqlSettings": {
+          "toggleLabel": "Enable YSQL End Point",
+          "authToggleLabel": "Enable YSQL Authentication",
+          "authPwd": "YSQL Auth Password",
+          "authConfirmPwd": "Confirm YSQL Auth Password"
+        },
+        "ycqlSettings": {
+          "toggleLabel": "Enable YCQL End Point",
+          "authToggleLabel": "Enable YCQL Authentication",
+          "authPwd": "YCQL Auth Password",
+          "authConfirmPwd": "Confirm YCQL Auth Password"
+        },
+        "conPool": {
+          "label": "Enable Connection Pooling",
+          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
+          "versionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
+          "YSQLWarn": "Enable YSQL first to use connection pooling.",
+          "dbVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
+          "overridePorts": "Override related YSQL Ports (Optional)",
+          "ysqlPortlabel": "YSQL Port",
+          "internalPortLabel": "Internal YSQL Port",
+          "defaultPortMsg": "Default {{port}}"
+        },
+        "pgCompatibility": {
+          "label": "Enhanced Postgres Compatibility",
+          "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling early access<br /> features. <1>Learn more</1>",
+          "tooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+        }
+      },
+      "securitySettings": {
+        "publicIPTitle": "Public IP assignment",
+        "eitTitle": "Encryption in Transit Settings",
+        "earTitle": "Encryption at Rest Settings",
+        "publicIPField": {
+          "label": "Assign Public IP",
+          "subText": "Assign a public IP to the DB servers for connections over the internet."
+        },
+        "earField": {
+          "label": "Enable Encryption At Rest",
+          "kmsConfig": "Key Management Service Config",
+          "kmsConfigPlaceHolder": "Select Configuration"
+        },
+        "eitField": {
+          "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",
+          "enableNodeToNodeEncryption": "Enable Node-to-Node Encryption",
+          "enableClientToNodeEncryption": "Enable Client-to-Node Encryption",
+          "selectRootCert": "Select Root Certificate",
+          "rootCertificatePlaceHolder": "Select",
+          "genSelfSignedCert": "Generate Self Signed Certificate"
+        }
+      },
+      "proxySettings": {
+        "header": "Proxy Configuration",
+        "enableProxyServer": {
+          "toggleLabel": "Enable Proxy Server",
+          "toggleHelper": "Configure web proxies as gateways for traffic from your database nodes.",
+          "learnMore": "Learn more",
+          "secureWebProxyLabel": "Secure Web Proxy (HTTPS)",
+          "serverLabel": "Server",
+          "serverPlaceholder": "https://proxy.example.com",
+          "portLabel": "Port",
+          "portPlaceholder": "8080",
+          "webProxy": "Web Proxy (HTTP)",
+          "byPassProxy": "Bypass Proxy List",
+          "byPassListPlaceholder": "example.com, example.com:8080",
+          "byPassHelper": "Separate multiple values by pressing Enter, Space, or Comma."
+        }
+      },
+      "otherAdvancedSettings": {
+        "portsOverrideHeader": "Deployment Port Override",
+        "userTagsHeader": "User Tags",
+        "additionalSettingsHeader": "Other Additional Settings",
+        "deployPortsFeild": {
+          "defaultPortValue": "Default {{port}}",
+          "masterHttpPort": "Master HTTP Port",
+          "masterRpcPort": "Master RPC Port",
+          "tserverHttpPort": "T-Server HTTP Port",
+          "tserverRpcPort": "T-Server RPC Port",
+          "yqlServerHttpPort": "YCQL HTTP Port",
+          "yqlServerRpcPort": "YCQL Port",
+          "ysqlServerHttpPort": "YSQL HTTP Port",
+          "ysqlServerRpcPort": "YSQL Port",
+          "internalYsqlServerRpcPort": "Internal YSQL Port",
+          "redisServerHttpPort": "Redis HTTP Port",
+          "redisServerRpcPort": "Redis HTTP Port",
+          "nodeExporterPort": "Node Exporter Port",
+          "ybControllerrRpcPort": "YB Controller RPC Port",
+          "masterGroup": "Master Server",
+          "tServerGroup": "T-Server",
+          "ysqlGroup": "YSQL",
+          "ycqlGroup": "YCQL",
+          "redisGroup": "Redis",
+          "othersGroup": "Others"
+        },
+        "userTags": {
+          "subText": "Assign custom metadata to help manage, bill, or audit the resources.",
+          "learnMore": "Learn more",
+          "tagName": "Tag name",
+          "tagNamePlaceholder": "Ex : Department",
+          "tagValue": "Tag value",
+          "tagValuePlaceholder": "Ex : Dev",
+          "addTag": "Add User Tag"
+        },
+        "accessKeyLabel": "Access Key",
+        "arnField": "Instance Profile ARN"
       },
       "reviewAndSummary": {
         "daily": "Daily",

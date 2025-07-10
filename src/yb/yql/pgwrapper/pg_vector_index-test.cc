@@ -278,7 +278,7 @@ void PgVectorIndexTest::TestSimple(bool table_exists) {
     num_found_peers = 0;
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : peers) {
-      auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
       if (tablet->table_type() != TableType::PGSQL_TABLE_TYPE) {
         continue;
       }
@@ -520,7 +520,11 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   size_t tablet_entries = 0;
   for (const auto& peer : peers) {
-    auto list = peer->tablet()->vector_indexes().List();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto list = tablet->vector_indexes().List();
     if (!list) {
       continue;
     }
@@ -571,7 +575,7 @@ void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
   auto conn = ASSERT_RESULT(MakeIndex());
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
   for (const auto& peer : peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (tablet->vector_indexes().TEST_HasIndexes()) {
       tablet->TEST_SleepBeforeApplyIntents(5s * kTimeMultiplier);
       break;
@@ -968,7 +972,7 @@ TEST_P(PgVectorIndexTest, Options) {
     }
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
-      auto tablet = peer->shared_tablet();
+      auto tablet = peer->shared_tablet_maybe_null();
       auto vector_indexes = tablet->vector_indexes().List();
       if (!vector_indexes) {
         continue;

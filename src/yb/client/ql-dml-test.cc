@@ -376,7 +376,11 @@ size_t CountIterators(MiniCluster* cluster) {
   for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto peers = cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
-      auto statistics = peer->tablet()->regulardb_statistics();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto statistics = tablet->regulardb_statistics();
       auto value = statistics->getTickerCount(rocksdb::NO_TABLE_CACHE_ITERATORS);
       result += value;
     }

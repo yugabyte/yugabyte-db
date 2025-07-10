@@ -55,6 +55,18 @@ def main(filepath):
     if commit == "TODO":
         return 0
 
+    # In case the "commit" column refers to a different row (by specifying that row's local_path),
+    # look up that row's commit.
+    if commit.startswith("src/postgres"):
+        with open(CSV_FILEPATH) as f:
+            table = csv.DictReader(f)
+            for row in table:
+                if commit == row['local_path']:
+                    commit = row['commit']
+                    break
+            else:
+                raise ValueError(f"Path {filepath} not found in {CSV_FILEPATH}")
+
     # First, attempt local diffing.
     local_upstream_repo_path = str(Path.home() / "code" / row['repository'].split('/')[-1])
     if os.path.isdir(local_upstream_repo_path):

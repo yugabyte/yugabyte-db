@@ -232,7 +232,7 @@ DEFINE_UNKNOWN_bool(enable_ysql, true,
     "specified or can be auto-detected). Also each tablet server will start a PostgreSQL "
     "server as a child process.");
 
-DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, yb::kIsDebug,
+DEFINE_RUNTIME_bool(ysql_allow_duplicating_repeatable_read_queries, true,
     "Response with success when duplicate write request is detected, "
     "if case this request contains read time.");
 
@@ -472,9 +472,8 @@ Status PrintYSQLWriteRequest(
 
 template <class Req>
 void UpdateAshMetadataFrom(const Req* req) {
-  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-  if (wait_state && req->has_ash_metadata()) {
-    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 }
 
@@ -1310,7 +1309,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   TRACE("UpdateTransaction");
 
   if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 
   if (req->state().status() == TransactionStatus::CREATED &&
@@ -1448,7 +1447,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   TRACE("AbortTransaction");
 
   if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 
   UpdateClock(*req, server_->Clock());
@@ -2665,7 +2664,7 @@ ConsensusServiceImpl::~ConsensusServiceImpl() {
 void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
     std::shared_ptr<tablet::TabletPeer> tablet_peer,
     consensus::LWConsensusResponsePB* resp) {
-  auto tablet = tablet_peer->shared_tablet();
+  auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (tablet) {
     resp->set_num_sst_files(tablet->GetCurrentVersionNumSSTFiles());
   }
@@ -3042,7 +3041,7 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     // tablet has yet to be deleted across the cluster.
     auto tablet_peer = tablet_manager_->GetServingTablet(req->split_parent_tablet_id());
     if (tablet_peer.ok()) {
-      auto tablet = (**tablet_peer).shared_tablet();
+      auto tablet = (**tablet_peer).shared_tablet_maybe_null();
       // If local parent tablet replica has been already split or remote bootstrapped from remote
       // replica that has been already split - allow RBS of child tablets.
       // In this case we can't rely on local parent tablet replica split to create child tablet
@@ -3073,7 +3072,7 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
   if (req->has_clone_source_seq_no() && req->has_clone_source_tablet_id()) {
     auto tablet_peer = tablet_manager_->GetServingTablet(req->clone_source_tablet_id());
     if (tablet_peer.ok()) {
-      auto tablet = (**tablet_peer).shared_tablet();
+      auto tablet = (**tablet_peer).shared_tablet_maybe_null();
       if (tablet && !tablet->metadata()->HasAttemptedClone(req->clone_source_seq_no())) {
         SetupErrorAndRespond(
             resp->mutable_error(),
@@ -3179,7 +3178,7 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
         consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY);
     data_entry->set_state(status.state());
 
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     uint64_t num_sst_files = tablet ? tablet->GetCurrentVersionNumSSTFiles() : 0;
     data_entry->set_num_sst_files(num_sst_files);
 
@@ -3464,7 +3463,7 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       auto* tablet_lock_info = resp->add_tablet_lock_infos();
       tablet_lock_info->set_is_advisory_lock_tablet(
           tablet_peer->tablet_metadata()->table_type() != PGSQL_TABLE_TYPE);
-      auto tablet_ptr_res = tablet_peer->shared_tablet_safe();
+      auto tablet_ptr_res = tablet_peer->shared_tablet();
       if (!tablet_ptr_res.ok()) {
         resp->Clear();
         SetupErrorAndRespond(resp->mutable_error(), tablet_ptr_res.status(), &context);
@@ -3533,7 +3532,7 @@ void TabletServiceImpl::CancelTransaction(
     }
     // Ensure that the given tablet is a status tablet and that the tablet peer is initialized.
     auto peer = peer_or_status->tablet_peer;
-    const auto& tablet_ptr = peer->shared_tablet();
+    const auto& tablet_ptr = peer->shared_tablet_maybe_null();
     if (!tablet_ptr || !tablet_ptr->transaction_coordinator()) {
       return SetupErrorAndRespond(resp->mutable_error(),
                                   STATUS_FORMAT(IllegalState,
@@ -3563,7 +3562,7 @@ void TabletServiceImpl::CancelTransaction(
 
     auto leader_term = *res;
     auto txn_found = false;
-    auto tablet_ptr_res = tablet_peer->shared_tablet_safe();
+    auto tablet_ptr_res = tablet_peer->shared_tablet();
     if (!tablet_ptr_res) {
       return SetupErrorAndRespond(resp->mutable_error(), tablet_ptr_res.status(), &context);
     }
@@ -3821,7 +3820,7 @@ Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) {
   auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
   for (auto& peer : tablet_peers) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       continue;
     }

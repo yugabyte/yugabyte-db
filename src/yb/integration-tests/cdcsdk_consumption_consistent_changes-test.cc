@@ -194,7 +194,7 @@ TEST_F(
       auto tablet_id = peer->tablet_id();
       auto raft_consensus = ASSERT_RESULT(peer->GetRaftConsensus());
       if (tablets_locations_map.contains(tablet_id)) {
-        auto txn_participant = ASSERT_RESULT(peer->shared_tablet_safe())->transaction_participant();
+        auto txn_participant = ASSERT_RESULT(peer->shared_tablet())->transaction_participant();
         ASSERT_OK(WaitFor(
             [&]() -> Result<bool> {
               if (txn_participant->GetNumRunningTransactions() == 0) {

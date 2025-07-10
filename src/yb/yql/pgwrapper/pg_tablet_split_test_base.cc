@@ -163,9 +163,13 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForDataCompacted(
 
 Status PgTabletSplitTestBase::DisableCompaction(std::vector<tablet::TabletPeerPtr>* peers) {
   for (auto& peer : *peers) {
-    RETURN_NOT_OK(peer->tablet()->regular_db()->SetOptions({
-        {"level0_file_num_compaction_trigger", std::to_string(std::numeric_limits<int32>::max())}
-    }));
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    RETURN_NOT_OK(tablet->regular_db()->SetOptions(
+        {{"level0_file_num_compaction_trigger",
+          std::to_string(std::numeric_limits<int32>::max())}}));
   }
   return Status::OK();
 }

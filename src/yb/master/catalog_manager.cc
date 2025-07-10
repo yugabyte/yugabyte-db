@@ -1083,7 +1083,7 @@ Status CatalogManager::ElectedAsLeaderCb() {
 
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   string uuid = master_->fs_manager()->uuid();
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
@@ -1791,7 +1791,7 @@ Status CatalogManager::PrepareSystemTables(const LeaderEpoch& epoch) {
 }
 
 Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
-  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->tablet_peer_->shared_tablet_safe());
+  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->tablet_peer_->shared_tablet());
 
   // Prepare sys catalog table info.
   auto sys_catalog_table = tables_->FindTableOrNull(kSysCatalogTableId);
@@ -2742,7 +2742,7 @@ Status CatalogManager::AddIndexInfoToTable(TableInfoWithWriteLock& indexed_table
 template <class Req, class Resp, class Action>
 Status CatalogManager::PerformOnSysCatalogTablet(const Req& req, Resp* resp, const Action& action) {
   auto tablet_peer = sys_catalog_->tablet_peer();
-  auto tablet = tablet_peer ? tablet_peer->shared_tablet() : nullptr;
+  auto tablet = tablet_peer ? tablet_peer->shared_tablet_maybe_null() : nullptr;
   if (!tablet) {
     return SetupError(
         resp->mutable_error(),
@@ -5195,7 +5195,7 @@ Status CatalogManager::CreateTestEchoService(const LeaderEpoch& epoch) {
 
 Status CatalogManager::CreatePgAutoAnalyzeService(const LeaderEpoch& epoch) {
   static bool pg_auto_analyze_service_created = false;
-  if (pg_auto_analyze_service_created) {
+  if (pg_auto_analyze_service_created || !FLAGS_enable_ysql) {
     return Status::OK();
   }
 
@@ -12971,7 +12971,7 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
 }
 
 Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), tablet_peer()->LeaderTerm());
   return Status::OK();
@@ -13565,7 +13565,7 @@ Result<std::vector<SysCatalogEntryDumpPB>> CatalogManager::FetchFromSysCatalog(
     SysRowEntryType type, const std::string& item_id_filter) {
   SCHECK_NOTNULL(sys_catalog_);
   SCHECK_NOTNULL(tablet_peer());
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
 
   std::vector<SysCatalogEntryDumpPB> result;
 

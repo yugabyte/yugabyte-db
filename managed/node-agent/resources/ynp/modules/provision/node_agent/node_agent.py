@@ -49,6 +49,26 @@ class InstallNodeAgent(BaseYnpModule):
                 "code": context.get("provider_region_zone_name")
             }]
         }
+        latitude_str = context.get("provider_region_latitude")
+        if latitude_str is not None:
+            try:
+                latitude = float(latitude_str)
+                if -90 <= latitude <= 90:
+                    region["latitude"] = latitude
+            except (TypeError, ValueError):
+                logging.error("Invalid value for latitude specified")
+                sys.exit(1)
+
+        longitude_str = context.get("provider_region_longitude")
+        if longitude_str is not None:
+            try:
+                longitude = float(longitude_str)
+                if -180 <= longitude <= 180:
+                    region["longitude"] = longitude
+            except (TypeError, ValueError):
+                logging.error("Invalid value for longitude specified")
+                sys.exit(1)
+
         provider_data["regions"].append(region)
         if context.get("provider_access_key_path") is not None:
             with open(context.get("provider_access_key_path"), 'r') as file:

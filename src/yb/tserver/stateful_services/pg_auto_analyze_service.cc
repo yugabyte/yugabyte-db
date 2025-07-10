@@ -65,8 +65,7 @@ DEFINE_test_flag(int32, simulate_analyze_deleted_table_secs, 0,
 DEFINE_test_flag(bool, sort_auto_analyze_target_table_ids, false,
                  "Sort the analyze target tables' ids to generate deterministic ANALYZE statements "
                  "for testing purpose.");
-
-DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::chrono_literals;
 
@@ -678,14 +677,17 @@ std::string PgAutoAnalyzeService::TableNamesForAnalyzeCmd(const std::vector<Tabl
 }
 
 Result<bool> PgAutoAnalyzeService::RunPeriodicTask() {
-  if (FLAGS_ysql_enable_auto_analyze_service) {
-    // Update the underlying YCQL service table that tracks cluster-wide mutations
-    // for all YSQL tables.
-    RETURN_NOT_OK(FlushMutationsToServiceTable());
-
-    // Trigger ANALYZE for tables whose mutation counts have crossed their thresholds.
-    RETURN_NOT_OK(TriggerAnalyze());
+  if (!FLAGS_ysql_enable_auto_analyze) {
+    VLOG_WITH_FUNC(4) << "Auto analyze service is disabled";
+    return true;
   }
+
+  // Update the underlying YCQL service table that tracks cluster-wide mutations
+  // for all YSQL tables.
+  RETURN_NOT_OK(FlushMutationsToServiceTable());
+
+  // Trigger ANALYZE for tables whose mutation counts have crossed their thresholds.
+  RETURN_NOT_OK(TriggerAnalyze());
 
   // Return true to re-trigger this periodic task after PeriodicTaskIntervalMs.
   return true;
