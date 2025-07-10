@@ -39,7 +39,7 @@ To enable YCQL authentication in deployable YugabyteDB clusters, start the yb-ts
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-tservers/).
+You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugabyteDB cluster](../../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
 
 ## Connect using the default admin credentials
 

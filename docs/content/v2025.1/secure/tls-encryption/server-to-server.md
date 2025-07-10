@@ -58,4 +58,4 @@ bin/yb-tserver                                  \
     --use_client_to_server_encryption=true
 ```
 
-For information on starting YB-TServers for a deployment, see [start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
+For information on starting YB-TServers for a deployment, see [start YB-TServers](../../../deploy/manual-deployment/start-masters/#yb-tserver-servers).
