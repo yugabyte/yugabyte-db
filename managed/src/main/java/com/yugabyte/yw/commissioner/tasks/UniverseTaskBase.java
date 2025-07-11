@@ -6893,6 +6893,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createUpdatePitrConfigIntermittentMinRecoverTimeTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "UpdatePitrConfigIntermittentMinRecoverTime", SubTaskGroupType.ConfigureUniverse);
+    UpdatePitrConfigIntermittentMinRecoverTime.Params params =
+        new UpdatePitrConfigIntermittentMinRecoverTime.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    UpdatePitrConfigIntermittentMinRecoverTime task =
+        createTask(UpdatePitrConfigIntermittentMinRecoverTime.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public Collection<NodeDetails> getActiveUniverseNodes(Universe universe) {
     Collection<NodeDetails> activeNodes = new HashSet<>();
     for (NodeDetails node : universe.getNodes()) {

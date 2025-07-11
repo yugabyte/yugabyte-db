@@ -1019,6 +1019,9 @@ public enum TaskType {
   ManageCatalogUpgradeSuperUser(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.class),
 
+  UpdatePitrConfigIntermittentMinRecoverTime(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePitrConfigIntermittentMinRecoverTime.class),
+
   MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
