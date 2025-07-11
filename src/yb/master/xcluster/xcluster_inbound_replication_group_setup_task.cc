@@ -285,13 +285,6 @@ Status XClusterInboundReplicationGroupSetupTask::SetupDDLReplicationExtension() 
       LOG_WITH_PREFIX(INFO) << "Setting up DDL replication extension for namespace " << namespace_id
                             << " (" << namespace_name << ")"
                             << (is_switchover ? " as part of a switchover" : "");
-      if (!is_switchover) {
-        // For regular setup cases, we want to clean up any existing state.
-        Synchronizer sync;
-        RETURN_NOT_OK(master::DropDDLReplicationExtensionIfExists(
-            catalog_manager_, namespace_id, sync.AsStdStatusCallback()));
-        RETURN_NOT_OK_PREPEND(sync.Wait(), "Failed to drop xCluster DDL replication extension");
-      }
       // Set up the extension and set our role as a target to prevent writes.
       Synchronizer sync;
       RETURN_NOT_OK(master::SetupDDLReplicationExtension(
@@ -752,7 +745,9 @@ void XClusterTableSetupTask::GetTableSchemaCallback(
     std::shared_ptr<XClusterTableSetupTask> shared_this,
     const std::shared_ptr<client::YBTableInfo>& source_table_info, const Status& s) {
   shared_this->ScheduleNextStep(
-      std::bind(&XClusterTableSetupTask::ProcessTable, shared_this, source_table_info, s),
+      [shared_this, source_table_info, s] {
+        return shared_this->ProcessTable(source_table_info, s);
+      },
       "Processing table");
 }
 
@@ -802,7 +797,9 @@ void XClusterTableSetupTask::GetTablegroupSchemaCallback(
     std::shared_ptr<XClusterTableSetupTask> shared_this,
     const std::shared_ptr<std::vector<client::YBTableInfo>>& source_table_infos, const Status& s) {
   shared_this->ScheduleNextStep(
-      std::bind(&XClusterTableSetupTask::ProcessTablegroup, shared_this, source_table_infos, s),
+      [shared_this, source_table_infos, s] {
+        return shared_this->ProcessTablegroup(source_table_infos, s);
+      },
       "Processing tablegroup");
 }
 
