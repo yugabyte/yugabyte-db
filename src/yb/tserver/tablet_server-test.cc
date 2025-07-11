@@ -984,6 +984,34 @@ TEST_F(TabletServerTest, TestGFlagsCallHome) {
   TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
 }
 
+TEST_F(TabletServerTest, ThreadMetricsStability) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 1;
+  auto ScrapeAndVerifyThreadMetrics = [&]() {
+    MetricPrometheusOptions opts;
+    opts.export_help_and_type = ExportHelpAndType::kFalse;
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    ASSERT_OK(mini_server_->server()->metric_registry()->WriteForPrometheus(&writer, opts));
+
+    ASSERT_NE(output.str().find("threads_running_"), std::string::npos);
+    ASSERT_NE(output.str().find("threads_started_"), std::string::npos);
+  };
+
+  // Verify thread metrics are not retired despite FLAGS_metrics_retirement_age_ms = 0.
+  // Requires 3 scrapes because metric retirement is a two-phase process:
+  // - After scrape 1: cleanup thread marks unreferenced metrics for deletion
+  // - After scrape 2: cleanup thread deletes previously marked metrics
+  // - Scrape 3: confirms metrics still exist (if they were unreferenced, they'd be gone)
+
+  ScrapeAndVerifyThreadMetrics();
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  ScrapeAndVerifyThreadMetrics();
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  ScrapeAndVerifyThreadMetrics();
+}
+
 #if YB_TCMALLOC_ENABLED
 TEST_F(TabletServerTest, TestUntrackedMemory) {
   auto server_metric_entity = mini_server_->server()->metric_entity();

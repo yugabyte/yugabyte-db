@@ -163,59 +163,72 @@ class ThreadCategoryTracker {
   void IncrementCategory(const string& category);
   void DecrementCategory(const string& category);
   void RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity);
-  void RegisterGaugeForAllMetricEntities(const string& category);
+  uint64_t& RegisterGaugeForAllMetricEntities(const string& category);
 
  private:
   uint64 GetCategory(const string& category);
+
+  struct Entry {
+    std::unique_ptr<GaugePrototype<uint64>> gauge_proto;
+    uint64_t metric = 0;
+    // We must retain references to each metric object from each metric_entity,
+    // otherwise they will be cleaned up after 2 minutes.
+    std::vector<scoped_refptr<FunctionGauge<uint64>>> metric_holders;
+  };
+
   string name_;
   Mutex lock_;
-  map<string, std::unique_ptr<GaugePrototype<uint64>>> gauge_protos_;
-  map<string, uint64_t> metrics_;
-  vector<scoped_refptr<MetricEntity>> metric_entities_;
+  std::map<std::string, Entry> entries_;
+  std::vector<scoped_refptr<MetricEntity>> metric_entities_;
 };
 
 uint64 ThreadCategoryTracker::GetCategory(const string& category) {
   MutexLock l(lock_);
-  return metrics_[category];
+  return entries_[category].metric;
 }
 
 void ThreadCategoryTracker::RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity) {
-  MutexLock l(lock_);
-  for (const auto& [category, gauge_proto] : gauge_protos_) {
-    gauge_proto->InstantiateFunctionGauge(metric_entity,
+  for (auto& [category, entry] : entries_) {
+    auto metric_ptr = entry.gauge_proto->InstantiateFunctionGauge(metric_entity,
       Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+    entry.metric_holders.push_back(std::move(metric_ptr));
   }
   metric_entities_.push_back(metric_entity);
 }
 
 void ThreadCategoryTracker::IncrementCategory(const string& category) {
   MutexLock l(lock_);
-  RegisterGaugeForAllMetricEntities(category);
-  metrics_[category]++;
+  ++RegisterGaugeForAllMetricEntities(category);
 }
 
 void ThreadCategoryTracker::DecrementCategory(const string& category) {
   MutexLock l(lock_);
-  RegisterGaugeForAllMetricEntities(category);
-  metrics_[category]--;
+  --RegisterGaugeForAllMetricEntities(category);
 }
 
-void ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string& category) {
-  if (gauge_protos_.find(category) == gauge_protos_.end()) {
-    string id = name_ + "_" + category;
-    EscapeMetricNameForPrometheus(&id);
-    const string description = id + " metric in ThreadCategoryTracker";
-    std::unique_ptr<GaugePrototype<uint64>> gauge_proto =
-      std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
-      yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
-
-    for (auto& metric_entity : metric_entities_) {
-      gauge_proto->InstantiateFunctionGauge(metric_entity,
-        Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
-    }
-    gauge_protos_[category] = std::move(gauge_proto);
-    metrics_[category] = static_cast<uint64>(0);
+uint64_t& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string& category) {
+  auto it = entries_.find(category);
+  if (it != entries_.end()) {
+    return it->second.metric;
   }
+  auto id = name_ + "_" + category;
+  EscapeMetricNameForPrometheus(&id);
+  auto description = id + " metric in ThreadCategoryTracker";
+  std::unique_ptr<GaugePrototype<uint64>> gauge_proto =
+    std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
+    yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
+
+  Entry entry;
+  entry.gauge_proto = std::move(gauge_proto);
+  for (auto& metric_entity : metric_entities_) {
+    auto metric_ptr = entry.gauge_proto->InstantiateFunctionGauge(metric_entity,
+        Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+    entry.metric_holders.push_back(metric_ptr);
+  }
+
+  auto [inserted_it, inserted] = entries_.emplace(category, std::move(entry));
+  DCHECK(inserted);
+  return inserted_it->second.metric;
 }
 
 // A singleton class that tracks all live threads, and groups them together for easy
