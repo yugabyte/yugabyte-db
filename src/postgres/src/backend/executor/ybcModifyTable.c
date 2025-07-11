@@ -29,6 +29,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_auth_members_d.h"
+#include "catalog/pg_db_role_setting_d.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_tablespace_d.h"
 #include "catalog/pg_type.h"
@@ -228,14 +229,15 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 		Oid relid = RelationGetRelid(rel);
 		if (RelationGetForm(rel)->relisshared &&
 			(RelationSupportsSysCache(relid) ||
-			 YbRelationIdIsInInitFileAndNotCached(relid)) &&
+			 YbRelationIdIsInInitFileAndNotCached(relid) ||
+			 YbSharedRelationIdNeedsGlobalImpact(relid)) &&
 			!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
 		{
 			/* NOTE: relisshared implies that rel is a system relation. */
 			Assert(IsSystemRelation(rel));
 			/*
-			 * There are two sections in the next Assert. Relation ids
-			 * in each section are grouped together and two sections
+			 * There are 3 sections in the next Assert. Relation ids
+			 * in each section are grouped together and these sections
 			 * are separated with an empty line.
 			 *
 			 * Section 1 contains relations in relcache init file that
@@ -248,6 +250,10 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 			 * As of 2023-11-27, SECURITY LABEL command is not supported.
 			 * Add SharedSecLabelRelationId, SharedSecLabelObjectIndexId
 			 * to section 2 when SECURITY LABEL command is supported.
+			 *
+			 * Section 3 contains relations that can be prefetched
+			 * but do not have a PG catalog cache. Should be kept in
+			 * sync with YbSharedRelationIdNeedsGlobalImpact.
 			 */
 			Assert(relid == AuthIdRelationId ||
 				   relid == AuthIdRolnameIndexId ||
@@ -257,7 +263,10 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 				   relid == DatabaseRelationId ||
 				   relid == TableSpaceRelationId ||
 
-				   relid == DatabaseNameIndexId);
+				   relid == DatabaseNameIndexId ||
+
+				   relid == DbRoleSettingRelationId ||
+				   relid == DbRoleSettingDatidRolidIndexId);
 
 			YbSetIsGlobalDDL();
 		}
