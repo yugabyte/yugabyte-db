@@ -20,6 +20,8 @@ To schedule backups, backups must be enabled for the universe. On the universe *
 
 ## Create a scheduled backup policy
 
+{{<tags/feature/ea idea="989">}}You can create scheduled backups with or without PITR. To enable the feature in YugabyteDB Anywhere, set the **Option for Off-Cluster PITR based Backup Schedule** Global Runtime Configuration option (config key `yb.ui.feature_flags.off_cluster_pitr_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
 Before scheduling a backup of your universe data, create a policy, as follows:
 
 1. Navigate to your universe, select **Backups > Scheduled Backup Policies**, and click **Create Scheduled Backup Policy** to open the **Create Scheduled Backup Policy** wizard.
