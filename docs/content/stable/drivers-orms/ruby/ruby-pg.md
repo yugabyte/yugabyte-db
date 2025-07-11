@@ -103,3 +103,8 @@ Created table employee
 Inserted data (1, 'John', 35, 'Ruby')
 Query returned: John 35 Ruby
 ```
+
+## Learn more
+
+- Build Ruby applications using [YugabyteDB Ruby Driver for YCQL](../ycql/)
+- Build Ruby applications using [Active Record ORM](../activerecord/)

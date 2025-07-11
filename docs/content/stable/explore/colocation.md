@@ -169,8 +169,8 @@ To view metrics such as table size, use the name of the parent colocation table.
 
 - Metrics for table metrics such as table size are available for the colocation tablet, not for individual colocated tables that are part of the colocation.
 - Tablet splitting is disabled for colocated tables.
-- You can't configure xCluster replication for colocated tables using the YugabyteDB Anywhere UI in the 2.18.0 release. This functionality will be available in a future release.
 - To avoid hotspots, do not colocate tables that receive disproportionately high loads.
+- xCluster replication automatic mode does not yet support colocated tables.
 
 ### Semantic differences between colocated and non-colocated tables
 
@@ -180,7 +180,11 @@ For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if
 
 ## xCluster and colocation
 
-To set up xCluster for colocated tables, the `colocation_id` for a given table or index needs to match on the source and target universes.
+xCluster replication currently only supports colocated tables for [semi-automatic and fully manual](../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/) modes.
+
+When setting up xCluster for colocated tables when using manual or
+semi-automatic mode, the `colocation_id` for a given table or index
+needs to match on the source and target universes.
 
 To set up xCluster for colocated tables, do the following:
 
@@ -243,7 +247,7 @@ For information on how to set up xCluster for non-colocated tables, refer to [xC
 
 ## Colocated tables with tablespaces
 
-Colocated tables can be placed in [tablespaces](../going-beyond-sql/tablespaces/) {{<tags/feature/ea idea="1104">}}. When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
+Colocated tables can be placed in [tablespaces](../going-beyond-sql/tablespaces/) {{<tags/feature/ea>}}. When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
 
 During Early Access, by default colocation support for tablespaces is not enabled. To enable the feature, set the flag `ysql_enable_colocated_tables_with_tablespaces=true`.
 
@@ -305,7 +309,7 @@ colocation_16384 |       10 |         16384 |        |
 (2 rows)
 ```
 
-The `grpname` column represents the tablegroup name and the `grptablespace` column shows the OID of the associated tablespace.
+The `grpname` column represent the tablegroup's name and the `grptablespace` column shows the OID of the associated tablespace.
 
 ### Geo-partitioned colocated tables with tablespaces
 

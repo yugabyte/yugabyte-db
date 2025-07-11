@@ -70,8 +70,6 @@ To install YugabyteDB Anywhere and be able to deploy YugabyteDB universes requir
   - [For YugabyteDB Anywhere](../prepare/server-yba/) - 1 or 2 servers (or pods if deployed on K8s) and Linux root permissions
   - [For database clusters](../prepare/server-nodes-hardware/) (also called a universe) - 1, 3, 5, or more servers (or pods if deployed on Kubernetes) and Linux root permissions
 
-See [Prepare your infrastructure](../prepare/) for instructions on meeting these prerequisites.
-
 ### Checklists
 
 To track your progress while you prepare your infrastructure, you can use the following checklists:

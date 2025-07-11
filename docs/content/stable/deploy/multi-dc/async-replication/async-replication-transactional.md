@@ -1,9 +1,9 @@
 ---
-title: Deploy to two universes with transactional xCluster replication
+title: Deploy transactional xCluster replication
 headerTitle: Transactional xCluster
 linkTitle: Transactional
-description: Deploy using transactional (active-standby) replication between universes
-headContent: Deploy transactional (active-standby) replication
+description: Deploy using transactional xCluster replication between universes
+headContent: Deploy transactional xCluster replication
 menu:
   stable:
     parent: async-replication
@@ -28,7 +28,7 @@ Transactional xCluster provides the capability to:
 
 The recovery time objective (RTO) is very low, as it only depends on metadata operations to make the Standby transactionally consistent and the applications switching their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
-xCluster safe time is the transactionally consistent time across all tables in a given database at which Reads are served. In the following illustration, T1 is a transactionally consistent time across all tables.
+xCluster safe time is the transactionally consistent time across all tables in a given database at which reads are served. In the following illustration, T1 is a transactionally consistent time across all tables.
 
 ![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
 
@@ -36,5 +36,6 @@ xCluster safe time is the transactionally consistent time across all tables in a
 
 Transactional xCluster can be set up in the following ways:
 
-- [Semi-automatic mode](../async-transactional-setup-semi-automatic/): Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes.
-- [Fully Manual mode](../async-transactional-setup-manual/): Manual setup and management of replication. DDL changes require manually updating the xCluster configuration.
+- [Automatic mode](../async-transactional-setup-automatic/) {{<tags/feature/ea idea="153">}}: Handles all aspects of replication for both data and schema changes.
+- [Semi-automatic mode](../async-transactional-setup-semi-automatic/): Compared to manual mode, provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes.
+- [Fully Manual mode](../async-transactional-setup-manual/): Deprecated.

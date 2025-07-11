@@ -43,7 +43,7 @@ Legacy provisioning of on-premises nodes is deprecated. Provision your nodes usi
   </li>
 </ul>
 
-For legacy provisioning, how you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes.
+How you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes.
 
 | SSH mode | Description | Notes | For more details |
 | :--- | :--- | :--- | :--- |

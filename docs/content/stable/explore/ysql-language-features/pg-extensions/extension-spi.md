@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The [spi](https://www.postgresql.org/docs/11/contrib-spi.html) module provides several workable examples of using the Server Programming Interface (SPI) and triggers.
+The [spi](https://www.postgresql.org/docs/15/contrib-spi.html) module provides several workable examples of using the Server Programming Interface (SPI) and triggers.
 
 YugabyteDB supports the following four (of five &mdash; `timetravel` is not currently supported) extensions provided in the spi module:
 
@@ -22,7 +22,7 @@ YugabyteDB supports the following four (of five &mdash; `timetravel` is not curr
 
 ## Example
 
-1. Connect using `ysqlsh` and run the following commands:
+1. Connect using ysqlsh and run the following commands:
 
     ```sql
     CREATE EXTENSION insert_username;

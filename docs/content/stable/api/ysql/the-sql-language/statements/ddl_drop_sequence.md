@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP SEQUENCE` statement to delete a sequence in the current schema.
+Use the DROP SEQUENCE statement to delete a sequence in the current schema.
 
 ## Syntax
 
@@ -26,12 +26,12 @@ Use the `DROP SEQUENCE` statement to delete a sequence in the current schema.
 
 Specify the name of the sequence.
 
-- An error is raised if a sequence with that name does not exist in the current schema unless `IF EXISTS` is specified.
-- An error is raised if any object depends on this sequence unless the `CASCADE` option is specified.
+- An error is raised if a sequence with that name does not exist in the current schema unless IF EXISTS is specified.
+- An error is raised if any object depends on this sequence unless the CASCADE option is specified.
 
 ### CASCADE
 
-Remove also all objects that depend on this sequence (for example a `DEFAULT` value in a table's column).
+Remove also all objects that depend on this sequence (for example a DEFAULT value in a table's column).
 
 #### RESTRICT
 
@@ -45,7 +45,7 @@ Dropping a sequence that has an object depending on it, fails.
 yugabyte=# CREATE TABLE t(k SERIAL, v INT);
 ```
 
-```
+```output
 CREATE TABLE
 ```
 
@@ -53,7 +53,7 @@ CREATE TABLE
 \d t
 ```
 
-```
+```output
                            Table "public.t"
  Column |  Type   | Collation | Nullable |           Default
 --------+---------+-----------+----------+------------------------------
@@ -62,10 +62,10 @@ CREATE TABLE
 ```
 
 ```plpgsql
-yugabyte=#  DROP SEQUENCE t_k_seq;
+yugabyte=# DROP SEQUENCE t_k_seq;
 ```
 
-```
+```output
 ERROR:  cannot drop sequence t_k_seq because other objects depend on it
 DETAIL:  default for table t column k depends on sequence t_k_seq
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
@@ -77,7 +77,7 @@ Dropping the sequence with the `CASCADE` option solves the problem and also dele
 yugabyte=# DROP SEQUENCE t_k_seq CASCADE;
 ```
 
-```
+```output
 NOTICE:  drop cascades to default for table t column k
 DROP SEQUENCE
 ```
@@ -86,7 +86,7 @@ DROP SEQUENCE
 \d t
 ```
 
-```
+```output
                  Table "public.t"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -97,9 +97,9 @@ DROP SEQUENCE
 
 ## See also
 
-- [`ALTER SEQUENCE`](../ddl_alter_sequence)
-- [`CREATE SEQUENCE`](../ddl_create_sequence)
-- [`currval()`](../../../exprs/func_currval)
-- [`lastval()`](../../../exprs/func_lastval)
-- [`nextval()`](../../../exprs/func_nextval)
-- [`setval()`](../../../exprs/func_setval)
+- [ALTER SEQUENCE](../ddl_alter_sequence)
+- [CREATE SEQUENCE](../ddl_create_sequence)
+- [currval()](../../../exprs/sequence_functions/func_currval)
+- [lastval()](../../../exprs/sequence_functions/func_lastval)
+- [nextval()](../../../exprs/sequence_functions/func_nextval)
+- [setval()](../../../exprs/sequence_functions/func_setval)

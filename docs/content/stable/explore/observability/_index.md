@@ -15,7 +15,18 @@ showRightNav: true
 
 Observability refers to the extent to which the internal state and behavior of a system can be understood, monitored, and analyzed from the outside, typically by developers and DevOps. It focuses on providing insight into how a system is performing, what is happening inside it, and how it is interacting with its environment.
 
-The goal of observability is to make it easier to diagnose and resolve issues, optimize performance, and gain insights into the system's behavior. It is especially important in modern, complex, and distributed systems, where understanding the interactions between different services and components can be challenging. [DevOps Research and Assessment (DORA)](https://dora.dev/) research shows that a comprehensive monitoring and observability solution, along with several other technical practices, positively contributes to the management of software infrastructure.
+Observability has a wide variety of use cases.
+
+{{%table%}}
+
+| Use case | Description |
+| -------- | ----------- |
+
+| Operational monitoring | Build an application health dashboard for your critical applications using key operational signals that are constantly monitored. Add alerts for DevOps or SRE teams so they can act quickly in case of an event to ensure business continuity. The application health dashboard collects signals, metrics from YugabyteDB, and other systems that power your application, such as APIs, web app, SDK, and so on. |
+| Performance troubleshooting | Database administrators and application developers need to be able to troubleshoot issues, perform root cause analysis, and issue fixes. You can create a dashboard to monitor an observed issue causing temporal, gradual, or systemic performance degradation, or application failure. To conduct root cause analysis, issue-dependent deep observability metrics in a specific area are typically used. These metrics are consumed at the time of root cause analysis and operating teams fall back to a health dashboard after the issue is identified, the fix is monitored, and the issue is resolved. |
+| Object monitoring | Monitor specific parts of application behavior continuously after a new feature launch, during maintenance windows, during application upgrades, and more. The metrics can be system-wide or specific to the object of interest, such as a YugabyteDB cluster, node, tablet, geography, users, tenant, and more. |
+
+{{%/table%}}
 
 YugabyteDB provides several components and features that you can use to actively monitor your system and diagnose issues quickly.
 
@@ -50,98 +61,70 @@ You can also export the metrics provided by YugabyteDB onto third-party visualiz
 Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) and [YugabyteDB Aeon](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
 {{</tip>}}
 
-## Use cases
+## Query-level statistics
 
-### Operational monitoring
+The pg_stat_statements extension tracks and aggregates statistics for SQL queries executed on the database. It helps monitor query performance by recording execution counts, total and average execution times, rows processed, and resource usage (for example, shared buffer hits and disk I/O). The extension groups queries with similar structures (normalized queries) to provide a concise and meaningful view of query behavior.
 
-You can build an application health dashboard for your critical applications using key operational signals that are constantly monitored. Add alerts for DevOps or SRE teams so they can act quickly in case of an event to ensure business continuity. The application health dashboard collects signals, metrics from YugabyteDB, and other systems that power your application, such as APIs, web app, SDK, and so on.
+By analyzing the pg_stat_statements view, database administrators can identify slow, frequently executed, or resource-intensive queries, making it a powerful tool for performance tuning. It is straightforward to use — enable the extension and query the view to gain insights into query patterns and optimize database performance.
 
-### Performance troubleshooting
+{{<lead link="../query-1-performance/pg-stat-statements">}}
+To get more info on query level statistics, see [pg_stat_statements](../query-1-performance/pg-stat-statements)
+{{</lead>}}
 
-Database administrators and application developers need to be able to troubleshoot issues, perform root cause analysis, and issue fixes. You can create a dashboard to monitor an observed issue causing temporal, gradual, or systemic performance degradation, or application failure. To conduct root cause analysis, issue-dependent deep observability metrics in a specific area are typically used. These metrics are consumed at the time of root cause analysis and operating teams fall back to a health dashboard after the issue is identified, the fix is monitored, and the issue is resolved.
+## Live queries
 
-### Object monitoring
+The pg_stat_activity system view provides real-time information about the currently active database sessions. Use it to monitor user connections, query execution, and session states to understand database activity, and diagnose performance issues.
 
-Monitor specific parts of application behavior continuously after a new feature launch, during maintenance windows, during application upgrades, and more. The metrics can be system-wide or specific to the object of interest, such as a YugabyteDB cluster, node, tablet, geography, users, tenant, and more.
+{{<lead link="./pg-stat-activity">}}
+To understand how to view live queries, see [pg_stat_activity](./pg-stat-activity)
+{{</lead>}}
 
-## Logging
+## Tablet information
 
-Logs from different services, such as the [YB-TServer](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs) and [YB-Master](/preview/troubleshoot/nodes/check-logs/#yb-master-logs) provide a historical record of what has happened and can be very helpful in debugging and troubleshooting. These logs are rotated regularly, based on their size as configured. See [Logs management](/preview/troubleshoot/nodes/check-logs#logs-management).
+The yb_local_tablets view provides information about the how your table data is distributed across the different tablets in your cluster.
 
-## Query-level metrics
+{{<lead link="./yb-local-tablets">}}
+To understand how to view and use tablet metadata, see [yb_local_tablets](./yb-local-tablets)
+{{</lead>}}
 
-The following table describes views in YSQL you can use to monitor and tune query performance.
+## Terminated queries
 
-| View | Description |
-| :--- | :---------- |
-| [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
-| [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
-| [yb_local_tablets](./yb-local-tablets) | Get YSQL/YCQL and tablet metadata details |
-| [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
-| [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
-| [pg_locks](./pg-locks) | Get information on locks held by a transaction |
+Queries may be terminated by the system due to a variety reasons not including server crash, resource limitations, misbehaviour.
 
-To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
+{{<lead link="./yb-pg-stat-get-queries">}}
+To view which queries have been terminated for what reasons, see [yb_terminated_queries](./yb-pg-stat-get-queries/)
+{{</lead>}}
+
+## Copy status
+
+Use the COPY command to transfer data in and out of a database. This could be a long running operation depending on the size of data.
+
+{{<lead link="./pg-stat-progress-copy">}}
+To view the progress of the COPY command, see [pg_stat_progress_copy](./pg-stat-progress-copy)
+{{</lead>}}
+
+## Lock information
+
+The pg_locks view in PostgreSQL provides information about locks currently held or awaited by database sessions. Locks are crucial for maintaining data consistency and ensuring proper concurrency control in a multi-user environment. This view helps database administrators understand the locking behavior of queries and detect potential issues like deadlocks or contention.
+
+By querying pg_locks, you can identify which processes are holding locks, waiting for locks, and the types of locks involved (for example, row-level, table-level). This information is invaluable for diagnosing performance bottlenecks caused by lock contention, optimizing query execution, and ensuring smooth database operation.
+
+{{<lead link="./pg-locks">}}
+To understand how to view and use lock information, see [pg_locks](./pg-locks)
+{{</lead>}}
 
 ## Active Session History
 
-[Active Session History](active-session-history/) (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
+Active Session History (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
 
-## Learn more
+{{<lead link="./active-session-history">}}
+To learn more, see [Active Session History](./active-session-history)
+{{</lead>}}
 
-{{<index/block>}}
-  {{<index/item
-      title="Prometheus integration"
-      body="Export YugabyteDB metrics into Prometheus to inspect various metrics."
-      href="./prometheus-integration/"
-      icon="fa-thin fa-monitor-waveform">}}
+## Logging
 
-  {{<index/item
-      title="Grafana dashboard"
-      body="Create dashboards using Prometheus metrics to understand the health and performance of YugabyteDB clusters."
-      href="./grafana-dashboard/grafana/"
-      icon="fa-thin fa-diagram-lean-canvas">}}
+Logs provide a crucial record of events across numerous interconnected components and are indispensable for debugging and troubleshooting, allowing engineers to trace errors and understand the complex interactions between services. By aggregating and analyzing logs, teams can monitor system health, identify performance bottlenecks, and gain valuable insights into system behavior. Logs provide the essential observability required to manage the complexity of distributed environments, enabling efficient problem-solving and ensuring system reliability.
 
-  {{<index/item
-      title="View live queries with pg_stat_activity"
-      body="Troubleshoot problems and identify long-running queries with the activity view."
-      href="./pg-stat-activity/"
-      icon="fa-thin fa-wave-pulse">}}
-
-  {{<index/item
-      title="View YQL and tablet metadata with yb_local_tablets"
-      body="See metadata about the YSQL and YCQL statements, and system tablets of a node."
-      href="./yb-local-tablets/"
-      icon="fa-thin fa-tablets">}}
-
-  {{<index/item
-      title="View terminated queries with yb_terminated_queries"
-      body="Identify terminated queries with the get queries function."
-      href="./yb-pg-stat-get-queries/"
-      icon="fa-thin fa-traffic-light-stop">}}
-
-  {{<index/item
-      title="View COPY status with pg_stat_progress_copy"
-      body="Get the COPY command status, number of tuples processed, and other COPY progress reports with this view."
-      href="./pg-stat-progress-copy/"
-      icon="fa-thin fa-copy">}}
-
-  {{<index/item
-      title="Get lock information insights with pg_locks"
-      body="Get lock information about current transactions, diagnose and resolve any contention issues in YugabyteDB"
-      href="./pg-locks/"
-      icon="fa-thin fa-lock">}}
-
-  {{<index/item
-      title="Query statistics using pg_stat_statements"
-      body="Track planning and execution metrics for SQL statements"
-      href="../query-1-performance/pg-stat-statements"
-      icon="fa-thin fa-signal">}}
-
-  {{<index/item
-      title="Monitor clusters using key metrics"
-      body="Understand the different metrics in YugabyteDB to monitor your cluster"
-      href="../../launch-and-manage/monitor-and-alert/metrics"
-      icon="fa-thin fa-eyes">}}
-
-{{</index/block>}}
+{{<lead link="./logging/">}}
+To understand the logging system in YugabyteDB, see [Logging](./logging/)
+{{</lead>}}

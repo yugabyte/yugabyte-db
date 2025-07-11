@@ -21,7 +21,7 @@ After OIDC-based authentication is configured, an administrator can manage users
 
   This is not required if you enabled the **Display JWT token on login** option in the YBA OIDC configuration, as any database user can copy the JWT from the YBA landing page without signing in to YBA.
 
-  For information on how to add YBA users, see [Users and roles](../../../administer-yugabyte-platform/anywhere-rbac/#users-and-roles).
+  For information on how to add YBA users, see [Manage YugabyteDB Anywhere users](../../../administer-yugabyte-platform/anywhere-rbac/).
 
 ## Using your JWT
 

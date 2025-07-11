@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-It might seem that the built-in function `width_bucket()` ([here](https://www.postgresql.org/docs/11/functions-math.html#FUNCTIONS-MATH-FUNC-TABLE) in the PostgreSQL documentation) is tailor-made for this task. But there's a snag.
+It might seem that the built-in function `width_bucket()` ([here](https://www.postgresql.org/docs/15/functions-math.html#FUNCTIONS-MATH-FUNC-TABLE) in the PostgreSQL documentation) is tailor-made for this task. But there's a snag.
 
 The values in the column _t4.dp_score"_ lie in this so-called closed-closed interval `[0, 100]`—expressed like this in SQL:
 ```

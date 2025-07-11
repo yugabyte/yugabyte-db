@@ -60,4 +60,4 @@ yugabyte=# SELECT * FROM t2;
 
 - [DROP RULE](../ddl_drop_rule)
 
-[postgresql-docs-create-rule]: https://www.postgresql.org/docs/11/sql-createrule.html
+[postgresql-docs-create-rule]: https://www.postgresql.org/docs/15/sql-createrule.html

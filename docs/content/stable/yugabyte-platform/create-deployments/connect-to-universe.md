@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh/) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/11/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh/) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/15/app-psql.html) and third-party tools to connect.
 
 You can connect to the database on a universe in the following ways:
 
@@ -205,7 +205,7 @@ Replace the following:
 
   <div id="psql" class="tab-pane fade" role="tabpanel" aria-labelledby="psql-tab">
 
-To connect using [psql](https://www.postgresql.org/docs/11/app-psql.html), use the following connection string:
+To connect using [psql](https://www.postgresql.org/docs/15/app-psql.html), use the following connection string:
 
 ```sh
 ./psql --host=<HOST_ADDRESS> --port=5433 \

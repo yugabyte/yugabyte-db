@@ -246,7 +246,7 @@ The example below expects the following servers to be added to the cluster:
   --base_dir=/home/yugabyte/<IP10>/yugabyte-data \
   --advertise_address=<IP10>                     \
   --join=<IP1>                                  \
-  --cloud_location=aws.us-west-1.us-west-1a     \
+  --cloud_location=aws.us-west-1.us-west-1a      \
 ```
 
 {{< /note >}}

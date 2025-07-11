@@ -386,7 +386,7 @@
   weight = 10
   identifier = "yugabytedb"
   pre = "<i class='icon-database'></i>"
-  url = "/preview/"
+  url = "/stable/"
   [home.params]
     classes = "no-transform"
     showSection = true
@@ -396,7 +396,7 @@
   weight = 11
   identifier = "yugabytedb-anywhere"
   pre = "<i class='icon-server'></i>"
-  url = "/preview/yugabyte-platform/"
+  url = "/stable/yugabyte-platform/"
   [home.params]
     classes = "no-transform"
     showSection = true
@@ -1207,6 +1207,159 @@
   identifier = "yugabytedb-managed-api"
   url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
   [stable_api.params]
+    showSection = true
+
+########## Menus for "v2024.2"
+
+[["v2024.2"]]
+  weight = 1
+  ["v2024.2".params]
+    productsDropdown = true
+
+[["v2024.2"]]
+  name = "Overview"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/v2024.2/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Quick Start"
+  weight = 4
+  identifier = "quick-start"
+  url = "/preview/tutorials/quick-start/macos/"
+  ["v2024.2".params]
+    classes = "separator"
+    showSection = true
+    hideChildren = true
+
+[["v2024.2"]]
+  name = "Explore"
+  weight = 5
+  identifier = "explore"
+  url = "/v2024.2/explore/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Develop"
+  weight = 6
+  identifier = "develop"
+  url = "/v2024.2/develop/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Secure"
+  weight = 8
+  identifier = "secure"
+  url = "/v2024.2/secure/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Launch and Manage"
+  weight = 9
+  identifier = "launch-and-manage"
+  url = "/v2024.2/launch-and-manage/"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2024.2".params]
+    showSection = true
+
+[["v2024.2"]]
+  name = "Troubleshoot"
+  parent = "launch-and-manage"
+  url = "/preview/troubleshoot/"
+
+[["v2024.2"]]
+  name = "Benchmark"
+  weight = 11
+  identifier = "benchmark"
+  url = "/v2024.2/benchmark/"
+  ["v2024.2".params]
+    showSection = true
+
+########## Menus (in "v2024.2") for YB Anywhere section
+
+[["v2024.2_yugabyte-platform"]]
+  weight = 1
+  ["v2024.2_yugabyte-platform".params]
+    productsDropdown = true
+
+[["v2024.2_yugabyte-platform"]]
+  name = "Overview"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2024.2_yugabyte-platform".params]
+    showSection = true
+    hideLink = true
+
+########## Menus (in "v2024.2") for APIs
+
+[["v2024.2_api"]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/v2024.2/api/"
+  ["v2024.2_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.2_api"]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/v2024.2/api/ysql/"
+  ["v2024.2_api".params]
+    showSection = true
+
+[["v2024.2_api"]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-cassandra"
+  url = "/v2024.2/api/ycql/"
+  ["v2024.2_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.2_api"]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/v2024.2/api/ysqlsh/"
+  ["v2024.2_api".params]
+    showSection = true
+
+[["v2024.2_api"]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/v2024.2/api/ycqlsh/"
+  ["v2024.2_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2024.2_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "/v2024.2/yugabyte-platform/anywhere-automation/anywhere-api/"
+  ["v2024.2_api".params]
+    showSection = true
+
+[["v2024.2_api"]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
+  ["v2024.2_api".params]
     showSection = true
 
 ########## Menus for v2024.1

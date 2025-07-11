@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-Use the `CREATE GROUP` statement to create a group role. `CREATE GROUP` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a group role.
+Use the CREATE GROUP statement to create a group role. CREATE GROUP is an alias for [CREATE ROLE](../dcl_create_role) and is used to create a group role.
 
 ## Syntax
 
@@ -27,9 +27,9 @@ See [CREATE ROLE](../dcl_create_role) for more details.
 
 - Create a sample group that can manage databases and roles.
 
-```plpgsql
-yugabyte=# CREATE GROUP SysAdmin WITH CREATEDB CREATEROLE;
-```
+  ```plpgsql
+  yugabyte=# CREATE GROUP SysAdmin WITH CREATEDB CREATEROLE;
+  ```
 
 ## See also
 

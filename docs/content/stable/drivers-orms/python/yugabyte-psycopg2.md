@@ -135,7 +135,7 @@ The following table describes the connection parameters required to connect, inc
 | database/dbname | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
-| load_balance | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false (Disabled) |
+| load_balance | Enables [uniform load balancing](../../smart-drivers/#cluster-aware-load-balancing) | false |
 | topology_keys | Enables [topology-aware load balancing](../../smart-drivers/#topology-aware-load-balancing). Specify comma-separated geo-locations in the form `cloud.region.zone:priority`. Ignored if `load_balance` is false | Empty |
 | yb_servers_refresh_interval | The interval in seconds to refresh the servers list; ignored if `load_balance` is false | 300 |
 | fallback_to_topology_keys_only | If set to true and `topology_keys` are specified, the driver only tries to connect to nodes specified in `topology_keys` | false |

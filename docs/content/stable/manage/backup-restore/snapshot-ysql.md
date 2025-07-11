@@ -167,7 +167,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     DROP DATABASE IF EXISTS <database_name>;
     ```
 
-1. Retrieve the YSQL metadata file from the external storage and apply it using the [`ysqlsh`](../../../api/ycqlsh/) tool by executing the following command:
+1. Retrieve the YSQL metadata file from the external storage and apply it using the [ysqlsh](../../../api/ycqlsh/) tool by executing the following command:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1 --echo-all --file=<database_name>_schema.sql

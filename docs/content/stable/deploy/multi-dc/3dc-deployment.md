@@ -2,8 +2,8 @@
 title: Deploy to three or more data centers
 headerTitle: Three+ data center (3DC)
 linkTitle: Three+ data center (3DC)
-description: Deploy YugabyteDB clusters to three or more data centers.
-headContent: Deploy YugabyteDB clusters across regions
+description: Deploy YugabyteDB universes to three or more data centers.
+headContent: Deploy YugabyteDB universes across regions
 menu:
   stable:
     parent: multi-dc
@@ -18,11 +18,11 @@ type: docs
 
 {{< /tip >}}
 
-Three data center deployments of YugabyteDB are essentially a natural extension of the three availability zone (AZ) deployments documented in the [Manual deployment](../../manual-deployment/) section. Equal number of nodes are placed in each of the three data centers. Inside a single data center, a multi-AZ deployment is recommended to ensure resilience against zone failures. This approach works fine for any odd number of AZs or data centers. Given YugabyteDB's distributed consensus-based replication, which requires majority quorum for continuous availability of write requests, deploying a single cluster across an even number of AZs or data centers is not recommended.
+Three data center deployments of YugabyteDB are essentially a natural extension of the three availability zone (AZ) deployments documented in the [Manual deployment](../../manual-deployment/) section. Equal number of nodes are placed in each of the three data centers. Inside a single data center, a multi-AZ deployment is recommended to ensure resilience against zone failures. This approach works fine for any odd number of AZs or data centers. Given YugabyteDB's distributed consensus-based replication, which requires majority quorum for continuous availability of write requests, deploying a single universe across an even number of AZs or data centers is not recommended.
 
 ## Example scenario
 
-- Create a three-node cluster with replication factor of `3`.
+- Create a three-node universe with replication factor of `3`.
 
   - Cloud is `aws` and the three regions/AZs are `us-west`/`us-west-2a`, `us-east-1`/`us-east-1a`, `ap-northeast-1`/`ap-northeast-1a`. One node is placed in each region/AZ such that one replica for each tablet is also placed in each region/AZ.
   - Private IP addresses of the 3 nodes are `172.151.17.130`, `172.151.17.220`, and `172.151.17.140`.
@@ -33,7 +33,7 @@ Three data center deployments of YugabyteDB are essentially a natural extension 
 
 Follow the [Checklist](../../../deploy/checklist/) to ensure you have prepared the nodes for installing YugabyteDB.
 
-## Deploy the cluster
+## Deploy the universe
 
 Execute the following steps on each of the instances.
 
@@ -92,7 +92,7 @@ For the full list of configuration flags, see the [YB-TServer reference](../../.
 
 ### Set replica placement policy
 
-The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the `--placement_*` configuration flags. However, for the current deployment, you want to explicitly place one replica of each tablet in each region/AZ. The following command sets replication factor of `3` across `us-west-2`/`us-west-2a`, `us-east-1`/`us-east-1a`, `ap-northeast-1`/`ap-northeast-1a` leading to such a placement.
+The default replica placement policy when the universe is first created is to treat all nodes as equal irrespective of the `--placement_*` configuration flags. However, for the current deployment, you want to explicitly place one replica of each tablet in each region/AZ. The following command sets replication factor of `3` across `us-west-2`/`us-west-2a`, `us-east-1`/`us-east-1a`, `ap-northeast-1`/`ap-northeast-1a` leading to such a placement.
 
 On any host running the yb-master, run the following command:
 
@@ -199,4 +199,4 @@ replication_info {
 
 ## Verify the deployment
 
-Use the [ysqlsh](../../../api/ysqlsh/) (for YSQL API) or [ycqlsh](../../../api/ycqlsh/) (for YCQL API) shells to test connectivity to the cluster.
+Use the [ysqlsh](../../../api/ysqlsh/) (for YSQL API) or [ycqlsh](../../../api/ycqlsh/) (for YCQL API) shells to test connectivity to the universe.

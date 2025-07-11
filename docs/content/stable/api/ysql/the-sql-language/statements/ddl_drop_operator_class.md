@@ -41,4 +41,4 @@ yugabyte=# DROP OPERATOR CLASS my_op_class USING btree;
 
 - [CREATE OPERATOR CLASS](../ddl_create_operator_class)
 
-[postgresql-docs-drop-operator-class]: https://www.postgresql.org/docs/11/sql-dropopclass.html
+[postgresql-docs-drop-operator-class]: https://www.postgresql.org/docs/15/sql-dropopclass.html

@@ -74,7 +74,7 @@ set the values of the remaining specified columns to those in the VALUES relatio
 In this way, the net effect is either to insert or to update; and for this reason
 the INSERT ON CONFLICT variant is often colloquially referred to as "upsert".
 
-{{<tags/feature/ea idea="1455">}}To optimize performance, you can set the [yb_insert_on_conflict_read_batch_size](../../../../../reference/configuration/yb-tserver/#yb-insert-on-conflict-read-batch-size) configuration parameter to batch upserts. This reduces the number of network round trips required compared to performing the operations serially.
+To optimize performance, you can set the [yb_insert_on_conflict_read_batch_size](../../../../../reference/configuration/yb-tserver/#yb-insert-on-conflict-read-batch-size) configuration parameter to batch upserts. This reduces the number of network round trips required compared to performing the operations serially.
 
 ### *returning_clause*
 
@@ -332,6 +332,6 @@ yugabyte=# SELECT id, c1, c2 FROM sample ORDER BY c1;
 
 ## See also
 
-- [`COPY`](../cmd_copy)
-- [`CREATE TABLE`](../ddl_create_table)
-- [`SELECT`](../dml_select/)
+- [COPY](../cmd_copy)
+- [CREATE TABLE](../ddl_create_table)
+- [SELECT](../dml_select/)

@@ -27,7 +27,7 @@ The server and CA certificates must adhere to the following criteria:
 
 - Be stored in a `.crt` file, with both the certificate and the private key being in the PEM format.
 
-  If your certificates and keys are stored in the PKCS12 format, you can [convert them to the PEM format](#convert-certificates-and-keys-from-pkcs12-to-pem-format).
+  If your certificates and keys are stored in the PKCS12 format, you can [convert them to the PEM format](../add-certificate-self#convert-certificates-and-keys-from-pkcs12-to-pem-format).
 
 The server certificates must adhere to the following criteria:
 
@@ -109,5 +109,5 @@ Each entry you provide for the CN or SAN must match the on-premises node as ente
     If you face any issue with the above verification, you can customize the level of certificate validation while creating a universe that uses these certificates. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
 
 {{< note >}}
-The client certificates and keys are required only if you intend to use [PostgreSQL certificate-based authentication](https://www.postgresql.org/docs/11/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
+The client certificates and keys are required only if you intend to use [PostgreSQL certificate-based authentication](https://www.postgresql.org/docs/15/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
 {{< /note >}}

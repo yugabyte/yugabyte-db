@@ -32,7 +32,7 @@ In this example, object audit logging is used to illustrate how a granular appro
 
 ### Setup
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Using ysqlsh, connect to the database and enable the pgaudit extension on the YugabyteDB cluster as follows:
 

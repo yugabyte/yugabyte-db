@@ -43,5 +43,5 @@ yugabyte=# CREATE OPERATOR CLASS my_op_class
 
 - [DROP OPERATOR CLASS](../ddl_drop_operator_class)
 
-[postgresql-docs-create-op-class]: https://www.postgresql.org/docs/11/sql-createopclass.html
-[postgresql-docs-xindex]: https://www.postgresql.org/docs/11/xindex.html
+[postgresql-docs-create-op-class]: https://www.postgresql.org/docs/15/sql-createopclass.html
+[postgresql-docs-xindex]: https://www.postgresql.org/docs/15/xindex.html

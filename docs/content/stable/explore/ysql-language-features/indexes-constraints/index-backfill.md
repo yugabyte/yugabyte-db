@@ -32,22 +32,7 @@ Columns such as `lockers_total`, `lockers_done`, `current_locker_pid`, `blocks_t
 
 ## Setup
 
-The examples run on any YugabyteDB universe.
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
+{{% explore-setup-single-new %}}
 
 1. From your local YugabyteDB installation directory, create an index on an existing table as follows:
 

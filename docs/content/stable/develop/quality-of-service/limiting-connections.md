@@ -15,7 +15,7 @@ type: docs
 
 Each connection to a YugabyteDB cluster uses CPU and memory, so it is important to consider how many connections are needed for the application. YugabyteDB uses a `max_connections` setting to limit the number of connections per node in the cluster (and thereby the resources that are consumed by connections) to prevent run-away connection behavior from overwhelming your deployment's resources.
 
-You can check the value of `max_connections` with your admin user and `ysqlsh`.
+You can check the value of `max_connections` with your admin user and ysqlsh.
 
 ```sql
 SHOW max_connections;
@@ -123,4 +123,4 @@ ysqlsh: FATAL:  too many connections for database "test_connection"
 
 ## Learn more
 
-[YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/)
+- [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/)

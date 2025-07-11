@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Values whose data type is _date_ represent the date component of some moment (the year, the month, and the day) in the "local" (a.k.a. "wall-clock") regime. _Date_ values know nothing about timezones, and represent the date at some unspecified location. You can picture a _date_ value as the number of days (or microseconds, if you prefer) to the start of the day in question from the start of some epoch—which number is then mapped using the [proleptic Gregorian calendar](https://www.postgresql.org/docs/11/datetime-units-history.html) to a date in the familiar year-month-day representation.
+Values whose data type is _date_ represent the date component of some moment (the year, the month, and the day) in the "local" (a.k.a. "wall-clock") regime. _Date_ values know nothing about timezones, and represent the date at some unspecified location. You can picture a _date_ value as the number of days (or microseconds, if you prefer) to the start of the day in question from the start of some epoch—which number is then mapped using the [proleptic Gregorian calendar](https://www.postgresql.org/docs/15/datetime-units-history.html) to a date in the familiar year-month-day representation.
 
 Notice that subtracting one _date_ value from another _date_ value produces an _integer_ value: the number of days between the two specified days. The value is sensitive to Gregorian calendar leap years. Try this:
 

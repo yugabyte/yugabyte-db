@@ -12,6 +12,11 @@ menu:
 type: docs
 ---
 
+{{< page-finder/head text="Port Requirements" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/prepare/networking/" >}}
+{{< /page-finder/head >}}
+
 {{< note title="YugabyteDB Anywhere port requirements" >}}
 For information on port requirements for YugabyteDB Anywhere and universes deployed using YugabyteDB Anywhere, refer to [Networking requirements](../../../yugabyte-platform/prepare/networking/).
 {{< /note >}}

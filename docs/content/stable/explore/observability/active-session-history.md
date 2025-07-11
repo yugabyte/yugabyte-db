@@ -4,8 +4,6 @@ headerTitle: Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
-tags:
-  feature: early-access
 menu:
   stable:
     identifier: ash
@@ -32,7 +30,7 @@ To configure ASH, you can set the following YB-TServer flags for each node of yo
 
 | Flag | Description |
 | :--- | :---------- |
-| ysql_yb_enable_ash | Enables ASH. Changing this flag requires a TServer restart. Default: false |
+| ysql_yb_enable_ash | Enables ASH. Changing this flag requires a TServer restart. Default: true |
 | ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32 MiB for 1-2 cores</li><li>64 MiB for 3-4 cores</li><li>128 MiB for 5-8 cores</li><li>256 MiB for 9-16 cores</li><li>512 MiB for 17-32 cores</li><li>1024 MiB for more than 32 cores</li></ul> Changing this flag requires a TServer restart. |
 | ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). Changing this flag doesn't require a TServer restart. Default: 1000 |
 | ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. Changing this flag doesn't require a TServer restart. Default:  500 |
@@ -100,13 +98,25 @@ These fixed constants are used to identify various YugabyteDB background activit
 | 5 | YSQL/TServer | Default query ID, assigned in the interim before pg_stat_statements calculates a proper ID for the query. |
 | 6 | TServer | Query ID for write ahead log (WAL) background sync. |
 
+To obtain the IP address and location of a node where a query is being executed, use the `top_level_node_id` from the active session history view in the following command:
+
+```sql
+SELECT * FROM pg_catalog.yb_servers() WHERE uuid = <top_level_node_id>;
+```
+
+``` output
+     host     | port | num_connections | node_type | cloud |  region   |    zone    | public_ip |               uuid               
+--------------+------+-----------------+-----------+-------+-----------+------------+-----------+----------------------------------
+ 10.9.111.111 | 5433 |               0 | primary   | aws   | us-west-2 | us-west-2a |           | 5cac7c86ba4e4f0e838bf180d75bcad5
+```
+
 ## Wait events
 
 The following describes the wait events available in the [active session history](#yb-active-session-history), along with their type and, where applicable, the auxiliary information (`wait_event_aux`) provided with that type. The events are categorized by wait event class.
 
 ### YSQL
 
-These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/11/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
+These are the wait events introduced by YugabyteDB. Some of the following [wait events](https://www.postgresql.org/docs/15/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
 
 #### TServerWait class
 
@@ -212,7 +222,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 Make sure you have an active ysqlsh session (`./bin/ysqlsh`) to run the following examples.
 

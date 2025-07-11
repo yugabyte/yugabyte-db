@@ -30,14 +30,14 @@ CREATE TABLE accounts (
 CREATE TABLE investment_accounts (
     investment_type TEXT NOT NULL CHECK (investment_type IN ('stocks', 'bonds', 'funds')),
     CHECK (balance >= 5000),
-    PRIMARY KEY (account_id, investment_type) 
+    PRIMARY KEY (account_id, investment_type)
 ) INHERITS (accounts);
 
 -- Child table for savings accounts
 CREATE TABLE savings_accounts (
     interest_rate NUMERIC NOT NULL CHECK (interest_rate >= 0 AND interest_rate <= 0.1),
     CHECK (balance >= 100),
-    PRIMARY KEY (account_id) 
+    PRIMARY KEY (account_id)
 ) INHERITS (accounts);
 ```
 
@@ -95,9 +95,9 @@ UPDATE ONLY accounts SET balance = balance + 100 WHERE account_id = 1;
 
 ## Limitations
 
-Table inheritance is {{<tags/feature/tp idea="2158">}} - report any problems at using issue {{<issue 5956>}}.
+Table inheritance is {{<tags/feature/tp idea="2158">}} - report any problems using issue {{<issue 27949>}}.
 
 - Dropping or adding a column to a parent fails when "local" column on child table exists. (Issue {{<issue 26094>}})
 - Crash while obtaining a row lock on a parent inheritance table with a child file_fdw table. (Issue {{<issue 27105>}})
 
-For an up-to-date list, see issue {{<issue 5956>}}.
+For an up-to-date list, see issue {{<issue 27949>}}.

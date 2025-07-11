@@ -40,7 +40,7 @@ The exercise assumes you have [enabled authentication for YCQL](../../enable-aut
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Use the default `cassandra` user and connect to the cluster using `ycqlsh` as follows:
+Connect to the cluster using a superuser role. Use the default `cassandra` user and connect to the cluster using ycqlsh as follows:
 
 ```sh
 $ ./bin/ycqlsh -u cassandra -p cassandra

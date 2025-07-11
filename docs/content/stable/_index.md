@@ -14,7 +14,7 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Get started locally on your laptop"
     description="Download and install YugabyteDB on your laptop, create a cluster, and build a sample application."
     buttonText="Quick Start"
-    buttonUrl="/preview/tutorials/quick-start/"
+    buttonUrl="/preview/tutorials/quick-start/macos/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 
@@ -22,7 +22,7 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Explore distributed SQL"
     description="Explore the features of distributed SQL, with examples."
     buttonText="Explore"
-    buttonUrl="/stable/explore/"
+    buttonUrl="/preview/explore/"
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
@@ -41,14 +41,14 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Connect using drivers and ORMs"
     description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
     buttonText="Connect"
-    buttonUrl="/stable/drivers-orms/"
+    buttonUrl="/preview/drivers-orms/"
   >}}
 
   {{< sections/3-box-card
     title="Use familiar APIs"
     description="Get up to speed quickly using YugabyteDB's PostgreSQL-compatible YSQL and Cassandra-based YCQL APIs."
     buttonText="Develop"
-    buttonUrl="/stable/api/"
+    buttonUrl="/preview/api/"
   >}}
 
 {{< /sections/3-boxes >}}
@@ -60,21 +60,21 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Architecture"
     description="Learn how YugabyteDB achieves consistency and high availability."
     buttonText="Learn More"
-    buttonUrl="/stable/architecture/"
+    buttonUrl="/preview/architecture/"
   >}}
 
   {{< sections/3-box-card
     title="Secure"
     description="Secure YugabyteDB with authentication, authorization, and encryption."
     buttonText="Secure"
-    buttonUrl="/stable/secure/"
+    buttonUrl="/preview/secure/"
   >}}
 
   {{< sections/3-box-card
     title="Configure"
     description="Configure core database services."
     buttonText="Configure"
-    buttonUrl="/stable/reference/configuration/"
+    buttonUrl="/preview/reference/configuration/"
   >}}
 
 {{< /sections/3-boxes >}}

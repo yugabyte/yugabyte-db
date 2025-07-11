@@ -23,7 +23,7 @@ Note that the examples are deliberately simplified. In many of the scenarios, yo
 
 ## Set up universe
 
-The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe).
+The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../cluster-setup-local/#set-up-yugabytedb-universe).
 
 ## Undo data changes
 
@@ -224,7 +224,7 @@ Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-ad
 
 In addition to data changes, you can also use PITR to recover from metadata changes, such as creating, altering, and deleting tables and indexes.
 
-Before you begin, if a local universe is currently running, first [destroy it](../../../reference/configuration/yugabyted/#destroy-a-local-cluster), and create a local multi-node YugabyteDB universe as described in [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe).
+Before you begin, if a local universe is currently running, first [destroy it](../../../reference/configuration/yugabyted/#destroy-a-local-cluster), and create a local multi-node YugabyteDB universe as described in [Set up YugabyteDB universe](../../cluster-setup-local/).
 
 ### Undo table creation
 

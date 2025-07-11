@@ -18,7 +18,7 @@ type: docs
     <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
       <img src="/icons/yugabyte.svg"></i>
-      YugabyteDB Psycopg2
+      Yugabyte Psycopg2
     </a>
   </li>
   <li >
@@ -35,7 +35,7 @@ type: docs
   </li>
 </ul>
 
-Psycopg 3 is the newest implementation of the most popular adapter for Python.
+Psycopg 3 design emerges from the experience of more than 10 years of development and support of psycopg2. It embraces the new possibilities offered by the more modern generations of the Python language and the PostgreSQL database and addresses the challenges offered by the current patterns in software development and deployment.
 
 For details on using psycopg3, see [Psycopg3 documentation](https://www.psycopg.org/psycopg3/docs/).
 

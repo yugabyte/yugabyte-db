@@ -299,7 +299,7 @@ For example:
 ```sh
 $ java -cp "target/hello-world-1.0.jar:target/lib/*" \
     com.yugabyte.sample.apps.YBCqlHelloWorld \
-    42424242-42d0-4c1a-b424-d42424ab2f42.aws.ybdb.io \
+    42424242-42d0-4c1a-b424-d42424ab2f42.aws.yugabyte.cloud \
     src/main/resources/root.crt admin qwerty
 ```
 

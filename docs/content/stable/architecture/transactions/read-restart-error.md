@@ -25,7 +25,7 @@ Read restart errors are raised to maintain the _read-after-commit-visibility_ gu
 YugabyteDB doesn't require atomic clocks, but instead allows a configurable setting for maximum clock skew. Time synchronization protocols such as NTP synchronize commodity hardware clocks periodically to keep the skew low and bounded. Additionally, YugabyteDB has optimizations to resolve this ambiguity internally with best-effort. However, when it can't resolve the error internally, YugabyteDB outputs a `read restart` error to the external client, similar to the following:
 
 ```output
-ERROR:  Query error: Restart read required at: { read: { physical: 1656351408684482 } local_limit: { physical: 1656351408684482 } global_limit: <min> in_txn_limit: <max> serial_no: 0 }
+ERROR:  Query error: Restart read required
 ```
 
 The following scenario describes how clock skew can result in the above mentioned ambiguity around data visibility in detail:
@@ -33,11 +33,13 @@ The following scenario describes how clock skew can result in the above mentione
 * Tokens 17, 29 are inserted into an empty tokens table. Then, all the tokens from the table are retrieved.
 
   The SQL commands for the scenario are as follows:
+
   ```sql
   INSERT INTO tokens VALUES (17);
   INSERT INTO tokens VALUES (29);
   SELECT * FROM tokens;
   ```
+
 * The SELECT must return both 17 and 29.
 * However, due to clock skew, the INSERT operation picks a commit time higher than the reference time, while the SELECT picks a lower read time and thus omits the prior INSERT from the result set.
 
@@ -86,17 +88,20 @@ You can handle and mitigate read restart errors using the following techniques:
   Examples:
 
   Set transaction properties at the session level.
+
   ```sql
   SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE;
   SELECT * FROM large_table;
   ```
 
   Enclose the offending query within a transaction block.
+
   ```sql
   BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE;
   SELECT * FROM large_table;
   COMMIT;
   ```
+
 - Using read only, deferrable transactions is not always feasible, either because the query is not read only, or the query is part of a read-write transaction, or because an additional 500ms of latency is not acceptable. In these cases, try increasing the value of `ysql_output_buffer_size`.
 
   This will enable YugabyteDB to retry the query internally on behalf of the user. As long as the output of a statement hasn't crossed ysql_output_buffer_size to result in flushing partial data to the external client, the YSQL query layer retries read restart errors for all statements in a Read Committed transaction block, for the first statement in a Repeatable Read transaction block, and for any standalone statement outside a transaction block. As a tradeoff, increasing the buffer size also increases the memory consumed by the YSQL backend processes, resulting in a higher risk of out-of-memory errors.

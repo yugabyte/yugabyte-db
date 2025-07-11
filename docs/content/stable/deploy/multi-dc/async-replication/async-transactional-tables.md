@@ -1,9 +1,9 @@
 ---
-title: Handling DDLs for manually-configured transactional xCluster
-headerTitle: Make manual DDL changes
+title: Handling DDLs for Manual mode transactional xCluster
+headerTitle: DDL changes in Fully Manual mode
 linkTitle: Manual DDL changes
-description: How to handle DDLs when using manually-configured transactional xCluster replication
-headContent: Handling DDLs in manually-configured transactional xCluster
+description: How to handle DDLs when using Manual mode transactional xCluster replication
+headContent: Making DDL changes in Manual mode transactional xCluster
 menu:
   stable:
     parent: async-replication-transactional
@@ -14,7 +14,11 @@ tags:
 type: docs
 ---
 
-The following instructions are for performing DDL operations (such as creating, altering, or dropping tables, indexes, or partitions) on databases in [fully manual configured](../async-transactional-setup-manual/) transactional xCluster replication. For instruction on making DDL changes in semi-automatic transactional xCluster replication, see [Making DDL changes](../async-transactional-setup-semi-automatic/#making-ddl-changes).
+{{< tip >}}
+Use [Automatic](../async-transactional-setup-automatic) or [Semi-automatic](../async-transactional-setup-semi-automatic) mode for simpler management of DDL changes.
+{{< /tip >}}
+
+The following instructions are for performing DDL operations (such as creating, altering, or dropping tables, indexes, or partitions) on databases in [fully manual configured](../async-transactional-setup-manual/) transactional xCluster replication. For instructions on making DDL changes in semi-automatic transactional xCluster replication, see [Making DDL changes in semi-automatic mode](../async-transactional-setup-semi-automatic/#making-ddl-changes). For automatic transactional xCluster replication, see [Making DDL changes in automatic mode](../async-transactional-setup-automatic/#making-ddl-changes).
 
 When making DDL changes, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated.
 

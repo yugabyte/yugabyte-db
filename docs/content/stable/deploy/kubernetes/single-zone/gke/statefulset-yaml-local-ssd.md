@@ -249,7 +249,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 ...
 ```
 
-You can connect to the `ycqlsh` shell on this universe by running the following command:
+You can connect to the ycqlsh shell on this universe by running the following command:
 
 ```sh
 kubectl exec -it yb-tserver-0 -- ycqlsh yb-tserver-0

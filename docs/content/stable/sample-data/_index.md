@@ -19,8 +19,8 @@ Local install
 : The ysqlsh shell is included with the YugabyteDB installation. For information on installing YugabyteDB, refer to [Quick start](/preview/tutorials/quick-start/macos/).
 
 YugabyteDB Aeon
-: For information on connecting to your YugabyteDB Aeon cluster using `ysqlsh` in cloud shell, refer to [Connect using cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/).
-: For information on connecting to your YugabyteDB Aeon cluster using the `ysqlsh` client installed on your computer, refer to [Connect via client shells](/preview/yugabyte-cloud/cloud-connect/connect-client-shell/).
+: For information on connecting to your YugabyteDB Aeon cluster using ysqlsh in cloud shell, refer to [Connect using cloud shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/).
+: For information on connecting to your YugabyteDB Aeon cluster using the ysqlsh client installed on your computer, refer to [Connect via client shells](/preview/yugabyte-cloud/cloud-connect/connect-client-shell/).
 : The exercises can be run on free or standard clusters. To get started with YugabyteDB Aeon, refer to [Quick start](/preview/yugabyte-cloud/cloud-quickstart/).
 
 {{<index/block>}}

@@ -42,9 +42,9 @@ yugabyte=# SELECT yb_index_check('abcd_b_c_d_idx'::regclass);
 ```
 
 ```output
- yb_index_check 
+ yb_index_check
 ----------------
- 
+
 (1 row)
 ```
 
@@ -55,9 +55,9 @@ yugabyte=# SELECT yb_index_check(16906);
 ```
 
 ```output
- yb_index_check 
+ yb_index_check
 ----------------
- 
+
 (1 row)
 ```
 
@@ -90,7 +90,7 @@ SELECT * FROM check_all_indexes_in_table('abcd'::regclass);
 ```
 
 ```output
-       indexname       | yb_index_check 
+       indexname       | yb_index_check
 -----------------------+----------------
  abcd_b_c_d_idx        | OK
  abcd_b_c_idx          | OK
@@ -137,7 +137,7 @@ SELECT * FROM check_all_indexes_in_db();
 ```
 
 ```output
-       indexname       | yb_index_check 
+       indexname       | yb_index_check
 -----------------------+----------------
  abcd_b_c_d_idx        | OK
  abcd_b_c_idx          | OK

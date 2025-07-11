@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) module provides functions to generate universally unique identifiers (UUIDs) using one of several standard algorithms.
+The [uuid-ossp](https://www.postgresql.org/docs/15/uuid-ossp.html) module provides functions to generate universally unique identifiers (UUIDs) using one of several standard algorithms.
 
 First, enable the extension:
 
@@ -19,7 +19,7 @@ First, enable the extension:
 CREATE EXTENSION "uuid-ossp";
 ```
 
-Connect using `ysqlsh` and run the following:
+Connect using ysqlsh and run the following:
 
 ```sql
 SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
