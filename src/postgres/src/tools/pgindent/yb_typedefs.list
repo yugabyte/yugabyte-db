@@ -204,7 +204,6 @@ YbUpdateEntity
 YbUpdateRelationCacheState
 YbValidateOkeysState
 YbVirtualWalRecord
-YbXClusterReplicationRole
 YbYsqlConnMgrShmemHeader
 YbcAdvisoryLockId
 YbcAdvisoryLockMode
@@ -303,6 +302,7 @@ YbcTypeEntityProvider
 YbcWaitEventDescriptor
 YbcWaitEventInfo
 YbcWaitEventInfoPtr
+YbcXClusterReplicationRole
 YbcYCQLStatementStats
 YbcYsqlBenchMetricEntry
 YbgError

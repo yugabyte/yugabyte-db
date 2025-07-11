@@ -2574,6 +2574,7 @@ class PgClientSession::Impl {
         xcluster_context()->IsReadOnlyMode(options.namespace_id())) {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
+          TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
           // Only DDLs and index backfill is allowed in xcluster read only mode.
           return STATUS(
               IllegalState,

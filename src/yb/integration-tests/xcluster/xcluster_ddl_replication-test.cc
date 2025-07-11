@@ -26,7 +26,6 @@
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 
@@ -54,6 +53,9 @@ DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_b
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_bool(enable_pg_cron);
+DECLARE_string(ysql_cron_database_name);
+DECLARE_string(ysql_pg_conf_csv);
 
 using namespace std::chrono_literals;
 
@@ -1502,6 +1504,28 @@ class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTest {
     return false;
   }
 
+  // Perform switchover from A->B to B->A.
+  Status Switchover() {
+    LOG(INFO) << "===== Beginning switchover: checkpoint B";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    RETURN_NOT_OK(CheckpointReplicationGroup(
+        kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    LOG(INFO) << "===== Switchover: set up replication from B to A";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    RETURN_NOT_OK(CreateReplicationFromCheckpoint(
+        cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
+    LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
+    SetReplicationDirection(ReplicationDirection::AToB);
+    RETURN_NOT_OK(DeleteOutboundReplicationGroup());
+    LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
+    SetReplicationDirection(ReplicationDirection::BToA);
+    RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
+        VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+    LOG(INFO) << "===== Switchover done";
+
+    return Status::OK();
+  }
+
   Cluster* cluster_A_ = &producer_cluster_;
   Cluster* cluster_B_ = &consumer_cluster_;
   const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
@@ -1812,23 +1836,7 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {
   }
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
-  // Perform switchover from A->B to B->A.
-  LOG(INFO) << "===== Beginning switchover: checkpoint B";
-  SetReplicationDirection(ReplicationDirection::BToA);
-  ASSERT_OK(CheckpointReplicationGroup(
-      kBackwardsReplicationGroupId, /*require_no_bootstrap_needed=*/false));
-  LOG(INFO) << "===== Switchover: set up replication from B to A";
-  SetReplicationDirection(ReplicationDirection::BToA);
-  ASSERT_OK(CreateReplicationFromCheckpoint(
-      cluster_A_->mini_cluster_->GetMasterAddresses(), kBackwardsReplicationGroupId));
-  LOG(INFO) << "===== Continuing switchover: drop replication from A to B";
-  SetReplicationDirection(ReplicationDirection::AToB);
-  ASSERT_OK(DeleteOutboundReplicationGroup());
-  LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
-  SetReplicationDirection(ReplicationDirection::BToA);
-  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
-      ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
-  LOG(INFO) << "===== Switchover done";
+  ASSERT_OK(Switchover());
 
   // Attempt to allocate pg_class OIDs on B in the normal space that we will want to preserve and
   // thus use the same OIDs on A.
@@ -1854,6 +1862,81 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverBumpsAboveUsedOids) {
 
   SetReplicationDirection(ReplicationDirection::BToA);
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
+TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_cron) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cron_database_name) = "test_db";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "cron.yb_job_list_refresh_interval=10";
+
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE cluster_name (name text)"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE cron_table (a text)"));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION pg_cron"));
+    return Status::OK();
+  }));
+  auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+  auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+
+  // Insert different data in each cluster so that the test can distinguish which cluster
+  // the cron job is running on.
+  ASSERT_OK(conn_A.Execute("INSERT INTO cluster_name VALUES ('A')"));
+  ASSERT_OK(conn_B.Execute("INSERT INTO cluster_name VALUES ('B')"));
+
+  // Set up replication from A to B.
+  // require_no_bootstrap_needed is set to false since we have tables with data.
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  int sync_point_instance_count = 0;
+  auto sync_point_instance = yb::SyncPoint::GetInstance();
+  sync_point_instance->SetCallBack(
+      "WriteDetectedOnXClusterReadOnlyModeTarget", [&](void*) { sync_point_instance_count++; });
+  sync_point_instance->EnableProcessing();
+
+  // Set up a cron job that inserts the cluster name into cron_table every second.
+  ASSERT_OK(
+      conn_A.Fetch("SELECT cron.schedule('1 second', 'INSERT INTO cron_table (SELECT name "
+                   "FROM cluster_name)')"));
+
+  auto get_row_count = [&](pgwrapper::PGConn& conn,
+                           const std::string& cluster_name) -> Result<uint64_t> {
+    return conn.FetchRow<pgwrapper::PGUint64>(
+        Format("SELECT COUNT(*) FROM cron_table WHERE a = '$0'", cluster_name));
+  };
+  auto get_failed_runs = [&](pgwrapper::PGConn& conn) -> Result<uint64_t> {
+    return conn.FetchRow<pgwrapper::PGUint64>(
+        "SELECT COUNT(*) FROM cron.job_run_details WHERE status = 'failed'");
+  };
+
+  SleepFor(30s);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // We should have at least 10 successful runs on the A cluster, and none from the B cluster.
+  auto row_count = ASSERT_RESULT(get_row_count(conn_B, "A"));
+  ASSERT_GE(row_count, 10);
+  row_count = ASSERT_RESULT(get_row_count(conn_B, "B"));
+  ASSERT_EQ(row_count, 0);
+  auto failed_runs = ASSERT_RESULT(get_failed_runs(conn_B));
+  ASSERT_EQ(failed_runs, 0);
+
+  ASSERT_OK(Switchover());
+  const auto a_row_count = ASSERT_RESULT(get_row_count(conn_B, "A"));
+
+  SleepFor(30s);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  row_count = ASSERT_RESULT(get_row_count(conn_A, "B"));
+  ASSERT_GT(row_count, 10);
+  // A row count should not change anymore.
+  row_count = ASSERT_RESULT(get_row_count(conn_A, "A"));
+  ASSERT_EQ(row_count, a_row_count);
+  failed_runs = ASSERT_RESULT(get_failed_runs(conn_A));
+  ASSERT_EQ(failed_runs, 0);
+
+  // Make sure target did not attempt to perform any writes.
+  ASSERT_EQ(sync_point_instance_count, 0);
 }
 
 using XClusterDDLReplicationFailoverTest = XClusterDDLReplicationSwitchoverTest;
