@@ -3135,5 +3135,36 @@ TEST_F(PgCatalogVersionTest, TestPreloadCatalogTables) {
   VerifyCatCacheRefreshMetricsHelper(5 /* num_full_refreshes */, 0 /* num_delta_refreshes */);
 }
 
+// Make sure ALTER ROLE SET GUC has global impact.
+TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE ROLE user1 WITH login"));
+  ASSERT_OK(conn.Execute("CREATE ROLE user2 WITH login"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+
+  auto conn_db1_user1 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user1"));
+  auto conn_db1_user2 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user2"));
+  auto row1 = ASSERT_RESULT(conn_db1_user1.FetchAllAsString("SHOW log_planner_stats"));
+  auto row2 = ASSERT_RESULT(conn_db1_user2.FetchAllAsString("SHOW log_planner_stats"));
+  ASSERT_EQ(row1, "off");
+  ASSERT_EQ(row2, "off");
+
+  ASSERT_OK(conn.Execute("ALTER ROLE user1 SET log_planner_stats = on"));
+
+  conn_db1_user1 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user1"));
+  auto conn_yb_user1 = ASSERT_RESULT(ConnectToDBAsUser("yugabyte" /* db_name */, "user1"));
+  conn_db1_user2 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user2"));
+  auto conn_yb_user2 = ASSERT_RESULT(ConnectToDBAsUser("yugabyte" /* db_name */, "user2"));
+
+  auto row3 = ASSERT_RESULT(conn_db1_user1.FetchAllAsString("SHOW log_planner_stats"));
+  auto row4 = ASSERT_RESULT(conn_yb_user1.FetchAllAsString("SHOW log_planner_stats"));
+  auto row5 = ASSERT_RESULT(conn_db1_user2.FetchAllAsString("SHOW log_planner_stats"));
+  auto row6 = ASSERT_RESULT(conn_yb_user2.FetchAllAsString("SHOW log_planner_stats"));
+  ASSERT_EQ(row3, "on");
+  ASSERT_EQ(row4, "on");
+  ASSERT_EQ(row5, "off");
+  ASSERT_EQ(row6, "off");
+}
+
 } // namespace pgwrapper
 } // namespace yb
