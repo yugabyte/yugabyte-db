@@ -44,8 +44,9 @@ string FormatBytesAsStr(const char* data,
   result.push_back(quote);
   const char* end = data + n;
 
-  // Not including the current character we're looking at. Cast to a signed int to avoid underflow.
-  int64_t bytes_left = static_cast<int64_t>(n - 1);
+  // Not including the current character we're looking at.
+  // In case of n == 0, data == end, so we don't enter loop at all.
+  size_t bytes_left = n - 1;
 
   for (const char* p = data; p != end; ++p, --bytes_left) {
     uint8_t c = static_cast<uint8_t>(*p);
