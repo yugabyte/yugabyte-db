@@ -3880,6 +3880,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
 
+    // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
+    // as PITR configs are only valid from the completion of software upgrade finalization
+    createUpdatePitrConfigIntermittentMinRecoverTimeTask();
+
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         false /* isSoftwareRollbackAllowed */);

@@ -152,6 +152,10 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             if (requireAdditionalSuperUserForCatalogUpgrade) {
               createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
             }
+
+            // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
+            // as PITR configs are only valid from the completion of software rollback
+            createUpdatePitrConfigIntermittentMinRecoverTimeTask();
           }
 
           // Update Software version
