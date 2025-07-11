@@ -179,6 +179,10 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
             if (requireAdditionalSuperUserForCatalogUpgrade) {
               createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
             }
+
+            // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
+            // as PITR configs are only valid from the completion of software rollback
+            createUpdatePitrConfigIntermittentMinRecoverTimeTask();
           }
 
           // Check software version on each node.

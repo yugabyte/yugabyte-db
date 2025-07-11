@@ -542,6 +542,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.CleanUpPGUpgradeDataDir)
+        .addTasks(TaskType.UpdatePitrConfigIntermittentMinRecoverTime)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)

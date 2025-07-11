@@ -259,6 +259,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addTasks(TaskType.UpdateUniverseState)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.RunYsqlUpgrade)
+        .addTasks(TaskType.UpdatePitrConfigIntermittentMinRecoverTime)
         .addTasks(TaskType.UpdateUniverseState)
         .verifyTasks(taskInfo.getSubTasks());
 
