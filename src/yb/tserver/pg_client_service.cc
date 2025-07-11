@@ -27,7 +27,6 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/server/async_client_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
@@ -558,12 +557,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
     ScheduleCheckObjectIdAllocators();
-    cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
-        "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
-        permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
-    cdc_state_client_init_->Start();
-    cdc_state_table_ =
-        std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_->get_client_future());
+    cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(client_future);
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
     }
@@ -572,7 +566,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   ~Impl() {
     cdc_state_table_.reset();
-    cdc_state_client_init_->Shutdown();
     std::vector<SessionInfoPtr> sessions;
     {
       std::lock_guard lock(mutex_);
@@ -2262,7 +2255,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   CoarseTimePoint check_expired_sessions_time_ GUARDED_BY(mutex_);
   rpc::ScheduledTaskTracker check_object_id_allocators_;
 
-  std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   const TserverXClusterContextIf* xcluster_context_;
