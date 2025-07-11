@@ -4588,7 +4588,7 @@ Result<TabletInfos> CatalogManager::CreateTabletsFromTable(const vector<Partitio
     tablet_id_and_partition.emplace_back(GenerateIdUnlocked(SysRowEntryType::TABLET), &partition);
   }
   // Order tablets by id to guarantee same lock order in all scenarios.
-  std::sort(tablet_id_and_partition.begin(), tablet_id_and_partition.end());
+  std::ranges::sort(tablet_id_and_partition);
   for (const auto& [tablet_id, partition] : tablet_id_and_partition) {
     PartitionPB partition_pb;
     partition->ToPB(&partition_pb);
@@ -10089,18 +10089,37 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
-Status CatalogManager::AdvanceOidCounters(NamespaceId namespace_id) {
+Status CatalogManager::AdvanceOidCounters(const NamespaceId& namespace_id) {
   auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-  VLOG(1) << "Calling ReadHighestNormalPreservableOid on database OID " << database_oid;
-  auto highest_oid = VERIFY_RESULT(sys_catalog_->ReadHighestNormalPreservableOid(database_oid));
+  VLOG(1) << "Calling AdvanceOidCounters on database ID " << namespace_id << ", which has OID "
+          << database_oid;
+  auto highest_oids = VERIFY_RESULT(sys_catalog_->ReadHighestPreservableOids(database_oid));
+
+  // The above does not see hidden DocDB tables (they have no record in the PG catalogs) so we need
+  // to walk the list of DocDB tables separately to find those.
+  auto table_infos = VERIFY_RESULT(GetTableInfosForNamespace(namespace_id));
+  for (const auto& table_info : table_infos) {
+    TableId table_id = table_info->id();
+    auto table_oid = GetPgsqlTableOid(table_id);
+    if (table_oid) {
+      highest_oids.UpdateWithOid(*table_oid);
+    }
+  }
+
+  VLOG(1) << "Bumping normal space OID for database OID " << database_oid << " above "
+          << highest_oids.for_normal_space_;
   auto* yb_client = master_->client_future().get();
   SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
-  VLOG(1) << "Bumping normal space OID for database OID " << database_oid << " above "
-          << highest_oid;
   uint32_t begin_oid, end_oid;
   RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-      namespace_id, /*next_oid=*/highest_oid, /*count=*/1, &begin_oid, &end_oid,
-      /*use_secondary_space=*/false));
+      namespace_id, /*next_oid=*/highest_oids.for_normal_space_, /*count=*/1,
+      /*use_secondary_space=*/false, &begin_oid, &end_oid));
+
+  VLOG(1) << "Bumping secondary space OID for database OID " << database_oid << " above "
+          << highest_oids.for_secondary_space_;
+  RETURN_NOT_OK(yb_client->ReservePgsqlOids(
+      namespace_id, /*next_oid=*/highest_oids.for_secondary_space_, /*count=*/1,
+      /*use_secondary_space=*/true, &begin_oid, &end_oid));
   return Status::OK();
 }
 
