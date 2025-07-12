@@ -179,18 +179,21 @@ YbGetCatalogCacheVersionForTablePrefetching()
 	 * But this requires some additional changes. This optimization will
 	 * be done separately.
 	 */
-	uint64_t	version = YB_CATCACHE_VERSION_UNINITIALIZED;
-	bool		is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
+	uint64_t version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	YbcReadHybridTime read_time = {};
+	bool is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
 
 	if (*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
 		YBCPgResetCatalogReadTime();
 		version = YbGetMasterCatalogVersion();
+		read_time = YBCGetPgCatalogReadTime();
 	}
 	return (YbcPgLastKnownCatalogVersionInfo)
 	{
 		.version = version,
-			.is_db_catalog_version_mode = is_db_catalog_version_mode,
+		.version_read_time = read_time,
+		.is_db_catalog_version_mode = is_db_catalog_version_mode,
 	};
 }
 
