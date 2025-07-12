@@ -40,16 +40,6 @@ class MetricEntity;
 
 namespace tserver {
 
-class PgResponseCacheWaiter {
- public:
-  virtual ~PgResponseCacheWaiter() = default;
-
-  virtual void SendResponse() = 0;
-  virtual std::pair<PgPerformResponsePB&, rpc::Sidecars&> ResponseAndSidecars() = 0;
-};
-
-using PgResponseCacheWaiterPtr = std::shared_ptr<PgResponseCacheWaiter>;
-
 class PgResponseCache {
  public:
   using KeyGroup = decltype(std::declval<PgPerformOptionsPB::CachingInfoPB>().key_group());
@@ -73,8 +63,9 @@ class PgResponseCache {
   using Setter = std::function<void(Response&&)>;
 
   Result<Setter> Get(
-      PgPerformOptionsPB::CachingInfoPB* cache_info, CoarseTimePoint deadline,
-      const PgResponseCacheWaiterPtr& waiter);
+      PgPerformOptionsPB::CachingInfoPB* cache_info,
+      PgPerformResponsePB* response, rpc::Sidecars* sidecars, CoarseTimePoint deadline);
+
 
   struct DisablerType;
   using Disabler = std::shared_ptr<DisablerType>;
