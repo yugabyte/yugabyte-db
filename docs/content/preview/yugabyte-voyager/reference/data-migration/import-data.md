@@ -177,6 +177,15 @@ import-data:
 ```
 
 | Comma-separated list of node's endpoint to use for parallel import of data <br>Default: Use all the nodes in the cluster. For example: "host1\:port1,host2\:port2" or "host1,host2". Note: use-public-ip flag will be ignored if this is used. |
+| --on-primary-key-conflict |
+
+```yaml{.nocopy}
+import-data:
+  on-primary-key-conflict:
+```
+
+| Action to take on primary key conflict during data import.<br>Accepted parameters: <ul><li> `ERROR` (Default): Import in this mode fails if any primary key conflict is encountered, indicating such conflicts are unexpected.</li><li>`IGNORE`: Skips rows that have an existing primary key allowing the import to continue for the remaining data.</li></ul> |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
