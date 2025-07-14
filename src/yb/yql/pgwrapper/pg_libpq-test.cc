@@ -4950,5 +4950,43 @@ TEST_F(PgLibPqTest, InconsistentIndexRead) {
   thread_holder.WaitAndStop(std::chrono::seconds(30));
 }
 
+// Test aborting concurrent ANALYZEs doesn't cause the connection to FATAL.
+// During execution of ANALYZE, when analyzing each table, CurrentUserId is switched to the table
+// owner's userid and SecurityRestrictionContext is set to indicate security-restricted operations.
+// StartTransactionCommand and CommitTransactionCommand are called internally by ANALYZE
+// for (1) the ANALYZE command itself and
+//     (2) analyzing each individual table selected by the ANALYZE.
+// In read committed isolation, we retry aborted DDL queries. An unclean retry of ANALYZE having
+// set SecurityRestrictionContext causes assertion failure in StartTransactionCommand, making
+// its connection FATAL.
+TEST_F(PgLibPqTest, ConcurrentAnalyzeWithDDL) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  std::atomic<bool> stop = false;
+  // Execute concurrent DDLs in separate threads.
+  std::thread analyze_thread([&conn, &stop] {
+    while (!stop) {
+        // Setting yb_use_internal_auto_analyze_service_conn simulates ANALYZE command
+        // as ANALYZE command run by auto analyze service -- auto-ANALYZE command has
+        // a lower txn priority than regular DDLs, so that ANALYZE in this thread
+        // is always aborted by DROP TABLE and retries later on.
+        ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn = TRUE"));
+        ASSERT_OK(conn.Execute("SET yb_debug_log_internal_restarts=TRUE"));
+        ASSERT_OK(conn.Execute("SET log_min_messages=DEBUG3"));
+        ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries=300"));
+        auto status = conn.Execute("ANALYZE");
+    }
+  });
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn2.ExecuteFormat("CREATE TABLE tbl_$0 (k INT)", i));
+    ASSERT_OK(conn2.ExecuteFormat("DROP TABLE tbl_$0", i));
+  }
+  stop = true;
+  analyze_thread.join();
+  ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
+}
+
 } // namespace pgwrapper
 } // namespace yb

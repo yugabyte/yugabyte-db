@@ -948,6 +948,8 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.version();
   }
 
+  // Assert to make sure YbcXClusterReplicationRole is updated when new roles are added.
+  static_assert(XClusterNamespaceInfoPB::XClusterRole_ARRAYSIZE == 5, "array length mismatch");
   Result<uint32_t> GetXClusterRole(uint32_t db_oid) {
     tserver::PgGetXClusterRoleRequestPB req;
     tserver::PgGetXClusterRoleResponsePB resp;

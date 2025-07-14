@@ -929,7 +929,7 @@ CREATE VIEW pg_stat_activity AS
             S.backend_type,
             yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version,
             yb_pg_stat_get_backend_allocated_mem_bytes(B.beid) AS allocated_mem_bytes,
-            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes,
+            yb_pg_stat_get_backend_pss_mem_bytes(B.beid) AS pss_mem_bytes,
             S.yb_backend_xid
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)

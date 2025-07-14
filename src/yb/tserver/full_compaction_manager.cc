@@ -132,7 +132,7 @@ void FullCompactionManager::CollectDocDBStats(
     const std::vector<tablet::TabletPeerPtr>& peers) {
   for (const auto& peer : peers) {
     const auto& tablet_id = peer->tablet_id();
-    const auto& shared_tablet = peer->shared_tablet();
+    const auto& shared_tablet = peer->shared_tablet_maybe_null();
     if (shared_tablet && shared_tablet->metrics() != nullptr) {
       auto window_iter = tablet_stats_window_.emplace(
           tablet_id, KeyStatsSlidingWindow(check_interval_sec_)).first;
@@ -233,7 +233,7 @@ void FullCompactionManager::DoScheduleFullCompactions(
 
   for (auto itr = peers_to_compact.begin(); itr != peers_to_compact.end(); itr++) {
     const auto peer = itr->second;
-    const auto tablet = peer->shared_tablet();
+    const auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet) {
       LOG(WARNING) << "Unable to schedule full compaction on tablet " << peer->tablet_id()
           << ": tablet not found.";
@@ -259,7 +259,7 @@ PeerNextCompactList FullCompactionManager::GetPeersEligibleForCompaction(
   PeerNextCompactList compact_list;
   for (const auto& peer : peers) {
     const auto tablet_id = peer->tablet_id();
-    const auto tablet = peer->shared_tablet();
+    const auto tablet = peer->shared_tablet_maybe_null();
     // If the tablet isn't eligible for compaction, remove it from our stored compaction
     // times and skip it.
     if (!tablet || !tablet->IsEligibleForFullCompaction()) {

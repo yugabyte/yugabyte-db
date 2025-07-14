@@ -190,7 +190,6 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Index on citext column | {{<issue 9698>}}|
 | ABSTIME type | {{<issue 15637>}}|
 | transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | {{<issue 15638>}}|
-| DDL operations within transaction| {{<issue 1404>}}|
 | Some ALTER TABLE variants| {{<issue 1124>}}|
 | UNLOGGED table | {{<issue 1129>}} |
 | Indexes on complex datatypes such as INET, CITEXT, JSONB, ARRAYs, and so on.| {{<issue 9698>}}, {{<issue 23829>}}, {{<issue 17017>}} |

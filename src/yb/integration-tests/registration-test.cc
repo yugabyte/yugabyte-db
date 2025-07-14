@@ -172,7 +172,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
 
   auto GetCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
     auto tablet_peer = cluster_->mini_master()->tablet_peer();
-    auto tablet_result = tablet_peer->shared_tablet_safe();
+    auto tablet_result = tablet_peer->shared_tablet();
     if (!tablet_result.ok()) {
       LOG(WARNING) << "Failed to get tablet: " << tablet_result.status();
       return 0;

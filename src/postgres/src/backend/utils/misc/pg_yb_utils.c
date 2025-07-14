@@ -179,18 +179,21 @@ YbGetCatalogCacheVersionForTablePrefetching()
 	 * But this requires some additional changes. This optimization will
 	 * be done separately.
 	 */
-	uint64_t	version = YB_CATCACHE_VERSION_UNINITIALIZED;
-	bool		is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
+	uint64_t version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	YbcReadHybridTime read_time = {};
+	bool is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
 
 	if (*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
 		YBCPgResetCatalogReadTime();
 		version = YbGetMasterCatalogVersion();
+		read_time = YBCGetPgCatalogReadTime();
 	}
 	return (YbcPgLastKnownCatalogVersionInfo)
 	{
 		.version = version,
-			.is_db_catalog_version_mode = is_db_catalog_version_mode,
+		.version_read_time = read_time,
+		.is_db_catalog_version_mode = is_db_catalog_version_mode,
 	};
 }
 
@@ -1213,6 +1216,22 @@ typedef struct YbCatalogMessageList
 	struct YbCatalogMessageList *next;
 } YbCatalogMessageList;
 
+/*
+ * Some SQL statements require to switch to other userid (e.g. table owner's
+ * userid) and lock down security-restricted operations during execution.
+ * PG saves and restores userid and SecurityRestrictionContext properly during
+ * normal execution. They aren't restored when an exception happens so that the
+ * normal execution is aborted. This struct is used to record userid and
+ * SecurityRestrictionContextwe so that we can properly restore the saved values
+ * during query retries when the normal execution is aborted.
+ */
+typedef struct YbUserIdAndSecContext
+{
+	bool		is_set;
+	Oid			userid;
+	int			sec_context;
+} YbUserIdAndSecContext;
+
 typedef struct
 {
 	int			nesting_level;
@@ -1260,6 +1279,7 @@ typedef struct
 
 	YbCatalogMessageList *committed_pg_txn_messages;
 	bool		force_send_inval_messages;
+	YbUserIdAndSecContext userid_and_sec_context;
 } YbDdlTransactionState;
 
 static YbDdlTransactionState ddl_transaction_state = {0};
@@ -2395,6 +2415,12 @@ YBResetDdlState()
 
 	bool		use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
 
+	if (ddl_transaction_state.userid_and_sec_context.is_set)
+	{
+		SetUserIdAndSecContext(ddl_transaction_state.userid_and_sec_context.userid,
+							   ddl_transaction_state.userid_and_sec_context.sec_context);
+	}
+
 	YBClearDdlTransactionState();
 	YBResetEnableSpecialDDLMode();
 	/*
@@ -3296,6 +3322,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context)
 		ddl_transaction_state.current_stmt_node_tag = node_tag;
 		ddl_transaction_state.current_stmt_ddl_command_tag =
 			CreateCommandTag(parsetree);
+		if (CheckIsAnalyzeDDL() && !ddl_transaction_state.userid_and_sec_context.is_set)
+		{
+			Oid         save_userid;
+			int         save_sec_context;
+			GetUserIdAndSecContext(&save_userid, &save_sec_context);
+			ddl_transaction_state.userid_and_sec_context.is_set = true;
+			ddl_transaction_state.userid_and_sec_context.userid = save_userid;
+			ddl_transaction_state.userid_and_sec_context.sec_context = save_sec_context;
+		}
 	}
 	else
 	{

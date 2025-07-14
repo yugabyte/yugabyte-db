@@ -13,15 +13,15 @@ interface FaultToleranceTypeFieldProps<T extends FieldValues> {
 }
 
 const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
-  height: '56px',
   padding: '8px 16px',
   display: 'flex',
   flexDirection: 'column',
-  alignItems: 'flex-start',
+  alignItems: 'flex-start !important',
   gap: '8px',
   fontSize: theme.typography.body1.fontSize,
   fontWeight: 600,
   lineHeight: '16px',
+  height: '56px !important',
   borderBottom: `1px solid ${theme.palette.grey[300]}`,
   '& > .subText': {
     fontWeight: 400,

@@ -581,7 +581,21 @@
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
-        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes"
+        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
+        "spotInstance": "{{cloudType}} Spot Instance",
+        "useAwsSpotInstance": "Use {{cloudType}} spot instances",
+        "volumeInfoPerNode": "Volume Info / Node",
+        "provisionedIopsPerNode": "Provisioned IOPS / Node ",
+        "provisionedThroughputPerNode": "Provisioned Throughput / Node",
+        "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
+        "memory": "Memory",
+        "volumeInfoPerPod": "Volume Info / Pod",
+        "clusterInstance": "Cluster Instance",
+        "tserver": "T-Server Instance",
+        "master": "Master Server Instance (Optional)",
+        "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
+        "cantChangeLater": "This CANNOT be changed after creation",
+        "masterNote": "<1>Note!</1> CPU Architecture, Linux version and AWS Spot intense usage are global settings and can not be overridden. You can change these settings from the “Default Instance Configuration”."
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -3076,6 +3090,7 @@
           "regions": "Region is required",
           "resilienceFormMode": "Resilience form mode is required",
           "resilienceType": "Resilience type is required",
+          "singleAvailabilityZoneRequired": "Availability zone is required for single node clusters",
           "regionErr": "<b>Invalid region count!</b> You have selected <b>{{selected_regions}}</b> regions. To support the chosen fault tolerance <b>{{required_regions}}</b> regions are required. Update your selection to proceed.",
           "azErrFew": "<b>Invalid availability zone count!</b> The selected regions provide total of <b>{{availability_zone}} availability zones</b>. To support the chosen fault tolerance <b>{{required_zones}} availability zones</b> are required. Update your selection to proceed.",
           "azErrMany": "<b>Invalid availability zone count!</b> You have selected <b>{{selected_regions}} regions</b>. Considering 1 availability zone per region, this would exceed the requirement for <b>{{required_zones}} availability zones</b>. Update your selection to proceed.",
@@ -3173,6 +3188,25 @@
           "FtAndRfAns": "To achieve a FT of <highlight>f</highlight> fault domains, the primary cluster has to be configured with a RF of at least <highlight>2f + 1</highlight>.",
           "tip": "<b>Tip!</b> When using Guided Mode, the required replication factor is automatically configured and applied based on your selected fault tolerance. ",
           "learn": "<a>Learn more about Replication Factor</a> and <a2>Fault Tolerance.</a2>"
+        },
+        "prefferedInfoModal": {
+          "title": "YugabyteDB 101",
+          "prefferedQues": "What is the preferred availability zone?",
+          "prefferedAns": "The preferred availability zones handle all read and write requests from your client application. For lower latencies and best performance, set the availability zones closest to your application as preferred.",
+          "links": "<a1>Learn more about preferred availability zone</a1> and <a2>how to select ranking.</a2>",
+          "note": "<b>Note:</b><br/> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
+        }
+      },
+      "instanceSettings": {
+        "title": "Instance Settings",
+        "validation": {
+          "invalidArchitecture": "Invalid CPU Architecture",
+          "positiveNumber": "{{field}} must be a positive number",
+          "minValue": "{{field}} must be at least {{min}}",
+          "maxValue": "{{field}} must be at most {{max}}",
+          "invalidStorageClass": "Invalid storage class",
+          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
+          "invalidStorageType": "Invalid storage type"
         }
       },
       "databaseSettings": {
@@ -3228,7 +3262,8 @@
           "enableClientToNodeEncryption": "Enable Client-to-Node Encryption",
           "selectRootCert": "Select Root Certificate",
           "rootCertificatePlaceHolder": "Select",
-          "genSelfSignedCert": "Generate Self Signed Certificate"
+          "genSelfSignedCert": "Generate Self Signed Certificate",
+          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption"
         }
       },
       "proxySettings": {

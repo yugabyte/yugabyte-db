@@ -88,6 +88,12 @@ yba:
         # Example: 'us-west-1a'.
         name: zone_name
 
+      # Latitude for the region.
+      latitude: 360
+
+      # Longitude for the region.
+      longitude: 360
+
   # Instance type specifications.
   instance_type:
     # Name of the instance type.

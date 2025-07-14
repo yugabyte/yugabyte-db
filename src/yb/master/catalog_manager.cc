@@ -594,7 +594,6 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace yb::master {
@@ -1083,7 +1082,7 @@ Status CatalogManager::ElectedAsLeaderCb() {
 
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   string uuid = master_->fs_manager()->uuid();
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
@@ -1791,7 +1790,7 @@ Status CatalogManager::PrepareSystemTables(const LeaderEpoch& epoch) {
 }
 
 Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
-  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->tablet_peer_->shared_tablet_safe());
+  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->tablet_peer_->shared_tablet());
 
   // Prepare sys catalog table info.
   auto sys_catalog_table = tables_->FindTableOrNull(kSysCatalogTableId);
@@ -2742,7 +2741,7 @@ Status CatalogManager::AddIndexInfoToTable(TableInfoWithWriteLock& indexed_table
 template <class Req, class Resp, class Action>
 Status CatalogManager::PerformOnSysCatalogTablet(const Req& req, Resp* resp, const Action& action) {
   auto tablet_peer = sys_catalog_->tablet_peer();
-  auto tablet = tablet_peer ? tablet_peer->shared_tablet() : nullptr;
+  auto tablet = tablet_peer ? tablet_peer->shared_tablet_maybe_null() : nullptr;
   if (!tablet) {
     return SetupError(
         resp->mutable_error(),
@@ -6340,24 +6339,12 @@ Status CatalogManager::GetObjectLockStatus(
 void CatalogManager::AcquireObjectLocksGlobal(
     const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  if (!FLAGS_enable_object_locking_for_table_locks) {
-    rpc.RespondRpcFailure(
-        rpc::ErrorStatusPB::ERROR_APPLICATION,
-        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
-    return;
-  }
   object_lock_info_manager_->LockObject(*req, *resp, std::move(rpc));
 }
 
 void CatalogManager::ReleaseObjectLocksGlobal(
     const ReleaseObjectLocksGlobalRequestPB* req, ReleaseObjectLocksGlobalResponsePB* resp,
     rpc::RpcContext rpc) {
-  if (!FLAGS_enable_object_locking_for_table_locks) {
-    rpc.RespondRpcFailure(
-        rpc::ErrorStatusPB::ERROR_APPLICATION,
-        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
-    return;
-  }
   object_lock_info_manager_->UnlockObject(*req, *resp, std::move(rpc));
 }
 
@@ -12971,7 +12958,7 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
 }
 
 Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), tablet_peer()->LeaderTerm());
   return Status::OK();
@@ -13565,7 +13552,7 @@ Result<std::vector<SysCatalogEntryDumpPB>> CatalogManager::FetchFromSysCatalog(
     SysRowEntryType type, const std::string& item_id_filter) {
   SCHECK_NOTNULL(sys_catalog_);
   SCHECK_NOTNULL(tablet_peer());
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
 
   std::vector<SysCatalogEntryDumpPB> result;
 

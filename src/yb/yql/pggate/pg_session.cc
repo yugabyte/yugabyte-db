@@ -830,9 +830,10 @@ Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
   DCHECK(!ops.Empty());
   tserver::PgPerformOptionsPB options;
+  const auto ops_read_time = VERIFY_RESULT(GetReadTime(ops.operations()));
   if (ops_options.use_catalog_session) {
-    if (catalog_read_time_) {
-      catalog_read_time_.ToPB(options.mutable_read_time());
+    if (const auto read_time = ops_read_time ? ops_read_time : catalog_read_time_; read_time) {
+      read_time.ToPB(options.mutable_read_time());
     }
     options.set_use_catalog_session(true);
   } else {
@@ -840,7 +841,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
-    auto ops_read_time = VERIFY_RESULT(GetReadTime(ops.operations()));
     if (ops_read_time) {
       RETURN_NOT_OK(UpdateReadTime(&options, ops_read_time));
     }

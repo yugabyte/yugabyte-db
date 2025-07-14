@@ -9,14 +9,14 @@ export const StyledPanel = styled('div')(({ theme }) => ({
 }));
 
 export const StyledHeader = styled(Typography)(({ theme }) => ({
-  padding: `10px ${theme.spacing(3)}px`,
+  padding: `24px ${theme.spacing(3)}px`,
   fontSize: 15,
   color: theme.palette.grey[900]
 }));
 
 export const StyledContent = styled('div')(({ theme }) => ({
-  padding: `${theme.spacing(1)}px ${theme.spacing(2.5)}px ${theme.spacing(2.5)}px ${theme.spacing(
-    2.5
+  padding: `${theme.spacing(0)}px ${theme.spacing(3)}px ${theme.spacing(3)}px ${theme.spacing(
+    3
   )}px`,
   display: 'flex',
   gap: theme.spacing(4),

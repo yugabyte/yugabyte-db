@@ -96,7 +96,8 @@ class RemoteBootstrapTest : public TabletServerTestBase {
     LOG_TIMING(INFO, "Loading test data") {
       for (int row_id = 0; row_id < kNumLogRolls * kIncr; row_id += kIncr) {
         InsertTestRowsRemote(0, row_id, kIncr);
-        ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+        auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
         ASSERT_OK(tablet_peer_->log()->AllocateSegmentAndRollOver());
       }
     }
@@ -108,11 +109,13 @@ class RemoteBootstrapTest : public TabletServerTestBase {
   }
 
   std::string GetTableId() const {
-    return tablet_peer_->tablet()->metadata()->table_id();
+    auto tablet = CHECK_NOTNULL(tablet_peer_->shared_tablet_maybe_null());
+    return tablet->metadata()->table_id();
   }
 
   const std::string& GetTabletId() const {
-    return tablet_peer_->tablet()->tablet_id();
+    auto tablet = CHECK_NOTNULL(tablet_peer_->shared_tablet_maybe_null());
+    return tablet->tablet_id();
   }
 
   log::LogAnchor anchor_;

@@ -1,13 +1,15 @@
-import { FC, useContext } from 'react';
-import { YBInput, YBSelect, mui } from '@yugabyte-ui-library/core';
+import { FC, useContext, useState } from 'react';
+import { Typography } from '@material-ui/core';
 import { Control, Controller } from 'react-hook-form';
+import { YBInput, YBSelect, mui } from '@yugabyte-ui-library/core';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { Region } from '../../../../features/universe/universe-form/utils/dto';
 import { FaultToleranceType, ResilienceFormMode } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps } from './dtos';
+import { PreferredInfoModal } from './PrefferedInfoModal';
+import { HelpOutline } from '@material-ui/icons';
 import { ReactComponent as Return } from '../../../../assets/tree.svg';
 import { ReactComponent as RemoveIcon } from '../../../../assets/close-large.svg';
-import { Typography } from '@material-ui/core';
 const { MenuItem } = mui;
 
 interface ZoneProps {
@@ -50,10 +52,12 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
     resilienceAndRegionsSettings!.faultToleranceType
   );
 
+  const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
+
   const preferredMenuItems = isPrefferedAllowed
     ? Array.from({ length: resilienceAndRegionsSettings?.replicationFactor ?? 0 }, (_, i) => (
         <StyledPreferedMenuItem key={i} value={i}>
-          <Typography variant="body1">{i === 0 ? 'Rank 1' : `Rank ${i + 1}`}</Typography>
+          <Typography variant="body1">{`Rank ${i + 1}`}</Typography>
           <Typography variant="subtitle1">
             {i === 0 ? 'Default Preferred Zone' : 'Preferred zone if higher-rank zones fail.'}
           </Typography>
@@ -119,7 +123,17 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
           name={`availabilityZones.${region.code}.${index}.preffered`}
           render={({ field }) => (
             <YBSelect
-              label="Preferred"
+              label={
+                <>
+                  Preffered
+                  <HelpOutline
+                    onClick={() => {
+                      setShowPreferredInfoModal(true);
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </>
+              }
               sx={{ width: '90px' }}
               value={field.value}
               onChange={(e) => {
@@ -127,6 +141,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
               }}
               menuProps={menuProps}
               renderValue={(value) => {
+                console.warn(value);
                 return value === 'false' ? 'No' : `Rank ${parseInt(value as string) + 1}`;
               }}
             >
@@ -139,6 +154,12 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
       {isPrefferedAllowed && (
         <RemoveIcon style={{ marginTop: '24px', cursor: 'pointer' }} onClick={remove} />
       )}
+      <PreferredInfoModal
+        open={showPreferredInfoModal}
+        onClose={() => {
+          setShowPreferredInfoModal(false);
+        }}
+      />
     </div>
   );
 };

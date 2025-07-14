@@ -87,8 +87,7 @@ TEST_F(PgLoadBalancerTest, LoadBalanceDuringLongRunningTransaction) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     auto peers = cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
-      if (peer->tablet() &&
-          peer->TEST_table_type() == PGSQL_TABLE_TYPE &&
+      if (peer->shared_tablet_maybe_null() && peer->TEST_table_type() == PGSQL_TABLE_TYPE &&
           peer->data_state() == tablet::TABLET_DATA_TOMBSTONED) {
         return false;
       }

@@ -621,7 +621,16 @@ typedef enum {
 } YbcPgSysTablePrefetcherCacheMode;
 
 typedef struct {
+  uint64_t read;
+  uint64_t local_limit;
+  uint64_t global_limit;
+  uint64_t in_txn_limit;
+  int64_t serial_no;
+} YbcReadHybridTime;
+
+typedef struct {
   uint64_t version;
+  YbcReadHybridTime version_read_time;
   bool is_db_catalog_version_mode;
 } YbcPgLastKnownCatalogVersionInfo;
 
@@ -987,6 +996,18 @@ typedef struct {
   YbcCatalogMessageList* message_lists;
   int num_lists;
 } YbcCatalogMessageLists;
+
+typedef enum {
+  /*
+   * Taken from XClusterNamespaceInfoPB.XClusterRole in
+   * yb/common/common_types.proto.
+   */
+  XCLUSTER_ROLE_UNSPECIFIED = 0,
+  XCLUSTER_ROLE_UNAVAILABLE = 1,
+  XCLUSTER_ROLE_NOT_AUTOMATIC_MODE = 2,
+  XCLUSTER_ROLE_AUTOMATIC_SOURCE = 3,
+  XCLUSTER_ROLE_AUTOMATIC_TARGET = 4,
+} YbcXClusterReplicationRole;
 
 #ifdef __cplusplus
 }  // extern "C"

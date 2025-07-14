@@ -143,8 +143,7 @@ Result<bool> GetPgIndexStatus(
   const auto pg_index_id =
       GetPgsqlTableId(VERIFY_RESULT(GetPgsqlDatabaseOid(idx_id)), kPgIndexTableOid);
 
-  const auto catalog_tablet =
-      VERIFY_RESULT(catalog_manager->tablet_peer()->shared_tablet_safe());
+  const auto catalog_tablet = VERIFY_RESULT(catalog_manager->tablet_peer()->shared_tablet());
   const Schema& pg_index_schema =
       VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema();
 

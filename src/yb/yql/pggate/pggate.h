@@ -123,7 +123,9 @@ class PgApiImpl {
 
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
+
   void ResetCatalogReadTime();
+  [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
   // Initialize a session to process statements that come from the same client connection.
   void InitSession(YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
@@ -913,7 +915,6 @@ class PgApiImpl {
 
   scoped_refptr<PgSession> pg_session_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
-  ReadHybridTime paused_catalog_read_time_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
   std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.

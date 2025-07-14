@@ -208,7 +208,8 @@ TEST_P(PgPackedRowTest, AlterTable) {
   auto deadline = CoarseMonoClock::now() + 90s;
 
   while (!thread_holder.stop_flag().load() && CoarseMonoClock::now() < deadline) {
-    ASSERT_OK(cluster_->mini_master()->tablet_peer()->tablet()->ForceManualRocksDBCompact());
+    ASSERT_OK(ASSERT_RESULT(cluster_->mini_master()->tablet_peer()->shared_tablet())
+                  ->ForceManualRocksDBCompact());
   }
 
   thread_holder.Stop();
@@ -309,11 +310,15 @@ TEST_P(PgPackedRowTest, Random) {
   }
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   for (const auto& peer : peers) {
-    if (!peer->tablet()->regular_db()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    if (!tablet->regular_db()) {
       continue;
     }
     std::unordered_set<std::string> values;
-    peer->tablet()->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &values);
+    tablet->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &values);
     std::vector<std::string> sorted_values(values.begin(), values.end());
     std::sort(sorted_values.begin(), sorted_values.end());
     for (const auto& line : sorted_values) {
@@ -416,7 +421,8 @@ TEST_P(PgPackedRowTest, SchemaGC) {
     if (peer->TEST_table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
       continue;
     }
-    auto files = peer->tablet()->regular_db()->GetLiveFilesMetaData();
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto files = tablet->regular_db()->GetLiveFilesMetaData();
     auto table_info = peer->tablet_metadata()->primary_table_info();
     ASSERT_EQ(table_info->doc_read_context->schema_packing_storage.SchemaCount(), 1);
   }
@@ -806,10 +812,14 @@ TEST_P(PgPackedRowTest, CleanupIntentDocHt) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   for (const auto& peer : peers) {
-    if (!peer->tablet()->regular_db()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
       continue;
     }
-    auto dump = peer->tablet()->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
+    if (!tablet->regular_db()) {
+      continue;
+    }
+    auto dump = tablet->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
     LOG(INFO) << "Dump: " << dump;
     ASSERT_EQ(dump.find("intent doc ht"), std::string::npos);
   }
@@ -940,7 +950,7 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
   std::string fname;
   std::string metapath;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet || !tablet->regular_db()) {
       continue;
     }

@@ -254,7 +254,7 @@ Status CatalogManager::DoCreateSnapshot(const CreateSnapshotRequestPB* req,
 }
 
 Status CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), leader_term);
   return Status::OK();
@@ -1232,7 +1232,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
   // read sys.catalog data as of export_time to get the list of tablets that were running at that
   // time.
   RepeatedPtrField<BackupRowEntryPB> backup_entries;
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   LOG(INFO) << Format("Opening temporary SysCatalog DocDB for snapshot $0 at read_time $1",
       snapshot_id, read_time);
   auto db = VERIFY_RESULT(RestoreSnapshotToTmpRocksDb(tablet.get(), snapshot_id, read_time));
