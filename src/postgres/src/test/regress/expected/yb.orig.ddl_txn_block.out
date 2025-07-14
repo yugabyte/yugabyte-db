@@ -368,3 +368,57 @@ CREATE TABLE sales_data_202402 PARTITION OF sales_data
 INSERT INTO sales_data (sale_id, sale_date, amount) VALUES
     (3, '2024-02-05', 120.00);
 ALTER TABLE sales_data DETACH PARTITION sales_data_202401 CONCURRENTLY;
+-- #27859: Statements which do not require a Perform call before DocDB schema
+-- changes should succeed.
+CREATE TABLE test_14 (
+    id INT PRIMARY KEY,
+    name TEXT,
+    val INT
+);
+INSERT INTO test_14 (id, name, val) VALUES
+(1, 'Alice', 100),
+(2, 'Bob', 200);
+CREATE ROLE test_14_user LOGIN;
+ALTER TABLE test_14 OWNER TO test_14_user;
+-- #27859: Same test case as above but with enable/disable trigger.
+CREATE TABLE test_trigger_table (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    age INT,
+    email TEXT,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE trigger_log (
+    action TEXT,
+    row_id INT,
+    changed_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE OR REPLACE FUNCTION log_changes()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO trigger_log(action, row_id)
+    VALUES (TG_OP, NEW.id);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_log_changes
+AFTER INSERT OR UPDATE OR DELETE ON test_trigger_table
+FOR EACH ROW
+EXECUTE FUNCTION log_changes();
+INSERT INTO test_trigger_table(name, age, email) VALUES ('Alice', 30, 'alice@example.com');
+ALTER TABLE test_trigger_table DISABLE TRIGGER trg_log_changes;
+INSERT INTO test_trigger_table(name, age, email) VALUES ('Charlie', 28, 'charlie@example.com');
+ALTER TABLE test_trigger_table ENABLE TRIGGER trg_log_changes;
+SELECT id, name, age, email FROM test_trigger_table;
+ id |  name   | age |        email        
+----+---------+-----+---------------------
+  1 | Alice   |  30 | alice@example.com
+  2 | Charlie |  28 | charlie@example.com
+(2 rows)
+
+SELECT action, row_id FROM trigger_log;
+ action | row_id 
+--------+--------
+ INSERT |      1
+(1 row)
+

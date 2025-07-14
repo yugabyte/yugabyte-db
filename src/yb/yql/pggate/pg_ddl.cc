@@ -103,6 +103,8 @@ PgCreateDatabase::PgCreateDatabase(const PgSession::ScopedRefPtr& pg_session,
 
 Status PgCreateDatabase::Exec() {
   bool is_clone = !req_.source_database_name().empty();
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline(is_clone));
 }
 
@@ -147,6 +149,8 @@ PgCreateTablegroup::PgCreateTablegroup(
 }
 
 Status PgCreateTablegroup::Exec() {
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   return pg_session_->pg_client().CreateTablegroup(&req_, DdlDeadline());
 }
 
@@ -159,6 +163,8 @@ PgDropTablegroup::PgDropTablegroup(
 }
 
 Status PgDropTablegroup::Exec() {
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   return pg_session_->pg_client().DropTablegroup(&req_, DdlDeadline());
 }
 
@@ -286,6 +292,8 @@ Status PgCreateTableBase::AddSplitBoundary(PgExpr** exprs, int expr_count) {
 }
 
 Status PgCreateTableBase::Exec() {
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
 
   const auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
@@ -497,6 +505,8 @@ Status PgAlterTable::SetSchema(const char *schema_name) {
 }
 
 Status PgAlterTable::Exec() {
+  RETURN_NOT_OK(pg_session_->SetupIsolationAndPerformOptionsForDdl(
+      req_.mutable_options(), req_.use_regular_transaction_block()));
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(
       PgObjectId::FromPB(req_.table_id()), InvalidateOnPgClient::kFalse);
