@@ -20,7 +20,7 @@ import { ProxyAdvancedProps } from './dtos';
 import { EnableProxyServer } from '../../fields';
 
 export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
+  const [, { moveToNextPage, moveToPreviousPage, saveProxySettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
@@ -32,7 +32,10 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        moveToNextPage();
+        methods.handleSubmit((data) => {
+          saveProxySettings(data);
+          moveToNextPage();
+        })();
       },
       onPrev: () => {
         moveToPreviousPage();

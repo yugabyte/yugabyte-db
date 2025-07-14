@@ -52,6 +52,7 @@
 #include "yb/util/range.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_ddl.h"
@@ -412,6 +413,16 @@ Result<bool> RetrieveYbctidsImpl(
     }
   }
   return true;
+}
+
+[[nodiscard]] auto UpdateCatalogReadTime(PgSession& session, const ReadHybridTime& read_time) {
+  DCHECK(read_time);
+  const auto current_catalog_read_time = session.catalog_read_time();
+  session.TrySetCatalogReadPoint(read_time);
+  return MakeOptionalScopeExit(
+      [&session, current_catalog_read_time] {
+        session.TrySetCatalogReadPoint(current_catalog_read_time);
+      });
 }
 
 } // namespace
@@ -1572,18 +1583,21 @@ Status PgApiImpl::DmlHnswSetReadOptions(PgStatement* handle, int ef_search) {
 
 Status PgApiImpl::ExecSelect(PgStatement* handle, const YbcPgExecParameters* exec_params) {
   auto& select = VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle));
-  if (pg_sys_table_prefetcher_ && !paused_catalog_read_time_ &&
-      select.IsReadFromYsqlCatalog() && select.read_req()) {
+  auto* read_req = select.read_req();
+  if (pg_sys_table_prefetcher_ && select.IsReadFromYsqlCatalog() && read_req) {
     // In case of sys tables prefetching is enabled all reads from sys table must use cached data.
-    auto data = pg_sys_table_prefetcher_->GetData(
-        *select.read_req(), select.IsIndexOrderedScan());
-    if (!data) {
-      // LOG(DFATAL) is used instead of SCHECK to let user on release build proceed by reading
-      // data from a master in a non efficient way (by using separate RPC).
-      LOG(DFATAL) << "Data was not prefetched for request "
-                  << select.read_req()->ShortDebugString();
+    auto data = pg_sys_table_prefetcher_->GetData(*read_req, select.IsIndexOrderedScan());
+    if (std::holds_alternative<PrefetchedDataHolder>(data)) {
+      select.UpgradeDocOp(MakeDocReadOpWithData(
+          pg_session_, std::move(std::get<PrefetchedDataHolder>(data))));
     } else {
-      select.UpgradeDocOp(MakeDocReadOpWithData(pg_session_, std::move(data)));
+      LOG(WARNING) << "Data was not prefetched for table " << read_req->table_id();
+      VLOG(5) << "Non prefetched request is: " << read_req->ShortDebugString();
+      DCHECK(std::holds_alternative<MissedPrefetchedDataAlternativeReadTime>(data));
+      const auto& alternative_read_time = std::get<MissedPrefetchedDataAlternativeReadTime>(data);
+      auto catalog_read_time_guard = alternative_read_time
+          ? UpdateCatalogReadTime(*pg_session_, *alternative_read_time) : std::nullopt;
+      return select.Exec(exec_params);
     }
   }
   return select.Exec(exec_params);
@@ -2031,6 +2045,10 @@ void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
 }
 
+ReadHybridTime PgApiImpl::GetCatalogReadTime() const {
+  return pg_session_->catalog_read_time();
+}
+
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return fk_reference_cache_.IsReferenceExists(
@@ -2154,24 +2172,6 @@ void PgApiImpl::StopSysTablePrefetching() {
   } else {
     pg_sys_table_prefetcher_.reset();
     ResetCatalogReadTime();
-  }
-}
-
-void PgApiImpl::PauseSysTablePrefetching() {
-  if (pg_sys_table_prefetcher_) {
-    paused_catalog_read_time_ = pg_session_->catalog_read_time();
-    ResetCatalogReadTime();
-  }
-}
-
-void PgApiImpl::ResumeSysTablePrefetching() {
-  if (pg_sys_table_prefetcher_) {
-    if (!paused_catalog_read_time_) {
-      LOG(DFATAL) << "Cannot resume sys table prefetching because it wasn't paused";
-    } else {
-      pg_session_->TrySetCatalogReadPoint(paused_catalog_read_time_);
-      paused_catalog_read_time_ = ReadHybridTime();
-    }
   }
 }
 

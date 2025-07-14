@@ -6,8 +6,9 @@ import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceType } from '.
 import { AvailabilityZone, ClusterType, Region } from '../../helpers/dtos';
 import { OtherAdvancedProps } from './steps/advanced-settings/dtos';
 import { CommunicationPortsSpec, PlacementRegion, UniverseCreateReqBody } from '../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { GFlag } from './steps/database-settings/dtos';
 
-export function getCreateUniverseSteps(t: TFunction) {
+export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
   return [
     {
       groupTitle: t('general'),
@@ -23,9 +24,9 @@ export function getCreateUniverseSteps(t: TFunction) {
         {
           title: t('resilienceAndRegions')
         },
-        {
+        ...(resilienceType === ResilienceType.REGULAR ? [{
           title: t('nodesAndAvailabilityZone')
-        }
+        }] : [])
       ]
     },
     {
@@ -142,7 +143,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
       updatedRegions[region.code].push({
         ...region.zones[i % region.zones.length],
         nodeCount: 1,
-        preffered: i === 0 ? 'true' : 'false'
+        preffered: i === 0 ? 'false' : i + ''
       });
     }
   });
@@ -269,13 +270,15 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
     };
   });
 
+  const gflags = mapGFlags(databaseSettings.gFlags);
+
   const payload: UniverseCreateReqBody = {
     arch: instanceSettings.arch,
     spec: {
       name: generalSettings.universeName,
       yb_software_version: generalSettings.databaseVersion!,
       encryption_at_rest_spec: {
-        kms_config_uuid: securitySettings.kmsConfig
+        kms_config_uuid: securitySettings.kmsConfig,
       },
       encryption_in_transit_spec: {
         root_ca: securitySettings.rootCertificate,
@@ -283,7 +286,7 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
         enable_client_to_node_encrypt: securitySettings.enableClientToNodeEncryption,
         enable_node_to_node_encrypt: securitySettings.enableNodeToNodeEncryption
       },
-      use_time_sync: true,
+      use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
         ...databaseSettings.ycql,
       },
@@ -291,7 +294,7 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
         ...databaseSettings.ysql,
       },
       networking_spec: {
-        assign_public_ip: true,
+        assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
         enable_ipv6: false,
@@ -300,39 +303,43 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
         {
           replication_factor: resilienceAndRegionsSettings.replicationFactor,
           cluster_type: ClusterType.PRIMARY,
-          use_spot_instance: false,
+          use_spot_instance: instanceSettings.useSpotInstance,
           audit_log_config: {
             universe_logs_exporter_config: []
           },
           gflags: {
             az_gflags: {},
-            master: {},
-            tserver: {}
+            master: {
+              ...gflags.master
+            },
+            tserver: {
+              ...gflags.tserver
+            }
           },
           instance_tags: otherAdvancedSettings.instanceTags.reduce((acc, tag) => {
             acc[tag.name] = tag.value;
             return acc;
           }, {} as Record<string, string>),
           networking_spec: {
-            enable_lb: proxySettings.enableProxyServer,
+            enable_lb: false,
             enable_exposing_service: "UNEXPOSED",
             proxy_config: {
               http_proxy: proxySettings.enableProxyServer ? `${proxySettings.webProxy}` : "",
               https_proxy: proxySettings.secureWebProxy ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}` : "",
-              no_proxy_list: proxySettings.byPassProxyListValues.split('\n')
+              no_proxy_list: proxySettings.byPassProxyListValues?.split('\n') ?? []
             }
           },
           num_nodes: getNodeCount(nodesAvailabilitySettings.availabilityZones),
           node_spec: {
-            instance_type: "c5.large",
+            instance_type: instanceSettings.instanceType!,
             dedicated_nodes: nodesAvailabilitySettings.useDedicatedNodes,
             storage_spec: {
               num_volumes: 1,
-              storage_type: "GP3",
-              storage_class: "standard",
-              volume_size: 250,
-              disk_iops: 3000,
-              throughput: 125
+              storage_type: instanceSettings.deviceInfo!.storageType!,
+              storage_class: instanceSettings.deviceInfo!.storageClass!,
+              volume_size: instanceSettings.deviceInfo!.numVolumes * instanceSettings.deviceInfo!.volumeSize!,
+              disk_iops: instanceSettings.deviceInfo!.diskIops!,
+              throughput: instanceSettings.deviceInfo!.throughput!
             }
           },
           placement_spec: {
@@ -348,7 +355,7 @@ export const mapCreateUniversePayload = (formValues: createUniverseFormProps): U
           provider_spec: {
             provider: generalSettings.providerConfiguration.uuid,
             region_list: regionList.map(r => r.uuid!),
-            image_bundle_uuid: 'c997367a-37eb-4c07-afaf-68ff2da04674',
+            image_bundle_uuid: instanceSettings.imageBundleUUID!,
             access_key_code: otherAdvancedSettings.accessKeyCode
           },
         },
@@ -374,4 +381,23 @@ const mapCommunicationPorts = (otherSettings: OtherAdvancedProps): Communication
     node_exporter_port: otherSettings.nodeExporterPort,
     yb_controller_rpc_port: otherSettings.ybControllerrRpcPort,
   };
+};
+
+const mapGFlags = (gflags: { Name: string, MASTER?: string | boolean | number, TSERVER?: string | boolean | number }[]) => {
+
+  const gflagsMap: { master: Record<string, string>, tserver: Record<string, string> } = {
+    master: {
+    },
+    tserver: {
+    }
+  };
+  gflags.forEach((gflag) => {
+    if (gflag.MASTER) {
+      gflagsMap.master[gflag.Name] = gflag.MASTER.toString();
+    }
+    if (gflag.TSERVER) {
+      gflagsMap.tserver[gflag.Name] = gflag.TSERVER.toString();
+    }
+  });
+  return gflagsMap;
 };

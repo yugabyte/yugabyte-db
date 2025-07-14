@@ -37,6 +37,9 @@ public class TestPgRegressThirdPartyExtensionsHypopg extends BasePgRegressTest {
 
   @Test
   public void schedule_old_cost_model() throws Exception {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_pg_conf_csv", "yb_enable_cbo=OFF");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/hypopg"),
                      "yb_old_cost_model_schedule");

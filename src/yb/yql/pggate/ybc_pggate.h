@@ -876,6 +876,7 @@ YbcPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
     size_t buffer_size, YbcPgThreadLocalRegexpCacheCleanup cleanup);
 
 void YBCPgResetCatalogReadTime();
+YbcReadHybridTime YBCGetPgCatalogReadTime();
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
 
@@ -893,10 +894,6 @@ void YBCStartSysTablePrefetching(
     YbcPgSysTablePrefetcherCacheMode cache_mode);
 
 void YBCStopSysTablePrefetching();
-
-void YBCPauseSysTablePrefetching();
-
-void YBCResumeSysTablePrefetching();
 
 bool YBCIsSysTablePrefetchingStarted();
 

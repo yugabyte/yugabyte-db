@@ -47,7 +47,7 @@ export const YSQLField = (): ReactElement => {
       >
         <Box sx={{ marginBottom: '-5px', mr: 1 }}>
           <YBTooltip
-            title={!ycqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
+            title={!ycqlEnabled && !ysqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
             placement="top-start"
           >
             <div>
@@ -55,7 +55,6 @@ export const YSQLField = (): ReactElement => {
                 name={YSQL_FIELD}
                 control={control}
                 label={t('ysqlSettings.toggleLabel')}
-                disabled={!ycqlEnabled}
               />
             </div>
           </YBTooltip>

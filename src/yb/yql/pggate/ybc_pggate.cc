@@ -535,6 +535,26 @@ inline YbcPgExplicitRowLockStatus MakePgExplicitRowLockStatus() {
                      .conflicting_table_id = kInvalidOid}};
 }
 
+YbcReadHybridTime MakeYbcReadHybridTime(const ReadHybridTime& read_time) {
+  return {
+      .read = read_time.read.ToUint64(),
+      .local_limit = read_time.local_limit.ToUint64(),
+      .global_limit = read_time.global_limit.ToUint64(),
+      .in_txn_limit = read_time.in_txn_limit.ToUint64(),
+      .serial_no = read_time.serial_no
+  };
+}
+
+ReadHybridTime MakeReadHybridTime(const YbcReadHybridTime& read_time) {
+  return {
+      .read = HybridTime(read_time.read),
+      .local_limit = HybridTime(read_time.local_limit),
+      .global_limit = HybridTime(read_time.global_limit),
+      .in_txn_limit = HybridTime(read_time.in_txn_limit),
+      .serial_no = read_time.serial_no
+  };
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -654,7 +674,11 @@ YbcStatus YBCPgDestroyMemctx(YbcPgMemctx memctx) {
 }
 
 void YBCPgResetCatalogReadTime() {
-  return pgapi->ResetCatalogReadTime();
+  pgapi->ResetCatalogReadTime();
+}
+
+YbcReadHybridTime YBCGetPgCatalogReadTime() {
+  return MakeYbcReadHybridTime(pgapi->GetCatalogReadTime());
 }
 
 YbcStatus YBCPgResetMemctx(YbcPgMemctx memctx) {
@@ -2438,21 +2462,16 @@ void YBCStartSysTablePrefetching(
     YbcPgLastKnownCatalogVersionInfo version_info,
     YbcPgSysTablePrefetcherCacheMode cache_mode) {
   YBCStartSysTablePrefetchingImpl(PrefetcherOptions::CachingInfo{
-      {version_info.version, version_info.is_db_catalog_version_mode},
-      database_oid,
-      YBCMapPrefetcherCacheMode(cache_mode)});
+      {
+          version_info.version,
+          MakeReadHybridTime(version_info.version_read_time),
+          version_info.is_db_catalog_version_mode
+      },
+      database_oid, YBCMapPrefetcherCacheMode(cache_mode)});
 }
 
 void YBCStopSysTablePrefetching() {
   pgapi->StopSysTablePrefetching();
-}
-
-void YBCPauseSysTablePrefetching() {
-  pgapi->PauseSysTablePrefetching();
-}
-
-void YBCResumeSysTablePrefetching() {
-  pgapi->ResumeSysTablePrefetching();
 }
 
 bool YBCIsSysTablePrefetchingStarted() {

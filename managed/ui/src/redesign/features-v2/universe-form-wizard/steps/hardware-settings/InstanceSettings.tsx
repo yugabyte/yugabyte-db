@@ -1,9 +1,11 @@
 import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { mui, YBAccordion, YBCheckboxField } from '@yugabyte-ui-library/core';
+import { yupResolver } from '@hookform/resolvers/yup';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
+  CreateUniverseSteps,
   StepsRef
 } from '../../CreateUniverseContext';
 import { InstanceSettingProps } from './dtos';
@@ -38,6 +40,9 @@ import {
   MASTER_TSERVER_SAME_FIELD
 } from '../../fields/FieldNames';
 import { Typography } from '@material-ui/core';
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import { ResilienceType } from '../resilence-regions/dtos';
+import { InstanceSettingsValidationSchema } from './ValidationSchema';
 
 const { Box } = mui;
 
@@ -46,19 +51,22 @@ const isImgBundleSupportedByProvider = (provider: ProviderType) =>
 
 export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { instanceSettings, generalSettings, nodesAvailabilitySettings },
-    { moveToNextPage, moveToPreviousPage, saveInstanceSettings }
+    { instanceSettings, generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings },
+    { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   // Fetch customer scope runtime configs
   const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
   const customerUUID = currentCustomer?.data?.uuid;
-  const { data: runtimeConfigs } = useQuery(
+  const { data: runtimeConfigs, isLoading: isRuntimeConfigLoading } = useQuery(
     [QUERY_KEY.fetchCustomerRunTimeConfigs, customerUUID],
     () => api.fetchRunTimeConfigs(true, customerUUID)
   );
 
-  const { data: providerRuntimeConfigs } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
+  const {
+    data: providerRuntimeConfigs,
+    isLoading: isProviderRuntimeConfigLoading
+  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
     api.fetchRunTimeConfigs(true, provider?.uuid)
   );
 
@@ -81,7 +89,8 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   });
 
   const methods = useForm<InstanceSettingProps>({
-    defaultValues: instanceSettings
+    defaultValues: instanceSettings,
+    resolver: yupResolver(InstanceSettingsValidationSchema(t))
   });
   const { watch, setValue, control } = methods;
 
@@ -186,13 +195,21 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
         })();
       },
       onPrev: () => {
-        moveToPreviousPage();
+        if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
+          setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
+        } else {
+          moveToPreviousPage();
+        }
       }
     }),
     []
   );
 
   const showDedicatedNodesSection = !!(useDedicatedNodes || (useK8CustomResources && isK8s));
+
+  if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading) {
+    return <YBLoadingCircleIcon />;
+  }
 
   return (
     <FormProvider {...methods}>
