@@ -283,7 +283,14 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateTableUnsupported) {
   filter.set_name(namespace_name);
   for (auto client : {producer_client(), consumer_client()}) {
     auto all_tables = ASSERT_RESULT(client->ListUserTables(filter, /* include_indices */ true));
-    ASSERT_EQ(all_tables.size(), 0);
+    // Only expect to end up with ddl_queue and replicated_ddls tables.
+    ASSERT_EQ(all_tables.size(), 2);
+    for (const auto& table : all_tables) {
+      ASSERT_TRUE(table.pgschema_name() == xcluster::kDDLQueuePgSchemaName)
+          << "Unexpected pgschema_name: " << table.pgschema_name();
+      ASSERT_TRUE(table.table_name() == "ddl_queue" || table.table_name() == "replicated_ddls")
+          << "Unexpected table_name: " << table.table_name();
+    }
   }
 }
 
