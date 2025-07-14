@@ -71,7 +71,6 @@ class ObjectLockOwnerRegistry::Impl {
     if (PREDICT_TRUE(i != owners_.end())) {
       return i->second;
     }
-    LOG(DFATAL) << "Attempting to access non registered lock owner tag";
     return {};
   }
 
