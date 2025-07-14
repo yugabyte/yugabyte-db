@@ -65,6 +65,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
@@ -1569,7 +1570,8 @@ TEST_F(PgLocksTabletSplitTest, TestPgLocks) {
   auto locks_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
   ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchRow<int64>(
-      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+      Format("SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks "
+             "WHERE relation = '$0'::regclass", table))), 1);
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table));
   ASSERT_OK(SplitSingleTablet(table_id));
@@ -1581,9 +1583,13 @@ TEST_F(PgLocksTabletSplitTest, TestPgLocks) {
   }, 5s * kTimeMultiplier, "Wait for clean up of split parent tablet."));
 
   ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchRow<int64>(
-      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+      Format("SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks "
+             "WHERE relation = '$0'::regclass", table))), 1);
+
+  const int expected_num_locks_per_key = FLAGS_enable_object_locking_for_table_locks ? 3 : 2;
   ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchRow<int64>(
-      "SELECT COUNT(*) FROM pg_locks")), num_keys_to_lock * 2);
+      Format("SELECT COUNT(*) FROM pg_locks WHERE relation = '$0'::regclass", table))),
+      num_keys_to_lock * expected_num_locks_per_key);
 }
 
 TEST_F(PgLocksTabletSplitTest, TestPgLocksSplitAfterFetchingParentLocation) {
@@ -1598,13 +1604,17 @@ TEST_F(PgLocksTabletSplitTest, TestPgLocksSplitAfterFetchingParentLocation) {
     auto locks_conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
     auto num_txns = VERIFY_RESULT(locks_conn.FetchRow<int64>(
-        "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks"));
+        Format("SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks "
+               "WHERE relation = '$0'::regclass", table)));
     RSTATUS_DCHECK_EQ(num_txns, 1, IllegalState,
-                      Format("Expected to see $0 (vs $1) transactions in pg_locks", 1, num_txns));
+        Format("Expected to see $0 (vs $1) transactions in pg_locks "
+               "WHERE relation = '$0'::regclass", 1, num_txns, table));
     auto num_locks = VERIFY_RESULT(locks_conn.FetchRow<int64>(
-        "SELECT COUNT(*) FROM pg_locks"));
-    RSTATUS_DCHECK_EQ(num_locks, 2, IllegalState,
-                      Format("Expected to see $0 (vs $1) locks", 2 * num_keys_to_lock, num_locks));
+        Format("SELECT COUNT(*) FROM pg_locks WHERE relation = '$0'::regclass", table)));
+    const int expected_num_locks_per_key = FLAGS_enable_object_locking_for_table_locks ? 3 : 2;
+    RSTATUS_DCHECK_EQ(num_locks, expected_num_locks_per_key * num_keys_to_lock, IllegalState,
+                      Format("Expected to see $0 (vs $1) locks",
+                          expected_num_locks_per_key * num_keys_to_lock, num_locks));
     return Status::OK();
   });
 
