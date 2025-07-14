@@ -1322,11 +1322,11 @@ To provide a user with replication permissions, define a YugabyteDB role that ha
 CREATE ROLE <name> REPLICATION LOGIN;
 ```
 
-### Setting privileges to enable Debezium to create YugabyteDB publications when you use `pgoutput` or `yboutput`
+### Setting privileges to enable the connector to create YugabyteDB publications when you use `pgoutput` or `yboutput`
 
-If you use `pgoutput` or `yboutput` as the logical decoding plugin, Debezium must operate in the database as a user with specific privileges.
+If you use `pgoutput` or `yboutput` as the logical decoding plugin, the connector must operate in the database as a user with specific privileges.
 
-Debezium streams change events for YugabyteDB source tables from publications that are created for the tables. Publications contain a filtered set of change events that are generated from one or more tables. The data in each publication is filtered based on the publication specification. The specification can be created by the `YugabyteDB` database administrator or by the Debezium connector. To permit the Debezium connector to create publications and specify the data to replicate to them, the connector must operate with specific privileges in the database.
+The connector streams change events for YugabyteDB source tables from publications that are created for the tables. Publications contain a filtered set of change events that are generated from one or more tables. The data in each publication is filtered based on the publication specification. The specification can be created by the `YugabyteDB` database administrator or by the connector. To permit the connector to create publications and specify the data to replicate to them, the connector must operate with specific privileges in the database.
 
 There are several options for determining how publications are created. In general, it is best to manually create publications for the tables that you want to capture, before you set up the connector. However, you can configure your environment in a way that permits Debezium to create publications automatically, and to specify the data that is added to them.
 

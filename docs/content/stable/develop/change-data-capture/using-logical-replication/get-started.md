@@ -24,7 +24,7 @@ CDC via logical replication is supported in YugabyteDB starting from version 202
 
 ## Get started with YugabyteDB connector
 
-This tutorial demonstrates how to use Debezium to monitor a YugabyteDB database. As the data in the database changes, you will see the resulting event streams.
+This tutorial demonstrates how to use the YugabyteDB source connector to monitor a YugabyteDB database. As the data in the database changes, you will see the resulting event streams.
 
 In this tutorial you will start the Debezium services, run a YugabyteDB instance with a basic example database, and use Debezium to monitor the database for changes.
 
