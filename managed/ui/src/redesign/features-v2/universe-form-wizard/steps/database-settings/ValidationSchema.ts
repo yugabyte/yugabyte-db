@@ -1,6 +1,7 @@
 import * as Yup from 'yup';
 import { useTranslation } from 'react-i18next';
 import { DatabaseSettingsProps } from './dtos';
+import { YSQL_FIELD } from '../../fields';
 
 const PASSWORD_REGEX = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
 
@@ -48,5 +49,22 @@ export const DatabaseValidationSchema = () => {
           : field;
       })
     })
-  });
+  }).test(
+    'both-ysql-ycql-enabled',
+    t('createUniverseV2.databaseSettings.enableYsqlOrYcql'),
+    function (value) {
+      const ysqlEnabled = value?.ysql?.enable;
+      const ycqlEnabled = value?.ycql?.enable;
+
+      // If neither is enabled, return error
+      if (!ysqlEnabled && !ycqlEnabled) {
+        return this.createError({
+          message: t('createUniverseV2.databaseSettings.enableYsqlOrYcql'),
+          path: YSQL_FIELD
+        });
+      }
+
+      return true;
+    }
+  );
 };

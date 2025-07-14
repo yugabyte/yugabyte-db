@@ -86,15 +86,18 @@ export const RegionSelection = () => {
         loading={isFetching}
         multiple={allowmultipleRegionsSelection}
         onChange={(_, option) => {
-          const value = uniqBy(Array.isArray(option) ? option : option === null ? [] : [option], 'name');
+          const value = uniqBy(
+            Array.isArray(option) ? option : option === null ? [] : [option],
+            'name'
+          );
           setValue(REGIONS_FIELD, (value as unknown) as Region[], { shouldValidate: true });
         }}
         value={
           allowmultipleRegionsSelection
             ? ((regions as unknown) as Record<string, string>[])
             : isEmpty(regions)
-              ? null
-              : ((regions[0] as unknown) as Record<string, string>)
+            ? null
+            : ((regions[0] as unknown) as Record<string, string>)
         }
       />
       {resilienceType === ResilienceType.SINGLE_NODE && (

@@ -123,6 +123,14 @@ const RBACAuthenticatedArea = (props) => {
   )
     return <YBLoading />;
 
+  if (props.simpleMode) {
+    return (
+      <AuthenticatedComponentContainer>
+        {props.children}
+      </AuthenticatedComponentContainer>
+    );
+  }
+
   return (
     <AuthenticatedComponentContainer>
       <BindShortCutKeys {...props} />

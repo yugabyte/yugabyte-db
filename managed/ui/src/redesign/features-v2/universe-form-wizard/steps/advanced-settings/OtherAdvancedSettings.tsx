@@ -26,9 +26,6 @@ import {
   AccessKeyField
 } from '../../fields';
 import { OtherAdvancedProps } from './dtos';
-// import { useCreateUniverse } from '../../../../../v2/api/universe/universe';
-import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
-import { GeneralSettingsProps } from '../general-settings/dtos';
 
 // import { useTranslation } from 'react-i18next';
 
@@ -37,7 +34,7 @@ const { Box } = mui;
 export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
     { generalSettings, databaseSettings },
-    { moveToNextPage, moveToPreviousPage }
+    { moveToNextPage, moveToPreviousPage, saveOtherAdvancedSettings }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
@@ -60,12 +57,9 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     () => ({
       onNext: () => {
         methods.handleSubmit((data) => {
-          // const payload = mapCreateUniversePayload({ ...context, otherAdvancedSettings: data });
-          // createUniverse.mutateAsync({
-          //   data: payload
-          // });
-        });
-        moveToNextPage();
+          saveOtherAdvancedSettings(data);
+          moveToNextPage();
+        })();
       },
       onPrev: () => {
         moveToPreviousPage();
@@ -104,7 +98,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           )}
           <AccessKeyField
             disabled={false}
-            provider={generalSettings?.providerConfiguration?.uuid || ''}
+            provider={generalSettings?.providerConfiguration?.uuid ?? ''}
           />
           <InstanceARNField disabled={false} />
           <SystemDField disabled={false} />
