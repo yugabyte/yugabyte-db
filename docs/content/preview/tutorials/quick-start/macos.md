@@ -69,7 +69,7 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later. If you are on Apple silicon, you also need [Rosetta](https://support.apple.com/en-us/HT211861).
+- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later. If you are on Apple silicon, you need to download the macOS ARM package.
 
 - Python 3. To check the version, execute the following command:
 
