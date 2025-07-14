@@ -200,7 +200,7 @@ This does not require a restart.
 
 After all the YB-Master and YB-TServer processes are upgraded, monitor the cluster to ensure it is healthy. Make sure workloads are running as expected and there are no errors in the logs.
 
-You can remain in this phase for as long as you need, but you should [finalize the upgrade](#finalize-phase) sooner rather than later to avoid operator errors that can arise from having to maintain two versions.
+You can remain in this phase for as long as you need, up to a _maximum recommended limit of two days_ to avoid operator errors that can arise from having to maintain two versions.
 
 DDLs are not allowed even in this phase. New features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have completed the current one.
 
