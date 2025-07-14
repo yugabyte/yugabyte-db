@@ -62,17 +62,25 @@ if [[ ! -f $bin_path/s3cmd ]]; then
 fi
 
 # Extract and install the new azcopy version
-echo "Extracting azcopy package from $package_path/{{ azcopy_package }}."
-/usr/bin/tar --strip-components=1 --exclude="ThirdPartyNotice.txt" -xzf $package_path/"$azcopy_package".tar.gz -C "/usr/local/bin"
-chmod 0755 "$bin_path/azcopy"
+if [[ -f "$package_path/$azcopy_package.tar.gz" ]]; then
+  echo "Extracting azcopy package from $package_path/$azcopy_package.tar.gz"
+  /usr/bin/tar --strip-components=1 --exclude="ThirdPartyNotice.txt" -xzf $package_path/"$azcopy_package".tar.gz -C "/usr/local/bin"
+  chmod 0755 "$bin_path/azcopy"
+else
+  echo "Warning: azcopy package $azcopy_package.tar.gz not found in $package_path, skipping..."
+fi
 
 # Define gsutil package path
 gsutil_package_path="/usr/local/gsutil"
 
-echo "Extracting gsutil package from $package_path}/{{ gsutil_package }}"
-tar -xzvf $package_path/"$gsutil_package".tar.gz -C "/usr/local"
-# Create symlink to the bin_path
-if [[ ! -f $bin_path/gsutil ]]; then
-  ln -sf "$gsutil_package_path/gsutil" "$bin_path/gsutil"
+if [[ -f "$package_path/$gsutil_package.tar.gz" ]]; then
+  echo "Extracting gsutil package from $package_path/$gsutil_package.tar.gz"
+  tar -xzvf $package_path/"$gsutil_package".tar.gz -C "/usr/local"
+  # Create symlink to the bin_path
+  if [[ ! -f $bin_path/gsutil ]]; then
+    ln -sf "$gsutil_package_path/gsutil" "$bin_path/gsutil"
+  fi
+  echo "gsutil installed and symlinked to $bin_path/gsutil"
+else
+  echo "Warning: gsutil package $gsutil_package.tar.gz not found in $package_path, skipping..."
 fi
-echo "gsutil installed and symlinked to $bin_path/gsutil"
