@@ -1400,6 +1400,8 @@ class PgClientSession::Impl {
       xcluster_context()->PrepareCreateTableHelper(req, helper);
     }
 
+    RETURN_NOT_OK(SetupSessionForDdl(
+        req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
     RETURN_NOT_OK(helper.Exec(&client_, metadata, context->GetClientDeadline()));
@@ -1427,6 +1429,8 @@ class PgClientSession::Impl {
         .tgt_owner = req.target_owner().c_str(),
       };
     }
+    RETURN_NOT_OK(SetupSessionForDdl(
+      req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     return client_.CreateNamespace(
         req.database_name(), YQL_DATABASE_PGSQL, "" /* creator_role_name */,
         GetPgsqlNamespaceId(req.database_oid()),
@@ -1450,6 +1454,8 @@ class PgClientSession::Impl {
   Status DropTable(
       const PgDropTableRequestPB& req, PgDropTableResponsePB* resp, rpc::RpcContext* context) {
     const auto yb_table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
+    RETURN_NOT_OK(SetupSessionForDdl(
+      req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
         context->GetClientDeadline()));
@@ -1487,6 +1493,8 @@ class PgClientSession::Impl {
       const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
     const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
     const auto alterer = client_.NewTableAlterer(table_id);
+    RETURN_NOT_OK(SetupSessionForDdl(
+      req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
     if (txn) {
@@ -1669,6 +1677,8 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     const auto id = PgObjectId::FromPB(req.tablegroup_id());
     const auto tablespace_id = PgObjectId::FromPB(req.tablespace_id());
+    RETURN_NOT_OK(SetupSessionForDdl(
+      req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
         context->GetClientDeadline()));
@@ -1690,6 +1700,8 @@ class PgClientSession::Impl {
       const PgDropTablegroupRequestPB& req, PgDropTablegroupResponsePB* resp,
       rpc::RpcContext* context) {
     const auto id = PgObjectId::FromPB(req.tablegroup_id());
+    RETURN_NOT_OK(SetupSessionForDdl(
+      req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
         context->GetClientDeadline()));
@@ -3009,6 +3021,23 @@ class PgClientSession::Impl {
     }
     txn->SetPriority(priority);
     session->SetTransaction(txn);
+    return Status::OK();
+  }
+
+  Status SetupSessionForDdl(
+      bool use_regular_transaction_block, const PgPerformOptionsPB& options,
+      CoarseTimePoint deadline) {
+    if (!use_regular_transaction_block) {
+      // Separate DDL transactions do not need to setup the session. They will create the
+      // transaction in GetDdlTransactionMetadata().
+      return Status::OK();
+    }
+
+    VLOG_WITH_PREFIX(1) << "Setting up session for DDL with options: "
+                        << options.ShortDebugString();
+    const auto in_txn_limit = GetInTxnLimit(options, clock().get());
+    VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
+    RETURN_NOT_OK(SetupSession(options, deadline, in_txn_limit));
     return Status::OK();
   }
 

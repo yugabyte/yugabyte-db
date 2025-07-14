@@ -246,6 +246,9 @@ message PgAlterTableRequestPB {
   PgReplicaIdentityPB replica_identity = 9;
   AshMetadataPB ash_metadata = 10;
   bool use_regular_transaction_block = 11;
+  // Used to setup the session in case the table is being altered in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 12;
 }
 
 message PgAlterTableResponsePB {
@@ -266,6 +269,9 @@ message PgCreateDatabaseRequestPB {
   string target_owner = 11;
   AshMetadataPB ash_metadata = 12;
   bool use_regular_transaction_block = 13;
+  // Used to setup the session in case the database is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 14;
 }
 
 message PgCreateDatabaseResponsePB {
@@ -342,7 +348,6 @@ message PgCreateTableRequestPB {
   uint64 session_id = 1;
 
   bool use_transaction = 2;
-  bool use_regular_transaction_block = 26;
   PgObjectIdPB table_id = 3;
   string database_name = 4;
   string table_name = 5;
@@ -382,6 +387,12 @@ message PgCreateTableRequestPB {
   PgVectorIdxOptionsPB vector_idx_options = 24;
 
   AshMetadataPB ash_metadata = 25;
+
+  bool use_regular_transaction_block = 26;
+
+  // Used to setup the session in case the table is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 27;
 }
 
 message PgCreateTableResponsePB {
@@ -398,6 +409,10 @@ message PgCreateTablegroupRequestPB {
 
   AshMetadataPB ash_metadata = 5;
   bool use_regular_transaction_block = 6;
+
+  // Used to setup the session in case the tablegroup is being created in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 7;
 }
 
 message PgCreateTablegroupResponsePB {
@@ -431,6 +446,10 @@ message PgDropTableRequestPB {
   bool index = 3;
   AshMetadataPB ash_metadata = 4;
   bool use_regular_transaction_block = 5;
+
+  // Used to setup the session in case the table is being dropped in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 6;
 }
 
 message PgDropTableResponsePB {
@@ -443,6 +462,9 @@ message PgDropTablegroupRequestPB {
   PgObjectIdPB tablegroup_id = 2;
   AshMetadataPB ash_metadata = 3;
   bool use_regular_transaction_block = 4;
+  // Used to setup the session in case the tablegroup is being dropped in a
+  // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
+  PgPerformOptionsPB options = 5;
 }
 
 message PgDropTablegroupResponsePB {
