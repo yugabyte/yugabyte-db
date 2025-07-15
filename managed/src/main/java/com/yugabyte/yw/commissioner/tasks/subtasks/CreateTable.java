@@ -10,8 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.CqlSessionBuilder;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -44,10 +44,6 @@ public class CreateTable extends AbstractTaskBase {
   private static final long RETRY_DELAY_SEC = 30;
   private static final long MIN_RETRY_COUNT = 3;
   private static final long TOTAL_ATTEMPTS_DURATION_SEC = TimeUnit.MINUTES.toSeconds(10);
-
-  // To use for the Cassandra client
-  private Cluster cassandraCluster;
-  private Session cassandraSession;
   private final NodeUniverseManager nodeUniverseManager;
 
   @Inject
@@ -135,17 +131,13 @@ public class CreateTable extends AbstractTaskBase {
         taskParams().tableType);
   }
 
-  private Session getCassandraSession() {
-    if (cassandraCluster == null) {
-      List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().getUniverseUUID());
-      cassandraCluster = Cluster.builder().addContactPointsWithPorts(addresses).build();
-      log.info("Connected to cluster: " + cassandraCluster.getClusterName());
-    }
-    if (cassandraSession == null) {
-      log.info("Creating a session...");
-      cassandraSession = cassandraCluster.connect();
-    }
-    return cassandraSession;
+  private CqlSession getCassandraSession() {
+    List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().getUniverseUUID());
+    CqlSessionBuilder builder = CqlSession.builder().addContactPoints(addresses);
+    // TODO This does not take into account both auth and SSL.
+    // But also it seems like it's not used anywhere right now.
+    log.info("Creating a session...");
+    return builder.build();
   }
 
   private void createCassandraTable() {
@@ -153,10 +145,11 @@ public class CreateTable extends AbstractTaskBase {
       throw new IllegalArgumentException("No name specified for table.");
     }
     TableDetails tableDetails = taskParams().tableDetails;
-    Session session = getCassandraSession();
-    session.execute(tableDetails.getCQLCreateKeyspaceString());
-    session.execute(tableDetails.getCQLUseKeyspaceString());
-    session.execute(tableDetails.getCQLCreateTableString());
+    try (CqlSession session = getCassandraSession()) {
+      session.execute(tableDetails.getCQLCreateKeyspaceString());
+      session.execute(tableDetails.getCQLUseKeyspaceString());
+      session.execute(tableDetails.getCQLCreateTableString());
+    }
     log.info(
         "Created table '{}.{}' of type {}.",
         tableDetails.keyspace,
