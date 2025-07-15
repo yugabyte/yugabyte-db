@@ -14,7 +14,7 @@ type: docs
 
 Use the `CREATE INDEX` statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
 
-In YugabyteDB, indexes are sharded, i.e. split into tablets and distributed across the different nodes in the cluster, just like regular tables. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed, except for primary key indexes, which are implemented within the main table itself.
+In YugabyteDB, indexes are sharded - they are split into tablets and distributed across the different nodes in the cluster, just like regular tables. Index sharding is based on the primary key of the index and is independent of how the main table is sharded and distributed, except for primary key indexes, which are implemented in the main table itself.
 
 ## Syntax
 
@@ -25,11 +25,11 @@ In YugabyteDB, indexes are sharded, i.e. split into tablets and distributed acro
 
 ## Semantics
 
-### Concurrent index creation 
+### Concurrent index creation
 
-Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions).  
+Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions).
 
-Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform with ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
+Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
 
 | Condition | Concurrent | Nonconcurrent |
 | :-------- | :----- | :--------- |
@@ -37,10 +37,9 @@ Concurrent index creation allows data to be modified in the main table while the
 | Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | Parallelizes index loading? | yes | no |
 
-
 {{< note title="Note" >}}
 
-For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described [in this section](../../../reference/configuration/yb-tserver/#index-backfill-flags).
+For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described in [Index backfill flags](../../../reference/configuration/yb-tserver/#index-backfill-flags).
 
 {{< /note >}}
 
@@ -74,9 +73,9 @@ Disable online index backfill (see [Semantics](#semantics) for details).
 
 ### ONLY
 
-Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.  
+Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
 
-When recursion is disabled this way, the index is created in an INVALID state on only the (parent) partitioned table. To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`. For example,
+When recursion is disabled using ONLY, the index is created in an INVALID state on only the (parent) partitioned table. To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`. For example:
 
 ```sql
 CREATE TABLE parent_partition(c1 int, c2 int) PARTITION BY RANGE (c1);
@@ -86,6 +85,9 @@ CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM (101) to
 CREATE INDEX parent_index ON ONLY parent_partition (c1, c2);
 
 \d parent_partition
+```
+
+```output
           Table "public.parent_partition"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -95,14 +97,19 @@ Partition key: RANGE (c1)
 Indexes:
     "parent_index" lsm (c1 HASH, c2 ASC) INVALID
 Number of partitions: 2 (Use \d+ to list them.)
+```
 
+```sql
 CREATE INDEX parent_index ON parent_partition (c1, c2);
 CREATE INDEX child_part_1_index ON child_part_1 (c1, c2);
 CREATE INDEX child_part_2_index ON child_part_2 (c1, c2);
 ALTER INDEX parent_index ATTACH PARTITION child_part_1_index;
 ALTER INDEX parent_index ATTACH PARTITION child_part_2_index;
 
-test1=# \d parent_partition
+\d parent_partition
+```
+
+```output
           Table "public.parent_partition"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -275,7 +282,7 @@ yugabyte=# create index shipment_delivery on shipments(delivery_status, address,
 
 ### Expression indexes
 
-An index column need not be just a column of the underlying table, but can be a function, or scalar expression computed from one or more columns of the table. You can also obtain fast access to tables based on the results of computations.
+An index column need not be just a column of the underlying table; it can also be a function, or scalar expression computed from one or more columns of the table. You can also obtain fast access to tables based on the results of computations.
 
 A basic example is indexing unique emails in a users table similar to the following:
 
