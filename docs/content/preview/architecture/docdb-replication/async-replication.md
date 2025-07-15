@@ -244,7 +244,7 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
 - Truncate
 
-  The TRUNCATE command is not supported. See {{<issue 23958>}} for supporting it in automatic mode.
+  The `TRUNCATE` command is not supported. See {{<issue 23958>}} for supporting it in automatic mode.
   
 - Backups
 
@@ -269,6 +269,10 @@ Limitations specific to each scenario and mode are listed below:
 - Consistency issues
 
   Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
+
+- Table rewrites
+
+  `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
 - Composite, enum, and range (array) types
 
@@ -312,17 +316,22 @@ Improper use can compromise replication consistency and lead to data divergence.
 #### Transactional Automatic mode
 
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually created on the standby universe.
-- DDLs related to Materialized Views (CREATE, DROP, and REFRESH) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
-- CREATE TABLE AS and SELECT INTO DDL statements are not supported. You can work around this by breaking the DDL into a CREATE TABLE followed by INSERT SELECT.
-- ALTER COLUMN TYPE, ADD COLUMN ... SERIAL, and ALTER LARGE OBJECT DDLs are not supported.
-- DDLs related to PUBLICATION and SUBSCRIPTION are not supported.
+- DDLs related to Materialized Views (`CREATE`, `DROP`, and `REFRESH`) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
+- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
+- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and `ALTER LARGE OBJECT` DDLs are not supported.
+- DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
-- While Automatic mode is active, you can only CREATE, DROP, or ALTER the following extensions: `file_fdw`, `fuzzystrmatch`, `pgcrypto`, `postgres_fdw`, `sslinfo`, `uuid-ossp`, `hypopg`, `pg_stat_monitor`, and `pgaudit`. All other extensions must be created _before_ setting up automatic mode.
+- While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: `file_fdw`, `fuzzystrmatch`, `pgcrypto`, `postgres_fdw`, `sslinfo`, `uuid-ossp`, `hypopg`, `pg_stat_monitor`, and `pgaudit`. All other extensions must be created _before_ setting up automatic mode.
 
 #### Transactional Semi-Automatic and Manual mode
 
 - All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
+  - Exception: DDLs related to PUBLICATION and SUBSCRIPTION should only be used on the source universe.
+
+- `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+
+- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` (done on both universes) followed by `INSERT SELECT` (done only on the source universe).
 
 - Sequence data is not replicated by these modes. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
 
