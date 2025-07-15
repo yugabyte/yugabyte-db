@@ -2689,14 +2689,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_skip_data_insert_for_xcluster_target", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("If enabled, any DDL operations will skip the data loading "
-						 "phase. This includes table rewrites and nonconcurrent indexes."
+		{"yb_xcluster_automatic_mode_target_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Used to identify DDLs executed in Automatic xCluster mode target "
+						 "universe. For example, DDL operations will skip the data loading "
+						 "phase, including table rewrites and nonconcurrent indexes. Sequence "
+						 "restarts via TRUNCATE TABLE are also skipped."
 						 "WARNING: Incorrect usage will result in data loss."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_skip_data_insert_for_xcluster_target,
+		&yb_xcluster_automatic_mode_target_ddl,
 		false,
 		NULL, NULL, NULL
 	},

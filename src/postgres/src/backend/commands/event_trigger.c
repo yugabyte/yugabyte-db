@@ -545,6 +545,13 @@ filter_event_trigger(CommandTag tag, EventTriggerCacheItem *item)
 	}
 
 	/* Filter by tags, if any were specified. */
+	/*
+	 * In Yugabyte we support ddl trigger on TRUNCATE TABLE, but only if it has
+	 * been explicitly specified as a trigger filter. This ensures backwards
+	 * compatibility with Postgres.
+	 */
+	if (IsYugaByteEnabled() && tag == CMDTAG_TRUNCATE_TABLE && !bms_is_member(tag, item->tagset))
+		return false;
 	if (!bms_is_empty(item->tagset) && !bms_is_member(tag, item->tagset))
 		return false;
 
