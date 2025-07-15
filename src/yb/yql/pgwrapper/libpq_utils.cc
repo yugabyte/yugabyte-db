@@ -435,11 +435,13 @@ void PGConn::Reset() {
   PQreset(impl_.get());
 }
 
-Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
+Status PGConn::Execute(
+    const std::string& command, bool show_query_in_error, bool ignore_empty_query) {
   VLOG(1) << __func__ << " " << command;
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));
   auto status = PQresultStatus(res.get());
-  if (ExecStatusType::PGRES_COMMAND_OK != status) {
+  if (ExecStatusType::PGRES_COMMAND_OK != status &&
+      !(ignore_empty_query && ExecStatusType::PGRES_EMPTY_QUERY == status)) {
     if (status == ExecStatusType::PGRES_TUPLES_OK) {
       return STATUS_FORMAT(IllegalState,
                            "Tuples received in Execute$0",
