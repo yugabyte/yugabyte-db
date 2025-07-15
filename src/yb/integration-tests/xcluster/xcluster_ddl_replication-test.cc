@@ -2855,4 +2855,71 @@ TEST_F(XClusterDDLReplicationTest, BackupRestorePreservesEnumSortValue) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTableRewriteTest, TruncateTable) {
+  // Create a table with a sequence.
+  const auto table_name = "tbl1";
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(id SERIAL PRIMARY KEY, col1 int)"));
+  auto producer_table =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", table_name));
+  const auto insert_stmt = "INSERT INTO tbl1(col1) VALUES (generate_series($0, $1))";
+  ASSERT_OK(producer_conn_->ExecuteFormat(insert_stmt, 0, 100));
+
+  auto verify_data = [&]() -> Status {
+    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
+    const auto select_stmt = "SELECT * FROM tbl1 ORDER BY id";
+    auto producer_rows = VERIFY_RESULT(producer_conn_->FetchAllAsString(select_stmt));
+    auto consumer_rows = VERIFY_RESULT(consumer_conn_->FetchAllAsString(select_stmt));
+    SCHECK_EQ(producer_rows, consumer_rows, IllegalState, "Rows do not match");
+
+    const auto select_seq_val_stmt = "SELECT last_value, is_called FROM tbl1_id_seq";
+    auto producer_seq_val = VERIFY_RESULT(producer_conn_->FetchRowAsString(select_seq_val_stmt));
+    auto consumer_seq_val = VERIFY_RESULT(consumer_conn_->FetchRowAsString(select_seq_val_stmt));
+    SCHECK_EQ(producer_seq_val, consumer_seq_val, IllegalState, "Sequence values do not match");
+    return Status::OK();
+  };
+
+  ASSERT_OK(verify_data());
+
+  // Make sure we cannot mix temp and non_temp tables;
+  {
+    ASSERT_OK(producer_conn_->Execute("CREATE TEMP TABLE tbl_tmp(id int)"));
+    const auto expected_err_msg =
+        "unsupported mix of temporary and persisted objects in DDL command";
+    ASSERT_NOK_STR_CONTAINS(
+        producer_conn_->Execute("TRUNCATE TABLE tbl_tmp, tbl1"), expected_err_msg);
+    ASSERT_NOK_STR_CONTAINS(
+        producer_conn_->Execute("TRUNCATE TABLE tbl1, tbl_tmp"), expected_err_msg);
+  }
+
+  // But just truncate the temp table should work on each side independently.
+  ASSERT_OK(producer_conn_->Execute("TRUNCATE TABLE tbl_tmp"));
+  // TODO(#25885): Remove the need to set enable_manual_ddl_replication to use temp tables on
+  // target.
+  ASSERT_OK(consumer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication TO TRUE"));
+  ASSERT_OK(consumer_conn_->Execute("CREATE TEMP TABLE tbl_tmp2(id int)"));
+  ASSERT_OK(consumer_conn_->Execute("TRUNCATE TABLE tbl_tmp2"));
+  ASSERT_OK(consumer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication TO FALSE"));
+
+  // Pause DDL replication and run the truncate followed by insert.
+  auto ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+
+  // Truncate with a sequence restart.
+  ASSERT_OK(producer_conn_->Execute("TRUNCATE TABLE tbl1 RESTART IDENTITY"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(insert_stmt, 200, 300));
+
+  // Let the sequence table changes replicate first.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  // Unblock the DDL on target and make sure the sequence restart from the DDL does not
+  // override the already replicated sequence values.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+
+  ASSERT_OK(verify_data());
+}
+
 }  // namespace yb

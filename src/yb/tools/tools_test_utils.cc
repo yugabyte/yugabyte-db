@@ -138,17 +138,27 @@ Status RunYbControllerCommand(
       backupDir, backup_command, ns, ns_type, tmp_dir, use_tablespaces);
 }
 
-Result<std::string> RunYSQLDump(HostPort& pg_host_port, const std::string& database_name) {
+namespace {
+Result<std::string> RunYSQLDumpHelper(
+    HostPort& pg_host_port, const std::string& database_name, const std::string& dump_type) {
   const auto kHostFlag = "--host=" + pg_host_port.host();
   const auto kPortFlag = "--port=" + std::to_string(pg_host_port.port());
-  std::vector<std::string> args = {
-      GetPgToolPath("ysql_dump"), kHostFlag,    kPortFlag, "--schema-only",
-      "--include-yb-metadata",    database_name};
+  std::vector<std::string> args = {GetPgToolPath("ysql_dump"), kHostFlag,    kPortFlag, dump_type,
+                                   "--include-yb-metadata",    database_name};
   LOG(INFO) << "Run tool: " << AsString(args);
   std::string output;
   RETURN_NOT_OK(Subprocess::Call(args, &output));
   LOG(INFO) << "Tool output: " << output;
   return output;
+}
+}  // namespace
+
+Result<std::string> RunYSQLDump(HostPort& pg_host_port, const std::string& database_name) {
+  return RunYSQLDumpHelper(pg_host_port, database_name, "--schema-only");
+}
+
+Result<std::string> RunYSQLDataOnlyDump(HostPort& pg_host_port, const std::string& database_name) {
+  return RunYSQLDumpHelper(pg_host_port, database_name, "--data-only");
 }
 
 TmpDirProvider::~TmpDirProvider() {

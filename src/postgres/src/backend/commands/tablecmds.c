@@ -1950,7 +1950,7 @@ RangeVarCallbackForDropRelation(const RangeVar *rel, Oid relOid, Oid oldRelOid,
  * are truncated and reindexed.
  */
 void
-ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level)
+ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 {
 	List	   *rels = NIL;
 	List	   *relids = NIL;
@@ -2051,6 +2051,10 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level)
 	ExecuteTruncateGuts(rels, relids, relids_logged,
 						stmt->behavior, stmt->restart_seqs, yb_is_top_level);
 
+
+	if (IsYugaByteEnabled() && yb_relids != NULL)
+		*yb_relids = relids;
+
 	/* And close the rels */
 	foreach(cell, rels)
 	{
@@ -2089,6 +2093,13 @@ ExecuteTruncateGuts(List *explicit_rels,
 	SubTransactionId mySubid;
 	ListCell   *cell;
 	Oid		   *logrelids;
+
+	/*
+	 * DDL replicated on xCluster target. The change to the sequence value is already
+	 * replicated to the sequence_data table
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl)
+		restart_seqs = false;
 
 	/*
 	 * Check the explicitly-specified relations.
@@ -6774,7 +6785,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Write the tuple out to the new relation */
-			if (newrel && !yb_skip_data_insert_for_xcluster_target)
+			if (newrel && !yb_xcluster_automatic_mode_target_ddl)
 			{
 				if (IsYBRelation(newrel))
 					YBCExecuteInsert(newrel,
