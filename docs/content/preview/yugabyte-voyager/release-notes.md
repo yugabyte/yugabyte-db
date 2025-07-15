@@ -21,14 +21,14 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New feature
 
-- Introduced the `--on-primary-key-conflict` flag for the import data to target command, supporting two modes:
+- Introduced the `--on-primary-key-conflict` flag for the import data to target and import data file command, supporting two modes:
 
   - ERROR: Fails the import if a primary key conflict is encountered.
   - IGNORE: Ignores rows that have a primary key conflict.
 
 ## Enhancements
 
-- Added detection of foreign key datatype mismatches; such issues are now reported in the Migration Assessment Report under **Performance Optimizations**.
+- Foreign keys with mismatched datatypes are now detected and reported in the Migration Assessment Report under **Performance Optimizations**.
 - Automatically clean up leftover metadata when `assess-migration` is aborted via a prompt, eliminating the need to rerun with `--start-clean`.
 - Added a warning in import data when existing rows are detected in the target table to help prevent primary key conflicts during import.
 - Improved error messages when multiple Debezium processes or active replication slots are detected, so that you can identify and kill orphaned processes and retry the command.
