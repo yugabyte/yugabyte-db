@@ -47,7 +47,7 @@ For more details on how online index backfill works, refer to [Online Index Back
 
 If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
 
-### Partitioned Indexes
+### Partitioned indexes
 
 Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
 
@@ -217,11 +217,14 @@ By default, YugabyteDB creates a range sharded index as a single tablet. The `SP
 Create a unique index with hash ordered columns.
 
 ```plpgsql
-yugabyte=# CREATE TABLE products(id int PRIMARY KEY,
+CREATE TABLE products(id int PRIMARY KEY,
                                  name text,
                                  code text);
-yugabyte=# CREATE UNIQUE INDEX ON products(code);
-yugabyte=# \d products
+CREATE UNIQUE INDEX ON products(code);
+\d products
+```
+
+```output
               Table "public.products"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -238,8 +241,11 @@ Indexes:
 Create an index with ascending ordered key.
 
 ```plpgsql
-yugabyte=# CREATE INDEX products_name ON products(name ASC);
-yugabyte=# \d products_name
+CREATE INDEX products_name ON products(name ASC);
+\d products_name
+```
+
+```output
    Index "public.products_name"
  Column | Type | Key? | Definition
 --------+------+------+------------
@@ -252,8 +258,11 @@ lsm, for table "public.products
 Create an index with ascending ordered key and include other columns as non-key columns
 
 ```plpgsql
-yugabyte=# CREATE INDEX products_name_code ON products(name) INCLUDE (code);
-yugabyte=# \d products_name_code;
+CREATE INDEX products_name_code ON products(name) INCLUDE (code);
+\d products_name_code;
+```
+
+```output
  Index "public.products_name_code"
  Column | Type | Key? | Definition
 --------+------+------+------------
@@ -276,8 +285,8 @@ CREATE INDEX ON employees(first_name, last_name) SPLIT INTO 10 TABLETS;
 Consider an application maintaining shipments information. It has a `shipments` table with a column for `delivery_status`. If the application needs to access in-flight shipments frequently, then it can use a partial index to exclude rows whose shipment status is `delivered`.
 
 ```plpgsql
-yugabyte=# create table shipments(id int, delivery_status text, address text, delivery_date date);
-yugabyte=# create index shipment_delivery on shipments(delivery_status, address, delivery_date) where delivery_status != 'delivered';
+CREATE TABLE shipments (id int, delivery_status text, address text, delivery_date date);
+CREATE INDEX shipment_delivery ON shipments(delivery_status, address, delivery_date) WHERE delivery_status != 'delivered';
 ```
 
 ### Expression indexes
@@ -314,7 +323,7 @@ If online `CREATE INDEX` fails, an invalid index may be left behind. These index
 For example, the following commands can create an invalid index:
 
 ```plpgsql
-yugabyte=# CREATE TABLE uniqueerror (i int);
+CREATE TABLE uniqueerror (i int);
 ```
 
 ```output
@@ -322,7 +331,7 @@ CREATE TABLE
 ```
 
 ```plpgsql
-yugabyte=# INSERT INTO uniqueerror VALUES (1), (1);
+INSERT INTO uniqueerror VALUES (1), (1);
 ```
 
 ```output
@@ -330,7 +339,7 @@ INSERT 0 2
 ```
 
 ```plpgsql
-yugabyte=# CREATE UNIQUE INDEX ON uniqueerror (i);
+CREATE UNIQUE INDEX ON uniqueerror (i);
 ```
 
 ```output
@@ -338,7 +347,10 @@ ERROR:  ERROR:  duplicate key value violates unique constraint "uniqueerror_i_id
 ```
 
 ```plpgsql
-yugabyte=# \d uniqueerror
+\d uniqueerror
+```
+
+```output
             Table "public.uniqueerror"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
@@ -350,7 +362,7 @@ Indexes:
 Drop the invalid index as follows:
 
 ```plpgsql
-yugabyte=# DROP INDEX uniqueerror_i_idx;
+DROP INDEX uniqueerror_i_idx;
 ```
 
 ```output
