@@ -20,6 +20,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/constants.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
@@ -725,6 +726,13 @@ Status CatalogManager::DoImportSnapshotMeta(
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, use_relfilenode, tables_data));
 
   ImportSnapshotRemoveInvalidTables(use_relfilenode, tables_data);
+
+  // PHASE 6: Adjust OID counters.
+  for (const auto& [_old_namespace_id, external_namespace_snapshot_data] : *namespace_map) {
+    if (external_namespace_snapshot_data.db_type == YQL_DATABASE_PGSQL) {
+      RETURN_NOT_OK(AdvanceOidCounters(external_namespace_snapshot_data.new_namespace_id));
+    }
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
