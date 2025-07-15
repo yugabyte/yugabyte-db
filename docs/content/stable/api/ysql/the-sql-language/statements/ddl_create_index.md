@@ -14,7 +14,7 @@ type: docs
 
 Use the `CREATE INDEX` statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
 
-In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed.
+In YugabyteDB, indexes are sharded, i.e. split into tablets and distributed across the different nodes in the cluster, just like regular tables. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed, except for primary key indexes, which are implemented within the main table itself.
 
 ## Syntax
 
@@ -25,25 +25,26 @@ In YugabyteDB, indexes are global and are implemented just like tables. They are
 
 ## Semantics
 
-When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index. In most cases, this uses an online schema migration. The following table explains some differences between creating an index online and not online.
+### Concurrent index creation 
 
-| Condition | Online | Not online |
+Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions). 
+
+Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform with ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
+
+| Condition | Concurrent | Nonconcurrent |
 | :-------- | :----- | :--------- |
 | Safe to do other DMLs during `CREATE INDEX`? | yes | no |
 | Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | Parallelizes index loading? | yes | no |
 
-`CREATE INDEX CONCURRENTLY` is supported, though online index backfill is enabled by default. Some restrictions apply (see [CONCURRENTLY](#concurrently)).
-
-To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** YB-Master and YB-TServer.
-
-To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
 
 {{< note title="Note" >}}
 
-For details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
+For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
 
 {{< /note >}}
+
+### Colocation
 
 If the table is colocated, its index is also colocated; if the table is not colocated, its index is also not colocated.
 
@@ -61,7 +62,7 @@ Enforce that duplicate values in a table are not allowed.
 
 ### CONCURRENTLY
 
-Enable online schema migration (see [Semantics](#semantics) for details), with some restrictions:
+Enable the use of online index backfill (see [Semantics](#semantics) for details), with some restrictions:
 
 - When creating an index on a temporary table, online schema migration is disabled.
 - `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables.
@@ -69,7 +70,7 @@ Enable online schema migration (see [Semantics](#semantics) for details), with s
 
 ### NONCONCURRENTLY
 
-Disable online schema migration (see [Semantics](#semantics) for details).
+Disable online index backfill (see [Semantics](#semantics) for details).
 
 ### ONLY
 
