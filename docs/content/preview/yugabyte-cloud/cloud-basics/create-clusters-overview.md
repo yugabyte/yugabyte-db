@@ -113,7 +113,7 @@ YugabyteDB Aeon provides the following configurations for fault tolerance.
 |                 | 2 Region outages | 5 across 5 regions | 5 |
 |                 | 3 Region outages | 7 across 7 regions | 7 |
 
-You can't change the cluster fault tolerance after the cluster is created.
+Note that currently, after the cluster is created, you can't change the cluster fault tolerance using the YugabyteDB Aeon UI; you can change it using the [API](../../managed-automation/managed-api/) or [CLI](../../managed-automation/managed-cli/).
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
