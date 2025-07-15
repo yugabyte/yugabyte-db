@@ -2026,24 +2026,21 @@ Status CatalogManager::ImportTableEntry(
       table_data->new_table_id = VERIFY_RESULT(
           GetRestoreTargetTableIdUsingRelfilenode(new_namespace_id, table_data->old_table_id));
     }
-    // A table with new_table_id might not exist if the old table doesn't have a corresponding table
-    // at restore side. This can happen if the old table is not committed while the backup was taken
-    // during a DDL.
+    // Make sure the new_table_id corresponds to an existing DocDB table at restore side.
+    // Return an error in case no table with new_table_id was found at restore side.
     TRACE("Looking up table");
     {
       SharedLock lock(mutex_);
       table = tables_->FindTableOrNull(table_data->new_table_id);
     }
     if (!table) {
-      LOG(INFO) << Format(
-          "Did not find a corresponding table at restore side for the table $0 from backup. "
-          "This mean that old table was not committed while taking the backup.",
+      LOG(WARNING) << Format(
+          "Did not find a corresponding table at restore side for the table $0 from backup.",
           table_data->old_table_id);
       // Clear the table_meta as this is an uncommited table at backup time.
       // This skips the following steps to import the table entry and doesn't add its TableMetaPB
       // the import_snapshot response.
       table_data->table_meta = std::nullopt;
-      return Status::OK();
     } else {
       LOG_WITH_FUNC(INFO) << "Found existing table " << table_data->new_table_id << " for "
                           << new_namespace_id << "/" << meta.name() << " (old table "
