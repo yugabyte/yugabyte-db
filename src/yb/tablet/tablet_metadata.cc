@@ -64,8 +64,6 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
-#include "yb/rpc/lightweight_message.h"
-
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 
@@ -77,6 +75,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
@@ -420,7 +419,7 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
   return docdb::CompactionSchemaInfo {
     .table_type = self->table_type,
     .schema_version = schema_version,
-    .schema_packing = rpc::SharedField(self, packing.get_ptr()),
+    .schema_packing = SharedField(self, packing.get_ptr()),
     .cotable_id = self->cotable_id,
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .packed_row_version = docdb::PackedRowVersion(
