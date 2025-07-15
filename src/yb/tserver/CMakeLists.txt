@@ -213,7 +213,8 @@ set(TSERVER_SHARED_SRCS
   tserver_flags.cc
   tserver_error.cc
   tserver_shared_mem.cc)
-set(TSERVER_UTIL_LIBS
+set(TSERVER_SHARED_LIBS
+  yb_docdb_shared
   yb_util
   yb_util_shmem
   consensus_error)

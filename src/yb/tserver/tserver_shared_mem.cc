@@ -18,12 +18,15 @@
 
 #include <boost/interprocess/shared_memory_object.hpp>
 
+#include "yb/docdb/object_lock_shared_state.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -42,7 +45,16 @@ DEFINE_test_flag(bool, pg_client_crash_on_shared_memory_send, false,
 DEFINE_test_flag(bool, skip_remove_tserver_shared_memory_object, false,
                  "Skip remove tserver shared memory object in tests.");
 
-DECLARE_bool(enable_object_locking_for_table_locks);
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsDebug && !yb::kIsMac,
+                    "Use shared memory for executing read and write pg client queries");
+
+DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, false,
+    "Whether to use shared memory fastpath for shared object locks.");
+
+DEFINE_validator(pg_client_use_shared_memory,
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_lock_fastpath));
+DEFINE_validator(enable_object_lock_fastpath,
+    FLAG_REQUIRES_FLAG_VALIDATOR(pg_client_use_shared_memory));
 
 using namespace std::literals;
 
@@ -205,13 +217,34 @@ class SharedExchangeHeader {
 namespace {
 
 struct PgSessionSharedHeader {
+  PgSessionLockOwnerTagShared object_locking_data;
+
   // This must be the last field, since it uses a zero length array.
-  SharedExchangeHeader exchange_header_;
+  SharedExchangeHeader exchange_header;
 };
 
 } // namespace
 
+TServerSharedData::TServerSharedData() {
+  // All atomics stored in shared memory must be lock-free. Non-robust locks
+  // in shared memory can lead to deadlock if a processes crashes, and memory
+  // access violations if the segment is mapped as read-only.
+  // NOTE: this check is NOT sufficient to guarantee that an atomic is safe
+  // for shared memory! Some atomics claim to be lock-free but still require
+  // read-write access for a `load()`.
+  // E.g. for 128 bit objects: https://stackoverflow.com/questions/49816855.
+  LOG_IF(FATAL, !IsAcceptableAtomicImpl(catalog_version_))
+      << "Shared memory atomics must be lock-free";
+  host_[0] = 0;
+}
+
+TServerSharedData::~TServerSharedData() = default;
+
 Status TServerSharedData::AllocatorsInitialized(SharedMemoryBackingAllocator& allocator) {
+  if (FLAGS_enable_object_lock_fastpath) {
+    object_lock_state_ = VERIFY_RESULT(allocator.MakeUnique<docdb::ObjectLockSharedState>());
+  }
+
   fully_initialized_ = true;
   return Status::OK();
 }
@@ -254,8 +287,7 @@ Status SharedMemoryManager::PrepareNegotiationTServer() {
 
 Status SharedMemoryManager::SkipNegotiation() {
   address_segment_ = VERIFY_RESULT(AddressSegmentNegotiator::ReserveWithoutNegotiation());
-  CHECK_OK(InitializeParentAllocatorsAndObjects());
-  return Status::OK();
+  return InitializeParentAllocatorsAndObjects();
 }
 
 Status SharedMemoryManager::InitializePostmaster(int fd) {
@@ -330,6 +362,17 @@ void SharedMemoryManager::ExecuteParentNegotiator(
   LOG(INFO) << "Finished address segment negotiation";
 }
 
+void SharedMemoryManager::SetReadyCallback(SharedMemoryReadyCallback&& callback) {
+  {
+    std::lock_guard lock(mutex_);
+    if (!ready_) {
+      ready_callback_ = std::move(callback);
+      return;
+    }
+  }
+  callback();
+}
+
 Status SharedMemoryManager::InitializeParentAllocatorsAndObjects() {
   if (ready_) {
     return Status::OK();
@@ -338,7 +381,7 @@ Status SharedMemoryManager::InitializeParentAllocatorsAndObjects() {
   auto* data = allocator_.UserData<TServerSharedData>();
   data_.Set(data);
   RETURN_NOT_OK(data->AllocatorsInitialized(allocator_));
-  ready_.store(true);
+  SetReady();
   return Status::OK();
 }
 
@@ -348,8 +391,22 @@ Status SharedMemoryManager::InitializeChildAllocatorsAndObjects(std::string_view
   }
   RETURN_NOT_OK(allocator_.InitChild(address_segment_, VERIFY_RESULT(MakeAllocatorName(uuid))));
   data_.Set(allocator_.UserData<TServerSharedData>());
-  ready_.store(true);
+  SetReady();
   return Status::OK();
+}
+
+void SharedMemoryManager::SetReady() {
+  ready_.store(true);
+
+  decltype(ready_callback_) callback;
+  {
+    std::lock_guard lock(mutex_);
+    callback.swap(ready_callback_);
+  }
+
+  if (callback) {
+    callback();
+  }
 }
 
 SharedExchange::SharedExchange(SharedExchangeHeader& header, size_t exchange_size)
@@ -450,8 +507,8 @@ class PgSessionSharedMemoryManager::Impl {
         owner_(create == Create::kTrue),
         shared_memory_object_(MakeSharedMemoryObject(owner_, instance_id, session_id)),
         mapped_region_(MakeMappedRegion(owner_, shared_memory_object_)),
-        exchange_(header().exchange_header_,
-                  mapped_region_.get_size() - offsetof(PgSessionSharedHeader, exchange_header_)) {}
+        exchange_(header().exchange_header,
+                  mapped_region_.get_size() - offsetof(PgSessionSharedHeader, exchange_header)) {}
 
   ~Impl() {
     if (!owner_ || FLAGS_TEST_skip_remove_tserver_shared_memory_object) {
@@ -472,6 +529,10 @@ class PgSessionSharedMemoryManager::Impl {
 
   SharedExchange& exchange() {
     return exchange_;
+  }
+
+  PgSessionLockOwnerTagShared& object_locking_data() {
+    return header().object_locking_data;
   }
 
  private:
@@ -557,6 +618,10 @@ Status PgSessionSharedMemoryManager::Cleanup(const std::string& instance_id) {
 
 SharedExchange& PgSessionSharedMemoryManager::exchange() {
   return impl_->exchange();
+}
+
+PgSessionLockOwnerTagShared& PgSessionSharedMemoryManager::object_locking_data() {
+  return impl_->object_locking_data();
 }
 
 const std::string& PgSessionSharedMemoryManager::instance_id() const {

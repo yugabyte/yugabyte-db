@@ -50,6 +50,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
@@ -367,7 +369,8 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0),
-      xcluster_context_(new TserverXClusterContext()) {
+      xcluster_context_(new TserverXClusterContext()),
+      object_lock_shared_state_manager_(new docdb::ObjectLockSharedStateManager()) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -568,6 +571,12 @@ Status TabletServer::Init() {
   }
 
   shared->SetTserverUuid(fs_manager()->uuid());
+
+  shared_mem_manager_->SetReadyCallback([this] {
+    if (auto* object_lock_state = shared_mem_manager_->SharedData()->object_lock_state()) {
+      object_lock_shared_state_manager_->SetupShared(*object_lock_state);
+    }
+  });
 
   return Status::OK();
 }

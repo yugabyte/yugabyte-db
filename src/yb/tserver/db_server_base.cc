@@ -134,6 +134,10 @@ int DbServerBase::SharedMemoryNegotiationFd() {
   return shared_mem_manager_->NegotiationFd();
 }
 
+SharedMemoryManager* DbServerBase::shared_mem_manager() {
+  return shared_mem_manager_.get();
+}
+
 ConcurrentPointerReference<TServerSharedData> DbServerBase::shared_object() const {
   return shared_mem_manager_->SharedData();
 }
