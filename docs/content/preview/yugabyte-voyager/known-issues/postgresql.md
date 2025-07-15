@@ -1846,3 +1846,47 @@ CREATE INDEX idx_user_activity_event_type on user_activity (event_type ASC, user
 CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type ASC, user_id)
 
 ```
+
+---
+
+### Foreign key datatype mismatch
+
+**Description**:
+
+Foreign key relationships with referencing and referenced columns that have different, but compatible data types (for example, INT referencing BIGINT) can lead to performance issues in YugabyteDB. This occurs because implicit casting is required during foreign key checks, which can degrade performance, especially during large inserts or updates.
+
+**Workaround**: Ensure that both the referencing and referenced columns in a foreign key relationship have exactly matching data types. Modify the `CREATE TABLE` statements in your exported schema file before importing it into YugabyteDB.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+-- Parent table
+CREATE TABLE parent (
+  id BIGINT PRIMARY KEY
+);
+
+-- Child table
+CREATE TABLE child (
+  id INT,
+  CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id)
+);
+
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+
+-- Parent table
+CREATE TABLE parent (
+  id BIGINT PRIMARY KEY
+);
+
+-- Child table (datatype aligned with parent)
+CREATE TABLE child (
+  id BIGINT,
+  CONSTRAINT fk_parent FOREIGN KEY (id) REFERENCES parent(id)
+);
+```
