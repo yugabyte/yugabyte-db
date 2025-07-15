@@ -170,7 +170,7 @@ libraryDependencies ++= Seq(
   "org.apache.mina" % "mina-core" % "2.2.4",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
-  "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
+  "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bc-fips" % "2.1.0",
   "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
