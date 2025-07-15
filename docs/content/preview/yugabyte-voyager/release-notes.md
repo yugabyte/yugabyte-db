@@ -31,8 +31,8 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 - Added detection of foreign key datatype mismatches; such issues are now reported in the Migration Assessment Report under **Performance Optimizations**.
 - Automatically clean up leftover metadata when `assess-migration` is aborted via a prompt, eliminating the need to rerun with `--start-clean`.
 - Added a warning in import data when existing rows are detected in the target table to help prevent primary key conflicts during import.
-- Improved error messages when multiple Debezium processes or active replication slots are detected, guiding users to kill orphaned processes and retry the command.
-- Upgraded the [YugabyteDB gRPC Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back/forward workflows to support new YugabyteDB releases.
+- Improved error messages when multiple Debezium processes or active replication slots are detected, so that you can identify and kill orphaned processes and retry the command.
+- Upgraded the [YugabyteDB gRPC Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back and fall-forward workflows to support new YugabyteDB releases.
 
 ## Bug fixes
 

@@ -1853,7 +1853,7 @@ CREATE INDEX idx_user_activity_event_type_user_id on user_activity (event_type A
 
 **Description**:
 
-Foreign key relationships with referencing and referenced columns that have different, but compatible data types (for example, INT referencing BIGINT) can lead to performance issues in YugabyteDB. This occurs because implicit casting is required during foreign key checks which can degrade performance, especially during large inserts or updates.
+Foreign key relationships with referencing and referenced columns that have different, but compatible data types (for example, INT referencing BIGINT) can lead to performance issues in YugabyteDB. This occurs because implicit casting is required during foreign key checks, which can degrade performance, especially during large inserts or updates.
 
 **Workaround**: Ensure that both the referencing and referenced columns in a foreign key relationship have exactly matching data types. Modify the `CREATE TABLE` statements in your exported schema file before importing it into YugabyteDB.
 
