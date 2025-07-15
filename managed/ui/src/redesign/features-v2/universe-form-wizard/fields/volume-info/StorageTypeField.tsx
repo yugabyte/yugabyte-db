@@ -147,6 +147,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
               onChange={(event) =>
                 onStorageTypeChanged((event?.target.value as unknown) as StorageType)
               }
+              dataTestId="StorageTypeField-Common-StorageTypeSelect"
             >
               {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
                 <MenuItem key={item.value} value={item.value}>
@@ -189,6 +190,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
             onChange={(event) => onDiskIopsChanged(event.target.value)}
             inputMode="numeric"
             disabled={disabled}
+            dataTestId="StorageTypeField-DiskIopsInput"
           />
         </Box>
       </Box>
@@ -227,6 +229,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
               onChange={(event) => onThroughputChange(event.target.value)}
               inputMode="numeric"
               disabled={disabled}
+              dataTestId="StorageTypeField-ThroughputInput"
             />
           </Box>
           <span className={classes.unitLabelField}>

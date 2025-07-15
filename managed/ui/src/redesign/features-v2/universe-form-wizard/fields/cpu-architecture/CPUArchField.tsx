@@ -46,6 +46,7 @@ export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
         control={control}
         name={CPU_ARCH_FIELD}
         sx={{ display: 'flex', flexDirection: 'row', gap: 4 }}
+        dataTestId="cpu-architecture-field"
       />
     </Box>
   );

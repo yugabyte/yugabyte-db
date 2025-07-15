@@ -72,6 +72,7 @@ export const DedicatedNode = () => {
                 control={control}
                 name="useDedicatedNodes"
                 inputProps={{ margin: 0 }}
+                dataTestId="use-dedicated-nodes-field"
               />
               <DedicatedNodeHelpText>
                 <div>{t('helpText')}</div>

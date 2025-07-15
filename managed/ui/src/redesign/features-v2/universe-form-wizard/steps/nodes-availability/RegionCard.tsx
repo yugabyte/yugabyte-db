@@ -94,6 +94,7 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
           }
           startIcon={<AddIcon />}
           sx={{ width: '200px', marginLeft: '50px' }}
+          dataTestId="add-availability-zone-button"
         >
           {t('add_button')}
         </YBButton>

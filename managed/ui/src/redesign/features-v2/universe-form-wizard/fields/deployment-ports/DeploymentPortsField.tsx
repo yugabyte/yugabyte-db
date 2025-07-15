@@ -87,12 +87,12 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
     {
       id: 'ysqlServerRpcPort',
       visible: ysql.enable,
-      disabled: providerCode == CloudType.kubernetes
+      disabled: providerCode === CloudType.kubernetes
     },
     {
       id: 'internalYsqlServerRpcPort',
       visible: ysql.enable && enableConnectionPooling,
-      disabled: providerCode == CloudType.kubernetes
+      disabled: providerCode === CloudType.kubernetes
     }
   ].filter((ports) => ports.visible);
 
@@ -163,6 +163,7 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                       defaultValue={Number(DEFAULT_COMMUNICATION_PORTS[port.id])}
                       helperText={'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[port.id])}
                       sx={{ width: '180px' }}
+                      dataTestId={`deployment-ports-field-${port.id}`}
                     />
                   );
                 })}

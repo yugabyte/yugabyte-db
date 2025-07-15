@@ -119,6 +119,7 @@ export const K8VolumeInfoField = ({
                   onChange={(event) => onNumVolumesChanged(event.target.value)}
                   inputMode="numeric"
                   disabled={disabled}
+                  dataTestId={`K8VolumeInfoField-${nodeTypeTag}-VolumeInput`}
                 />
               </Box>
 
@@ -148,6 +149,7 @@ export const K8VolumeInfoField = ({
                   value={convertToString(fieldValue?.volumeSize ?? '')}
                   onChange={(event) => onVolumeSizeChanged(event.target.value)}
                   inputMode="numeric"
+                  dataTestId={`K8VolumeInfoField-${nodeTypeTag}-VolumeSizeInput`}
                 />
               </Box>
               <Box ml={2} display="flex" alignItems="center" className={classes.unitLabelField}>

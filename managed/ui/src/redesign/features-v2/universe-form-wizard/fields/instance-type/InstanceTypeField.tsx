@@ -155,8 +155,10 @@ export const InstanceTypeField = ({ isMaster, disabled }: InstanceTypeFieldProps
                 ybInputProps={{
                   error: !!fieldState.error,
                   helperText: fieldState.error?.message,
-                  label: t('universeForm.instanceConfig.instanceType')
+                  label: t('universeForm.instanceConfig.instanceType'),
+                  dataTestId: 'instance-type-field'
                 }}
+                dataTestId="instance-type-field-container"
                 groupBy={
                   provider?.code &&
                   [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)

@@ -37,6 +37,7 @@ export const SpotInstanceField: FC<SpotInstanceFieldProps> = ({ cloudType }) => 
           control={control}
           name={SPOT_INSTANCE_FIELD}
           size="large"
+          dataTestId="spot-instance-field"
         />
       </Box>
     </Box>

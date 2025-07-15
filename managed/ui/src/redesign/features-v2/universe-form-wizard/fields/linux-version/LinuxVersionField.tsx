@@ -83,6 +83,7 @@ export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
           className={linuxMenuStyles.selectedValue}
           control={control}
           label={t('linuxVersion')}
+          dataTestId="linux-version-field"
         >
           {linuxVersions?.map((version) => (
             <MenuItem

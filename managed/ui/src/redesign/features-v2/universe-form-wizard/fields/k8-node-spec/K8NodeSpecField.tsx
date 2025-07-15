@@ -125,6 +125,7 @@ export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): R
                   disabled={disabled}
                   onChange={(event) => onNumCoresChanged(event.target.value)}
                   inputMode="numeric"
+                  dataTestId={`K8NodeSpecField-${nodeTypeTag}-NumCoresInput`}
                 />
               </Box>
             </Box>
@@ -149,6 +150,7 @@ export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): R
                     disabled={disabled}
                     onChange={(event) => onMemoryChanged(event.target.value)}
                     inputMode="numeric"
+                    dataTestId={`K8NodeSpecField-${nodeTypeTag}-MemoryInput`}
                   />
                 </Box>
                 <Box ml={2} display="flex" alignItems="center" className={classes.unitLabelField}>

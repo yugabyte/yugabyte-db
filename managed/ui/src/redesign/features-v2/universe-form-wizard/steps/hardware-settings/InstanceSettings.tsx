@@ -298,6 +298,7 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                 control={control}
                 name={MASTER_TSERVER_SAME_FIELD}
                 size="large"
+                dataTestId="keep-master-tserver-same-field"
               />
             </Box>
             <Box

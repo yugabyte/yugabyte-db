@@ -281,7 +281,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             <YBInput
               type="number"
               fullWidth
-              disabled={fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled}
+              disabled={fixedNumVolumes ?? numVolumesDisable ?? isEphemeralStorage ?? disabled}
               slotProps={{
                 htmlInput: {
                   min: 1,
@@ -292,6 +292,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               value={convertToString(fieldValue?.numVolumes ?? '')}
               onChange={(event) => onNumVolumesChanged(event.target.value)}
               inputMode="numeric"
+              dataTestId={`VolumeInfoField-${dataTag}-VolumeInput`}
             />
           </Box>
 
@@ -329,6 +330,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               onChange={(event) => onVolumeSizeChanged(event.target.value)}
               onBlur={resetThroughput}
               inputMode="numeric"
+              dataTestId={`VolumeInfoField-${dataTag}-VolumeSizeInput`}
             />
           </Box>
 
@@ -369,6 +371,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               onChange={(event) =>
                 onStorageTypeChanged((event?.target.value as unknown) as StorageType)
               }
+              dataTestId={`VolumeInfoField-${dataTag}-StorageTypeSelect`}
             >
               {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
                 <MenuItem key={item.value} value={item.value}>
@@ -416,6 +419,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             onChange={(event) => onDiskIopsChanged(event.target.value)}
             onBlur={resetThroughput}
             inputMode="numeric"
+            dataTestId={`VolumeInfoField-${dataTag}-DiskIopsInput`}
           />
         </Box>
       </Box>
@@ -457,6 +461,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               value={convertToString(fieldValue?.throughput ?? '')}
               onChange={(event) => onThroughputChange(event.target.value)}
               inputMode="numeric"
+              dataTestId={`VolumeInfoField-${dataTag}-ThroughputInput`}
             />
           </Box>
           <Box ml={2} display="flex" alignItems="center" className={classes.unitLabelField}>

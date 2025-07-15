@@ -137,6 +137,7 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
                       onClick={() => {
                         methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.GUIDED);
                       }}
+                      dataTestId='guided-mode-button'
                     >
                       {t('formType.guidedMode')}
                     </YBButton>
@@ -151,6 +152,7 @@ export const ResilienceAndRegions = forwardRef<StepsRef>((_, forwardRef) => {
                       onClick={() => {
                         methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.FREE_FORM);
                       }}
+                      dataTestId='free-form-mode-button'
                     >
                       {t('formType.freeForm')}
                     </YBButton>

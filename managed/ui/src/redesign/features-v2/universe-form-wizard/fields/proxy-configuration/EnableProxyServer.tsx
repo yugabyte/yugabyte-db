@@ -44,7 +44,7 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
   return (
     <ProxyContainer>
       <Box sx={{ display: 'flex', flexDirection: 'column', padding: '16px 24px' }}>
-        <YBToggleField name={'enableProxyServer'} control={control} label={t('toggleLabel')} />
+        <YBToggleField name={'enableProxyServer'} control={control} label={t('toggleLabel')} dataTestId="enable-proxy-server-field" />
         <StyledSubText>
           {t('toggleHelper')}
           <StyledLink>{t('learnMore')}</StyledLink>
@@ -69,6 +69,7 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
                 name={'secureWebProxy'}
                 control={control}
                 label={t('secureWebProxyLabel')}
+                dataTestId="secure-web-proxy-field"
               />
               {secureWebProxyValue && (
                 <Box
@@ -82,6 +83,7 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
                     label={t('serverLabel')}
                     sx={{ width: '444px' }}
                     placeholder={t('serverPlaceholder')}
+                    dataTestId="secure-web-proxy-server-field"
                   />
                   <YBInputField
                     control={control}
@@ -91,6 +93,7 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
                     label={t('portLabel')}
                     sx={{ width: '96px' }}
                     placeholder={t('portPlaceholder')}
+                    dataTestId="secure-web-proxy-port-field"
                   />
                 </Box>
               )}
@@ -98,14 +101,14 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
           </Box>
           <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}>
             <NextLineIcon />
-            <YBToggleField name={'webProxy'} control={control} label={t('webProxy')} />
+            <YBToggleField name={'webProxy'} control={control} label={t('webProxy')} dataTestId="web-proxy-field" />
           </Box>
           <Box
             sx={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: '16px' }}
           >
             <NextLineIcon />
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <YBToggleField name={'byPassProxyList'} control={control} label={t('byPassProxy')} />
+              <YBToggleField name={'byPassProxyList'} control={control} label={t('byPassProxy')} dataTestId="by-pass-proxy-list-field" />
               {byPassProxyValue && (
                 <YBInputField
                   control={control}
@@ -118,6 +121,7 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
                   rows={10}
                   placeholder={t('byPassListPlaceholder')}
                   helperText={t('byPassHelper')}
+                  dataTestId="by-pass-proxy-list-values-field"
                 />
               )}
             </Box>

@@ -3195,6 +3195,10 @@
           "prefferedAns": "The preferred availability zones handle all read and write requests from your client application. For lower latencies and best performance, set the availability zones closest to your application as preferred.",
           "links": "<a1>Learn more about preferred availability zone</a1> and <a2>how to select ranking.</a2>",
           "note": "<b>Note:</b><br/> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
+        },
+        "errMsg": {
+          "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",
+          "lessNodesDedicated": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} T-server nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} T-server nodes</b> are required. Update your selection to proceed. "
         }
       },
       "instanceSettings": {
