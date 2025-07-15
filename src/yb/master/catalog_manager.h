@@ -738,6 +738,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
 
+  // Advance OID counters as needed to ensure future OID allocations do not run into trouble.
+  //
+  // So far this just ensures the normal-space OID counter is beyond any normal-space OID we need to
+  // preserve.
+  // TODO(#27944): also handle reserved space and OIDs used by hidden tables.
+  Status AdvanceOidCounters(NamespaceId namespace_id);
+
   Result<uint64_t> IncrementYsqlCatalogVersion() override;
 
   // Records the fact that initdb has succesfully completed.

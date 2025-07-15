@@ -612,7 +612,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
   messenger_->Shutdown();
 }
 
-class PgCloneTest : public PostgresMiniClusterTest {
+class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
@@ -644,8 +644,6 @@ class PgCloneTest : public PostgresMiniClusterTest {
         master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kSourceNamespaceName, kInterval, kRetention,
         kTimeout));
     RETURN_NOT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id_, kTimeout));
-    RETURN_NOT_OK(source_conn_->ExecuteFormat(
-        "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
      return Status::OK();
   }
 
@@ -693,6 +691,15 @@ class PgCloneTest : public PostgresMiniClusterTest {
   const std::string kTargetNamespaceName1 = "testdb_clone1";
   const std::string kTargetNamespaceName2 = "testdb_clone2";
   const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
+};
+
+class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
+ protected:
+  void SetUp() override {
+    PgCloneInitiallyEmptyDBTest::SetUp();
+    ASSERT_OK(source_conn_->ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
+  }
 };
 
 class PgCloneTestWithColocatedDBParam
@@ -770,6 +777,28 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlS
   // Verify source rows are unchanged.
   auto rows = ASSERT_RESULT((source_conn_->FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
   ASSERT_VECTORS_EQ(rows, kRows);
+}
+
+TEST_F_EX(PgCloneTest, TestOidsAdvancedAfterClone, PgCloneInitiallyEmptyDBTest) {
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE my_table (a INT, b INT)"));
+  auto timestamp = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      timestamp.ToInt64()));
+
+  // Ensure that the DROP below will only hide the table, not delete it.
+  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+      master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kTargetNamespaceName1, kInterval, kRetention,
+      kTimeout));
+  ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id, kTimeout));
+
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  ASSERT_OK(target_conn.Execute("DROP TABLE my_table"));
+
+  // At this point, if we have not advanced the normal space OID counter, then we will be attempting
+  // to create a table with the same OID as the one we just dropped.  That would fail.
+  ASSERT_OK(target_conn.Execute("CREATE TABLE my_table (a INT, b INT)"));
 }
 
 class TsDataSizeMetricsTest : public PgCloneTest {

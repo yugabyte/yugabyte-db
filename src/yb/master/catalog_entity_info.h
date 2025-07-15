@@ -102,6 +102,10 @@ struct ExternalNamespaceSnapshotData {
   NamespaceId new_namespace_id;
   YQLDatabase db_type;
   bool just_created;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(new_namespace_id, db_type, just_created);
+  }
 };
 // Map: old_namespace_id (key) -> new_namespace_id + db_type + created-flag.
 typedef std::unordered_map<NamespaceId, ExternalNamespaceSnapshotData> NamespaceMap;

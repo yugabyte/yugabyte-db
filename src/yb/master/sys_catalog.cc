@@ -1684,6 +1684,66 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
   return kPgInvalidOid;
 }
 
+Result<uint32_t> SysCatalogTable::ReadHighestNormalPreservableOid(uint32_t database_oid) {
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  LongOperationTracker long_operation_tracker("ReadHighestNormalPreservableOid", 3s);
+
+  // XCluster needs to be able preserve OIDs for pg_enum, pg_type, and pg_class; pg_class's
+  // relfilenodes needs to be kept distinct from its OIDs so we include those as well.
+  const std::vector<uint32_t> table_oids = {kPgEnumTableOid, kPgTypeTableOid, kPgClassTableOid};
+  uint32_t maximum_oid = 0;
+  for (const auto table_oid : table_oids) {
+    auto read_data = VERIFY_RESULT(TableReadData(database_oid, table_oid, ReadHybridTime()));
+    const auto& schema = read_data.schema();
+
+    dockv::ReaderProjection projection;
+    const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+    const bool relfilenode_present = table_oid == kPgClassTableOid;
+    const auto relfilenode_col_id =
+        relfilenode_present ? VERIFY_RESULT(schema.ColumnIdByName("relfilenode")).rep() : 0;
+    if (relfilenode_present) {
+      projection.Init(schema, {oid_col_id, relfilenode_col_id});
+    } else {
+      projection.Init(schema, {oid_col_id});
+    }
+
+    auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+    {
+      const dockv::KeyEntryValues empty_key_components;
+      // We are doing a full table scan in the forward direction here because there is no index for
+      // relfilenode.
+      docdb::DocPgsqlScanSpec spec(
+          schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+          /*condition=*/nullptr, /*hash_code=*/std::nullopt,
+          /*max_hash_code=*/std::nullopt);
+      RETURN_NOT_OK(iter->Init(spec));
+    }
+
+    qlexpr::QLTableRow row;
+    while (VERIFY_RESULT(iter->FetchNext(&row))) {
+      const auto& oid_col = row.GetValue(oid_col_id);
+      SCHECK(
+          oid_col, IllegalState,
+          "Could not read oid column from table ID $0 from database ID $1:", read_data.table_id,
+          database_oid);
+      const uint32_t oid = oid_col->uint32_value();
+      maximum_oid = std::max(maximum_oid, oid);
+
+      if (!relfilenode_present) {
+        continue;
+      }
+      const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
+      SCHECK(
+          relfilenode_col, IllegalState,
+          "Could not read relfilenode column from table ID $0 from database ID $1:",
+          read_data.table_id, database_oid);
+      const uint32_t relfilenode = relfilenode_col->uint32_value();
+      maximum_oid = std::max(maximum_oid, relfilenode);
+    }
+  }
+  return maximum_oid;
+}
+
 Status SysCatalogTable::CopyPgsqlTables(
     const vector<TableId>& source_table_ids, const vector<TableId>& target_table_ids,
     const int64_t leader_term) {
