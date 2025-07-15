@@ -51,15 +51,15 @@ To see how well YugabyteDB handles extremely high workloads, see [Testing high s
 
 ## Max scale tested
 
-In our testing, YugabyteDB was able to process 1M tpmC with 150,000 warehouses at an efficiency of 99.8% on an RF3 cluster of 75 c5d.12xlarge machines with a total data size of 50TB.
+In our testing, YugabyteDB was able to process 1.28M tpmC with 100,000 warehouses at an efficiency of 99.9% on an RF3 cluster of 59 c5d.9xlarge machines with a total data size of 20TB.
 
 {{<note>}}
-The 150K warehouses benchmark was run on [v2.11](/preview/releases/ybdb-releases/end-of-life/v2.11/).
+The 100K warehouses benchmark was run on [v2.25](/preview/releases/ybdb-releases/v2.25/).
 {{</note>}}
 
 | Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |
 | ---------: | :--- | :-----------: | :---: | ----------- | :---------------: | :--------------------- |
-|    150,000 | 1M   |     99.30     |  75   | 9000        |     123.33 ms     | c5d.12xlarge&nbsp;(48) |
+|    100,000 | 1.28M   |     99.90 |  59   | 6000        |     28.33 ms     | c5d.9xlarge&nbsp;(48) |
 
 {{<lead link="high-scale-workloads/">}}
 To know more about this accomplishment, see [Largest benchmark](./high-scale-workloads/#largest-benchmark).
