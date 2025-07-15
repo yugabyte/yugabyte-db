@@ -54,7 +54,7 @@ Creating an index on a partitioned table automatically creates a corresponding i
 
 - Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
 - [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
-- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
+- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)). As a workaround, you can use the [ONLY](#only) keyword to create indexes on child partitions separately, as described in that section.
 
 ### UNIQUE
 
@@ -74,7 +74,45 @@ Disable online index backfill (see [Semantics](#semantics) for details).
 
 ### ONLY
 
-Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.
+Indicates not to recurse creating indexes on partitions, if the table is partitioned. The default is to recurse.  
+
+When recursion is disabled this way, the index is created in an INVALID state on only the (parent) partitioned table. To make the index valid, corresponding indexes have to be created on each of the existing partitions and attached to the parent index using `ALTER INDEX parent_index ... ATTACH PARTITION child_index`. For example,
+
+```sql
+CREATE TABLE parent_partition(c1 int, c2 int) PARTITION BY RANGE (c1);
+CREATE TABLE child_part_1 PARTITION OF parent_partition FOR VALUES FROM (0) to (100);
+CREATE TABLE child_part_2 PARTITION OF parent_partition FOR VALUES FROM (101) to (200);
+
+CREATE INDEX parent_index ON ONLY parent_partition (c1, c2);
+
+\d parent_partition
+          Table "public.parent_partition"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          |
+ c2     | integer |           |          |
+Partition key: RANGE (c1)
+Indexes:
+    "parent_index" lsm (c1 HASH, c2 ASC) INVALID
+Number of partitions: 2 (Use \d+ to list them.)
+
+CREATE INDEX parent_index ON parent_partition (c1, c2);
+CREATE INDEX child_part_1_index ON child_part_1 (c1, c2);
+CREATE INDEX child_part_2_index ON child_part_2 (c1, c2);
+ALTER INDEX parent_index ATTACH PARTITION child_part_1_index;
+ALTER INDEX parent_index ATTACH PARTITION child_part_2_index;
+
+test1=# \d parent_partition
+          Table "public.parent_partition"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          |
+ c2     | integer |           |          |
+Partition key: RANGE (c1)
+Indexes:
+    "parent_index" lsm (c1 HASH, c2 ASC)
+Number of partitions: 2 (Use \d+ to list them.)
+```
 
 ### *access_method_name*
 
