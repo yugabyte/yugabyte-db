@@ -27,7 +27,7 @@ In YugabyteDB, indexes are sharded, i.e. split into tablets and distributed acro
 
 ### Concurrent index creation 
 
-Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions). 
+Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The default mode is CONCURRENTLY, wherever possible (see [CONCURRENTLY](#concurrently) for restrictions).  
 
 Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform with ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
 
@@ -40,7 +40,7 @@ Concurrent index creation allows data to be modified in the main table while the
 
 {{< note title="Note" >}}
 
-For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md).
+For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described [in this section](../../../reference/configuration/yb-tserver/#index-backfill-flags).
 
 {{< /note >}}
 
