@@ -221,4 +221,16 @@ class YbctidReaderProvider {
   DISALLOW_COPY_AND_ASSIGN(YbctidReaderProvider);
 };
 
+struct YbctidGenerator {
+  using Next = LWFunction<Slice()>;
+
+  YbctidGenerator(const Next& next_, size_t capacity_) : next(next_), capacity(capacity_) {}
+
+  const Next& next;
+  const size_t capacity;
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(YbctidGenerator);
+};
+
 } // namespace yb::pggate
