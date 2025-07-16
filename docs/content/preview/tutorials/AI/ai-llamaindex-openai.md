@@ -17,7 +17,7 @@ This tutorial demonstrates how use LlamaIndex to build Retrieval-Augmented Gener
 
 ## Prerequisites
 
-* Python 3
+* Python 3.9
 * Docker
 
 ## Set up the application
@@ -28,6 +28,7 @@ Download the application and provide settings specific to your deployment:
 
     ```sh
     git clone https://github.com/YugabyteDB-Samples/yugabytedb-llamaindex-sp500-search.git
+    cd yugabytedb-llamaindex-sp500-search
     ```
 
 1. Install the application dependencies.
@@ -57,10 +58,9 @@ Download the application and provide settings specific to your deployment:
 
 ## Set up YugabyteDB
 
-Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
+Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option). (If the `~/yb_docker_data` directory already exists on your machine, delete and re-create it.)
 
 ```sh
-# NOTE: if the ~/yb_docker_data already exists on your machine, delete and re-create it
 mkdir ~/yb_docker_data
 
 docker network create yb-network
@@ -68,19 +68,19 @@ docker network create yb-network
 docker run -d --name ybnode1 --hostname ybnode1 --net yb-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.25.2.0-b359 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name ybnode2 --hostname ybnode2 --net yb-network \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.25.2.0-b359 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name ybnode3 --hostname ybnode3 --net yb-network \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.25.2.0-b359 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=ybnode1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
@@ -212,7 +212,7 @@ wiki_yugabytedb_pgvector_tool = QueryEngineTool.from_defaults(
 
 ### Use the YugabyteDB Vector index
 
-PGVectorStore object is created to store and retrieve vector indicies from YugabyteDB universe.
+The `PGVectorStore` object is created to store and retrieve vector indicies from the YugabyteDB universe.
 
 ```python
 # wiki_search.py
