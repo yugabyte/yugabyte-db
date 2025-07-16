@@ -267,13 +267,14 @@ class SysCatalogTable {
     TableToTablespaceIdMap *table_tablespace_map);
 
   // Read relnamespace OID from the pg_class catalog table.
-  Result<uint32_t> ReadPgClassColumnWithOidValue(const uint32_t database_oid,
-                                                 const uint32_t table_oid,
-                                                 const std::string& column_name);
+  Result<uint32_t> ReadPgClassColumnWithOidValue(
+      const uint32_t database_oid, const uint32_t table_oid, const std::string& column_name,
+      const ReadHybridTime& read_time = ReadHybridTime());
 
   // Read nspname string from the pg_namespace catalog table.
-  Result<std::string> ReadPgNamespaceNspname(const uint32_t database_oid,
-                                             const uint32_t relnamespace_oid);
+  Result<std::string> ReadPgNamespaceNspname(
+      const uint32_t database_oid, const uint32_t relnamespace_oid,
+      const ReadHybridTime& read_time = ReadHybridTime());
 
   // Read attname and atttypid from pg_attribute catalog table.
   Result<std::unordered_map<std::string, uint32_t>> ReadPgAttNameTypidMap(

@@ -1371,10 +1371,11 @@ Status SysCatalogTable::ReadPgClassInfo(
 
 Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t database_oid,
                                                                 const uint32_t table_oid,
-                                                                const string& column_name) {
+                                                                const string& column_name,
+                                                                const ReadHybridTime& read_time) {
   TRACE_EVENT0("master", "ReadPgClassOidColumn");
 
-  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, read_time));
   const auto& schema = read_data.schema();
 
   const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
@@ -1415,11 +1416,12 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
 }
 
 Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_oid,
-                                                       const uint32_t relnamespace_oid) {
+                                                       const uint32_t relnamespace_oid,
+                                                       const ReadHybridTime& read_time) {
   TRACE_EVENT0("master", "ReadPgNamespaceNspname");
 
   auto read_data =
-      VERIFY_RESULT(TableReadData(database_oid, kPgNamespaceTableOid, ReadHybridTime()));
+      VERIFY_RESULT(TableReadData(database_oid, kPgNamespaceTableOid, read_time));
   const auto& schema = read_data.schema();
 
   const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();

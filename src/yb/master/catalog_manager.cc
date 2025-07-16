@@ -5760,39 +5760,39 @@ Result<TableDescription> CatalogManager::DescribeTable(
   return result;
 }
 
+Result<uint32_t> CatalogManager::GetPgTableOidIfCommitted(
+    const TableId& table_id, const PersistentTableInfo& table_info,
+    const ReadHybridTime& read_time) const {
+  RSTATUS_DCHECK_EQ(
+      table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Invalid table type of table $0", table_id));
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+  const auto relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+  const auto pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
+  const auto committed_relfilenode_oid = VERIFY_RESULT(sys_catalog_->ReadPgClassColumnWithOidValue(
+      database_oid, pg_table_oid, kPgClassRelFileNodeColumnName, read_time));
+  if (committed_relfilenode_oid != relfilenode_oid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kCommittedPgsqlTableNotFoundErrorStr, table_id),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
+  }
+  return pg_table_oid;
+}
+
 Result<string> CatalogManager::GetPgSchemaName(
-    const TableId& table_id, const PersistentTableInfo& table_info) {
-  RSTATUS_DCHECK_EQ(table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
-                    Format("Expected YSQL table, got: $0", table_info.GetTableType()));
-
+    const TableId& table_id, const PersistentTableInfo& table_info,
+    const ReadHybridTime& read_time) const {
   uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
-  uint32_t relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-  uint32_t pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
-
-  // If this is a rewritten table, confirm that the relfilenode oid of pg_class entry with
-  // OID pg_table_oid is table_oid.
-  if (pg_table_oid != relfilenode_oid) {
-    uint32_t pg_class_relfilenode_oid = VERIFY_RESULT(
-        sys_catalog_->ReadPgClassColumnWithOidValue(
-            database_oid,
-            pg_table_oid,
-            "relfilenode"));
-    if (pg_class_relfilenode_oid != relfilenode_oid) {
-      // This must be an orphaned table from a failed rewrite.
-      return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
-          std::to_string(pg_table_oid));
-    }
-  }
-
-  const uint32_t relnamespace_oid = VERIFY_RESULT(
-      sys_catalog_->ReadPgClassColumnWithOidValue(database_oid, pg_table_oid, "relnamespace"));
-
+  const auto pg_table_oid =
+      VERIFY_RESULT(GetPgTableOidIfCommitted(table_id, table_info, read_time));
+  const auto relnamespace_oid = VERIFY_RESULT(sys_catalog_->ReadPgClassColumnWithOidValue(
+      database_oid, pg_table_oid, kPgClassRelNamespaceColumnName, read_time));
   if (relnamespace_oid == kPgInvalidOid) {
-    return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
-        std::to_string(pg_table_oid));
+    return STATUS(
+        NotFound, Format("$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
   }
-
-  return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
+  return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid, read_time);
 }
 
 Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
