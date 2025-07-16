@@ -32,14 +32,14 @@ Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. The def
 Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, however, this restriction is currently not enforced. The following table summarizes the differences in these two modes.
 
 | Condition | Concurrent | Nonconcurrent |
-| :-------- | :----- | :--------- |
+| :-------- | :--------- | :------------ |
 | Safe to do other DMLs during `CREATE INDEX`? | yes | no |
 | Keeps other transactions alive during `CREATE INDEX`? | mostly | no |
 | Parallelizes index loading? | yes | no |
 
 {{< note title="Note" >}}
 
-For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described in [Index backfill flags](../../../reference/configuration/yb-tserver/#index-backfill-flags).
+For more details on how online index backfill works, refer to [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md). Flags controlling the speed of online index backfill are described in [Index backfill flags](../../../../../../reference/configuration/yb-tserver/#index-backfill-flags).
 
 {{< /note >}}
 

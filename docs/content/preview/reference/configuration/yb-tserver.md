@@ -2130,27 +2130,44 @@ Default: `1`
 
 Number of tablets used for the advisory locks table. It must be set before ysql_yb_enable_advisory_locks is set to true on the cluster.
 
-### Other performance tuning options
+### Index backfill flags
 
-##### --allowed_preview_flags_csv
+##### --ysql_disable_index_backfill
 
-{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
 
-By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-{{<warning title="You still need to set the flag">}}
-Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+##### --ycql_disable_index_backfill
 
-You still need to configure the flag separately after adding it to this list.
-{{</warning>}}
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
 
-{{<note title="Using YugabyteDB Anywhere">}}
-If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
 
-After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
-{{</note>}}
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+#### --num_concurrent_backfills_allowed
+
+{{% tags/wrap %}}
+
+
+Default: `-1` (automatic setting)
+{{% /tags/wrap %}}
+
+[Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) uses a number of distributed workers to backfill older data from the main table into the index table. This flag sets the number of concurrent index backfill jobs that are allowed to execute on each yb-tserver process. By default, the number of jobs is set automatically as follows:
+
+- When the node has >= 16 cores, it is set to 8 jobs.
+- When the node has < 16 cores, it is set to (number of cores) / 2 jobs.
+
+Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
 
 ##### backfill_index_client_rpc_timeout_ms
 
@@ -2178,7 +2195,29 @@ The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms]
 Default: `128`
 {{% /tags/wrap %}}
 
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
+The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
+
+### Other performance tuning options
+
+##### --allowed_preview_flags_csv
+
+{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
+
+Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
+
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
+{{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+{{</note>}}
 
 ## Security
 
@@ -2493,17 +2532,6 @@ Default: `true`
 
 Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
 
-##### --ysql_disable_index_backfill
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
 ##### --ysql_sequence_cache_method
 
 {{% tags/wrap %}}
@@ -2689,17 +2717,6 @@ Default: `false`
 {{% /tags/wrap %}}
 
 Specifies if YCQL tables are created with transactions enabled by default.
-
-##### --ycql_disable_index_backfill
-
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-Default: `true`
-{{% /tags/wrap %}}
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
 ##### --ycql_require_drop_privs_for_truncate
 
