@@ -35,11 +35,13 @@
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rowsecurity.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
 /* YB includes. */
+#include "access/transam.h"
 #include "executor/ybcModifyTable.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
@@ -1556,6 +1558,14 @@ ApplyRetrieveRule(Query *parsetree,
 	if (rule->qual != NULL)
 		elog(ERROR, "cannot handle qualified ON SELECT rule");
 
+	/* Check if the expansion of non-system views are restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_VIEW) != 0 &&
+				 RelationGetRelid(relation) >= FirstNormalObjectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system view \"%s\" is restricted",
+						RelationGetRelationName(relation))));
+
 	if (rt_index == parsetree->resultRelation)
 	{
 		/*
@@ -2943,6 +2953,14 @@ rewriteTargetView(Query *parsetree, Relation view)
 				break;
 		}
 	}
+
+	/* Check if the expansion of non-system views are restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_VIEW) != 0 &&
+				 RelationGetRelid(view) >= FirstNormalObjectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system view \"%s\" is restricted",
+						RelationGetRelationName(view))));
 
 	/*
 	 * For INSERT/UPDATE the modified columns must all be updatable. Note that

@@ -1706,9 +1706,24 @@ select pg_get_ruledef(oid, true) from pg_rewrite
      43 AS col_b;
 (1 row)
 
+-- test restriction on non-system view expansion.
+create table tt27v_tbl (a int);
+create view tt27v as select a from tt27v_tbl;
+set restrict_nonsystem_relation_kind to 'view';
+select a from tt27v where a > 0; -- Error
+ERROR:  access to non-system view "tt27v" is restricted
+insert into tt27v values (1); -- Error
+ERROR:  access to non-system view "tt27v" is restricted
+select viewname from pg_views where viewname = 'tt27v'; -- Ok to access a system view.
+ viewname 
+----------
+ tt27v
+(1 row)
+
+reset restrict_nonsystem_relation_kind;
 -- clean up all the random objects we made above
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA temp_view_test CASCADE;
 NOTICE:  drop cascades to 27 other objects
 DROP SCHEMA testviewschm2 CASCADE;
-NOTICE:  drop cascades to 62 other objects
+NOTICE:  drop cascades to 64 other objects

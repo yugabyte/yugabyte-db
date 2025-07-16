@@ -580,6 +580,15 @@ select pg_get_viewdef('tt23v', true);
 select pg_get_ruledef(oid, true) from pg_rewrite
   where ev_class = 'tt23v'::regclass and ev_type = '1';
 
+-- test restriction on non-system view expansion.
+create table tt27v_tbl (a int);
+create view tt27v as select a from tt27v_tbl;
+set restrict_nonsystem_relation_kind to 'view';
+select a from tt27v where a > 0; -- Error
+insert into tt27v values (1); -- Error
+select viewname from pg_views where viewname = 'tt27v'; -- Ok to access a system view.
+reset restrict_nonsystem_relation_kind;
+
 -- clean up all the random objects we made above
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA temp_view_test CASCADE;

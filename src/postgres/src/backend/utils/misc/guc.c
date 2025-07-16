@@ -623,6 +623,8 @@ static int	wal_block_size;
 static bool data_checksums;
 static bool integer_datetimes;
 static bool assert_enabled;
+static char *restrict_nonsystem_relation_kind_string;
+
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
@@ -5506,6 +5508,17 @@ static struct config_string ConfigureNamesString[] =
 		&jit_provider,
 		"llvmjit",
 		NULL, NULL, NULL
+	},
+
+	{
+		{"restrict_nonsystem_relation_kind", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets relation kinds of non-system relation to restrict use"),
+			NULL,
+			GUC_LIST_INPUT | GUC_NOT_IN_SAMPLE
+		},
+		&restrict_nonsystem_relation_kind_string,
+		"",
+		check_restrict_nonsystem_relation_kind, assign_restrict_nonsystem_relation_kind, NULL
 	},
 
 	{
