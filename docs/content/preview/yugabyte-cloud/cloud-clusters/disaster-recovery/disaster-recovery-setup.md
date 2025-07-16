@@ -221,8 +221,8 @@ To remove DR, do the following:
 
 1. Click **Edit DR Configuration** and choose **Remove DR**.
 
-### Restart replication
+### Repair replication
 
 Some situations, such as extended network partitions between the Source and Target, can cause a permanent failure of replication due to WAL logs being no longer available on the Source.
 
-In these cases, restart replication navigating to your Source cluster **Disaster Recovery** tab and click **Restart Replication**.
+In these cases, restart replication by navigating to your Source cluster **Disaster Recovery** tab and click **Repair Replication**.

@@ -143,10 +143,3 @@ To add a table partition to DR, follow the same steps for [Add a table to DR](#a
 ### Remove table partitions from DR
 
 To remove a table partition from DR, follow the same steps as [Remove a table from DR](#remove-a-table-from-dr).
-
-## Reconcile configuration
-
-To ensure changes made outside of YugabyteDB Aeon are reflected in YugabyteDB Aeon, you need to reconcile the configuration as follows:
-
-1. Navigate to your Source cluster **Disaster Recovery** tab.
-1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.

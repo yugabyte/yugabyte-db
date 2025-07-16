@@ -35,39 +35,14 @@ If the Source is terminated for some reason, do the following:
 
 1. Enter the name of the Target and click **Failover**.
 
-1. Click **Restart Replication**.
+    The Target becomes the new Source.
 
 1. Resume the application traffic on the new Source.
 
-At this point, the DR configuration is halted and needs to be repaired.
+At this point, the DR configuration is halted.
 
-![Disaster recovery failed](/images/yb-platform/disaster-recovery/disaster-recovery-failed.png)
+![Disaster recovery halted](/images/yb-cloud/managed-dr-halted.png)
 
-## Repair DR after failover
+To resume DR (with the old Source becoming the new Target), click **Restart Replication**. There may be some delay before the option becomes available while the cluster comes back online.
 
-There are two options to repair a DR that has failed over:
-
-- If the original Source has recovered and is fully functional with no active alerts, you can configure DR to use the cluster as a Target.
-- If the original Source cannot be recovered, create a new cluster to be configured to act as the Target (see [Prerequisites](../disaster-recovery-setup/#prerequisites)).
-
-In both cases, repairing DR involves making a full copy of the databases through the backup-restore process.
-
-To repair DR, do the following:
-
-1. Navigate to your (new) Source cluster **Disaster Recovery** tab.
-
-1. Click **Repair DR** to display the **Repair DR** dialog.
-
-    ![Repair DR](/images/yb-platform/disaster-recovery/disaster-recovery-repair.png)
-
-1. If the current Target (formerly the Source) has recovered and is fully functional with no active alerts, choose **Reuse the current Target**.
-
-    To use a new cluster as the Target, choose **Select a new cluster as Target** and select the cluster.
-
-1. Click **Initiate Repair**.
-
-After the repair is complete, if your eventual desired configuration is for the Target (that is, the former Source if you chose Reuse, or the new one you added to DR to act as Target) to be the Source, follow the steps for [Planned switchover](../disaster-recovery-switchover/).
-
-{{< warning title="Important" >}}
-Do not attempt a switchover if you have not first repaired DR.
-{{< /warning >}}
+After restarting replication, if you want to make the new Target (previously the Source) act as the source again, you can [perform a switchover](../disaster-recovery-switchover/).
