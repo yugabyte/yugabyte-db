@@ -254,6 +254,7 @@ class PgToastTempTableTest : public PgMiniTestBase {
 
     EXPECT_OK(conn_->ExecuteFormat(
         "CREATE MATERIALIZED VIEW $0 AS SELECT * FROM $1", kMatViewName, kPermanentTableName));
+    EXPECT_OK(conn_->ExecuteFormat("CREATE UNIQUE INDEX ON $0 (data)", kMatViewName));
 
     expected_table_rows_[kMatViewName].clear();
 
@@ -584,7 +585,7 @@ TEST_F(PgToastTempTableTest, DeleteFromDataPk) {
 // Check that refreshing a materialized view (permanent table -> temp table -> permanent table)
 // works correctly.
 TEST_F(PgToastTempTableTest, RefreshMaterializedView) {
-  ASSERT_OK(conn_->ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMatViewName));
+  ASSERT_OK(conn_->ExecuteFormat("REFRESH MATERIALIZED VIEW CONCURRENTLY $0", kMatViewName));
 
   expected_table_rows_[kMatViewName] = expected_table_rows_[kPermanentTableName];
   ASSERT_OK(VerifyData());

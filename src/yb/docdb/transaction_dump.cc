@@ -106,12 +106,12 @@ class FileWriter : public DumpWriter {
   std::unique_ptr<WritableFile> file_;
 };
 
-void SetNext(DumpEntry* entry, DumpEntry* next) {
-  entry->next = next;
+void SetNext(DumpEntry& entry, DumpEntry* next) {
+  entry.next = next;
 }
 
-DumpEntry* GetNext(DumpEntry* entry) {
-  return entry->next;
+DumpEntry* GetNext(DumpEntry& entry) {
+  return entry.next;
 }
 
 class Dumper {

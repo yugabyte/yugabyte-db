@@ -19,6 +19,10 @@
 
 #include "yb/vector_index/distance.h"
 
+namespace unum::usearch {
+class metric_punned_t;
+}
+
 namespace yb::vector_index {
 
 struct HNSWOptions {
@@ -58,6 +62,8 @@ struct HNSWOptions {
   DistanceKind distance_kind = DistanceKind::kL2Squared;
 
   std::string ToString() const;
+  template <class Vector>
+  unum::usearch::metric_punned_t CreateMetric() const;
 };
 
 }  // namespace yb::vector_index

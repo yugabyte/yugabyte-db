@@ -11,7 +11,6 @@
 // under the License.
 
 #include "yb/client/table_info.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/client/client-test-util.h"
 
@@ -27,9 +26,30 @@ class PgDdlTransactionTest : public LibPqTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
-    opts->extra_master_flags.push_back("--TEST_ysql_yb_ddl_transaction_block_enabled=true");
+    opts->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    opts->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
+    opts->extra_master_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
     opts->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    opts->extra_tserver_flags.push_back("--TEST_ysql_yb_ddl_transaction_block_enabled=true");
+    opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+    opts->extra_tserver_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
+  }
+
+  // ysql_yb_disable_ddl_transaction_block_for_read_committed is a non-runtime flag for now, so we
+  // need to restart the cluster.
+  void RestartClusterSetDisableTxnBlockForReadCommitted(bool value) {
+    LOG(INFO) << "Restart the cluster and turn " << (value ? "on" : "off")
+              << " --ysql_yb_disable_ddl_transaction_block_for_read_committed";
+    cluster_->Shutdown();
+    const std::string flag_value = Format(
+        "--ysql_yb_disable_ddl_transaction_block_for_read_committed=$0",
+        value ? "true" : "false");
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      cluster_->tablet_server(i)->mutable_flags()->push_back(flag_value);
+    }
+    ASSERT_OK(cluster_->Restart());
   }
 };
 
@@ -40,14 +60,14 @@ TEST_F(PgDdlTransactionTest, TestTableCreateDropSameTransaction) {
       "report_ysql_ddl_txn_status_to_master", "false"));
 
   // Table shouldn't exist in DocDB after the transaction commmit.
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE txn_create_drop_commit(id int)"));
   ASSERT_OK(conn.Execute("DROP TABLE txn_create_drop_commit"));
   ASSERT_OK(conn.Execute("COMMIT"));
   VerifyTableNotExists(client.get(), kDatabase, "txn_create_drop_commit", 10);
 
   // Table shouldn't exist in DocDB after the transaction rollback.
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE txn_create_drop_rollback(id int)"));
   ASSERT_OK(conn.Execute("DROP TABLE txn_create_drop_rollback"));
   ASSERT_OK(conn.Execute("ROLLBACK"));
@@ -62,7 +82,7 @@ TEST_F(PgDdlTransactionTest, TestTableCreateDropSameTransactionAnotherTableUsedF
 
   // The state of the table 'foo' should be used to determine that the transaction was a success.
   // As a result, the table 'foo' should exist in DocDB.
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE txn_create_drop_commit(id int)"));
   ASSERT_OK(conn.Execute("DROP TABLE txn_create_drop_commit"));
   ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
@@ -73,7 +93,7 @@ TEST_F(PgDdlTransactionTest, TestTableCreateDropSameTransactionAnotherTableUsedF
 
   // The state of the table 'bar' should be used to determine that the transaction was an abort.
   // As a result, the table 'bar' should not exist in DocDB.
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("CREATE TABLE txn_create_drop_rollback(id int)"));
   ASSERT_OK(conn.Execute("DROP TABLE txn_create_drop_rollback"));
   ASSERT_OK(conn.Execute("CREATE TABLE bar(id int)"));
@@ -91,7 +111,7 @@ TEST_F(PgDdlTransactionTest, TestTableDropCommit) {
   ASSERT_OK(conn.Execute("CREATE TABLE txn_drop_existing(id int)"));
   ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", "txn_drop_existing"));
 
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("DROP TABLE txn_drop_existing"));
   ASSERT_OK(conn.Execute("COMMIT"));
   VerifyTableNotExists(client.get(), kDatabase, "txn_drop_existing", 10);
@@ -118,7 +138,7 @@ TEST_F(PgDdlTransactionTest, TestRewriteAndDropMaterializedViewInTxn) {
 
   // Rewrite and drop the materialized view in a transaction. We are using the table 'foo' to
   // detect whether the transaction was determined to be a success or an abort.
-  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW sales_summary"));
   ASSERT_OK(conn.Execute("DROP MATERIALIZED VIEW sales_summary"));
   ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
@@ -139,6 +159,36 @@ TEST_F(PgDdlTransactionTest, TestRewriteAndDropMaterializedViewInTxn) {
   row = ASSERT_RESULT((conn.FetchRow<int64_t, int64_t>("SELECT * FROM sales_summary")));
   expected_row = {3, 60};
   ASSERT_EQ(row, expected_row);
+}
+
+TEST_F(PgDdlTransactionTest, TestReadCommittedTxnDdlDisabled) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (id SERIAL PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  auto res = GetTableIdByTableName(client.get(), "yugabyte", "foo");
+  ASSERT_NOK(res);
+  ASSERT_TRUE(res.status().IsNotFound());
+
+  // Disable transactional DDL for READ COMMITTED isolation level. This will make DDLs use
+  // autonomous transactions, which are not rolled back by the enclosing transaction block.
+  RestartClusterSetDisableTxnBlockForReadCommitted(true /* value */);
+  conn = ASSERT_RESULT(Connect());
+  client = ASSERT_RESULT(cluster_->CreateClient());
+
+  ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (id SERIAL PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  // The table 'foo' should exist in DocDB after the transaction rollback, as the DDLs were executed
+  // in autonomous transactions.
+  // The column 'new_col' should also exist in the table 'foo'.
+  ASSERT_OK(GetTableIdByTableName(client.get(), "yugabyte", "foo"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo (id, new_col) VALUES (1, 42)"));
 }
 
 } // namespace yb::pgwrapper

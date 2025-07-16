@@ -126,3 +126,15 @@ SET ybhnsw.ef_search = 100;
 SET hnsw.ef_search = 100;
 \d vec1
 DROP TABLE vec1;
+
+-- Test to validate that both GUCs ybhnsw.ef_search and hnsw.ef_search are in sync.
+SHOW ybhnsw.ef_search;
+SHOW hnsw.ef_search;
+
+SET ybhnsw.ef_search = 200;
+SHOW ybhnsw.ef_search;
+SHOW hnsw.ef_search;
+
+RESET hnsw.ef_search;
+SHOW ybhnsw.ef_search;
+SHOW hnsw.ef_search;

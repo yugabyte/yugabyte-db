@@ -83,6 +83,8 @@ using namespace yb::size_literals;
 using std::shared_ptr;
 using std::string;
 
+DECLARE_bool(TEST_running_test);
+
 DECLARE_int32(num_connections_to_server);
 DEFINE_UNKNOWN_int32(rpc_default_keepalive_time_ms, 65000,
              "If an RPC connection from a client is idle for this amount of time, the server "
@@ -159,6 +161,10 @@ Result<std::unique_ptr<Messenger>> MessengerBuilder::Build() {
   std::unique_ptr<Messenger, MessengerShutdownDeleter> messenger(new Messenger(*this));
   RETURN_NOT_OK(messenger->Init(*this));
 
+  if (PREDICT_FALSE(use_local_host_outbound_ip_base_in_tests_ && FLAGS_TEST_running_test)) {
+    messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
+  }
+
   return std::unique_ptr<Messenger>(messenger.release());
 }
 
@@ -188,7 +194,7 @@ void Messenger::Shutdown() {
   if (!closing_.compare_exchange_strong(expected, true)) {
     return;
   }
-  VLOG(1) << "shutting down messenger " << name_;
+  VLOG_WITH_PREFIX(1) << "shutting down messenger";
 
   ShutdownThreadPools();
   ShutdownAcceptor();
@@ -236,7 +242,7 @@ void Messenger::Shutdown() {
 
   {
     std::lock_guard guard(mutex_scheduled_tasks_);
-    LOG_IF(DFATAL, !scheduled_tasks_.empty())
+    LOG_IF_WITH_PREFIX(DFATAL, !scheduled_tasks_.empty())
         << "Scheduled tasks is not empty after messenger shutdown: "
         << AsString(scheduled_tasks_);
   }
@@ -291,8 +297,8 @@ void Messenger::BreakConnectivityFrom(const IpAddress& address) {
 }
 
 void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing) {
-  LOG(INFO) << "TEST: Break " << (incoming ? "incoming" : "") << "/" << (outgoing ? "outgoing" : "")
-            << " connectivity with: " << address;
+  LOG_WITH_PREFIX(INFO) << "TEST: Break " << (incoming ? "incoming" : "") << "/"
+                        << (outgoing ? "outgoing" : "") << " connectivity with: " << address;
 
   bool inserted_from = false;
   bool inserted_to = false;
@@ -325,8 +331,8 @@ void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool 
           },
           SOURCE_LOCATION()));
       if (!scheduling_status.ok()) {
-        LOG(DFATAL) << "Failed to schedule drop connection with: "
-                    << address.to_string() << ": " << scheduling_status;
+        LOG_WITH_PREFIX(DFATAL) << "Failed to schedule drop connection with: "
+                                << address.to_string() << ": " << scheduling_status;
         latch->CountDown();
       }
     }
@@ -349,8 +355,8 @@ void Messenger::RestoreConnectivityFrom(const IpAddress& address) {
 }
 
 void Messenger::RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing) {
-  LOG(INFO) << "TEST: Restore " << (incoming ? "incoming" : "") << "/"
-            << (outgoing ? "outgoing" : "") << " connectivity with: " << address;
+  LOG_WITH_PREFIX(INFO) << "TEST: Restore " << (incoming ? "incoming" : "") << "/"
+                        << (outgoing ? "outgoing" : "") << " connectivity with: " << address;
 
   std::lock_guard guard(broken_connectivity_lock_);
   if (incoming) {
@@ -364,10 +370,12 @@ void Messenger::RestoreConnectivity(const IpAddress& address, bool incoming, boo
   }
 }
 
-bool Messenger::TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote) {
+bool Messenger::TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress& remote) {
   if (has_broken_connectivity_.load(std::memory_order_acquire)) {
     PerCpuRwSharedLock guard(broken_connectivity_lock_);
-    return broken_connectivity_from_.count(remote) != 0;
+    const auto do_reject = broken_connectivity_from_.count(remote) != 0;
+    VLOG_IF_WITH_PREFIX(1, do_reject) << "TEST: Rejected incoming call from " << AsString(remote);
+    return do_reject;
   }
   return false;
 }
@@ -375,7 +383,9 @@ bool Messenger::TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &
 bool Messenger::TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote) {
   if (has_broken_connectivity_.load(std::memory_order_acquire)) {
     PerCpuRwSharedLock guard(broken_connectivity_lock_);
-    return broken_connectivity_to_.count(remote) != 0;
+    const auto do_reject = broken_connectivity_to_.count(remote) != 0;
+    VLOG_IF_WITH_PREFIX(1, do_reject) << "TEST: Rejected outgoing call to " << AsString(remote);
+    return do_reject;
   }
   return false;
 }
@@ -480,7 +490,7 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   Reactor *reactor = RemoteToReactor(remote, call->conn_id().idx());
 
   if (TEST_ShouldArtificiallyRejectOutgoingCallsTo(remote.address())) {
-    VLOG(1) << "TEST: Rejected connection to " << remote;
+    VLOG_WITH_PREFIX(1) << "TEST: Rejected connection to " << remote;
     auto scheduling_status =
         reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(
             call, SOURCE_LOCATION()));
@@ -525,7 +535,7 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
     } else {
       s = remote_method.status();
     }
-    LOG(WARNING) << s;
+    LOG_WITH_PREFIX(WARNING) << s;
     call->RespondFailure(error_code, s);
     return;
   }
@@ -552,8 +562,8 @@ void Messenger::RegisterInboundSocket(
     const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote) {
   if (TEST_ShouldArtificiallyRejectIncomingCallsFrom(remote.address())) {
     auto status = new_socket->Close();
-    VLOG(1) << "TEST: Rejected connection from " << remote
-            << ", close status: " << status.ToString();
+    VLOG_WITH_PREFIX(1) << "TEST: Rejected connection from " << remote
+                        << ", close status: " << status.ToString();
     return;
   }
 
@@ -564,7 +574,7 @@ void Messenger::RegisterInboundSocket(
 
   auto receive_buffer_size = new_socket->GetReceiveBufferSize();
   if (!receive_buffer_size.ok()) {
-    LOG(WARNING) << "Register inbound socket failed: " << receive_buffer_size.status();
+    LOG_WITH_PREFIX(WARNING) << "Register inbound socket failed: " << receive_buffer_size.status();
     return;
   }
 
@@ -575,6 +585,7 @@ void Messenger::RegisterInboundSocket(
 
 Messenger::Messenger(const MessengerBuilder &bld)
     : name_(bld.name_),
+      log_prefix_(Format("Messenger($0, \"$1\"): ", static_cast<void*>(this), name_)),
       connection_context_factory_(bld.connection_context_factory_),
       stream_factories_(bld.stream_factories_),
       listen_protocol_(bld.listen_protocol_),
@@ -592,7 +603,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
 #endif
-  VLOG(1) << "Messenger constructor for " << this << " called at:\n" << GetStackTrace();
+  VLOG_WITH_PREFIX(1) << "Messenger constructor called at:\n" << GetStackTrace();
   // Make sure skip buffer is allocated before we hit memory limit and try to use it.
   GetGlobalSkipBuffer();
 }
@@ -601,11 +612,13 @@ Messenger::~Messenger() {
   std::lock_guard guard(lock_);
   // This logging and the corresponding logging in the constructor is here to track down the
   // occasional CHECK(closing_) failure below in some tests (ENG-2838).
-  VLOG(1) << "Messenger destructor for " << this << " called at:\n" << GetStackTrace();
+  VLOG_WITH_PREFIX(1) << "Messenger destructor called at:\n" << GetStackTrace();
 #ifndef NDEBUG
   if (!closing_) {
-    LOG(DFATAL) << "Messenger created here:\n" << creation_stack_trace_.Symbolize()
-                << "Messenger destructor for " << this << " called at:\n" << GetStackTrace();
+    LOG_WITH_PREFIX(DFATAL) << "Messenger created here:\n"
+                            << creation_stack_trace_.Symbolize()
+                            << "Messenger destructor called at:\n"
+                            << GetStackTrace();
   }
 #endif
   CHECK(closing_) << "Should have already shut down";
@@ -669,8 +682,8 @@ Status Messenger::QueueEventOnAllReactors(
   for (const auto& reactor : reactors_) {
     auto queuing_status = reactor->QueueEventOnAllConnections(server_event, source_location);
     if (!queuing_status.ok()) {
-      LOG(DFATAL) << "Failed to queue a server event on all connections of a reactor: "
-                  << queuing_status;
+      LOG_WITH_PREFIX(DFATAL) << "Failed to queue a server event on all connections of a reactor: "
+                              << queuing_status;
       if (overall_status.ok()) {
         // Use the first error status.
         overall_status = std::move(queuing_status);
@@ -689,8 +702,9 @@ Status Messenger::QueueEventOnFilteredConnections(
     auto queuing_status =
         reactor->QueueEventOnFilteredConnections(server_event, source_location, connection_filter);
     if (!queuing_status.ok()) {
-      LOG(DFATAL) << "Failed to queue a server event on filtered connections of a reactor: "
-                  << queuing_status;
+      LOG_WITH_PREFIX(DFATAL)
+          << "Failed to queue a server event on filtered connections of a reactor: "
+          << queuing_status;
       if (overall_status.ok()) {
         // Use the first error status.
         overall_status = std::move(queuing_status);

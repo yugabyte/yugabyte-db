@@ -510,7 +510,17 @@ INSERT INTO feature_pk_split_desc_min_max
 -- each row. Currently, this is verified by tracking number rows per tablet during development.
 --
 -- All rows must be from partition 1: (nan) < PKey < (1, max)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=2 loops=1)
+   Index Cond: (col_integer <= 1)
+   Storage Table Read Requests: 2
+   Storage Table Rows Scanned: 2
+(4 rows)
+
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
            1 | z           | partition 1 |          2
@@ -518,7 +528,17 @@ SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1;
 (2 rows)
 
 -- All rows must be from partition 2: (1, max) <= PKey < (10, min)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=3 loops=1)
+   Index Cond: ((col_integer > 1) AND (col_integer < 10))
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 3
+(4 rows)
+
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
            9 | z           | partition 2 |          3
@@ -527,7 +547,17 @@ SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_intege
 (3 rows)
 
 -- All rows must be from partition3: (10, min) <= PKey < (100, min)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=4 loops=1)
+   Index Cond: ((col_integer >= 10) AND (col_integer < 100))
+   Storage Table Read Requests: 2
+   Storage Table Rows Scanned: 4
+(4 rows)
+
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
           99 | z           | partition 3 |          4
@@ -537,7 +567,17 @@ SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_inte
 (4 rows)
 
 -- All rows must be from partition 4: (100, min) <= PKey < (nan)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=5 loops=1)
+   Index Cond: (col_integer >= 100)
+   Storage Table Read Requests: 2
+   Storage Table Rows Scanned: 5
+(4 rows)
+
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
          999 | z           | partition 4 |          5

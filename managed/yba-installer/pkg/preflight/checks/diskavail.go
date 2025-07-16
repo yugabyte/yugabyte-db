@@ -80,7 +80,7 @@ func getFreeBytes(path string) (uint64, error) {
 	if _, existsErr := os.Stat(path); existsErr == nil {
 		err := fileutil.IsDirWriteable(path)
 		if err != nil {
-			return 0, fmt.Errorf(path + " is not writeable.")
+			return 0, fmt.Errorf("%s is not writeable.", path)
 		}
 		log.Debug(path + " is writeable.")
 	}
@@ -88,13 +88,13 @@ func getFreeBytes(path string) (uint64, error) {
 	// walk up the dir path until we find a dir that exists
 	validParentDir, err := common.GetValidParent(path)
 	if err != nil {
-		return 0, fmt.Errorf("No valid parent dir for install dir " + path)
+		return 0, fmt.Errorf("No valid parent dir for install dir %s", path)
 	}
 
 	var stat unix.Statfs_t
 	err = unix.Statfs(validParentDir, &stat)
 	if err != nil {
-		return 0, fmt.Errorf("Cannot read disk availability of " + validParentDir)
+		return 0, fmt.Errorf("Cannot read disk availability of %s", validParentDir)
 	}
 	return stat.Bavail * uint64(stat.Bsize), nil
 }

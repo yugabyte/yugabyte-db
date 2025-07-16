@@ -23,7 +23,7 @@ SET compute_query_id to on;
 SET pg_hint_plan.enable_hint_table to on;
 SET compute_query_id to off;
 SELECT 1;									-- gets warining
-SELECT 1;									-- not
+SELECT 1;									-- gets warning with conn mgr
 SET compute_query_id to on;
 SELECT 1;									-- reactivated
 SET compute_query_id to off;

@@ -19,7 +19,9 @@
 #include "yb/common/schema_pbutil.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
 #include "yb/tserver/ysql_advisory_lock_table.h"
@@ -243,6 +245,73 @@ Status YsqlManager::ValidateWriteToCatalogTableAllowed(
 
 Status YsqlManager::ValidateTServerVersion(const VersionInfoPB& version) const {
   return ysql_initdb_and_major_upgrade_helper_->ValidateTServerVersion(version);
+}
+
+Result<uint32_t> YsqlManager::GetPgTableOidIfCommitted(
+    const TableId& table_id, const PersistentTableInfo& table_info,
+    const ReadHybridTime& read_time) const {
+  RSTATUS_DCHECK_EQ(
+      table_info.GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Invalid table type of table $0", table_id));
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+  const auto relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+  const auto pg_table_oid = VERIFY_RESULT(table_info.GetPgTableOid(table_id));
+  const auto committed_relfilenode_oid = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValue(
+      database_oid, pg_table_oid, kPgClassRelFileNodeColumnName, read_time));
+  if (committed_relfilenode_oid != relfilenode_oid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kCommittedPgsqlTableNotFoundErrorStr, table_id),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
+  }
+  return pg_table_oid;
+}
+
+Result<std::string> YsqlManager::GetCachedPgSchemaName(
+    const TableId& table_id, const PersistentTableInfo& table_info,
+    PgDbRelNamespaceMap& cache) const {
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+  const auto pg_table_oid = VERIFY_RESULT(GetPgTableOidIfCommitted(table_id, table_info));
+
+  const PgRelNamespaceData* nsp_data_ptr = FindOrNull(cache, database_oid);
+  if (nsp_data_ptr == nullptr) {
+    PgRelNamespaceData nsp_data;
+    // Load the maps for this PG database.
+    nsp_data.rel_nsp_name_map = VERIFY_RESULT(sys_catalog_.ReadPgNamespaceNspnameMap(
+        database_oid));
+    nsp_data.rel_nsp_oid_map = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValueMap(
+        database_oid, kPgClassRelNamespaceColumnName));
+    nsp_data_ptr = &(cache.insert(std::make_pair(std::move(database_oid),
+                                                 std::move(nsp_data))).first->second);
+  }
+
+  const PgOid* const nsp_oid_ptr =
+      FindOrNull(DCHECK_NOTNULL(nsp_data_ptr)->rel_nsp_oid_map, pg_table_oid);
+  const PgOid relnamespace_oid = (nsp_oid_ptr ? *nsp_oid_ptr : kPgInvalidOid);
+  SCHECK_NE(relnamespace_oid, kPgInvalidOid, NotFound,
+      Format("$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid));
+
+  const std::string* const pg_schema_name_ptr =
+      FindOrNull(nsp_data_ptr->rel_nsp_name_map, relnamespace_oid);
+  // Return NotFound error if this relnamespace OID is not found in the pg_namespace table.
+  SCHECK_NE(pg_schema_name_ptr, nullptr, NotFound,
+      Format("Cannot find nspname for relnamespace oid $0", relnamespace_oid));
+  return *pg_schema_name_ptr;
+}
+
+Result<std::string> YsqlManager::GetPgSchemaName(
+    const TableId& table_id, const PersistentTableInfo& table_info,
+    const ReadHybridTime& read_time) const {
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
+  const auto pg_table_oid =
+      VERIFY_RESULT(GetPgTableOidIfCommitted(table_id, table_info, read_time));
+  const auto relnamespace_oid = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValue(
+      database_oid, pg_table_oid, kPgClassRelNamespaceColumnName, read_time));
+  if (relnamespace_oid == kPgInvalidOid) {
+    return STATUS(
+        NotFound, Format("$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid),
+        MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
+  }
+  return sys_catalog_.ReadPgNamespaceNspname(database_oid, relnamespace_oid, read_time);
 }
 
 }  // namespace yb::master

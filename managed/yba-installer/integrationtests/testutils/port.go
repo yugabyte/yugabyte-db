@@ -4,8 +4,8 @@ import "testing"
 
 var nextPort = 8500
 
-func GetNextPort(tb testing.TB) int {
-	tb.Helper()
+func GetNextPort(t testing.TB) int {
+	t.Helper()
 	port := nextPort
 	nextPort++
 	if nextPort > 9000 {

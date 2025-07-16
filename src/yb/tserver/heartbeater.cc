@@ -60,6 +60,7 @@
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/tserver/master_leader_poller.h"
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -503,7 +504,7 @@ Status HeartbeatPoller::TryHeartbeat() {
         VLOG_WITH_FUNC(1) << "got master db catalog version data: "
                           << last_hb_response_.db_catalog_version_data().ShortDebugString()
                           << " db inval messages: "
-                          << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
+                          << tserver::CatalogInvalMessagesDataDebugString(last_hb_response_);
       }
       if (FLAGS_ysql_yb_enable_invalidation_messages) {
         if (last_hb_response_.has_db_catalog_inval_messages_data()) {
@@ -568,7 +569,7 @@ Status HeartbeatPoller::TryHeartbeat() {
         VLOG_WITH_FUNC(1) << "got master db catalog version data: "
                           << last_hb_response_.db_catalog_version_data().ShortDebugString()
                           << " db inval messages: "
-                          << last_hb_response_.db_catalog_inval_messages_data().ShortDebugString();
+                          << tserver::CatalogInvalMessagesDataDebugString(last_hb_response_);
       }
       const auto& version_data = last_hb_response_.db_catalog_version_data();
 

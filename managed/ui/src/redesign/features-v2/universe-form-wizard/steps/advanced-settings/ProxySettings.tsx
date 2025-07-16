@@ -14,18 +14,17 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { FormProvider, useForm } from 'react-hook-form';
-import { mui } from '@yugabyte-ui-library/core';
+import { useTranslation } from 'react-i18next';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { ProxyAdvancedProps } from './dtos';
 import { EnableProxyServer } from '../../fields';
-// import { useTranslation } from 'react-i18next';
-
-const { Box } = mui;
 
 export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [, { moveToNextPage, moveToPreviousPage }] = (useContext(
+  const [, { moveToNextPage, moveToPreviousPage, saveProxySettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
+
+  const { t } = useTranslation();
 
   const methods = useForm<ProxyAdvancedProps>({});
 
@@ -33,7 +32,10 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        moveToNextPage();
+        methods.handleSubmit((data) => {
+          saveProxySettings(data);
+          moveToNextPage();
+        })();
       },
       onPrev: () => {
         moveToPreviousPage();
@@ -45,7 +47,7 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <StyledPanel>
-        <StyledHeader>Proxy Configuration</StyledHeader>
+        <StyledHeader>{t('createUniverseV2.proxySettings.header')}</StyledHeader>
         <StyledContent>
           <EnableProxyServer disabled={false} />
         </StyledContent>
@@ -53,3 +55,5 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
     </FormProvider>
   );
 });
+
+ProxySettings.displayName = 'ProxySettings';

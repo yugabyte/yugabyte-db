@@ -1209,6 +1209,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If flag is enabled, allows DR creation with db scoped xCluster replication",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> XClusterDbScopedAutomaticDdlCreationEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.automatic_ddl.creationEnabled",
+          ScopeType.UNIVERSE,
+          "Flag indicating if db scoped xCluster replication should have automatic DDL replication",
+          "If flag and yb.xcluster.db_scoped.creationEnabled are enabled, newly created DR configs"
+              + " will have automatic DDL replication",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
       new ConfKeyInfo<>(
           "yb.checks.leaderless_tablets.enabled",
@@ -1677,5 +1686,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable backups during DDL",
           "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckTHPSettings =
+      new ConfKeyInfo<>(
+          "yb.health_checks.check_thp",
+          ScopeType.UNIVERSE,
+          "Whether to check if correct THP settings are applied",
+          "Whether to check if correct Transparent Huge Pages settings are applied",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> catalogUpgradeAdminOpsTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.catalog_upgrade_admin_ops_timeout_ms",
+          ScopeType.UNIVERSE,
+          "Timeout for catalog upgrade admin operations",
+          "Timeout for catalog upgrade admin operations in milliseconds",
+          ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -5915,4 +5915,112 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, BeforeCreateFinishes,
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 }
 
+// PITRs done on an xcluster consumer for an xcluster failover have different requirements. XCluster
+// has a separate mechanism for coordinating DDLs on the consumer cluster, and this mechanism is
+// responsible for rolling back DDLs during an xcluster failover. Because DDLs may be applied at the
+// consumer cluster with different timestamps than at the source cluster, but DMLs at the consumer
+// cluster use the same write timestamps as the source cluster, a regular PITR to both
+// metadata and data on the consumer cluster could restore it to an inconsistent state that the
+// producer cluster was never actually in.
+// We test the slightly different behaviour of xcluster PITR using this class.
+class YbAdminSnapshotScheduleXClusterRestoreTest : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    return {"--TEST_skip_sys_catalog_tablet_restore=true"};
+  }
+};
+
+// This test verifies that PITRs done for xcluster do not roll back regular DDLs.
+TEST_F(YbAdminSnapshotScheduleXClusterRestoreTest, DoNotRollbackCreateTable) {
+  ASSERT_OK(PrepareCommon());
+
+  auto conn = ASSERT_RESULT(PgConnect());
+  const std::string kNamespaceName = "test_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kNamespaceName));
+  conn = ASSERT_RESULT(PgConnect(kNamespaceName));
+
+  auto schedule_id = ASSERT_RESULT(
+      CreateSnapshotScheduleAndWaitSnapshot("ysql." + kNamespaceName, kInterval, kRetention));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test_post (id INT)"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  auto row_value = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) from test_post")));
+  ASSERT_EQ(row_value, 0);
+}
+
+// This test verifies that PITRs done for xcluster do roll back DMLs.
+TEST_F(YbAdminSnapshotScheduleXClusterRestoreTest, RollbackDMLs) {
+  ASSERT_OK(PrepareCommon());
+
+  auto conn = ASSERT_RESULT(PgConnect());
+  const std::string kNamespaceName = "test_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kNamespaceName));
+  conn = ASSERT_RESULT(PgConnect(kNamespaceName));
+
+  auto schedule_id = ASSERT_RESULT(
+      CreateSnapshotScheduleAndWaitSnapshot("ysql." + kNamespaceName, kInterval, kRetention));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test_table (id INT)"));
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table VALUES (1), (2), (3)"));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table VALUES (4), (5), (6)"));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  auto row_value = ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) from test_table")));
+  ASSERT_EQ(row_value, 3);
+}
+
+// Sequences are tricky for xcluster PITR as sequence DDLs result in both pg catalog mutations and
+// writes to the sequences_data table. XCluster's ddl replication mechanism is responsible for
+// rolling back pg catalog mutations during failover but it does not modify the sequences_data
+// table. So in this test we verify that sequence adds are not rolled back in pg but are rolled back
+// in sequences_data.
+TEST_F(YbAdminSnapshotScheduleXClusterRestoreTest, Sequences) {
+  ASSERT_OK(PrepareCommon());
+
+  auto conn = ASSERT_RESULT(PgConnect());
+  const std::string kNamespaceName = "test_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kNamespaceName));
+  conn = ASSERT_RESULT(PgConnect(kNamespaceName));
+
+  auto schedule_id = ASSERT_RESULT(
+      CreateSnapshotScheduleAndWaitSnapshot("ysql." + kNamespaceName, kInterval, kRetention));
+
+  const std::string kPreSequence = "test_seq_pre";
+  ASSERT_OK(conn.ExecuteFormat("CREATE SEQUENCE $0", kPreSequence));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  const std::string kPostSequence = "test_seq_post";
+  ASSERT_OK(conn.ExecuteFormat("CREATE SEQUENCE $0", kPostSequence));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  conn = ASSERT_RESULT(PgConnect(kNamespaceName));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT nextval('$0')", kPreSequence))), 1);
+
+  auto seq_val_result = conn.FetchRow<int64_t>(Format("SELECT nextval('$0')", kPostSequence));
+  ASSERT_NOK(seq_val_result);
+  // This error message indicates the sequence exists in the PG catalog but has no row in the docdb
+  // table sequences_data. We expect this because xcluster restores do not touch the pg catalog but
+  // they do the normal PITR flow on the sequences table.
+  ASSERT_STR_CONTAINS(seq_val_result.status().ToString(), "Unable to find relation for sequence");
+  // Sanity check querying a non-existant sequence produces a distinct error message.
+  const std::string kNonExistantSequence = "dne_sequence";
+  auto non_existant_seq_result =
+      conn.FetchRow<int64_t>(Format("SELECT nextval('$0')", kNonExistantSequence));
+  ASSERT_NOK(non_existant_seq_result);
+  ASSERT_STR_CONTAINS(
+      non_existant_seq_result.status().ToString(),
+      Format("relation \"$0\" does not exist", kNonExistantSequence));
+}
+
 }  // namespace yb::tools

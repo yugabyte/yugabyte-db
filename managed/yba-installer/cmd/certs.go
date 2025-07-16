@@ -41,7 +41,7 @@ var certsGenerateCmd = &cobra.Command{
 			log.Error("unabled to create PEM file, but the root cert and key have been recreated.")
 			log.Fatal(fmt.Sprintf("Failed to create PEM format key and cert: %v", err))
 		}
-		if err := services[YbPlatformServiceName].Restart(); err != nil {
+		if err := serviceManager.ServiceByName(YbPlatformServiceName).Restart(); err != nil {
 			log.Warn("New certs have been generated, but are unused until the service is restarted " +
 				"successfully.")
 			log.Fatal(fmt.Sprintf("Failed to restart %s service: %v", YbPlatformServiceName, err))

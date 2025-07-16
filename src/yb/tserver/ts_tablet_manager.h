@@ -840,6 +840,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::mutex vector_index_thread_pool_mutex_;
   std::array<AtomicUniquePtr<rpc::ThreadPool>, tablet::kVectorIndexThreadPoolTypeMapSize>
       vector_index_thread_pools_;
+  hnsw::BlockCachePtr vector_index_block_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

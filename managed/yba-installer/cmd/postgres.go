@@ -76,6 +76,8 @@ func NewPostgres(version string) Postgres {
 	}
 }
 
+func (Postgres) IsReplicated() bool { return true }
+
 // TemplateFile returns service's templated config file path
 func (pg Postgres) TemplateFile() string {
 	return pg.templateFileName
@@ -707,5 +709,17 @@ func (pg Postgres) symlinkReplicatedDir() error {
 	if err := common.Chown(pg.dataDir+"/", userName, userName, true); err != nil {
 		return fmt.Errorf("failed to change ownership of postgres linked data to %s: %w", userName, err)
 	}
+	return nil
+}
+
+func (pg Postgres) Reconfigure() error {
+	log.Info("Reconfiguring Postgres")
+	if err := config.GenerateTemplate(pg); err != nil {
+		return fmt.Errorf("failed to generate postgres config template: %w", err)
+	}
+	if err := pg.modifyPostgresConf(); err != nil {
+		return fmt.Errorf("failed to modify postgres config: %w", err)
+	}
+	log.Info("Postgres reconfigured")
 	return nil
 }

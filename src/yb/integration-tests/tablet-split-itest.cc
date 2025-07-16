@@ -234,11 +234,13 @@ TEST_F(TabletSplitITest, SplitTabletIsAsync) {
   ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
 
   for (auto peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
-    EXPECT_FALSE(peer->tablet()->metadata()->parent_data_compacted());
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    EXPECT_FALSE(tablet->metadata()->parent_data_compacted());
   }
   std::this_thread::sleep_for(1s * kTimeMultiplier);
   for (auto peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
-    EXPECT_FALSE(peer->tablet()->metadata()->parent_data_compacted());
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    EXPECT_FALSE(tablet->metadata()->parent_data_compacted());
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
   ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(15s * kTimeMultiplier));
@@ -287,8 +289,9 @@ TEST_F_EX(TabletSplitITest, TestInitiatesCompactionAfterSplit, TabletSplitNoBloc
             kNumPostSplitTablets * ANNOTATE_UNPROTECTED_READ(FLAGS_replication_factor));
   std::unordered_map<std::string, uint64_t> child_replicas_bytes_read;
   for (const auto& replica : replicas) {
-    auto replica_bytes = replica->tablet()->regulardb_statistics()->getTickerCount(
-         rocksdb::Tickers::COMPACT_READ_BYTES);
+    auto tablet = ASSERT_RESULT(replica->shared_tablet());
+    auto replica_bytes =
+        tablet->regulardb_statistics()->getTickerCount(rocksdb::Tickers::COMPACT_READ_BYTES);
     ASSERT_GT(replica_bytes, 0) << "Expected replica's read bytes to be greater than zero.";
     child_replicas_bytes_read[replica->permanent_uuid()] += replica_bytes;
   }
@@ -298,7 +301,8 @@ TEST_F_EX(TabletSplitITest, TestInitiatesCompactionAfterSplit, TabletSplitNoBloc
   ASSERT_EQ(replicas.size(), ANNOTATE_UNPROTECTED_READ(FLAGS_replication_factor));
   uint64_t pre_split_sst_files_size = 0;
   for (const auto& replica : replicas) {
-    auto replica_bytes = replica->tablet()->GetCurrentVersionSstFilesSize();
+    auto tablet = ASSERT_RESULT(replica->shared_tablet());
+    auto replica_bytes = tablet->GetCurrentVersionSstFilesSize();
     ASSERT_GT(replica_bytes, 0) << "Expected replica's SST file size to be greater than zero.";
     if (pre_split_sst_files_size == 0) {
       pre_split_sst_files_size = replica_bytes;
@@ -342,7 +346,7 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
   ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
   auto tablet_peers =
       ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(cluster_.get(), table_->id(), 2));
-  const auto first_child_tablet = tablet_peers[0]->shared_tablet();
+  const auto first_child_tablet = tablet_peers[0]->shared_tablet_maybe_null();
   ASSERT_OK(first_child_tablet->Flush(tablet::FlushMode::kSync));
   // Force compact on leader, so we can split first_child_tablet.
   ASSERT_OK(first_child_tablet->ForceManualRocksDBCompact());
@@ -595,9 +599,9 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
 
   for (const auto& peer : peers) {
     ASSERT_OK(LoggedWaitFor(
-        [&peer] {
-          const auto data_size =
-              peer->tablet()->regular_db()->GetCurrentVersionSstFilesUncompressedSize();
+        [&peer] -> Result<bool> {
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          const auto data_size = tablet->regular_db()->GetCurrentVersionSstFilesUncompressedSize();
           YB_LOG_EVERY_N_SECS(INFO, 5) << "Data written: " << data_size;
           size_t expected_size = (FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) *
                                  FLAGS_db_write_buffer_size;
@@ -611,7 +615,7 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
 
   for (const auto& peer : peers) {
-    const auto& source_tablet = *ASSERT_NOTNULL(peer->tablet());
+    const auto& source_tablet = *ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(SplitTablet(catalog_mgr, source_tablet));
   }
 
@@ -673,7 +677,7 @@ void TabletSplitITest::SplitClientRequestsIds(int split_depth) {
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
     ASSERT_EQ(peers.size(), 1 << i);
     for (const auto& peer : peers) {
-      const auto tablet = peer->shared_tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
       CHECK_OK(tablet->ForceManualRocksDBCompact());
       ASSERT_OK(SplitTablet(catalog_mgr, *tablet));
@@ -735,7 +739,7 @@ TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainen
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
     ASSERT_EQ(peers.size(), 1 << i);
     for (const auto& peer : peers) {
-      const auto tablet = peer->shared_tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
       ASSERT_OK(tablet->ForceManualRocksDBCompact());
       ASSERT_OK(SplitTablet(catalog_mgr, *tablet));
@@ -800,7 +804,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
     auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
     bool expect_split = false;
     for (const auto& peer : peers) {
-      const auto tablet = peer->shared_tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
       ASSERT_OK(tablet->ForceManualRocksDBCompact());
       auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
@@ -1040,14 +1044,14 @@ TEST_F(TabletSplitYedisTableTest, BlockSplittingYedisTablet) {
   }
 
   for (const auto& peer : ListTableActiveTabletPeers(mini_cluster(), table_->id())) {
-    ASSERT_OK(peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+    ASSERT_OK(ASSERT_RESULT(peer->shared_tablet())->Flush(tablet::FlushMode::kSync));
   }
 
   for (const auto& peer : ListTableActiveTabletLeadersPeers(mini_cluster(), table_->id())) {
     auto catalog_manager = &CHECK_NOTNULL(
         ASSERT_RESULT(this->mini_cluster()->GetLeaderMiniMaster()))->catalog_manager();
 
-    auto s = DoSplitTablet(catalog_manager, *peer->shared_tablet());
+    auto s = DoSplitTablet(catalog_manager, *peer->shared_tablet_maybe_null());
     EXPECT_NOK(s);
     EXPECT_TRUE(s.IsNotSupported()) << s.ToString();
   }
@@ -1077,7 +1081,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
           // This tablet might has been shut down or in the process of shutting down.
           // Thus, we need to check whether shared_tablet is nullptr or not
           // TEST_CountIntent return non ok status also means shutdown has started.
-          const auto tablet = peer->shared_tablet();
+          const auto tablet = peer->shared_tablet_maybe_null();
           if (!tablet) {
             return true;
           }
@@ -1088,7 +1092,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
         if (peer->IsShutdownStarted()) {
           return STATUS(NotFound, "The tablet has been shut down.");
         }
-        RETURN_NOT_OK(peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+        RETURN_NOT_OK(VERIFY_RESULT(peer->shared_tablet())->Flush(tablet::FlushMode::kSync));
       }
     }
     return Status::OK();
@@ -1107,7 +1111,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       LOG(INFO) << "Active peers: " << peers.size();
       if (peers.size() == 2) {
         for (const auto& peer : peers) {
-          const auto tablet = peer->shared_tablet();
+          const auto tablet = peer->shared_tablet_maybe_null();
           SCHECK_NOTNULL(tablet.get());
 
           // Since we've disabled compactions, each post-split subtablet should be larger than the
@@ -1135,7 +1139,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       //    shared_tablet->GetCurrentVersionSstFilesSize() will return 0 as default.
       //    Then next loop of inserting and flush, the code will detect splitting
       //    happen and break the loop. Thus, we don't need to handle it here.
-      const auto tablet = leader_peer->shared_tablet();
+      const auto tablet = leader_peer->shared_tablet_maybe_null();
       if (tablet) {
         current_size = tablet->GetCurrentVersionSstFilesSize();
       } else {
@@ -1151,7 +1155,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       return peer->tablet_id() == tablet_id;
     });
     for (const auto& peer : peers) {
-      const auto tablet = peer->shared_tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
       CHECK_OK(tablet->ForceManualRocksDBCompact());
     }
@@ -1352,7 +1356,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompac
         expected_num_tablets * FLAGS_replication_factor);
 
       // Force a manual rocksdb compaction on the peer tablet and wait for it to complete
-      const auto tablet = peer->shared_tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
       ASSERT_OK(tablet->ForceManualRocksDBCompact());
       ASSERT_OK(LoggedWaitFor(
@@ -1442,7 +1446,7 @@ TEST_F(AutomaticTabletSplitITest, PrioritizeLargeTablets) {
         tables[i]->name())); // table (default)
     // Compact so that other splits can proceed.
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), tables[i]->id())) {
-      ASSERT_OK(peer->shared_tablet()->ForceManualRocksDBCompact());
+      ASSERT_OK(ASSERT_RESULT(peer->shared_tablet())->ForceManualRocksDBCompact());
     }
   }
 }
@@ -1491,11 +1495,13 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
     // ~split_threshold_bytes of data from the previous round (or 0 bytes for the low phase), which
     // is less than this round's split_threshold_bytes. Verify that they do not split.
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
-      ASSERT_LT(peer->shared_tablet()->GetCurrentVersionSstFilesSize(), split_threshold_bytes);
+      ASSERT_LT(
+          ASSERT_RESULT(peer->shared_tablet())->GetCurrentVersionSstFilesSize(),
+          split_threshold_bytes);
     }
     ASSERT_OK(enable_splitting_and_wait_for_completion());
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
-      ASSERT_FALSE(peer->shared_tablet()->MayHaveOrphanedPostSplitData());
+      ASSERT_FALSE(ASSERT_RESULT(peer->shared_tablet())->MayHaveOrphanedPostSplitData());
     }
 
     // Write data until we hit tablet_count_per_node_limit tablet leaders per node. We should not
@@ -1510,13 +1516,13 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
       vector<tablet::TabletPeerPtr> split_peers;
       std::unordered_map<TabletId, uint64_t> max_split_peer_size;
       for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
-        auto peer_size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
+        auto peer_size = ASSERT_RESULT(peer->shared_tablet())->GetCurrentVersionSstFilesSize();
         auto tablet_id = peer->tablet_id();
         LOG(INFO) << Format("Tablet peer: $0 on tserver $1 with size $2 (before compaction).",
             tablet_id, peer->permanent_uuid(), peer_size);
 
         ASSERT_LT(peer_size, next_threshold_bytes);
-        if (peer->shared_tablet()->MayHaveOrphanedPostSplitData()) {
+        if (ASSERT_RESULT(peer->shared_tablet())->MayHaveOrphanedPostSplitData()) {
           max_split_peer_size[tablet_id] = std::max(max_split_peer_size[tablet_id], peer_size);
           split_peers.push_back(peer);
         }
@@ -1534,7 +1540,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
 
       // Compact the tablets that split so they can split again in the next iteration.
       for (const auto& peer : split_peers) {
-        ASSERT_OK(peer->shared_tablet()->ForceManualRocksDBCompact());
+        ASSERT_OK(ASSERT_RESULT(peer->shared_tablet())->ForceManualRocksDBCompact());
       }
 
       // Return once we hit the tablet leader count limit for this phase.
@@ -2291,8 +2297,9 @@ TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
 
   // Flush tablet and directly compute expected middle key.
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
-  auto middle_key = ASSERT_RESULT(tablet_peer->shared_tablet()->GetEncodedMiddleSplitKey());
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  auto middle_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
   auto expected_middle_key_hash = CHECK_RESULT(dockv::DocKey::DecodeHash(middle_key));
 
   // Send RPC.
@@ -2320,8 +2327,8 @@ TEST_F(TabletSplitSingleServerITest, SplitKeyNotSupportedForTTLTablets) {
 
   // Flush tablet and directly compute expected middle key.
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
-  auto tablet = tablet_peer->shared_tablet();
-  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = tablet_peer->shared_tablet_maybe_null();
+  ASSERT_OK(ASSERT_RESULT(tablet_peer->shared_tablet())->Flush(tablet::FlushMode::kSync));
   ASSERT_OK(tablet->ForceManualRocksDBCompact());
 
   auto resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
@@ -2449,7 +2456,8 @@ TEST_F(TabletSplitSingleServerITest, ScheduledFullCompactionsDoNotBlockSplit) {
   // Check that the metadata for all tablets got updated.
   for (auto peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
     EXPECT_GE(
-        HybridTime(peer->shared_tablet()->metadata()->last_full_compaction_time()), now);
+        HybridTime(ASSERT_RESULT(peer->shared_tablet())->metadata()->last_full_compaction_time()),
+        now);
   }
 }
 
@@ -3131,9 +3139,6 @@ class TabletSplitReplaceNodeITest : public TabletSplitExternalMiniClusterITest {
         // - Allow more concurrent adds/removes, so we deal with transaction status tablets
         // faster.
         "--load_balancer_max_concurrent_adds=10", "--load_balancer_max_concurrent_removals=10",
-        // - Allow more over replicated tablets, so temporary child tablets over replication
-        // doesn't block parent tablet move.
-        "--load_balancer_max_over_replicated_tablets=5",
         // To speed up test in case of intermittent failures due to leader re-elections.
         "--retrying_ts_rpc_max_delay_ms=1000",
       }) {
@@ -3290,7 +3295,7 @@ TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
           if ((*result)->state() != tablet::RaftGroupStatePB::RUNNING) {
             return false;
           }
-          const auto tablet = (*result)->shared_tablet();
+          const auto tablet = (*result)->shared_tablet_maybe_null();
           if (!tablet) {
             return false;
           }
@@ -3362,7 +3367,8 @@ TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakI
   peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
   ASSERT_EQ(peers.size(), 2);
   for (const auto& peer : peers) {
-    const auto& key_bounds = peer->tablet()->key_bounds();
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    const auto& key_bounds = tablet->key_bounds();
     ASSERT_TRUE(key_bounds.IsInitialized());
 
     const auto partition_end = peer->tablet_metadata()->partition()->partition_key_end();
@@ -3457,7 +3463,7 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   BuildSchema(GetParam(), &schema);
   ASSERT_OK(CreateTable(schema));
   auto peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
-  auto tablet = peer->shared_tablet();
+  auto tablet = peer->shared_tablet_maybe_null();
   auto partition_schema = tablet->metadata()->partition_schema();
   LOG(INFO) << "System records partitioning: "
             << "hash = "  << partition_schema->IsHashPartitioning() << ", "
@@ -3622,8 +3628,9 @@ class TabletSplitSingleBlockITest :
     SetNumTablets(1);
   }
 
-  Status DoSplitSingleBlock(const Partitioning partitioning, const uint32_t num_rows,
-      std::function<Status(yb::tablet::Tablet *tablet)> rows_written_callback) {
+  Status DoSplitSingleBlock(
+      const Partitioning partitioning, const uint32_t num_rows,
+      std::function<Status(yb::tablet::Tablet* tablet)> rows_written_callback) {
     // Setup table with rows.
     Schema schema;
     BuildSchema(partitioning, &schema);
@@ -3640,13 +3647,14 @@ class TabletSplitSingleBlockITest :
     // Write a few records.
     RETURN_NOT_OK(WriteRows(num_rows));
     auto tablet_peer = VERIFY_RESULT(GetSingleTabletLeaderPeer());
-    RETURN_NOT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
+    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
     // Wait for SST files appear on disc
-    RETURN_NOT_OK(WaitFor([&] {
-      return tablet_peer->tablet()->regular_db()->GetCurrentVersionNumSSTFiles() > 0;
-    }, 5s * kTimeMultiplier, "Waiting for successful write", MonoDelta::FromSeconds(1)));
-    RETURN_NOT_OK(rows_written_callback(tablet_peer->tablet()));
+    RETURN_NOT_OK(WaitFor(
+        [&] { return tablet->regular_db()->GetCurrentVersionNumSSTFiles() > 0; },
+        5s * kTimeMultiplier, "Waiting for successful write", MonoDelta::FromSeconds(1)));
+    RETURN_NOT_OK(rows_written_callback(tablet.get()));
 
     // Send RPC for tablet splitting and validate resposnse.
     LOG(INFO) << "Sending sync SPLIT Rpc";
@@ -3687,31 +3695,33 @@ class TabletSplitSingleBlockITest :
 };
 
 TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockTablet) {
-  ASSERT_OK(DoSplitSingleBlock(GetParam(), /* num_rows = */ 18,
-      [](yb::tablet::Tablet *tablet) -> Status {
-    const auto num_restarts =
-        VERIFY_RESULT(GetFirstDataBlockRestartPointsNumber(tablet->regular_db()));
-    if (num_restarts <= 1) {
-      return STATUS(IllegalState,
-          "RocksDB records structure might be changed, "
-          "try to adjust rows number to have more than one restart point.");
-    }
-    return Status::OK();
-  }));
+  ASSERT_OK(
+      DoSplitSingleBlock(GetParam(), /* num_rows = */ 18, [](yb::tablet::Tablet* tablet) -> Status {
+        const auto num_restarts =
+            VERIFY_RESULT(GetFirstDataBlockRestartPointsNumber(tablet->regular_db()));
+        if (num_restarts <= 1) {
+          return STATUS(
+              IllegalState,
+              "RocksDB records structure might be changed, "
+              "try to adjust rows number to have more than one restart point.");
+        }
+        return Status::OK();
+      }));
 }
 
 TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockOneRestartTablet) {
-  ASSERT_OK(DoSplitSingleBlock(GetParam(), /* num_rows = */ 6,
-      [](yb::tablet::Tablet *tablet) -> Status {
-    const auto num_restarts =
-        VERIFY_RESULT(GetFirstDataBlockRestartPointsNumber(tablet->regular_db()));
-    if (num_restarts > 1) {
-      return STATUS(IllegalState,
-          "RocksDB records structure might be changed, "
-          "try to adjust rows number to have exactly one restart point.");
-    }
-    return Status::OK();
-  }));
+  ASSERT_OK(
+      DoSplitSingleBlock(GetParam(), /* num_rows = */ 6, [](yb::tablet::Tablet* tablet) -> Status {
+        const auto num_restarts =
+            VERIFY_RESULT(GetFirstDataBlockRestartPointsNumber(tablet->regular_db()));
+        if (num_restarts > 1) {
+          return STATUS(
+              IllegalState,
+              "RocksDB records structure might be changed, "
+              "try to adjust rows number to have exactly one restart point.");
+        }
+        return Status::OK();
+      }));
 }
 
 TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockMultiLevelTablet) {
@@ -3719,27 +3729,29 @@ TEST_P(TabletSplitSingleBlockITest, SplitSingleDataBlockMultiLevelTablet) {
   // Required to simulate a case with num levels > 1 and top block restarts num == 1.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_block_restart_interval) = 4;
 
-  ASSERT_OK(DoSplitSingleBlock(GetParam(), /* num_rows = */ 4000,
-      [](yb::tablet::Tablet *tablet) -> Status {
-    auto table_reader = dynamic_cast<rocksdb::BlockBasedTable*>(
-        VERIFY_RESULT(tablet->regular_db()->TEST_GetLargestSstTableReader()));
-    SCHECK_NOTNULL(table_reader);
+  ASSERT_OK(DoSplitSingleBlock(
+      GetParam(), /* num_rows = */ 4000, [](yb::tablet::Tablet* tablet) -> Status {
+        auto table_reader = dynamic_cast<rocksdb::BlockBasedTable*>(
+            VERIFY_RESULT(tablet->regular_db()->TEST_GetLargestSstTableReader()));
+        SCHECK_NOTNULL(table_reader);
 
-    auto index_reader_base = VERIFY_RESULT(table_reader->TEST_GetIndexReader());
-    auto index_reader = dynamic_cast<rocksdb::MultiLevelIndexReader*>(index_reader_base.get());
-    SCHECK_NOTNULL(index_reader);
+        auto index_reader_base = VERIFY_RESULT(table_reader->TEST_GetIndexReader());
+        auto index_reader = dynamic_cast<rocksdb::MultiLevelIndexReader*>(index_reader_base.get());
+        SCHECK_NOTNULL(index_reader);
 
-    if ((index_reader->TEST_GetNumLevels() == 1) ||
-        (index_reader->TEST_GetTopLevelBlockNumRestarts() > 1)) {
-      return STATUS(IllegalState,
-          Format(
-              "Num level = $0, num top level restarts = $1. RocksDB records structure "
-              "might be changed, try to adjust rows number to have num levels > 1 "
-              "and num top level restarts == 1 for a top level index block.",
-              index_reader->TEST_GetNumLevels(), index_reader->TEST_GetTopLevelBlockNumRestarts()));
-    }
-    return Status::OK();
-  }));
+        if ((index_reader->TEST_GetNumLevels() == 1) ||
+            (index_reader->TEST_GetTopLevelBlockNumRestarts() > 1)) {
+          return STATUS(
+              IllegalState,
+              Format(
+                  "Num level = $0, num top level restarts = $1. RocksDB records structure "
+                  "might be changed, try to adjust rows number to have num levels > 1 "
+                  "and num top level restarts == 1 for a top level index block.",
+                  index_reader->TEST_GetNumLevels(),
+                  index_reader->TEST_GetTopLevelBlockNumRestarts()));
+        }
+        return Status::OK();
+      }));
 }
 
 namespace {

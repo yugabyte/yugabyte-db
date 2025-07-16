@@ -64,7 +64,7 @@ Select **Single-Region Deployment** and set the following options.
 | **Node** | Resilient to 1, 2, or 3 node outages, with a minimum of 3, 5, or 7 nodes respectively, deployed in a single availability zone. Not resilient to zone outages. | Nodes are scaled in increments of 1. |
 | **None** | Minimum of 1 node, with no replication or resiliency. [Operations requiring a restart](../../../cloud-clusters/#locking-operations) result in downtime (no rolling restart is possible). Recommended for development and testing only. | Nodes are scaled in increments of 1. |
 
-You can't change the Fault tolerance of a cluster after it's created.
+Note that currently, after the cluster is created, you can't change the cluster fault tolerance using the YugabyteDB Aeon UI; you can change it using the [API](../../../managed-automation/managed-api/) or [CLI](../../../managed-automation/managed-cli/).
 
 #### Choose a region and size your cluster
 

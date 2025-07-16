@@ -164,16 +164,17 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 			log.Fatal("error initializing common components: " + err.Error())
 		}
 
-		for _, name := range serviceOrder {
-			log.Info("About to migrate component " + name)
-			if err := services[name].MigrateFromReplicated(); err != nil {
-				log.Fatal("Failed while migrating " + name + ": " + err.Error())
+		for service := range serviceManager.ReplicatedServices() {
+			log.Info("About to migrate component " + service.Name())
+			if err := service.MigrateFromReplicated(); err != nil {
+				log.Fatal("Failed while migrating " + service.Name() + ": " + err.Error())
 			}
-			log.Info("Completed migrating component " + name)
+			log.Info("Completed migrating component " + service.Name())
 		}
 
 		// Cast the plat struct because we will use it throughout migration.
-		plat, ok := services[YbPlatformServiceName].(Platform)
+		s := serviceManager.ServiceByName(YbPlatformServiceName)
+		plat, ok := s.(Platform)
 		if !ok {
 			log.Fatal("Could not cast service to yb-platform.")
 		}
@@ -232,21 +233,24 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		}
 
 		// Start postgres and prometheus processes.
-		for _, name := range serviceOrder {
+		for service := range serviceManager.ReplicatedServices() {
 			// Skip starting YBA until we restore the new data to avoid migration conflicts.
-			if name == YbPlatformServiceName {
+			if service.Name() == YbPlatformServiceName {
 				continue
 			}
-			if err := services[name].Start(); err != nil {
-				log.Fatal("Failed while starting " + name + ": " + err.Error())
+			if err := service.Start(); err != nil {
+				log.Fatal("Failed while starting " + service.Name() + ": " + err.Error())
 			}
-			log.Info("Completed starting component " + name)
+			log.Info("Completed starting component " + service.Name())
 		}
 
 		// Create yugaware postgres DB.
-		if pg, ok := services[PostgresServiceName].(Postgres); ok {
-			pg.replicatedMigrateStep2()
+		s = serviceManager.ServiceByName(PostgresServiceName)
+		pg, ok := s.(Postgres)
+		if !ok {
+			log.Fatal("Could not cast service to postgres.")
 		}
+		pg.replicatedMigrateStep2()
 
 		// Restore data using yugabundle method, pass in ybai data dir so that data can be copied over
 		log.Info("Restoring data to newly installed YBA.")
@@ -264,8 +268,8 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		}
 
 		var statuses []common.Status
-		for _, name := range serviceOrder {
-			status, err := services[name].Status()
+		for service := range serviceManager.ReplicatedServices() {
+			status, err := service.Status()
 			if err != nil {
 				log.Fatal("failed to get status: " + err.Error())
 			}
@@ -313,9 +317,9 @@ Are you sure you want to continue?`
 		}
 		common.SetReplicatedBaseDir(state.Replicated.StoragePath)
 
-		for _, name := range serviceOrder {
-			if err := services[name].FinishReplicatedMigrate(); err != nil {
-				log.Fatal("could not finish replicated migration for " + name + ": " + err.Error())
+		for service := range serviceManager.ReplicatedServices() {
+			if err := service.FinishReplicatedMigrate(); err != nil {
+				log.Fatal("could not finish replicated migration for " + service.Name() + ": " + err.Error())
 			}
 		}
 		if err := replflow.Uninstall(); err != nil {
@@ -405,14 +409,15 @@ var replicatedRollbackCmd = &cobra.Command{
 
 func rollbackMigrations(state *ybactlstate.State) error {
 	log.Info("Stopping services")
-	for _, name := range serviceOrder {
-		if err := services[name].Stop(); err != nil {
-			log.Fatal("Could not stop " + name + ": " + err.Error())
+	for service := range serviceManager.ReplicatedServices() {
+		if err := service.Stop(); err != nil {
+			log.Fatal("Could not stop " + service.Name() + ": " + err.Error())
 		}
 	}
 
 	// Update Prometheus directory ownership here
-	prom := services[PrometheusServiceName].(Prometheus)
+	s := serviceManager.ServiceByName(PrometheusServiceName)
+	prom := s.(Prometheus)
 	err := prom.RollbackMigration(
 		state.Replicated.PrometheusFileUser,
 		state.Replicated.PrometheusFileUser,
@@ -448,7 +453,7 @@ func rollbackMigrations(state *ybactlstate.State) error {
 	}
 
 	log.Info("Removing yba-installer yugaware install")
-	common.Uninstall(serviceOrder, true)
+	common.Uninstall(true)
 	return nil
 }
 

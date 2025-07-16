@@ -266,6 +266,13 @@ class XClusterTestBase : public YBTest {
       const NamespaceId& namespace_id, MiniCluster& cluster,
       boost::optional<CoarseTimePoint> deadline = boost::none);
 
+  Status WaitForInValidSafeTimeOnAllTServers(
+      const NamespaceId& namespace_id, Cluster* cluster = nullptr,
+      boost::optional<CoarseTimePoint> deadline = boost::none);
+  Status WaitForInValidSafeTimeOnAllTServers(
+      const NamespaceId& namespace_id, MiniCluster& cluster,
+      boost::optional<CoarseTimePoint> deadline = boost::none);
+
   Status WaitForReadOnlyModeOnAllTServers(
       const NamespaceId& namespace_id, bool is_read_only = true, Cluster* cluster = nullptr,
       boost::optional<CoarseTimePoint> deadline = boost::none);

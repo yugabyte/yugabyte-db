@@ -792,7 +792,13 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_TruncateStmt:
-			ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel);
+			/* In Yugabyte TRUNCATE supports DDL event triggers */
+			if (IsYugaByteEnabled())
+				ProcessUtilitySlow(pstate, pstmt, queryString, context, params,
+								   queryEnv, dest, qc);
+			else
+				ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
+								NULL /* yb_relids */ );
 			break;
 
 		case T_CopyStmt:
@@ -880,8 +886,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				 * restriction by calling Async_Listen directly, but then it's
 				 * on them to provide some mechanism to process the message
 				 * queue.)  Note there seems no reason to forbid UNLISTEN.
+				 * YB: YB_YSQL_CONN_MGR denotes backend process created by
+				 * connection manager. They should be treated as regular backend
+				 * process, so they can execute LISTEN.
 				 */
-				if (MyBackendType != B_BACKEND)
+				if (MyBackendType != B_BACKEND && MyBackendType != YB_YSQL_CONN_MGR)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					/* translator: %s is name of a SQL command, eg LISTEN */
@@ -2040,6 +2049,25 @@ ProcessUtilitySlow(ParseState *pstate,
 
 			case T_AlterCollationStmt:
 				address = AlterCollation((AlterCollationStmt *) parsetree);
+				break;
+
+			case T_TruncateStmt:
+				{
+					Assert(IsYugaByteEnabled());
+					List *relids = NIL;
+					ListCell *cell;
+					ExecuteTruncate((TruncateStmt *) parsetree, isTopLevel,
+									&relids);
+
+					foreach (cell, relids)
+					{
+						Oid relid = lfirst_oid(cell);
+						ObjectAddressSet(address, RelationRelationId, relid);
+						EventTriggerCollectSimpleCommand(address, secondaryObject,
+														 parsetree);
+					}
+					commandCollected = true;
+				}
 				break;
 
 			default:

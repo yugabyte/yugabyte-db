@@ -14,7 +14,6 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 
 #include <boost/interprocess/mapped_region.hpp>
-#include <boost/interprocess/shared_memory_object.hpp>
 #include <boost/intrusive/list.hpp>
 
 #include "yb/gutil/bits.h"
@@ -24,6 +23,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/size_literals.h"
 
 using namespace std::literals;
@@ -44,35 +44,21 @@ namespace {
 
 class AllocatedSegment : public boost::intrusive::list_base_hook<> {
  public:
-  explicit AllocatedSegment(const std::string& instance_id, uint64_t id)
-      : id_(id),
-        shared_memory_object_(boost::interprocess::create_only,
-                              MakeSharedMemoryBigSegmentName(instance_id, id).c_str(),
-                              boost::interprocess::read_write) {
+  explicit AllocatedSegment(uint64_t id)
+      : id_(id) {
   }
 
   AllocatedSegment(AllocatedSegment&& rhs) = default;
 
-  Status Init(size_t size) {
-    try {
-      shared_memory_object_.truncate(size);
-      mapped_region_ = boost::interprocess::mapped_region(
-          shared_memory_object_, boost::interprocess::read_write);
-    } catch (boost::interprocess::interprocess_exception& exc) {
-      return STATUS_FORMAT(
-          RuntimeError, "Failed to allocate segment of size $0: $1", size, exc.what());
-    }
+  Status Init(const std::string& instance_id, size_t size) {
+    shared_memory_object_ = VERIFY_RESULT(InterprocessSharedMemoryObject::Create(
+        MakeSharedMemoryBigSegmentName(instance_id, id_), size));
+    mapped_region_ = VERIFY_RESULT(shared_memory_object_.Map());
     return Status::OK();
   }
 
   ~AllocatedSegment() {
-    if (shared_memory_object_.get_mapping_handle().handle ==
-            boost::interprocess::shared_memory_object().get_mapping_handle().handle) {
-      return;
-    }
-    std::string shared_memory_object_name(shared_memory_object_.get_name());
-    shared_memory_object_ = boost::interprocess::shared_memory_object();
-    boost::interprocess::shared_memory_object::remove(shared_memory_object_name.c_str());
+    shared_memory_object_.DestroyAndRemove();
   }
 
   uint64_t id() const {
@@ -97,8 +83,8 @@ class AllocatedSegment : public boost::intrusive::list_base_hook<> {
 
  private:
   const uint64_t id_;
-  boost::interprocess::shared_memory_object shared_memory_object_;
-  boost::interprocess::mapped_region mapped_region_;
+  InterprocessSharedMemoryObject shared_memory_object_;
+  InterprocessMappedRegion mapped_region_;
   CoarseTimePoint last_access_;
 };
 
@@ -149,8 +135,8 @@ class PgSharedMemoryPool::Impl : public SharedMemorySegmentHolder {
       return {};
     }
     auto id = ++id_serial_no_;
-    AllocatedSegment segment(instance_id_, id);
-    auto status = segment.Init(segment_size);
+    AllocatedSegment segment(id);
+    auto status = segment.Init(instance_id_, segment_size);
     if (!status.ok()) {
       LOG(WARNING) << status;
       return {};

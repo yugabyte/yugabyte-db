@@ -48,6 +48,10 @@ public class TestPgRegressFeature extends BasePgRegressTest {
 
   @Test
   public void testPgRegressFeature() throws Exception {
+    // This test asserts the state of COPY commands using pg_stat_progress_copy.
+    // By enabling round-robin warmup, we can determinstically populate the
+    // state of this table as the COPY command populates a per-backend cache.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     runPgRegressTest("yb_feature_serial_schedule");
   }
 }

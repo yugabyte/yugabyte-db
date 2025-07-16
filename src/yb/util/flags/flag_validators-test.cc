@@ -103,6 +103,15 @@ DEFINE_validator(flag_validators_test_set, FLAG_IN_SET_VALIDATOR("foo", "bar"));
 DEFINE_RUNTIME_int32(flag_validators_test_range, 0, "Between 0 and 9");
 DEFINE_validator(flag_validators_test_range, FLAG_RANGE_VALIDATOR(0, 9));
 
+DEFINE_RUNTIME_bool(flag_validators_test_required_by_1, false, "Flag for require check");
+DEFINE_RUNTIME_bool(flag_validators_test_requires_1, false, "Flag for require check");
+DEFINE_validator(flag_validators_test_requires_1,
+    FLAG_REQUIRES_FLAG_VALIDATOR(flag_validators_test_required_by_1));
+
+DEFINE_RUNTIME_bool(flag_validators_test_required_by_2, true, "Flag for require check");
+DEFINE_RUNTIME_bool(flag_validators_test_requires_2, true, "Flag for require check");
+DEFINE_validator(flag_validators_test_required_by_2,
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(flag_validators_test_requires_2));
 
 namespace yb {
 
@@ -206,6 +215,16 @@ TEST_F(FlagValidatorsTest, TestValidators) {
   ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_range", "9"));
   ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_range", "10",
                                "Must be in the range \\[0-9\\]"));
+
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_requires_1", "true",
+                               "Requires flag_validators_test_required_by_1 to be true"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_required_by_1", "true"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_requires_1", "true"));
+
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_required_by_2", "false",
+                               "Required by flag_validators_test_requires_2 to be true"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_requires_2", "false"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_required_by_1", "false"));
 }
 
 } // namespace yb

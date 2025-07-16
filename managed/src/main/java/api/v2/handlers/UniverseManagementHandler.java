@@ -25,6 +25,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
@@ -65,6 +66,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Request;
 
 @Slf4j
@@ -72,6 +74,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private RuntimeConfGetter confGetter;
   @Inject private ReleaseManager releaseManager;
   @Inject private SwamperHelper swamperHelper;
+  @Inject private ConfigHelper configHelper;
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private Commissioner commissioner;
 
@@ -425,6 +428,21 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     AttachDetachSpec attachDetachSpec =
         AttachDetachSpec.importSpec(
             attachUniverseSpec.getDownloadedSpecFile().getRef().path(), platformPaths, customer);
+    // Software (platform) version of dest, check with source version. Should be same
+    String destVersion =
+        StringUtils.substringBefore(
+            String.valueOf(
+                configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version")),
+            "-");
+    String srcVersion =
+        StringUtils.substringBefore(
+            attachDetachSpec.getUniverse().getUniverseDetails().getPlatformVersion(), "-");
+    if (!srcVersion.equalsIgnoreCase(destVersion)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Software versions do not match, please attach to a platform with software version: "
+              + srcVersion);
+    }
     attachDetachSpec.save(platformPaths, releaseManager, swamperHelper);
   }
 
@@ -455,7 +473,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   private void checkAttachDetachEnabled() {
     boolean attachDetachEnabled = confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled);
     if (!attachDetachEnabled) {
-      throw new PlatformServiceException(BAD_REQUEST, "Attach/Detach feature is not enabled");
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Attach/Detach feature is not enabled. Please set the runtime flag"
+              + " 'yb.attach_detach.enabled' to true.");
     }
+    String ybaVersion =
+        StringUtils.substringBefore(
+            String.valueOf(
+                configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version")),
+            "-");
   }
 }

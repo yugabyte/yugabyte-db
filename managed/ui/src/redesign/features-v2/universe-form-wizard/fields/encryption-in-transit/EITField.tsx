@@ -1,5 +1,4 @@
 import { FC } from 'react';
-import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch, Controller, FieldPath } from 'react-hook-form';
@@ -10,6 +9,7 @@ import {
   YBAutoComplete,
   YBCheckboxField
 } from '@yugabyte-ui-library/core';
+import { FieldContainer } from '../../components/DefaultComponents';
 import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
 
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
@@ -42,7 +42,9 @@ const CERTComponent: FC<CertCompProps> = ({
   generateCertFieldPath
 }) => {
   const { control, setValue } = useFormContext<SecuritySettingsProps>();
-  const { t } = useTranslation();
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.securitySettings.eitField'
+  });
 
   const isOptionEnabled = useWatch({ name: toggleFieldPath });
   const isSelfGenerated = useWatch({ name: generateCertFieldPath });
@@ -62,22 +64,8 @@ const CERTComponent: FC<CertCompProps> = ({
   };
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        width: '548px',
-        flexDirection: 'column',
-        backgroundColor: '#FBFCFD',
-        border: '1px solid #D7DEE4',
-        borderRadius: '8px',
-        padding: '16px 24px'
-      }}
-    >
-      <YBToggleField
-        control={control}
-        name={toggleFieldPath}
-        label="Enable Node-to-Node Encryption"
-      />
+    <FieldContainer sx={{ padding: '16px 24px' }}>
+      <YBToggleField control={control} name={toggleFieldPath} label={t(toggleFieldPath)} />
       {isOptionEnabled && (
         <Box sx={{ display: 'flex', flexDirection: 'row', width: '100%', mt: 4, gap: '16px' }}>
           <Box sx={{ mt: 4 }}>
@@ -94,7 +82,7 @@ const CERTComponent: FC<CertCompProps> = ({
                     sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}
                     data-testid="RootCertificateField-Container"
                   >
-                    <YBLabel>{'Select Root Certificate'}</YBLabel>
+                    <YBLabel>{t('selectRootCert')}</YBLabel>
                     <Box
                       sx={{
                         display: 'flex',
@@ -110,9 +98,7 @@ const CERTComponent: FC<CertCompProps> = ({
                         onChange={handleChange}
                         value={(value as unknown) as never}
                         ybInputProps={{
-                          placeholder: t(
-                            'universeForm.securityConfig.encryptionSettings.rootCertificatePlaceHolder'
-                          ),
+                          placeholder: t('rootCertificatePlaceHolder'),
                           error: !!fieldState.error,
                           helperText: fieldState.error?.message
                         }}
@@ -130,18 +116,20 @@ const CERTComponent: FC<CertCompProps> = ({
               size="large"
               name={generateCertFieldPath}
               control={control}
-              label="Generate Self Signed Certificate"
+              label={t('genSelfSignedCert')}
             />
           </Box>
         </Box>
       )}
-    </Box>
+    </FieldContainer>
   );
 };
 
 export const EITField: FC<EARProps> = ({ disabled }) => {
   const { control, setValue } = useFormContext<SecuritySettingsProps>();
-  const { t } = useTranslation();
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.securitySettings.eitField'
+  });
 
   const useSameCertValue = useWatch({ name: USE_SAME_CERT_FIELD });
 
@@ -150,7 +138,7 @@ export const EITField: FC<EARProps> = ({ disabled }) => {
       <YBCheckboxField
         control={control}
         name={USE_SAME_CERT_FIELD}
-        label="Use the same certificate for Node-to-Node and Client-to-Node encryption."
+        label={t('useSameCert')}
         size="large"
       ></YBCheckboxField>
       {useSameCertValue ? (

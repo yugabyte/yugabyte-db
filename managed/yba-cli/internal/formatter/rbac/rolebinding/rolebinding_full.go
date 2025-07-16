@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/rbac/role"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/user"
@@ -113,7 +114,7 @@ func (fr *FullRoleBindingContext) Write() error {
 			LdapSpecifiedRole:  userInfo.LdapSpecifiedRole,
 			OidcJwtAuthToken:   userInfo.OidcJwtAuthToken,
 			Primary:            userInfo.GetPrimary(),
-			Role:               userInfo.Role,
+			Role:               util.GetStringPointer("-"),
 			Timezone:           userInfo.Timezone,
 			UserType:           userInfo.UserType,
 		}

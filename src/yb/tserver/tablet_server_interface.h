@@ -94,6 +94,8 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual ConcurrentPointerReference<TServerSharedData> SharedObject() = 0;
 
+  virtual docdb::ObjectLockSharedStateManager* ObjectLockSharedStateManager() const = 0;
+
   virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
 

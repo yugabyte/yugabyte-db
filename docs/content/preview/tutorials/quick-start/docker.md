@@ -88,12 +88,12 @@ Use the [yugabyted](../../../reference/configuration/yugabyted/) utility to crea
 To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh
-docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
+docker run -d --name yugabyte -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
  yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
  --background=false
 ```
 
-If you are running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`. This is necessary because Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail unless you forward the port as shown. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+If you are running macOS Monterey, replace `-p 7000:7000` with `-p 7001:7000`. This is necessary because Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail unless you forward the port as shown. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
 
 Run the following command to check the container status:
 
@@ -142,14 +142,14 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
   ```sh
   docker run -d --name yugabyte \
-           -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
+           -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
            -v ~/yb_data:/home/yugabyte/yb_data \
            yugabytedb/yugabyte:latest bin/yugabyted start \
            --base_dir=/home/yugabyte/yb_data \
            --background=false
   ```
 
-  If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
+  If running macOS Monterey, replace `-p 7000:7000` with `-p 7001:7000`.
 
 {{< note title="Base directory" >}}
 

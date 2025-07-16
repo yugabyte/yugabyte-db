@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). The following tables highlight the important differences in feature support between YCQL and Cassandra 3.4.2.
+Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Language (CQL)](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/index.html). The following tables highlight the important differences in feature support between YCQL and Cassandra 3.4.2.
 
 ## Data types
 

@@ -51,6 +51,10 @@ static const char* const kMessagesColumnName = "messages";
 static const char* const kDefaultCassandraUsername = "cassandra";
 static const char* const kDefaultCassandraPassword = "cassandra";
 
+static const char* const kPgClassOidColumnName = "oid";
+static const char* const kPgClassRelFileNodeColumnName = "relfilenode";
+static const char* const kPgClassRelNamespaceColumnName = "relnamespace";
+
 constexpr uint32_t kSysCatalogSchemaVersion = 0;
 
 }  // namespace master

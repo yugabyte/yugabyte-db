@@ -20,6 +20,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/constants.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
@@ -83,6 +84,7 @@
 #include "yb/master/restore_sys_catalog_state.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -108,6 +110,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
@@ -253,7 +256,7 @@ Status CatalogManager::DoCreateSnapshot(const CreateSnapshotRequestPB* req,
 }
 
 Status CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), leader_term);
   return Status::OK();
@@ -461,16 +464,17 @@ Status CatalogManager::RepackSnapshotsForBackup(
     ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
-
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
     auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode) &&
                                   include_ddl_in_progress_tables
                               ? kUseRelfilenodeFormatVersion
                               : kUseBackupRowEntryFormatVersion;
+
     snapshot.set_format_version(format_version);
 
     SysSnapshotEntryPB& sys_entry = *snapshot.mutable_entry();
+    auto snapshot_hybrid_time = ReadHybridTime::FromUint64(sys_entry.snapshot_hybrid_time());
     snapshot.mutable_backup_entries()->Reserve(sys_entry.entries_size());
 
     unordered_set<TableId> tables_to_skip;
@@ -505,18 +509,29 @@ Status CatalogManager::RepackSnapshotsForBackup(
         }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
-          const auto res = GetPgSchemaName(table_info->id(), l.data());
+          // Determine if this DocDB table is committed as of snapshot_hybrid_time.
+          // A committed DocDB table corresponds to a committed pg_table whose relfilenode maps to
+          // this DocDB table.
+          // Uncommitted DocDB tables can include:
+          // - Orphaned tables: dropped in YSQL but still present in DocDB.
+          // - Temporary tables: created during an ongoing DDL operation when the snapshot was
+          // taken.
+          const auto res =
+              GetYsqlManager().GetPgSchemaName(table_info->id(), l.data(), snapshot_hybrid_time);
           if (!res.ok()) {
-            // Check for the scenario where the table is dropped by YSQL but not docdb - this can
-            // happen due to a bug with the async nature of drops in PG with docdb.
-            // If this occurs don't block the entire backup, instead skip this table(see gh #13361).
+            // Handle the case where the table was dropped in YSQL but not in DocDB.
+            // This can occur in two scenarios:
+            // - Before DDL atomicity was implemented, where PG and DocDB drops were not always in
+            // sync.
+            // - A snapshot is being exported in the middle of a DDL operation.
+            // If this occurs don't block the entire backup. Instead, skip exporting this table.
             if (res.status().IsNotFound() &&
-                res.status().message().ToBuffer().find(kRelnamespaceNotFoundErrorStr)
-                    != string::npos) {
+                MasterError(res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
               snapshot.mutable_backup_entries()->RemoveLast();
-              // Keep track of table so we skip its tablets as well. Note, since tablets always
-              // follow their table in sys_entry, we don't need to check previous tablet entries.
+              // Keep track of table so we skip its tablets as well. Note, since tablets
+              // always follow their table in sys_entry, we don't need to check previous
+              // tablet entries.
               tables_to_skip.insert(table_info->id());
               continue;
             }
@@ -725,6 +740,13 @@ Status CatalogManager::DoImportSnapshotMeta(
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, use_relfilenode, tables_data));
 
   ImportSnapshotRemoveInvalidTables(use_relfilenode, tables_data);
+
+  // PHASE 6: Adjust OID counters.
+  for (const auto& [_old_namespace_id, external_namespace_snapshot_data] : *namespace_map) {
+    if (external_namespace_snapshot_data.db_type == YQL_DATABASE_PGSQL) {
+      RETURN_NOT_OK(AdvanceOidCounters(external_namespace_snapshot_data.new_namespace_id));
+    }
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
@@ -1219,7 +1241,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
   // read sys.catalog data as of export_time to get the list of tablets that were running at that
   // time.
   RepeatedPtrField<BackupRowEntryPB> backup_entries;
-  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet());
   LOG(INFO) << Format("Opening temporary SysCatalog DocDB for snapshot $0 at read_time $1",
       snapshot_id, read_time);
   auto db = VERIFY_RESULT(RestoreSnapshotToTmpRocksDb(tablet.get(), snapshot_id, read_time));
@@ -1956,7 +1978,7 @@ Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
           << ", table type: " << TableType_Name(table->GetTableType());
       // If not a debug build, ignore pg_schema_name.
     } else {
-      const string internal_schema_name = VERIFY_RESULT(GetPgSchemaName(
+      const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
           table->id(), table_lock.data()));
       const string& external_schema_name = snapshot_data->pg_schema_name;
       if (internal_schema_name != external_schema_name) {
@@ -2693,7 +2715,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   // Restore the pg_catalog tables.
   // Since lifetime of tablet_peer and doc_read_context matches in this case. We could
   // use tablet peer reference counter for doc read context.
-  auto doc_read_context = rpc::SharedField(
+  auto doc_read_context = SharedField(
       tablet_peer(), &this->doc_read_context());
   if (FLAGS_enable_ysql && state->IsYsqlRestoration()) {
     // Restore sequences_data table.

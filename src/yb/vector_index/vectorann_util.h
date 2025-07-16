@@ -17,6 +17,8 @@
 #include <queue>
 #include <thread>
 
+#include "yb/ann_methods/hnswlib_wrapper.h"
+
 #include "yb/common/vector_types.h"
 
 #include "yb/rocksdb/compaction_filter.h"
@@ -28,7 +30,6 @@
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/vector_index_if.h"
-#include "yb/vector_index/hnswlib_wrapper.h"
 
 namespace yb::vector_index {
 
@@ -124,7 +125,7 @@ Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
     VectorIndexFactory<Vector, DistanceResult> index_factory,
     const std::vector<VectorIndexIfPtr<Vector, DistanceResult>>& indexes,
     size_t min_capacity = 0) {
-  VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory();
+  VectorIndexIfPtr<Vector, DistanceResult> merged_index = index_factory(FactoryMode::kCreate);
 
   size_t total_capacity = 0;
   for (const auto& index : indexes) {

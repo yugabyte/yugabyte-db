@@ -24,6 +24,7 @@ const ybaWait = 8
 const initialized = 9
 const asRootRetry = 10
 const improvedCertHandling = 11
+const stateServices = 12
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -274,6 +275,14 @@ func migrateCertHandler(state *State) error {
 	return nil
 }
 
+func migrateStateServices(state *State) error {
+	state.Services = Services{
+		PerfAdvisor: false, // Upgrade case will not have perf advisor enabled
+		Platform:    true,  // Platform is always enabled
+	}
+	return nil
+}
+
 // migrateInitialized migrates the initialized flag - all previous installs
 // have been initialized so set to true
 func migrateInitialized(state *State) error {
@@ -293,6 +302,7 @@ var migrations map[int]migrator = map[int]migrator{
 	initialized:          migrateInitialized,
 	asRootRetry:          migrateAsRootConfig,
 	improvedCertHandling: migrateCertHandler,
+	stateServices:        migrateStateServices,
 }
 
 func getMigrationHandler(toSchema int) migrator {

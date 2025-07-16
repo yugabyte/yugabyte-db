@@ -18,26 +18,28 @@
 #include "yb/util/tostring.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
+
+namespace unum::usearch {
+
+struct index_dense_config_t;
+template <typename, typename> class index_dense_gt;
+
+}
 
 namespace yb::hnsw {
 
 using VectorNo = uint32_t;
+using UsearchIndexDense = unum::usearch::index_dense_gt<vector_index::VectorId, uint32_t>;
 
 struct Config {
   Config() = default;
-  explicit Config(const unum::usearch::index_dense_config_t& input)
-      : connectivity_base(input.connectivity_base),
-        connectivity(input.connectivity),
-        expansion_search(input.expansion_search) {
-  }
+  explicit Config(const unum::usearch::index_dense_config_t& input);
 
   uint64_t connectivity_base = 0;
   uint64_t connectivity = 0;
-  uint64_t expansion_search = 0; // TODO(vector_index) Don't need to store it.
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(connectivity_base, connectivity, expansion_search);
+    return YB_STRUCT_TO_STRING(connectivity_base, connectivity);
   }
 };
 
@@ -65,7 +67,7 @@ struct Header {
   size_t vector_data_amount_per_block;
   std::vector<LayerInfo> layers;
 
-  void Init(const unum::usearch::index_dense_gt<vector_index::VectorId>& index);
+  void Init(const UsearchIndexDense& index);
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(

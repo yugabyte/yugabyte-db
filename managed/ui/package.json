@@ -26,7 +26,8 @@
     ],
     "moduleNameMapper": {
       "\\.(css|less|scss)$": "<rootDir>/__mocks__/styleMock.js",
-      "\\.css\\?inline$": "<rootDir>/__mocks__/styleMock.js"
+      "\\.css\\?inline$": "<rootDir>/__mocks__/styleMock.js",
+      "^@app/(.*)$": "<rootDir>/src/$1"
     }
   },
   "engines": {

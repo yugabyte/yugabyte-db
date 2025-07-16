@@ -13,9 +13,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -125,6 +123,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     setCheckNodesAreSafeToTakeDown(mockClient);
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    lenient().when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
 
     factory
         .forUniverse(defaultUniverse)
@@ -542,6 +541,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.CleanUpPGUpgradeDataDir)
+        .addTasks(TaskType.UpdatePitrConfigIntermittentMinRecoverTime)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)

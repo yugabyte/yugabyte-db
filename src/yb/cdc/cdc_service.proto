@@ -172,6 +172,7 @@ message InitVirtualWALForCDCRequestPB {
   // Tablets with start hash range falling in these slot's hash range will be polled.
   optional ReplicationSlotHashRangePB slot_hash_range = 4;
   optional uint64 active_pid = 5;
+  optional AshMetadataPB ash_metadata = 6;
 }
 
 message InitVirtualWALForCDCResponsePB {
@@ -180,6 +181,7 @@ message InitVirtualWALForCDCResponsePB {
 
 message GetLagMetricsRequestPB {
   optional bytes stream_id = 1;
+  optional AshMetadataPB ash_metadata = 2;
 }
 
 message GetLagMetricsResponsePB {
@@ -190,6 +192,7 @@ message GetLagMetricsResponsePB {
 message GetConsistentChangesRequestPB {
   optional uint64 session_id = 1;
   optional bytes stream_id = 2;
+  optional AshMetadataPB ash_metadata = 3;
 }
 
 message GetConsistentChangesResponsePB {
@@ -207,6 +210,7 @@ message GetConsistentChangesResponsePB {
 
 message DestroyVirtualWALForCDCRequestPB {
   optional uint64 session_id = 1;
+  optional AshMetadataPB ash_metadata = 2;
 }
 
 message DestroyVirtualWALForCDCResponsePB {
@@ -221,6 +225,7 @@ message UpdateAndPersistLSNRequestPB {
   // The actual value which is persisted might differ from this value
   // and is returned in the response of this RPC.
   optional uint64 restart_lsn = 4;
+  optional AshMetadataPB ash_metadata = 5;
 }
 
 message UpdateAndPersistLSNResponsePB {
@@ -232,6 +237,7 @@ message UpdatePublicationTableListRequestPB {
   optional uint64 session_id = 1;
   optional bytes stream_id = 2;
   repeated string table_id = 3;
+  optional AshMetadataPB ash_metadata = 4;
 }
 
 message UpdatePublicationTableListResponsePB {

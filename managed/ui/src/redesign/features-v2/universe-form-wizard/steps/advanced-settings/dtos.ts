@@ -1,9 +1,3 @@
-import {
-  UniverseInfo,
-  UniverseSpec,
-  UniverseNetworkingSpec
-} from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-
 export interface InstanceTag {
   name: string;
   value: string;

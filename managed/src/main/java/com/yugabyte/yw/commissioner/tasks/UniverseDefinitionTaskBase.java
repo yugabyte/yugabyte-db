@@ -2775,7 +2775,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void createStartYbcProcessTasks(Set<NodeDetails> nodesToBeStarted, boolean isSystemd) {
     // Create Start yb-controller tasks for non-systemd only
-    if (!isSystemd || confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableConfigureServer)) {
+    if (!isSystemd || !confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)) {
       createStartYbcTasks(nodesToBeStarted).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
@@ -3879,6 +3879,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     } else {
       log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
+
+    // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
+    // as PITR configs are only valid from the completion of software upgrade finalization
+    createUpdatePitrConfigIntermittentMinRecoverTimeTask();
 
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,

@@ -127,13 +127,12 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	 */
 	crel = table_open(RelationRelationId, RowExclusiveLock);
 
-	bool		yb_use_regular_txn_block =
-		*YBCGetGFlags()->TEST_ysql_yb_ddl_transaction_block_enabled;
+	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
 
 	if (IsYugaByteEnabled())
 	{
 		if (yb_use_regular_txn_block)
-			YBSetDdlState(YB_DDL_MODE_BREAKING_CHANGE);
+			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
 		else
 			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
 	}

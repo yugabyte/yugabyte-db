@@ -68,31 +68,17 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	if err != nil {
 		return nil, err
 	}
-	releaseVersion, err := helpers.ExtractReleaseVersion(pkgName)
-	if err != nil {
-		return nil, err
-	}
-	tmpDir := filepath.Join(h.param.GetRemoteTmp(), pkgName)
 
 	// 2) figure out home dir
-	home := ""
-	if h.param.GetYbHomeDir() != "" {
-		home = h.param.GetYbHomeDir()
-	} else {
+	if h.param.GetYbHomeDir() == "" {
 		err := errors.New("ybHomeDir is required")
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
-	ybSoftwareDir := filepath.Join(home, "yb-software", pkgFolder)
+	ybSoftwareDir := filepath.Join(h.param.GetYbHomeDir(), "yb-software", pkgFolder)
 
-	// 3) define our sequence of shell steps
-	err = h.execShellCommands(ctx, home, ybSoftwareDir, releaseVersion, tmpDir)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4) symlink for master & tserver
-	err = h.setupSymlinks(ctx, home, ybSoftwareDir)
+	// 3) symlink for master & tserver
+	err = h.setupSymlinks(ctx, h.param.GetYbHomeDir(), ybSoftwareDir)
 	if err != nil {
 		return nil, err
 	}
@@ -103,43 +89,6 @@ func (h *InstallSoftwareHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 			InstallSoftwareOutput: &pb.InstallSoftwareOutput{},
 		},
 	}, nil
-}
-
-func (h *InstallSoftwareHandler) execShellCommands(
-	ctx context.Context,
-	home string,
-	ybSoftwareDir string,
-	releaseVersion string,
-	tmpDir string,
-) error {
-	releasesDir := filepath.Join(home, "releases", releaseVersion)
-	steps := []struct {
-		Desc string
-		Cmd  string
-	}{
-		{"make-yb-software-dir", fmt.Sprintf("mkdir -p %s", ybSoftwareDir)},
-		{
-			"untar-software",
-			fmt.Sprintf("tar -xzvf %s --strip-components=1 -C %s", tmpDir, ybSoftwareDir),
-		},
-		{"make-release-dir", fmt.Sprintf("mkdir -p %s", releasesDir)},
-		{"copy-package-to-release", fmt.Sprintf("cp %s %s", tmpDir, releasesDir)},
-		{"remove-temp-package", fmt.Sprintf("rm -rf %s", tmpDir)},
-		{"post-install", filepath.Join(ybSoftwareDir, "bin/post_install.sh")},
-		{
-			"remove-older-release",
-			fmt.Sprintf(
-				`ls "%s/releases" -t | tail -n +%d | xargs -I{} --no-run-if-empty rm -rv "%s/releases/{}" --`,
-				home,
-				1,
-				home,
-			),
-		},
-	}
-	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (h *InstallSoftwareHandler) setupSymlinks(
@@ -158,7 +107,7 @@ func (h *InstallSoftwareHandler) setupSymlinks(
 			src := filepath.Join(ybSoftwareDir, f)
 			dst := filepath.Join(targetDir, f)
 			desc := fmt.Sprintf("symlink-%s-to-%s", src, dst)
-			cmd := fmt.Sprintf("unlink %s > /dev/null 2>&1; ln -sf %s %s", dst, src, dst)
+			cmd := fmt.Sprintf("rm -rf %s && ln -sf %s %s", dst, src, dst)
 			if _, err := module.RunShellCmd(ctx, h.username, desc, cmd, h.logOut); err != nil {
 				return err
 			}

@@ -521,3 +521,10 @@ SELECT * FROM test_drop_pk_column_composite ORDER BY v;
 CREATE TABLE test_drop_pk_column_part (id int PRIMARY KEY, v int) PARTITION BY RANGE (id);
 CREATE TABLE test_drop_pk_column_part1 PARTITION OF test_drop_pk_column_part FOR VALUES FROM (1) TO (10);
 ALTER TABLE test_drop_pk_column_part DROP COLUMN id; -- should fail.
+-- test rewrite on child table with a primary key column.
+CREATE TABLE parent(a int, c int) PARTITION BY RANGE(a);
+CREATE TABLE child(a int, c int, primary key (c));
+ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1) TO (100);
+ALTER TABLE parent DROP COLUMN c;
+INSERT INTO parent VALUES (1);
+SELECT * FROM parent;

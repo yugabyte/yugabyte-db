@@ -1,13 +1,16 @@
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
+import { FieldContainer } from '../../components/DefaultComponents';
+import { CloudType } from '../../../../helpers/dtos';
 
 const { Box, Typography, styled } = mui;
 
 interface PublicIPFieldProps {
   disabled: boolean;
+  providerCode: string;
 }
 
 const ASSIGN_PUBLIC_IP_FIELD = 'assignPublicIP';
@@ -21,31 +24,27 @@ export const StyledSubText = styled(Typography)(({ theme }) => ({
   marginLeft: theme.spacing(4)
 }));
 
-export const AssignPublicIPField: FC<PublicIPFieldProps> = ({ disabled }) => {
-  const { control } = useFormContext<SecuritySettingsProps>();
-  const { t } = useTranslation();
+export const AssignPublicIPField: FC<PublicIPFieldProps> = ({ disabled, providerCode }) => {
+  const { control, setValue } = useFormContext<SecuritySettingsProps>();
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.securitySettings.publicIPField'
+  });
+
+  useEffect(() => {
+    providerCode === CloudType.azu
+      ? setValue(ASSIGN_PUBLIC_IP_FIELD, false)
+      : setValue(ASSIGN_PUBLIC_IP_FIELD, true);
+  }, [providerCode]);
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        width: '548px',
-        flexDirection: 'column',
-        backgroundColor: '#FBFCFD',
-        border: '1px solid #D7DEE4',
-        borderRadius: '8px',
-        padding: '16px 24px'
-      }}
-    >
+    <FieldContainer sx={{ padding: '16px 24px' }}>
       <YBCheckboxField
         name={ASSIGN_PUBLIC_IP_FIELD}
         control={control}
-        label={'Assign Public IP'}
+        label={t('label')}
         size="large"
       />
-      <StyledSubText>
-        Assign a public IP to the DB servers for connections over the internet.
-      </StyledSubText>
-    </Box>
+      <StyledSubText>{t('subText')}</StyledSubText>
+    </FieldContainer>
   );
 };

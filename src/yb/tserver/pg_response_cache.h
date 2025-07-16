@@ -40,14 +40,7 @@ class MetricEntity;
 
 namespace tserver {
 
-class PgResponseCacheWaiter {
- public:
-  virtual ~PgResponseCacheWaiter() = default;
-
-  virtual void SendResponse() = 0;
-  virtual std::pair<PgPerformResponsePB&, rpc::Sidecars&> ResponseAndSidecars() = 0;
-};
-
+class PgResponseCacheWaiter;
 using PgResponseCacheWaiterPtr = std::shared_ptr<PgResponseCacheWaiter>;
 
 class PgResponseCache {
@@ -87,6 +80,13 @@ class PgResponseCache {
   std::shared_ptr<Impl> impl_;
 
   DISALLOW_COPY_AND_ASSIGN(PgResponseCache);
+};
+
+class PgResponseCacheWaiter {
+ public:
+  virtual ~PgResponseCacheWaiter() = default;
+
+  virtual void Apply(const PgResponseCache::Response& response) = 0;
 };
 
 }  // namespace tserver

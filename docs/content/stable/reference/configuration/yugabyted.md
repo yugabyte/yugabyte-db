@@ -642,6 +642,8 @@ For example, finalize the upgrade process after upgrading all the nodes of the Y
 yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 ```
 
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
+
 #### Flags
 
 -h | --help
@@ -750,6 +752,12 @@ Create a local single-node cluster with encryption in transit and authentication
 ./bin/yugabyted start --secure
 ```
 
+{{<tags/feature/ea idea="1854">}} Create a local single-node universe with IPv6 address:
+
+```sh
+./bin/yugabyted start --advertise_address ::1
+```
+
 Create a single-node locally and join other nodes that are part of the same cluster:
 
 ```sh
@@ -770,10 +778,10 @@ For more advanced examples, see [Examples](#examples).
 : Print the command-line help and exit.
 
 --advertise_address *bind-ip*
-: IP address or local hostname on which yugabyted will listen.
+: IP (v4 or v6) address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
+: The IP (v4 or v6) or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
 --config *path-to-config-file*
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
@@ -1332,23 +1340,31 @@ To destroy a local multi-node cluster, use the `destroy` command with the `--bas
 
 If the cluster has more than three nodes, execute a `destroy --base_dir=<path to directory>` command for each additional node until all nodes are destroyed.
 
-### Create a single-node cluster
+### Create a single-node universe
 
-Create a single-node cluster with a given [base directory](#base-directory). Note the need to provide a fully-qualified directory path for the `base_dir` parameter.
+Create a single-node universe with a given [base directory](#base-directory). You need to provide a fully-qualified directory path for the `base_dir` parameter.
 
 ```sh
 ./bin/yugabyted start --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
+Alternatively, you can provide an IPv6 address ({{<tags/feature/ea idea="1854">}}). For example:
+
+```sh
+./bin/yugabyted start --advertise_address=::1 \
+    --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
+```
+
 To create secure single-node cluster with [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/authentication-ysql/) enabled, add the `--secure` flag as follows:
 
 ```sh
+# Using IPv4
 ./bin/yugabyted start --secure --advertise_address=127.0.0.1 \
     --base_dir=/Users/username/yugabyte-{{< yb-version version="stable" >}}/data1
 ```
 
-When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
+When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 
 ### Create certificates for a secure local multi-node cluster
 
@@ -2116,7 +2132,7 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
 
 1. Repeat steps 1 and 2 for all nodes.
 
-1. Finish the upgrade by running `yugabyted finalize_upgrade` command. This command can be run from any node.
+1. Finish the upgrade by running the `yugabyted finalize_upgrade` command. Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
     ```sh
     ./bin/yugabyted finalize_upgrade --base_dir <path_to_base_dir>

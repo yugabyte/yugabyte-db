@@ -36,6 +36,8 @@ DEFINE_RUNTIME_uint64(ysql_node_level_mutation_reporting_interval_ms, 5 * 1000,
                       "analyze service which tracks table mutation counters at the cluster level.");
 DEFINE_RUNTIME_int32(ysql_node_level_mutation_reporting_timeout_ms, 5 * 1000,
                       "Timeout for mutation reporting rpc to auto-analyze service.");
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 
 namespace yb {
 
@@ -73,6 +75,11 @@ Status TableMutationCountSender::Stop() {
 }
 
 Status TableMutationCountSender::DoSendMutationCounts() {
+  if (!FLAGS_ysql_enable_auto_analyze_infra || !FLAGS_ysql_enable_auto_analyze) {
+    VLOG_WITH_FUNC(4) << "Auto analyze service is disabled";
+    return Status::OK();
+  }
+
   // Send mutations to the auto analyze stateful service that aggregates mutations from all nodes
   // and triggers ANALYZE as necessary.
   auto mutation_counts = server_.GetPgNodeLevelMutationCounter().GetAndClear();

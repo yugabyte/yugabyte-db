@@ -21,6 +21,8 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
+DECLARE_bool(vector_index_disable_compactions);
+
 using namespace std::literals;
 
 namespace yb::pgwrapper {
@@ -29,6 +31,11 @@ constexpr auto kBackfillSleepSec = 10 * kTimeMultiplier;
 
 class PgVectorIndexITest : public LibPqTestBase {
  public:
+  void SetUp() override {
+    FLAGS_vector_index_disable_compactions = false;
+    LibPqTestBase::SetUp();
+  }
+
   Result<PGConn> ConnectAndInit(std::optional<int> num_tablets = std::nullopt) {
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));

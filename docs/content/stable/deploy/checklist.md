@@ -145,6 +145,11 @@ cat /proc/cpuinfo | grep sse4.2
 ### Disks
 
 - SSDs (solid state disks) are required.
+
+  - YugabyteDB Anywhere additionally supports the use of GCP Hyperdisks when deploying universes on GCP (specifically, the Balanced and Extreme options).
+
+    Note: These disk types are only available in some GCP regions.
+
 - Both local or remote attached storage work with YugabyteDB. Because YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
 - Multi-disk nodes:
 

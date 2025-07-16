@@ -66,6 +66,8 @@ func NewPlatform(version string) Platform {
 	}
 }
 
+func (Platform) IsReplicated() bool { return true }
+
 func (plat Platform) devopsDir() string {
 	return plat.PlatformPackages + "/devops"
 }
@@ -690,4 +692,13 @@ func (plat Platform) pemFromDocker() (string, error) {
 		return "", fmt.Errorf("failed to get pem file from container: %w", out.Error)
 	}
 	return out.StdoutString(), nil
+}
+
+func (plat Platform) Reconfigure() error {
+	log.Info("Reconfiguring platform")
+	if err := config.GenerateTemplate(plat); err != nil {
+		return fmt.Errorf("failed to generate template: %w", err)
+	}
+	log.Info("Platform reconfigured")
+	return nil
 }

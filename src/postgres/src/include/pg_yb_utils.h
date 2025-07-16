@@ -153,11 +153,11 @@ extern int32_t yb_follower_read_staleness_ms;
 		HeapTuple   pg_db_tuple; \
 		SysScanDesc pg_db_scan = systable_beginscan( \
 			pg_db, \
-			InvalidOid /* indexId */, \
-			false /* indexOK */, \
-			NULL /* snapshot */, \
-			0 /* nkeys */, \
-			NULL /* key */); \
+			InvalidOid /* indexId */ , \
+			false /* indexOK */ , \
+			NULL /* snapshot */ , \
+			0 /* nkeys */ , \
+			NULL /* key */ ); \
 		while (HeapTupleIsValid(pg_db_tuple = systable_getnext(pg_db_scan))) \
 		{ \
 
@@ -205,8 +205,6 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
 extern bool IsYBSystemColumn(int attrNum);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
-
-extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
@@ -687,6 +685,12 @@ extern char *yb_default_replica_identity;
  */
 extern bool yb_test_fail_table_rewrite_after_creation;
 
+/*
+ * If set to true, force a full catalog cache refresh before
+ * executing the next top level statement.
+ */
+extern bool yb_test_preload_catalog_tables;
+
 /* GUC variable yb_test_stay_in_global_catalog_version_mode. */
 extern bool yb_test_stay_in_global_catalog_version_mode;
 
@@ -781,7 +785,10 @@ extern bool yb_enable_docdb_vector_type;
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 
-extern bool yb_skip_data_insert_for_xcluster_target;
+/*
+ * GUC to indicate DDL executed in a Automatic xCluster mode target universe.
+ */
+extern bool yb_xcluster_automatic_mode_target_ddl;
 
 extern bool yb_force_early_ddl_serialization;
 
@@ -828,9 +835,14 @@ extern const char *YbBitmapsetToString(Bitmapset *bms);
  */
 bool		YBIsInitDbAlreadyDone();
 
+extern bool YBIsDdlTransactionBlockEnabled();
 extern int	YBGetDdlNestingLevel();
-extern NodeTag YBGetDdlOriginalNodeTag();
+extern NodeTag YBGetCurrentStmtDdlNodeTag();
+extern bool YBIsCurrentStmtDdl();
+extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern void YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
+											  CommandTag commandTag);
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 extern bool YbTrackPgTxnInvalMessagesForAnalyze();
@@ -847,7 +859,7 @@ typedef enum YbSysCatalogModificationAspect
 	/*
 	 * Indicates if the statement runs in an autonomous transaction when
 	 * transactional DDL support is enabled.
-	 * Always unset if TEST_ysql_yb_ddl_transaction_block_enabled is false.
+	 * Always unset if yb_ddl_transaction_block_enabled is false.
 	 */
 	YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE = 8,
 } YbSysCatalogModificationAspect;
@@ -874,7 +886,7 @@ typedef enum YbDdlMode
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
-extern void YBSetDdlState(YbDdlMode mode);
+extern void YBAddDdlTxnState(YbDdlMode mode);
 extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
@@ -883,6 +895,7 @@ typedef struct YbDdlModeOptional
 	YbDdlMode	value;
 } YbDdlModeOptional;
 
+extern YbDdlMode YBGetCurrentDdlMode();
 extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
 									  ProcessUtilityContext context);
 void		YBAddModificationAspects(YbDdlMode mode);

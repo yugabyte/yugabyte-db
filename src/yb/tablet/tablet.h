@@ -527,12 +527,13 @@ class Tablet : public AbstractTablet,
   const scoped_refptr<MetricEntity>& GetTableMetricsEntity() const {
     return table_metrics_entity_;
   }
+
   const scoped_refptr<MetricEntity>& GetTabletMetricsEntity() const {
     return tablet_metrics_entity_;
   }
 
   // Returns a reference to this tablet's memory tracker.
-  const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
+  const MemTrackerPtr& mem_tracker() const { return mem_tracker_; }
 
   TableType table_type() const override { return table_type_; }
 
@@ -825,16 +826,7 @@ class Tablet : public AbstractTablet,
   Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
 
   bool HasActiveFullCompaction();
-
-  bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
-    bool has_active_scheduled = full_compaction_task_pool_token_ != nullptr
-                                    ? !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
-                                    : false;
-    bool has_active_admin = admin_full_compaction_task_pool_token_ != nullptr
-                                ? !admin_full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
-                                : false;
-    return has_active_scheduled || has_active_admin;
-  }
+  bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_);
 
   bool HasActiveTTLFileExpiration();
 
@@ -1308,6 +1300,8 @@ class Tablet : public AbstractTablet,
   // Thread pool token for triggering admin full compactions.
   std::unique_ptr<ThreadPoolToken> admin_full_compaction_task_pool_token_
       GUARDED_BY(full_compaction_token_mutex_);
+
+  std::atomic<size_t> num_active_full_compactions_ GUARDED_BY(full_compaction_token_mutex_) = 0;
 
   // Pointer to shared thread pool in TsTabletManager. Managed by the FullCompactionManager.
   ThreadPool* full_compaction_pool_ = nullptr;

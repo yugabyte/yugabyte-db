@@ -13,6 +13,12 @@ type: docs
 
 Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
 
+{{< note title="Setting flags in YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere, set flags using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+{{< /note >}}
+
 ## Syntax
 
 ```sh
@@ -1483,7 +1489,7 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
-Catalog flags are {{<tags/feature/ea>}}.
+Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### ysql_catalog_preload_additional_table_list
 
@@ -1635,6 +1641,22 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
+## Cost-based optimizer flag
+
+Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO).
+
+See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
+
+##### ysql_yb_enable_cbo
+
+{{<tags/feature/ea idea="483">}}Available in v2024.2.4 or later. Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+Default: `legacy_mode`
+
 ## Advanced flags
 
 ##### --allowed_preview_flags_csv
@@ -1643,9 +1665,17 @@ Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/r
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
-{{<warning>}}
-Adding flags to this list doesn't automatically change any settings. It only grants permission for the flag to be modified. You still need to configure the flag separately after adding it to this list.
+{{<warning title="You still need to set the flag">}}
+Adding flags to this list doesn't automatically change any settings. It only _grants permission_ for the flag to be modified.
+
+You still need to configure the flag separately after adding it to this list.
 {{</warning>}}
+
+{{<note title="Using YugabyteDB Anywhere">}}
+If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_flags_csv` using the [Edit Flags](../../../yugabyte-platform/manage-deployments/edit-config-flags/#modify-configuration-flags) feature.
+
+After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
+{{</note>}}
 
 ##### backfill_index_client_rpc_timeout_ms
 
@@ -1794,6 +1824,20 @@ Default: 1024
 Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
+
+##### yb_enable_cbo
+
+{{<tags/feature/ea idea="483">}} Available in v2024.2.4 or later. Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-scans-cost-model) and [yb_enable_optimizer_statistics](#yb-enable-optimizer-statistics) parameters.
+
+When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+
+For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
+
+See also the [--ysql_yb_enable_cbo](#ysql-yb-enable-cbo) flag. If the flag is set, this parameter takes precedence.
+
+Default: `legacy_mode`
 
 ##### yb_enable_base_scans_cost_model
 

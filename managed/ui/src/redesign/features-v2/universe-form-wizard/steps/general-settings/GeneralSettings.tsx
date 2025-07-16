@@ -8,37 +8,55 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
+
+import { FormProvider, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { ProviderConfigurationField } from '../../fields/provider-configuration/ProviderConfiguration';
+import { DatabaseVersionField } from '../../fields/database-version/DatabaseVersion';
+import { UniverseNameField } from '../../fields';
+import { CloudField } from '../../fields/provider/ProviderSelect';
+import { GeneralSettingsProps } from './dtos';
+import { GeneralSettingsValidationSchema } from './ValidationSchema';
+
+import { generateUniqueName } from '../../../../helpers/utils';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
-import { UniverseNameField } from '../../fields';
-import { FormProvider, useForm } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
-import { GeneralSettingsValidationSchema } from './ValidationSchema';
-import { useTranslation } from 'react-i18next';
-import { ProviderConfigurationField } from '../../fields/provider-configuration/ProviderConfiguration';
-import { DatabaseVersionField } from '../../fields/database-version/DatabaseVersion';
-import { CloudField } from '../../fields/provider/ProviderSelect';
-import { GeneralSettingsProps } from './dtos';
-
-import { ReactComponent as ShuffleIcon } from '../../../../assets/shuffle.svg';
-import { generateUniqueName } from '../../../../helpers/utils';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
+import {
+  CLOUD,
+  DATABASE_VERSION,
+  PROVIDER_CONFIGURATION,
+  UNIVERSE_NAME,
+  REGIONS_FIELD,
+  RESILIENCE_TYPE,
+  RESILIENCE_FORM_MODE,
+  REPLICATION_FACTOR,
+  FAULT_TOLERANCE_TYPE,
+  NODE_COUNT,
+  SINGLE_AVAILABILITY_ZONE
+} from '../../fields/FieldNames';
+import { ReactComponent as ShuffleIcon } from '../../../../assets/shuffle.svg';
+import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { ResilienceType, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
 
 const CONTROL_WIDTH = '480px';
 
 export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [{ generalSettings }, { moveToNextPage, saveGeneralSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const [
+    { generalSettings, resilienceAndRegionsSettings },
+    { moveToNextPage, saveGeneralSettings, saveResilienceAndRegionsSettings }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
   const methods = useForm<GeneralSettingsProps>({
     resolver: yupResolver(GeneralSettingsValidationSchema(t)),
-    defaultValues: generalSettings
+    defaultValues: generalSettings,
+    mode: 'onChange'
   });
 
   useImperativeHandle(
@@ -56,6 +74,22 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
   );
 
   const { errors } = methods.formState;
+  const cloud = methods.watch('cloud');
+
+  useEffect(() => {
+    methods.resetField(PROVIDER_CONFIGURATION);
+    saveResilienceAndRegionsSettings({
+      [REGIONS_FIELD]: [],
+      [SINGLE_AVAILABILITY_ZONE]: '',
+      [RESILIENCE_TYPE]: resilienceAndRegionsSettings?.[RESILIENCE_TYPE] ?? ResilienceType.REGULAR,
+      [RESILIENCE_FORM_MODE]:
+        resilienceAndRegionsSettings?.[RESILIENCE_FORM_MODE] ?? ResilienceFormMode.GUIDED,
+      [REPLICATION_FACTOR]: resilienceAndRegionsSettings?.[REPLICATION_FACTOR] ?? 3,
+      [FAULT_TOLERANCE_TYPE]:
+        resilienceAndRegionsSettings?.[FAULT_TOLERANCE_TYPE] ?? FaultToleranceType.AZ_LEVEL,
+      [NODE_COUNT]: resilienceAndRegionsSettings?.[NODE_COUNT] ?? 1
+    });
+  }, [cloud]);
 
   return (
     <FormProvider {...methods}>
@@ -64,7 +98,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
         <StyledContent>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <UniverseNameField<GeneralSettingsProps>
-              name="universeName"
+              name={UNIVERSE_NAME}
               label={t('universeName')}
               placeholder={t('universeNamePlaceholder')}
               sx={{
@@ -81,17 +115,18 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               }}
             />
           </div>
-          <CloudField<GeneralSettingsProps> name="cloud" label={t('cloudProvider')} />
+          <CloudField<GeneralSettingsProps> name={CLOUD} label={t('cloudProvider')} />
           <ProviderConfigurationField<GeneralSettingsProps>
-            name="providerConfiguration"
+            name={PROVIDER_CONFIGURATION}
             label={t('providerconfiguration')}
             placeholder={t('providerConfigurationPlaceholder')}
             sx={{
               width: CONTROL_WIDTH
             }}
+            filterByProvider={cloud}
           />
           <DatabaseVersionField<GeneralSettingsProps>
-            name="databaseVersion"
+            name={DATABASE_VERSION}
             label={t('databaseVersion')}
             placeholder={t('databaseVersionPlaceholder')}
             sx={{

@@ -111,7 +111,7 @@ std::string IdToString(ColocationId id) {
 }
 
 std::string IdToString(const Uuid& id) {
-  return Format("CoTableId=$0", id.ToString());
+  return Format("CoTableId=$0", id.ToHexString());
 }
 
 } // namespace

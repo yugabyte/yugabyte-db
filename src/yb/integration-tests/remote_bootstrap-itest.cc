@@ -2514,7 +2514,8 @@ TEST_F(PersistRetryableRequestsRBSITest, TestRetryableWrite) {
     return leader_peer->TEST_HasBootstrapStateOnDisk();
   }, 10s, "retryable requests flushed to disk"));
 
-  ASSERT_OK(leader_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(
+      ASSERT_NOTNULL(leader_peer->shared_tablet_maybe_null())->Flush(tablet::FlushMode::kSync));
 
   TEST_SYNC_POINT("PersistRetryableRequestsRBSITest::TestRetryableWrite:WaitForSetTimedOut");
 

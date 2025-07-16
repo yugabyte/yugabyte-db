@@ -44,8 +44,9 @@ class FlushManagerTest : public CqlTestBase<MiniCluster> {
   Result<OpId> GetOpIdAtLeader(const string& table_id) {
     auto all_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : all_peers) {
-      if (peer->tablet()->metadata()->table_id() == table_id) {
-        return VERIFY_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      if (tablet->metadata()->table_id() == table_id) {
+        return VERIFY_RESULT(tablet->MaxPersistentOpId()).regular;
       }
     }
     return STATUS(IllegalState, "No leader found for table.");
@@ -55,8 +56,9 @@ class FlushManagerTest : public CqlTestBase<MiniCluster> {
     auto all_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     OpId max_op_id(0, 0);
     for (const auto& peer : all_peers) {
-      if (peer->tablet()->metadata()->table_id() == table_id) {
-        max_op_id = std::max(max_op_id, VERIFY_RESULT(peer->tablet()->MaxPersistentOpId()).regular);
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      if (tablet->metadata()->table_id() == table_id) {
+        max_op_id = std::max(max_op_id, VERIFY_RESULT(tablet->MaxPersistentOpId()).regular);
       }
     }
     return max_op_id;

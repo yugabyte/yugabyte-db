@@ -36,6 +36,7 @@
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
+#include "yb/util/std_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/docdb/docdb_pgapi.h"
 
@@ -573,7 +574,7 @@ Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
   return CompactionSchemaInfo {
     .table_type = TableType::YQL_TABLE_TYPE,
     .schema_version = schema_version,
-    .schema_packing = rpc::SharedField(doc_read_context_, &packing),
+    .schema_packing = SharedField(doc_read_context_, &packing),
     .cotable_id = table_id,
     .deleted_cols = {},
     .packed_row_version = PackedRowVersion(TableType::YQL_TABLE_TYPE, false),

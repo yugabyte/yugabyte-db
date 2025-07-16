@@ -152,6 +152,7 @@ YbQueryDiagnosticsParams
 YbQueryDiagnosticsPgss
 YbQueryDiagnosticsStatusType
 YbRange
+YbReCacheInfo
 YbRegisterOuterMatchFn_t
 YbRelationAttrsProcessingState
 YbResetBatchFn_t
@@ -199,7 +200,6 @@ YbUpdateAffectedEntities
 YbUpdateRelationCacheState
 YbValidateOkeysState
 YbVirtualWalRecord
-YbXClusterReplicationRole
 YbcAdvisoryLockId
 YbcAdvisoryLockMode
 YbcAshAcquireBufferLock
@@ -270,6 +270,8 @@ YbcPgSysColumns
 YbcPgSysTablePrefetcherCacheMode
 YbcPgTableDesc
 YbcPgTabletsDescriptor
+YbcPgThreadLocalRegexpCache
+YbcPgThreadLocalRegexpCacheCleanup
 YbcPgTransactionSetting
 YbcPgTxnSnapshot
 YbcPgTypeAttrs
@@ -302,6 +304,7 @@ YbcTypeEntityProvider
 YbcWaitEventDescriptor
 YbcWaitEventInfo
 YbcWaitEventInfoPtr
+YbcXClusterReplicationRole
 YbcYCQLStatementStats
 YbcYsqlBenchMetricEntry
 YbgError

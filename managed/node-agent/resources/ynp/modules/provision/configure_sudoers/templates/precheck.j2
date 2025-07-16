@@ -1,4 +1,5 @@
 # This checks only presence for now.
+sudoers_file="/etc/sudoers.d/{{yb_user}}"
 if [ -f "$sudoers_file" ]; then
     add_result "Configure sudoers" "PASS" "Sudoers file $sudoers_file exits"
     echo "Sudoers configured"

@@ -634,6 +634,8 @@ Status PgSession::DropTable(const PgObjectId& table_id, bool use_regular_transac
   tserver::PgDropTableRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   req.set_use_regular_transaction_block(use_regular_transaction_block);
+  RETURN_NOT_OK(
+      SetupIsolationAndPerformOptionsForDdl(req.mutable_options(), use_regular_transaction_block));
   return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
 }
 
@@ -645,6 +647,8 @@ Status PgSession::DropIndex(
   index_id.ToPB(req.mutable_table_id());
   req.set_index(true);
   req.set_use_regular_transaction_block(use_regular_transaction_block);
+  RETURN_NOT_OK(
+    SetupIsolationAndPerformOptionsForDdl(req.mutable_options(), use_regular_transaction_block));
   auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
   if (indexed_table_name) {
     *indexed_table_name = std::move(result);
@@ -830,9 +834,10 @@ Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
   DCHECK(!ops.Empty());
   tserver::PgPerformOptionsPB options;
+  const auto ops_read_time = VERIFY_RESULT(GetReadTime(ops.operations()));
   if (ops_options.use_catalog_session) {
-    if (catalog_read_time_) {
-      catalog_read_time_.ToPB(options.mutable_read_time());
+    if (const auto read_time = ops_read_time ? ops_read_time : catalog_read_time_; read_time) {
+      read_time.ToPB(options.mutable_read_time());
     }
     options.set_use_catalog_session(true);
   } else {
@@ -840,7 +845,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
-    auto ops_read_time = VERIFY_RESULT(GetReadTime(ops.operations()));
     if (ops_read_time) {
       RETURN_NOT_OK(UpdateReadTime(&options, ops_read_time));
     }
@@ -940,7 +944,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);
   return PerformFuture(
-      pg_client_.PerformAsync(&options, std::move(operations)), std::move(relations));
+      pg_client_.PerformAsync(&options, std::move(operations), metrics_),
+      std::move(relations));
 }
 
 InsertOnConflictBuffer& PgSession::GetInsertOnConflictBuffer(void* plan) {
@@ -1026,6 +1031,24 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
   if (read_ht) {
     catalog_read_time_ = read_ht;
   }
+}
+
+Status PgSession::SetupIsolationAndPerformOptionsForDdl(
+  tserver::PgPerformOptionsPB* options, bool use_regular_transaction_block) {
+  if (!use_regular_transaction_block) {
+    return Status::OK();
+  }
+  RSTATUS_DCHECK(
+      pg_txn_manager_->IsDdlModeWithRegularTransactionBlock(), IllegalState,
+      "Expected to be in DDL mode with regular transaction block");
+
+  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+    false /* read_only */,
+    GetTxnPriorityRequirement(
+        true /* is_ddl_mode */, GetIsolationLevel(),
+        RowMarkType::ROW_MARK_ABSENT /* ignored for ddl */)));
+
+  return pg_txn_manager_->SetupPerformOptions(options);
 }
 
 Status PgSession::SetActiveSubTransaction(SubTransactionId id) {

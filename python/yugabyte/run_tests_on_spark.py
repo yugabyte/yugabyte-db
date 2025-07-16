@@ -136,7 +136,8 @@ JENKINS_ENV_VARS = [
     "BUILD_TAG",
     "BUILD_URL",
     "CVS_BRANCH",
-    "CSI_API",
+    "CSI_SERVER",
+    "CSI_PROJ",
     "CSI_TOKEN",
     "EXECUTOR_NUMBER",
     "GIT_BRANCH",
@@ -1448,6 +1449,10 @@ def main() -> None:
         propagated_env_vars['YB_CSI_REPS'] = str(num_repetitions)
         logging.info("Propagating env var %s (value: %s) to Spark workers",
                      'YB_CSI_REPS', num_repetitions)
+        csi_lqid = csi_report.launch_qid()
+        propagated_env_vars['YB_CSI_QID'] = csi_lqid
+        logging.info("Propagating env var %s (value: %s) to Spark workers",
+                     'YB_CSI_QID', csi_lqid)
         for suite_name, num_tests in num_planned_by_language.items():
             if args.test_filter_re:
                 method = "RegEx"
@@ -1456,8 +1461,8 @@ def main() -> None:
             else:
                 method = "All"
             (csi_var_name, csi_var_value) = csi_report.create_suite(
-                suite_name, os.getenv('YB_CSI_SUITE', ''), method, num_tests, num_repetitions,
-                test_phase_start_time)
+                csi_lqid, suite_name, os.getenv('YB_CSI_SUITE', ''), method, num_tests,
+                num_repetitions, test_phase_start_time)
             csi_suites[suite_name] = csi_var_value
             propagated_env_vars[csi_var_name] = csi_var_value
             logging.info("Propagating env var %s (value: %s) to Spark workers",

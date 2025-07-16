@@ -312,8 +312,8 @@ AddInvalidationMessage(InvalidationMsgsGroup *group, int subgroup,
 	 * YB: T_Invalid represents single shard DML statement, or any non-DDL
 	 * statement (e.g., SET SESSION AUTHORIZATION pgcron_cront)
 	 */
-	Assert(YBGetDdlOriginalNodeTag() == T_YbBackfillIndexStmt ||
-		   YBGetDdlOriginalNodeTag() == T_Invalid ||
+	Assert(YBGetCurrentStmtDdlNodeTag() == T_YbBackfillIndexStmt ||
+		   YBGetCurrentStmtDdlNodeTag() == T_Invalid ||
 		   yb_non_ddl_txn_for_sys_tables_allowed ||
 		   YBGetDdlNestingLevel() > 0 ||
 		   YBGetDdlUseRegularTransactionBlock());

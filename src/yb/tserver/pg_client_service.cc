@@ -43,6 +43,8 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
@@ -95,8 +97,7 @@ using namespace std::placeholders;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsDebug && !yb::kIsMac,
-                    "Use shared memory for executing read and write pg client queries");
+DECLARE_bool(pg_client_use_shared_memory);
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
                      "Maximum number of retries that will be performed for GetLockStatus "
@@ -221,6 +222,7 @@ class LockablePgClientSession {
   Status StartExchange(const std::string& instance_id, ThreadPool& thread_pool) {
     shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
         instance_id, id(), Create::kTrue));
+    session_.SetupSharedObjectLocking(shared_mem_manager_.object_locking_data());
     exchange_runnable_ = std::make_shared<SharedExchangeRunnable>(
         shared_mem_manager_.exchange(), shared_mem_manager_.session_id(), [this](size_t size) {
       Touch();
@@ -282,8 +284,8 @@ class LockablePgClientSession {
   }
 
   std::mutex mutex_;
-  PgClientSession session_;
   PgSessionSharedMemoryManager shared_mem_manager_;
+  PgClientSession session_;
   std::shared_ptr<SharedExchangeRunnable> exchange_runnable_;
   const CoarseDuration lifetime_;
   std::atomic<CoarseTimePoint> expiration_;
@@ -474,12 +476,13 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   }
 
   void Run() override {
+    auto& context = context_.context();
     auto session = provider_.GetSession(req().session_id());
-    auto status = session.ok()
-        ? (*session)->Perform(&req(), &resp(), &context_.context(), tables_) : session.status();
-    if (!status.ok()) {
-      Respond(status, &resp(), &context_.context());
+    if (!session.ok()) {
+      Respond(session.status(), &resp(), &context);
+      return;
     }
+    (*session)->Perform(req(), resp(), std::move(context), tables_);
   }
 
   void Done(const Status& status) override {
@@ -523,7 +526,7 @@ class OpenTableQuery : public PgTablesQueryListener {
 
 }  // namespace
 
-class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProvider {
+class PgClientServiceImpl::Impl : public SessionProvider {
  public:
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
@@ -561,7 +564,11 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
             .sequence_cache = sequence_cache_,
             .shared_mem_pool = shared_mem_pool_,
             .stats_exchange_response_size = stats_exchange_response_size_,
-            .instance_uuid = instance_id_},
+            .instance_uuid = instance_id_,
+            .lock_owner_registry =
+                tablet_server_.ObjectLockSharedStateManager()
+                    ? &tablet_server_.ObjectLockSharedStateManager()->registry()
+                    : nullptr},
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
             instance_id_,
@@ -613,11 +620,6 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     return lease_epoch_;
   }
 
-  bool IsLeaseValid(uint64_t lease_epoch) override EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    return lease_epoch == lease_epoch_;
-  }
-
   Status Heartbeat(
       const PgHeartbeatRequestPB& req, PgHeartbeatResponsePB* resp, rpc::RpcContext* context) {
     if (req.session_id() == std::numeric_limits<uint64_t>::max()) {
@@ -632,7 +634,7 @@ class PgClientServiceImpl::Impl : public LeaseEpochValidator, public SessionProv
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
-        session_context_, session_id, lease_epoch(), this, tablet_server_.ts_local_lock_manager(),
+        session_context_, session_id, lease_epoch(), tablet_server_.ts_local_lock_manager(),
         messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {

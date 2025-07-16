@@ -12,17 +12,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync/atomic"
 )
 
 type ServerControlHandler struct {
-	taskStatus *atomic.Value
-	param      *pb.ServerControlInput
-	username   string
-	logOut     util.Buffer
+	param    *pb.ServerControlInput
+	username string
+	logOut   util.Buffer
 }
 
-// ServerControlHandler returns a new instance of ServerControlHandler.
+// NewServerControlHandler returns a new instance of ServerControlHandler.
 func NewServerControlHandler(param *pb.ServerControlInput, username string) *ServerControlHandler {
 	return &ServerControlHandler{
 		param:    param,
@@ -33,8 +31,10 @@ func NewServerControlHandler(param *pb.ServerControlInput, username string) *Ser
 
 // CurrentTaskStatus implements the AsyncTask method.
 func (handler *ServerControlHandler) CurrentTaskStatus() *TaskStatus {
-	// No streaming output during the task.
-	return nil
+	return &TaskStatus{
+		Info:       handler.logOut,
+		ExitStatus: &ExitStatus{},
+	}
 }
 
 // String implements the AsyncTask method.
@@ -97,19 +97,16 @@ func (handler *ServerControlHandler) Handle(
 		}
 	}
 	controlType := strings.ToLower(pb.ServerControlType_name[int32(handler.param.ControlType)])
-	cmd, err := module.ControlServerCmd(
+	err = module.ControlSystemdService(
+		ctx,
 		handler.username,
 		handler.param.GetServerName(),
 		controlType,
+		handler.logOut,
 	)
 	if err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to get server control command - %s", err.Error())
-		return nil, err
-	}
-	util.FileLogger().Infof(ctx, "Running command %v", cmd)
-	_, err = module.RunShellCmd(ctx, handler.username, "serverControl", cmd, handler.logOut)
-	if err != nil {
-		util.FileLogger().Errorf(ctx, "Server control failed in %v - %s", cmd, err.Error())
+		util.FileLogger().
+			Errorf(ctx, "Server control failed for %s - %s", handler.param.GetServerName(), err.Error())
 		return nil, err
 	}
 	if handler.param.GetDeconfigure() {

@@ -480,10 +480,10 @@ SELECT DISTINCT h1, h2 FROM th;
 ----+----
   2 |  0
   1 |  0
-  2 |  2
-  2 |  1
   1 |  1
   1 |  2
+  2 |  1
+  2 |  2
 (6 rows)
 
 -- Strict prefix of hash columns.
@@ -535,10 +535,10 @@ SELECT DISTINCT h1, h2, r1 FROM th;
 ----+----+----
   2 |  0 |  2
   1 |  0 |  2
-  2 |  2 |  0
-  2 |  1 |  1
   1 |  1 |  1
   1 |  2 |  0
+  2 |  1 |  1
+  2 |  2 |  0
 (6 rows)
 
 -- Range columns only.

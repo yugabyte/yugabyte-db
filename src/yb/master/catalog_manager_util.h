@@ -68,6 +68,9 @@ class CatalogManagerUtil {
   // Checks whether two given cloud infos are identical.
   static bool IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
 
+  // Checks whether the first cloud info contains the second cloud info.
+  static bool DoesCloudInfoContainCloudInfo(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
+
   // For the given placement info, checks whether a given cloud info is contained within it.
   static bool DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
                                                 const CloudInfoPB& cloud_info);

@@ -13,6 +13,7 @@
 
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -41,6 +42,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -311,8 +313,7 @@ public class AttachDetachSpec {
       attachDetachSpec.importSoftwareReleases(specFolderPath, releasesPath);
 
       // Import the ybcsoftware version, etc if exists.
-      attachDetachSpec.importYbcSoftwareReleases(specFolderPath, ybcReleasePath);
-      attachDetachSpec.createYbcReleasesFolder(ybcReleasesPath);
+      attachDetachSpec.setupAndImportYbcReleases(specFolderPath, ybcReleasePath, ybcReleasesPath);
     }
 
     // Update universe related metadata due to platform switch.
@@ -419,20 +420,60 @@ public class AttachDetachSpec {
     }
   }
 
-  private void importYbcSoftwareReleases(String specFolderPath, String ybcReleasePath)
-      throws IOException {
+  private void setupAndImportYbcReleases(
+      String specFolderPath, String ybcReleasePath, String ybcReleasesPath) throws IOException {
+    File releasesDir = new File(ybcReleasesPath);
+    if (!releasesDir.isDirectory()) {
+      try {
+        Files.createDirectories(Paths.get(ybcReleasesPath));
+        log.debug("Created ybc releases folder as it was not found.");
+      } catch (AccessDeniedException e) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot create YBC releases directory due to insufficient permissions.");
+      }
+    } else if (!releasesDir.canWrite()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot write into YBC releases directory due to insufficient permissions.");
+    }
+
+    // Import ybc releases
     File srcYbcReleaseDir = new File(String.format("%s/%s", specFolderPath, "ybcRelease"));
     File destYbcReleaseDir = new File(ybcReleasePath);
-    if (srcYbcReleaseDir.isDirectory()) {
-      org.apache.commons.io.FileUtils.copyDirectory(srcYbcReleaseDir, destYbcReleaseDir);
-      log.debug("Finished importing ybc software release.");
-    }
-  }
 
-  private void createYbcReleasesFolder(String ybcReleasesPath) throws IOException {
-    if (!(new File(ybcReleasesPath)).isDirectory()) {
-      Files.createDirectories(Paths.get(ybcReleasesPath));
-      log.debug("Created ybc releases folder as it was not found.");
+    if (srcYbcReleaseDir.isDirectory()) {
+      // Create destination directory if it doesn't exist
+      if (!destYbcReleaseDir.exists()) {
+        Files.createDirectories(destYbcReleaseDir.toPath());
+        log.debug("Created destination YBC release directory as it was not found.");
+      }
+
+      // Check if destination is writable
+      if (destYbcReleaseDir.canWrite()) {
+        File[] sourceFiles = srcYbcReleaseDir.listFiles();
+        if (sourceFiles != null) {
+          for (File sourceFile : sourceFiles) {
+            File destFile = new File(destYbcReleaseDir, sourceFile.getName());
+            if (destFile.exists()) {
+              log.debug("File {} already exists, skipping copy.", destFile.getPath());
+            } else {
+              // Copy only if file doesn't exist
+              if (sourceFile.isFile()) {
+                org.apache.commons.io.FileUtils.copyFile(sourceFile, destFile);
+              } else if (sourceFile.isDirectory()) {
+                org.apache.commons.io.FileUtils.copyDirectory(sourceFile, destFile);
+              }
+            }
+          }
+        }
+        log.debug("Finished importing ybc software release.");
+      } else {
+        log.warn("Cannot write to destination directory: {}", destYbcReleaseDir.getPath());
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Could not write ybc software release to directory "
+                + destYbcReleaseDir.getPath()
+                + " due to insufficient permissions.");
+      }
     }
   }
 
@@ -550,6 +591,7 @@ public class AttachDetachSpec {
     for (Backup backup : this.backups) {
       backup.setCustomerUUID(customer.getUuid());
       backup.getBackupInfo().customerUuid = customer.getUuid();
+      backup.setUniverseUUID(backup.getBackupInfo().getUniverseUUID());
     }
   }
 

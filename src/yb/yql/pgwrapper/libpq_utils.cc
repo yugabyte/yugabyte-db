@@ -391,8 +391,10 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
     }
     if (status == CONNECTION_BAD) {
       auto msg = GetPQErrorMessage(result.get());
-      if (msg.ends_with("\" does not exist") &&
-          msg.find("FATAL:  database \"") != std::string::npos) {
+      if ((msg.ends_with("\" does not exist") &&
+          msg.find("FATAL:  database \"") != std::string::npos) ||
+          msg.find("authentication failed for user") != std::string::npos) {
+        // If the database does not exist or password authentication failed, we do not retry.
         break;
       }
     }
@@ -433,11 +435,13 @@ void PGConn::Reset() {
   PQreset(impl_.get());
 }
 
-Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
+Status PGConn::Execute(
+    const std::string& command, bool show_query_in_error, bool ignore_empty_query) {
   VLOG(1) << __func__ << " " << command;
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));
   auto status = PQresultStatus(res.get());
-  if (ExecStatusType::PGRES_COMMAND_OK != status) {
+  if (ExecStatusType::PGRES_COMMAND_OK != status &&
+      !(ignore_empty_query && ExecStatusType::PGRES_EMPTY_QUERY == status)) {
     if (status == ExecStatusType::PGRES_TUPLES_OK) {
       return STATUS_FORMAT(IllegalState,
                            "Tuples received in Execute$0",

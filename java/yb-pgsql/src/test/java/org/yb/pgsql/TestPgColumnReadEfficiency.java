@@ -104,14 +104,12 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
           int ssEstimate = estimatedRpcsPerCol * nSelectedCols / 3;
           final int isEstimate = estimatedRpcsPerCol * 13;
 
-          if (nSelectedCols == 0 && nConditionCols == 0) {
-            iosEstimate = estimatedRpcsPerCol * 10;
-            ssEstimate = estimatedRpcsPerCol * 6;
-          } else if (nConditionCols == 0) {
-            ssEstimate = estimatedRpcsPerCol * nSelectedCols;
-          } else if (nSelectedCols == 0) {
+          if (nSelectedCols == 0) {
             // TODO(#18874): selecting no targets should not be bloated
             ssEstimate = estimatedRpcsPerCol * 2;
+            if (nConditionCols == 0) {
+              iosEstimate = estimatedRpcsPerCol * 10;
+            }
           }
 
           testSpecificScanRowSize(stmt, NODE_SEQ_SCAN, select, where, ssEstimate, N_ROWS);
@@ -137,12 +135,12 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
 
       final List<String> selects = Arrays.asList("", "a", "b", "a, b");
 
-      int estimatedRpcsPerCol = 50;
       String hashcodeCond = "WHERE yb_hash_code(a) < 12345";
       int N_ROWS_MATCHING_COND = 1928;
 
       // Without an index, we need to fetch every row.
       for (String select : selects) {
+        int estimatedRpcsPerCol = 17;
         int selectedColsBitmap = getColsBmp(select);
         int nSelectedCols = countCols(selectedColsBitmap);
 
@@ -164,16 +162,17 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
       // With an index, we only need to fetch the requested rows.
       // We still need to fetch the condition column as a target for recheck.
       for (String select : selects) {
+        int estimatedRpcsPerIdxCol = 50;
         int selectedColsBitmap = getColsBmp(select);
         int nSelectedCols = countCols(selectedColsBitmap);
 
         int nTotalColsWithCond = countCols(selectedColsBitmap | SELECT_A);
 
-        int iosEstimateWithCond = (int) Math.ceil((double) estimatedRpcsPerCol * nTotalColsWithCond
-                                   * N_ROWS_MATCHING_COND / N_ROWS);
-        int iosEstimateWithoutCond = estimatedRpcsPerCol * nSelectedCols;
+        int iosEstimateWithCond = (int) Math.ceil(
+            (double) estimatedRpcsPerIdxCol * nTotalColsWithCond * N_ROWS_MATCHING_COND / N_ROWS);
+        int iosEstimateWithoutCond = estimatedRpcsPerIdxCol * nSelectedCols / 3;
         if (nSelectedCols == 0) {
-          iosEstimateWithoutCond = estimatedRpcsPerCol * 6;
+          iosEstimateWithoutCond = estimatedRpcsPerIdxCol * 2;
         }
         testSpecificScanRowSize(stmt, NODE_INDEX_ONLY_SCAN, select, hashcodeCond,
                                 iosEstimateWithCond, N_ROWS_MATCHING_COND);

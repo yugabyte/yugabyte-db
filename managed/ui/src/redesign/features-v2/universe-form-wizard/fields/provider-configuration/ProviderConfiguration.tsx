@@ -8,23 +8,24 @@
  */
 
 import { ChangeEvent } from 'react';
+import { sortBy } from 'lodash';
 import { YBAutoComplete, YBLabel, YBSelectProps } from '@yugabyte-ui-library/core';
 import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
 import { api, QUERY_KEY } from '../../../../features/universe/universe-form/utils/api';
 import { useQuery } from 'react-query';
+import { Box } from '@material-ui/core';
 import {
   ProviderCode,
   ProviderStatus
 } from '../../../../../components/configRedesign/providerRedesign/constants';
-import { isEmpty, sortBy } from 'lodash';
 import { YBProvider } from '../../../../../components/configRedesign/providerRedesign/types';
 import { CloudType } from '../../../../features/universe/universe-form/utils/dto';
-import { Box } from '@material-ui/core';
 interface ProviderConfigurationFieldProps<T extends FieldValues>
   extends Omit<YBSelectProps, 'name' | 'control'> {
   name: Path<T>;
   label: string;
   placeholder?: string;
+  filterByProvider?: string | null;
 }
 
 export interface Provider {
@@ -40,33 +41,20 @@ export const ProviderConfigurationField = <T extends FieldValues>({
   name,
   label,
   placeholder,
+  filterByProvider,
   sx
 }: ProviderConfigurationFieldProps<T>) => {
-  const { control, getValues, setValue } = useFormContext<T>();
+  const { control, setValue } = useFormContext<T>();
   const { data, isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList, {
-    onSuccess: (providers) => {
-      // Pre-select provider by default
-      if (isEmpty(getValues('providerConfiguration' as Path<T>)) && providers.length >= 1) {
-        const provider = providers[0];
-        const isOnPremManuallyProvisioned =
-          provider?.code === ProviderCode.ON_PREM && provider?.details?.skipProvisioning;
-        setValue(
-          'providerConfiguration' as Path<T>,
-          { code: provider?.code, uuid: provider?.uuid, isOnPremManuallyProvisioned } as PathValue<
-            T,
-            Path<T>
-          >,
-          { shouldValidate: true }
-        );
-      }
-    }
+    enabled: !!filterByProvider
   });
 
   let providersList: Provider[] = [];
   if (!isLoading && data) {
     providersList = (data as YBProvider[]).filter(
-      (provider) => provider.usabilityState === ProviderStatus.READY //&&
-      // (!filterByProvider || provider.code === filterByProvider)
+      (provider) =>
+        provider.usabilityState === ProviderStatus.READY &&
+        (!filterByProvider || provider.code === filterByProvider)
     ) as Provider[];
     providersList = sortBy(providersList, 'code', 'name'); //sort by provider code and name
   }
@@ -75,8 +63,8 @@ export const ProviderConfigurationField = <T extends FieldValues>({
     if (option) {
       const isOnPremManuallyProvisioned =
         option?.code === ProviderCode.ON_PREM && option?.details?.skipProvisioning;
-      const { code, uuid } = option;
-      setValue(name, { code, uuid, isOnPremManuallyProvisioned } as PathValue<T, Path<T>>, {
+      // const { code, uuid } = option;
+      setValue(name, { ...option, isOnPremManuallyProvisioned } as PathValue<T, Path<T>>, {
         shouldValidate: true
       });
     } else {
@@ -101,7 +89,6 @@ export const ProviderConfigurationField = <T extends FieldValues>({
                 getOptionLabel={(option: Record<string, string> | string) =>
                   typeof option === 'string' ? option : option.name
                 }
-                groupBy={(option: Record<string, string>) => option.code} //group by code for easy navigation
                 onChange={handleChange}
                 ybInputProps={{
                   error: !!fieldState.error,

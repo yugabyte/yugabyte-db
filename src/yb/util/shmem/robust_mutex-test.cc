@@ -28,9 +28,6 @@ namespace yb {
 
 class RobustMutexTest : public YBTest { };
 
-// Dummy cleanup method for tests that aren't testing robustness.
-void CleanupDoNothing(void*) { }
-
 TEST_F(RobustMutexTest, TestSimple) {
   // Test does the following:
   // P1: M1 lock              - wait -
@@ -47,7 +44,7 @@ TEST_F(RobustMutexTest, TestSimple) {
   // The following duration is how long the waits are.
   constexpr auto kWaitDurationMs = 1000;
 
-  using Mutex = RobustMutex<CleanupDoNothing>;
+  using Mutex = RobustMutexNoCleanup;
 
   auto m1 = ASSERT_RESULT(SharedMemoryObject<Mutex>::Create());
   auto m2 = ASSERT_RESULT(SharedMemoryObject<Mutex>::Create());
