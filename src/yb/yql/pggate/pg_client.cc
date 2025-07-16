@@ -162,6 +162,26 @@ struct ResponseReadyTraits<Result<rpc::CallData>> {
   }
 };
 
+std::string PrettyFunctionName(const char* name) {
+  std::string result;
+  for (const char* ch = name; *ch; ++ch) {
+    if (!result.empty() && std::isupper(*ch)) {
+      result += ' ';
+    }
+    result += *ch;
+  }
+  return result;
+}
+
+template <class Req>
+std::string PrettyRequest(const char* name, const Req& req) {
+  return PrettyFunctionName(name);
+}
+
+std::string PrettyRequest(const char* name, const tserver::PgCreateTableRequestPB& req) {
+  return Format("'$0' table creation", req.table_name());
+}
+
 } // namespace
 
 struct PerformData : public FetchBigDataCallback {
@@ -345,17 +365,6 @@ PerformResult MakePerformResult(
 void ProcessPerformResponse(
     PerformData* data, const Result<rpc::CallResponsePtr>& response) {
   data->callback(MakePerformResult(data, response));
-}
-
-std::string PrettyFunctionName(const char* name) {
-  std::string result;
-  for (const char* ch = name; *ch; ++ch) {
-    if (!result.empty() && std::isupper(*ch)) {
-      result += ' ';
-    }
-    result += *ch;
-  }
-  return result;
 }
 
 client::VersionedTablePartitionList BuildTablePartitionList(
@@ -1253,7 +1262,7 @@ class PgClient::Impl : public BigDataFetcher {
         *req, resp, BOOST_PP_CAT(PggateRPC::k, method), deadline); \
     if (!status.ok()) { \
       if (status.IsTimedOut()) { \
-        return STATUS_FORMAT(TimedOut, "Timed out waiting for $0", PrettyFunctionName(__func__)); \
+        return STATUS_FORMAT(TimedOut, "Timed out waiting for $0", PrettyRequest(__func__, *req)); \
       } \
       return status; \
     } \
