@@ -121,7 +121,8 @@ Status ChangeMetadataOperation::Prepare(IsLeaderSide is_leader_side) {
 }
 
 Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_status) {
-  if (PREDICT_FALSE(FLAGS_TEST_ignore_apply_change_metadata_on_followers)) {
+  if (PREDICT_FALSE(FLAGS_TEST_ignore_apply_change_metadata_on_followers) &&
+      leader_term == OpId::kUnknownTerm) {
     LOG_WITH_PREFIX(INFO) << "Ignoring apply of change metadata ops on followers";
     return Status::OK();
   }

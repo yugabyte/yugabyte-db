@@ -5250,7 +5250,8 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     const auto& pb = l->pb;
 
     TRACE("Verify if the table creation is in progress for $0", table->ToString());
-    VLOG_WITH_FUNC(1) << table->ToString();
+    VLOG_WITH_FUNC(1)
+        << table->ToString() << ", create in progress: " << table->IsCreateInProgress();
     if (table->IsCreateInProgress()) {
       // Set any current errors, if we are experiencing issues creating the table. This will be
       // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
@@ -5312,7 +5313,7 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     }
 
     if (!done) {
-      VLOG(1) << "Indexed table is not yet updated";
+      VLOG_WITH_FUNC(2) << "Indexed table is not yet updated";
       return IsOperationDoneResult::NotDone();
     }
   }
@@ -5345,7 +5346,7 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     auto txn_status_table = VERIFY_RESULT(FindTable(GetTransactionStatusTableId()));
     auto is_create_done = VERIFY_RESULT(IsCreateTableDone(txn_status_table));
     if (!is_create_done) {
-      VLOG(1) << "Transaction status table is not yet ready: " << is_create_done.ToString();
+      VLOG_WITH_FUNC(2) << "Transaction status table is not yet ready: " << is_create_done;
       return is_create_done;
     }
   }
@@ -5358,11 +5359,12 @@ Result<IsOperationDoneResult> CatalogManager::IsCreateTableDone(const TableInfoP
     auto metric_snapshot_table = VERIFY_RESULT(FindTable(GetMetricsSnapshotsTableId()));
     auto is_create_done = VERIFY_RESULT(IsCreateTableDone(metric_snapshot_table));
     if (!is_create_done) {
-      VLOG(1) << "Metrics snapshot table is not yet ready: " << is_create_done.ToString();
+      VLOG_WITH_FUNC(2) << "Metrics snapshot table is not yet ready: " << is_create_done;
       return is_create_done;
     }
   }
 
+  VLOG_WITH_FUNC(2) << "Done";
   return IsOperationDoneResult::Done();
 }
 
@@ -7826,7 +7828,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
       // An AlterTable is in progress; fully_applied_schema is the last
       // schema that has reached every TS.
-      DCHECK(l->pb.state() == SysTablesEntryPB::ALTERING);
+      DCHECK_EQ(l->pb.state(), SysTablesEntryPB::ALTERING);
       resp->mutable_schema()->CopyFrom(l->pb.fully_applied_schema());
     } else {
       // Case 1: There's no AlterTable, the regular schema is "fully applied".
@@ -7862,11 +7864,11 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
               << "\nfully_applied_schema with version "
               << l->pb.fully_applied_schema_version()
               << ":\n"
-              << yb::ToString(l->pb.fully_applied_indexes())
+              << AsString(l->pb.fully_applied_indexes())
               << "\ninstead of schema with version "
               << l->pb.version()
               << ":\n"
-              << yb::ToString(l->pb.indexes());
+              << AsString(l->pb.indexes());
     } else {
       resp->set_version(l->pb.version());
       resp->mutable_indexes()->CopyFrom(l->pb.indexes());
@@ -7878,7 +7880,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
               << "\nschema with version "
               << l->pb.version()
               << ":\n"
-              << yb::ToString(l->pb.indexes());
+              << AsString(l->pb.indexes());
     }
 
     resp->set_is_backfilling(table->IsBackfilling());
