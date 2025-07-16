@@ -22,7 +22,7 @@ Create two clusters, the Source cluster which will serve reads and writes, and t
 
 Ensure the clusters have the following characteristics:
 
-- Both clusters are running the same version of YugabyteDB (v2024.1.3 or later).
+- Both clusters are running the same version of YugabyteDB (v2024.1.4 or later).
 - Both clusters are deployed in a [VPC and are peered](../../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the Target cluster. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 - DR enables point-in-time-recovery (PITR) on the Target, requiring additional disk space.
