@@ -6153,6 +6153,12 @@ PostgresMain(const char *dbname, const char *username)
 		send_ready_for_query = true;	/* initially, or after error */
 
 	/*
+	 * YB: Refresh the session stats accumulated during catalog cache
+	 * prefetching.
+	 */
+	YbRefreshSessionStatsDuringExecution();
+
+	/*
 	 * Non-error queries loop here.
 	 */
 
