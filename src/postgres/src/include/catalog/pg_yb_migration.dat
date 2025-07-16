@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V78.3__27025__hint_table_cache.sql
-{ major => '78', minor => '3', name => '<baseline>', time_applied => '_null_' }
+# here: V78.4__26540__yb_int_pg_stats_v11.sql
+{ major => '78', minor => '4', name => '<baseline>', time_applied => '_null_' }
 
 ]
