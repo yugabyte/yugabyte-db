@@ -80,6 +80,15 @@ Specify the instance to use for the universe nodes:
 
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
+  This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider.
+
+  If you are performing an airgapped installation, you cannot use YBA-Managed Linux versions; you must use a custom image. Do the following before creating your universe:
+
+  1. Create a custom Linux version (AMI) that includes all of the software pre-requisites, including [additional software for airgapped deployment](../../prepare/server-nodes-software/#additional-software-for-airgapped-deployment).
+  1. Add your custom Linux version to the universe provider configuration **Linux Version Catalog**.
+
+  Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
+
 - Select the **Instance Type** to use for the nodes in the universe.
 
 - Specify the number and size of the storage volumes, and the storage type.
