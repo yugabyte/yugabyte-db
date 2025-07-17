@@ -172,23 +172,6 @@ class MetricUpdater {
   DISALLOW_COPY_AND_ASSIGN(MetricUpdater);
 };
 
-void Respond(const PgResponseCacheWaiterPtr& waiter,
-             const PgResponseCache::Response& value) {
-  auto [response, sidecars] = waiter->ResponseAndSidecars();
-  response = value.response;
-  auto rows_data_it = value.rows_data.begin();
-  for (auto& op : *response.mutable_responses()) {
-    if (op.has_rows_data_sidecar()) {
-      sidecars.Start().Append(rows_data_it->AsSlice());
-      op.set_rows_data_sidecar(narrow_cast<int>(sidecars.Complete()));
-    } else {
-      DCHECK(!*rows_data_it);
-    }
-    ++rows_data_it;
-  }
-  waiter->SendResponse();
-}
-
 class Data {
  public:
   Data(uint64_t version,
@@ -227,7 +210,7 @@ class Data {
       failed_ = failed;
     }
     for (auto waiter : waiters) {
-      Respond(waiter, *response);
+      waiter->Apply(*response);
     }
     if (sz) {
       auto updater = metric_updater_.lock();
@@ -415,7 +398,7 @@ class PgResponseCache::Impl : private GarbageCollector {
     if (response_opt) {
       hits_->Increment();
       if (*response_opt) {
-        Respond(waiter, **response_opt);
+        waiter->Apply(**response_opt);
       }
       return Setter();
     }

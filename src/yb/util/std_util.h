@@ -131,4 +131,9 @@ auto ValueAsFuture(T&& value) {
 template <class T>
 using optional_ref = std::optional<std::reference_wrapper<T>>;
 
+template <class T, class S>
+auto SharedField(std::shared_ptr<S> ptr, T* field) {
+  return std::shared_ptr<T>(std::move(ptr), field);
+}
+
 } // namespace yb

@@ -541,18 +541,7 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
 };
 
 Status XClusterSourceManager::SetNormalOidCounterAboveAllNormalOids(NamespaceId namespace_id) {
-  auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-  VLOG(1) << "Calling ReadHighestNormalPreservableOid on database OID " << database_oid;
-  auto highest_oid = VERIFY_RESULT(sys_catalog_.ReadHighestNormalPreservableOid(database_oid));
-  auto* yb_client = master_.client_future().get();
-  SCHECK(yb_client, IllegalState, "Client not initialized or shutting down");
-  VLOG(1) << "Bumping normal space OID for database OID " << database_oid << " above "
-          << highest_oid;
-  uint32_t begin_oid, end_oid;
-  RETURN_NOT_OK(yb_client->ReservePgsqlOids(
-      namespace_id, /*next_oid=*/highest_oid, /*count=*/1, &begin_oid, &end_oid,
-      /*use_secondary_space=*/false));
-  VLOG(1) << "Invalidating TServer OID caches for database OID " << database_oid;
+  RETURN_NOT_OK(catalog_manager_.AdvanceOidCounters(namespace_id));
   return catalog_manager_.InvalidateTserverOidCaches();
 }
 

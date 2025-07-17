@@ -242,6 +242,10 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
   When xCluster is active, composite user types, array types whose base types are row types, domains, and other non-primitive types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via bootstrap. [#24078](https://github.com/yugabyte/yugabyte-db/issues/24078), [#24079](https://github.com/yugabyte/yugabyte-db/issues/24079)
 
+- Table rewrites
+
+  `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+
 Limitations specific to each scenario and mode are listed below:
 
 ### Non-transactional
@@ -291,6 +295,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 - YCQL is not yet supported.
 - Schema changes are not automatically replicated. They must be manually applied to both source and target universes. Refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/) for more information.
 - All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/).
+- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` (done on both universes) followed by `INSERT SELECT` (done only on the source universe).
 - When xCluster is active, user-defined ENUM types should not be created, altered, or dropped. Consider setting up these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
 ### Kubernetes

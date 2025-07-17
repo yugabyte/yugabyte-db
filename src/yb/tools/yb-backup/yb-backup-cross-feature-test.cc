@@ -3316,6 +3316,32 @@ TEST_F_EX(
   }
 }
 
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestOidsAdvancedAfterRestore),
+    YBBackupTestOneTablet) {
+  ASSERT_NO_FATALS(CreateTable(
+      Format("CREATE TABLE my_table (a INT, b INT)", "my_table")));
+
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  // Ensure that the DROP below will only hide the table, not delete it.
+  ASSERT_OK(snapshot_util_->CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, "yugabyte_new", client::WaitSnapshot::kTrue,
+      2s * kTimeMultiplier, 20h));
+
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE my_table", "DROP TABLE"));
+
+  // At this point, if we have not advanced the normal space OID counter, then we will be attempting
+  // to create a table with the same OID as the one we just dropped.  That would fail.
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE TABLE my_table (a INT, b INT)", "CREATE TABLE"));
+}
+
 TEST_F(
     YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRenamedColumns)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_1 (a INT, b INT, c INT, d INT)"));
