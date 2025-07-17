@@ -140,7 +140,7 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
   if (VERIFY_RESULT(doc_op_->Execute(ForceNonBufferable(
           force_non_bufferable.get() ||
           (transaction_setting_ == YB_SINGLE_SHARD_TRANSACTION)))) == RequestSent::kTrue) {
-    rowsets_.splice(rowsets_.end(), VERIFY_RESULT(doc_op_->GetResult()));
+    RETURN_NOT_OK(doc_op_->FetchMoreResults());
 
     // Save the number of rows affected by the op.
     rows_affected_count_ = VERIFY_RESULT(doc_op_->GetRowsAffectedCount());

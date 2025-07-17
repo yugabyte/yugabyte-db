@@ -117,15 +117,15 @@ using Slices = std::vector<Slice>;
 
 class SimpleYbctidProvider : public YbctidProvider {
  public:
-  explicit SimpleYbctidProvider(std::reference_wrapper<const Slices> ybctids)
-      : ybctids_(ybctids.get()) {}
+  SimpleYbctidProvider(std::reference_wrapper<const Slices> ybctids, bool keep_order)
+      : ybctids_(ybctids.get()), keep_order_(keep_order) {}
 
   Result<std::optional<YbctidBatch>> Fetch() override {
     if (fetched_) {
       return std::nullopt;
     }
     fetched_ = true;
-    return YbctidBatch{ybctids_, /* keep_order= */ true};
+    return YbctidBatch{ybctids_, keep_order_};
   }
 
   void Reset() override {
@@ -135,6 +135,7 @@ class SimpleYbctidProvider : public YbctidProvider {
  private:
   const Slices& ybctids_;
   bool fetched_ = false;
+  bool keep_order_;
 
   DISALLOW_COPY_AND_ASSIGN(SimpleYbctidProvider);
 };
@@ -148,8 +149,8 @@ struct HoldingYbctidProviderData {
 };
 
 struct HoldingYbctidProvider final : public HoldingYbctidProviderData, public SimpleYbctidProvider {
-  explicit HoldingYbctidProvider(ThreadSafeArena& arena)
-      : HoldingYbctidProviderData(arena), SimpleYbctidProvider(ybctids_holder_) {}
+  explicit HoldingYbctidProvider(ThreadSafeArena& arena, bool keep_order)
+      : HoldingYbctidProviderData(arena), SimpleYbctidProvider(ybctids_holder_, keep_order) {}
 
   void Reserve(size_t capacity) { ybctids_holder_.reserve(capacity); }
   void Append(Slice ybctid) { ybctids_holder_.push_back(arena_.DupSlice(ybctid)); }
@@ -409,11 +410,11 @@ Status PgDmlRead::InitDocOp(const YbcPgExecParameters* params) {
 }
 
 void PgDmlRead::SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids) {
-  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids));
+  SetYbctidProvider(std::make_unique<SimpleYbctidProvider>(ybctids, /* keep_order */ false));
 }
 
 void PgDmlRead::SetRequestedYbctids(const YbctidGenerator& generator) {
-  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena());
+  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena(), false);
   ybctid_holder->Reserve(generator.capacity);
   while (true) {
     const auto ybctid = generator.next();
@@ -794,7 +795,8 @@ Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds(
   };
 
   std::optional<InOperatorInfo> in_operator_info;
-  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(arena());
+  auto ybctid_holder = std::make_unique<HoldingYbctidProvider>(
+      arena(), read_req_->has_is_forward_scan());
   for (auto i = num_hash_key_columns; i < bind_->num_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
     auto& expr = *col.bind_pb();

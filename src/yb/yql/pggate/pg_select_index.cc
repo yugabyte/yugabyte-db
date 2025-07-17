@@ -43,33 +43,11 @@ Status PgSelectIndex::PrepareSubquery(
 }
 
 Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
-  // Keep reading until we get one batch of ybctids or EOF.
-  while (!VERIFY_RESULT(GetNextYbctidBatch())) {
-    if (!VERIFY_RESULT(FetchDataFromServer())) {
-      // Server returns no more rows.
-      return std::nullopt;
-    }
+  auto s = doc_op_->ResultStream().GetNextYbctidBatch(read_req_->has_is_forward_scan());
+  if (s) {
+    AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   }
-
-  // Got the next batch of ybctids.
-  DCHECK(!rowsets_.empty());
-
-  AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
-  return YbctidBatch{rowsets_.front().ybctids(), read_req_->has_is_forward_scan()};
-}
-
-Result<bool> PgSelectIndex::GetNextYbctidBatch() {
-  for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
-    if (rowset_iter->is_eof()) {
-      rowset_iter = rowsets_.erase(rowset_iter);
-    } else {
-      // Write all found rows to ybctid array.
-      RETURN_NOT_OK(rowset_iter->ProcessSystemColumns());
-      return true;
-    }
-  }
-
-  return false;
+  return s;
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(

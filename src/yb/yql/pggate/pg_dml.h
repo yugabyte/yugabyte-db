@@ -86,12 +86,6 @@ class PgDml : public PgStatement {
   Status Fetch(
       int32_t natts, uint64_t* values, bool* isnulls, YbcPgSysColumns* syscols, bool* has_data);
 
-  // Returns TRUE if docdb replies with more data.
-  Result<bool> FetchDataFromServer();
-
-  // Returns TRUE if desired row is found.
-  Result<bool> GetNextRow(PgTuple* pg_tuple);
-
   virtual void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) = 0;
 
   // Get column info on whether the column 'attr_num' is a hash key, a range
@@ -214,11 +208,6 @@ class PgDml : public PgStatement {
 
   // DML Operator.
   PgDocOp::SharedPtr doc_op_;
-
-  //------------------------------------------------------------------------------------------------
-  // Data members for navigating the output / result-set from either selected or returned targets.
-  std::list<PgDocResult> rowsets_;
-  int64_t current_row_order_ = 0;
 
   // Yugabyte has a few IN/OUT parameters of statement execution, "pg_exec_params_" is used to sent
   // OUT value back to postgres.

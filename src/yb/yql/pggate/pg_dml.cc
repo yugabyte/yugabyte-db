@@ -26,7 +26,6 @@
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
 namespace {
@@ -348,92 +347,19 @@ Status PgDml::Fetch(
   // Keep reading until we either reach the end or get some rows.
   *has_data = true;
   PgTuple pg_tuple(values, isnulls, syscols);
-  while (!VERIFY_RESULT(GetNextRow(&pg_tuple))) {
-    if (!VERIFY_RESULT(FetchDataFromServer())) {
-      // Stop processing as server returns no more rows.
+  while (!VERIFY_RESULT(doc_op_->ResultStream().GetNextRow(targets_, &pg_tuple))) {
+    // Find out if there are more ybctids to fetch
+    if (!VERIFY_RESULT(ProcessProvidedYbctids())) {
       *has_data = false;
       return Status::OK();
     }
+    // Execute doc_op_ again for the new set of ybctids
+    SCHECK_EQ(
+      VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
+      "YSQL read operation was not sent");
   }
 
   return Status::OK();
-}
-
-Result<bool> PgDml::FetchDataFromServer() {
-  // Get the rowsets from doc-operator.
-  rowsets_.splice(rowsets_.end(), VERIFY_RESULT(doc_op_->GetResult()));
-
-  // Check if EOF is reached.
-  if (rowsets_.empty()) {
-    // Process the secondary index to find the next WHERE condition.
-    //   DML(Table) WHERE ybctid IN (SELECT base_ybctid FROM IndexTable),
-    //   The nested query would return many rows each of which yields different result-set.
-    if (!VERIFY_RESULT(ProcessProvidedYbctids())) {
-      // Return EOF as the nested subquery does not have any more data.
-      return false;
-    }
-
-    // Execute doc_op_ again for the new set of WHERE condition from the nested query.
-    SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
-              "YSQL read operation was not sent");
-
-    // Get the rowsets from doc-operator.
-    rowsets_.splice(rowsets_.end(), VERIFY_RESULT(doc_op_->GetResult()));
-  }
-
-  // Return the output parameter back to Postgres if server wants.
-  if (doc_op_->has_out_param_backfill_spec() && pg_exec_params_) {
-    YbcPgExecOutParamValue value;
-    value.bfoutput = doc_op_->out_param_backfill_spec();
-    YBCGetPgCallbacks()->WriteExecOutParam(pg_exec_params_->out_param, &value);
-  }
-
-  return true;
-}
-
-Result<bool> PgDml::GetNextRow(PgTuple* pg_tuple) {
-  for (;;) {
-    for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
-      // Check if the rowset has any data.
-      auto& rowset = *rowset_iter;
-      if (rowset.is_eof()) {
-        rowset_iter = rowsets_.erase(rowset_iter);
-        continue;
-      }
-
-      // If this rowset has the next row of the index order, load it. Otherwise, continue looking
-      // for the next row in the order.
-      //
-      // NOTE:
-      //   DML <Table> WHERE ybctid IN (SELECT base_ybctid FROM <Index> ORDER BY <Index Range>)
-      // The nested subquery should return rows in indexing order, but the ybctids are then grouped
-      // by hash-code for BATCH-DML-REQUEST, so the response here are out-of-order.
-      if (rowset.NextRowOrder() <= current_row_order_) {
-        // Write row to postgres tuple.
-        int64_t row_order = -1;
-        RETURN_NOT_OK(rowset.WritePgTuple(targets_, pg_tuple, &row_order));
-        SCHECK(row_order == -1 || row_order == current_row_order_, InternalError,
-               "The resulting row are not arranged in indexing order");
-
-        // Found the current row. Move cursor to next row.
-        current_row_order_++;
-        return true;
-      }
-
-      rowset_iter++;
-    }
-
-    if (!rowsets_.empty() && doc_op_->end_of_data()) {
-      // If the current desired row is missing, skip it and continue to look for the next
-      // desired row in order. A row is deemed missing if it is not found and the doc op
-      // has no more rows to return.
-      current_row_order_++;
-    } else {
-      break;
-    }
-  }
-
-  return false;
 }
 
 Result<YbcPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
