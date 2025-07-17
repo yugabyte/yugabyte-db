@@ -216,6 +216,36 @@ Controls whether YSQL follower reads that specify a not-yet-safe read time shoul
 
 Default: `true`
 
+##### --enable_ysql_operation_lease
+
+Default: `true`
+
+Enables the YSQL lease mechanism.
+
+On YB-Masters, the flag processes YSQL lease refresh requests and on YB-TServers, a new PostgreSQL process is spawned only after establishing a lease with the YB-Master leader. The flag also controls whether the background YB-TServer task makes lease refresh requests.
+
+##### --master_ysql_operation_lease_ttl_ms
+
+Default: `30000` (30 seconds)
+
+Specifies base YSQL lease Time-To-Live (TTL). The YB-Master leader uses this value to determine the validity of a YB-TServer's YSQL lease.
+
+This parameter primarily determines the TTL of YSQL lease extensions. The YB-Master leader considers a YB-TServer's YSQL lease valid for this specified number of milliseconds after it successfully processes the YB-TServer's most recent `RefreshYsqlLease` request. YB-TServers will terminate all hosted PostgreSQL sessions if they are unable to refresh their YSQL lease before its expiration.
+
+Increasing the lease TTL has the following implications:
+
+- Decreases the chances YB-TServers will terminate all hosted PostgreSQL sessions because of YSQL lease expiration.
+- Extends the period during which DDLs remain serviceable after a YB-TServer becomes unavailable (this period is capped by the lease TTL).
+- Increases the time before locks held by crashed YB-TServers are released, which can block DMLs on any table where the  crashed YB-TServer held a lock (this period  is also capped by the lease TTL).
+
+##### --ysql_operation_lease_ttl_client_buffer_ms
+
+Default: 2000 (2 seconds)
+
+Specifies a client-side buffer for the YSQL operation lease TTL.
+
+When processing `RefreshYsqlLease` requests, the YB-Master leader subtracts this value from the [--master_ysql_operation_lease_ttl_ms](#master-ysql-operation-lease-ttl-ms) to calculate a slightly shorter lease TTL that is then provided to the YB-TServers. This difference between the lease TTL maintained by the YB-Masters and the lease TTL granted to the YB-TServers allows YB-TServers a grace period to terminate their hosted sessions before the YB-Master leader considers their lease expired.
+
 ## Logging flags
 
 ##### --colorlogtostderr
