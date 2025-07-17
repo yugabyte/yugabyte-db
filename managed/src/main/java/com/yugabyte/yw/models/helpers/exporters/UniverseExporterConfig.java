@@ -1,4 +1,4 @@
-package com.yugabyte.yw.models.helpers.audit;
+package com.yugabyte.yw.models.helpers.exporters;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
@@ -12,8 +12,8 @@ import javax.validation.constraints.NotNull;
 import lombok.Data;
 
 @Data
-@ApiModel(description = "Universe Logs Exporter Config")
-public class UniverseLogsExporterConfig {
+@ApiModel(description = "Universe Exporter Config")
+public class UniverseExporterConfig {
 
   @NotNull
   @ApiModelProperty(value = "Exporter uuid", accessMode = READ_ONLY)

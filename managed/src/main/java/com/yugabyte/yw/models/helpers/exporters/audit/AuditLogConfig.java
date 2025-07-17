@@ -1,4 +1,4 @@
-package com.yugabyte.yw.models.helpers.audit;
+package com.yugabyte.yw.models.helpers.exporters.audit;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 

@@ -6,15 +6,15 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import org.apache.commons.collections4.CollectionUtils;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-@JsonDeserialize(converter = AuditLogConfigParams.Converter.class)
-public class AuditLogConfigParams extends UpgradeTaskParams {
+@JsonDeserialize(converter = QueryLogConfigParams.Converter.class)
+public class QueryLogConfigParams extends UpgradeTaskParams {
 
   public boolean installOtelCollector;
-  public AuditLogConfig auditLogConfig;
+  public QueryLogConfig queryLogConfig;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
@@ -25,8 +25,8 @@ public class AuditLogConfigParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
     boolean exportEnabled =
-        auditLogConfig.isExportActive()
-            && CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig());
+        queryLogConfig.isExportActive()
+            && CollectionUtils.isNotEmpty(queryLogConfig.getUniverseLogsExporterConfig());
     if (exportEnabled
         && !universe.getUniverseDetails().otelCollectorEnabled
         && !installOtelCollector) {
@@ -35,10 +35,10 @@ public class AuditLogConfigParams extends UpgradeTaskParams {
           "Universe "
               + universe.getUniverseUUID()
               + " does not have OpenTelemetry Collector "
-              + "installed and task params has installOtelCollector=false - can't configure audit "
+              + "installed and task params has installOtelCollector=false - can't configure query "
               + "logs export for the universe");
     }
   }
 
-  public static class Converter extends BaseConverter<AuditLogConfigParams> {}
+  public static class Converter extends BaseConverter<QueryLogConfigParams> {}
 }
