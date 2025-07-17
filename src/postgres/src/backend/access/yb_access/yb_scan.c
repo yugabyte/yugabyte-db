@@ -4064,12 +4064,16 @@ HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
 	if (status.error_info.is_initialized &&
 		YBCIsExplicitRowLockConflictStatus(status.ybc_status))
 	{
+		YBCFreeStatus(status.ybc_status);
 		YBCHandleConflictError((OidIsValid(status.error_info.conflicting_table_id) ?
 								RelationIdGetRelation(status.error_info.conflicting_table_id) :
 								NULL),
 							   status.error_info.pg_wait_policy);
 	}
-	HandleYBStatus(status.ybc_status);
+	else
+	{
+		HandleYBStatus(status.ybc_status);
+	}
 }
 
 /*

@@ -36,7 +36,7 @@ Status PatchStatus(const Status& status, const PgObjectIds& relations) {
     const auto& actual_status =
         PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
           ? duplicate_key_status : status;
-    return  actual_status.CloneAndAddErrorCode(RelationOid(relations[op_index].object_oid));
+    return actual_status.CloneAndAddErrorCode(RelationOid(relations[op_index].object_oid));
   }
   return status;
 }

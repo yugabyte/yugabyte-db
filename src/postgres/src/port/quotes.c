@@ -15,6 +15,9 @@
 
 #include "c.h"
 
+/* YB includes */
+#include "yb/util/debug/leak_annotations.h"
+
 /*
  * Escape (by doubling) any single quotes or backslashes in given string
  *
@@ -47,5 +50,6 @@ escape_single_quotes_ascii(const char *src)
 		result[j++] = src[i];
 	}
 	result[j] = '\0';
+	__lsan_ignore_object(result);
 	return result;
 }
