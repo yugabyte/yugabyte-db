@@ -1271,3 +1271,25 @@ Refer to [#5680](https://github.com/yugabyte/yugabyte-db/issues/5680) for limita
 The `NOWAIT` clause for row-level explicit locking doesn't apply to the `Fail-on-Conflict` mode as there is no waiting. It does apply to the `Wait-on-Conflict` policy but is currently supported only for Read Committed isolation. [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166) will extend support for this in the `Wait-on-Conflict` mode for the other isolation levels.
 
 The `SKIP LOCKED` clause is supported in both concurrency control policies and provides a transaction with the capability to skip locking without any error when a conflict is detected. However, it isn't supported for Serializable isolation. [#11761](https://github.com/yugabyte/yugabyte-db/issues/5683) tracks support for `SKIP LOCKED` in Serializable isolation.
+
+## YSQL lease mechanism for DML and DDL concurrency
+
+YugabyteDB employs a robust lease mechanism to ensure data consistency in a distributed environment, particularly during concurrent DML and DDL operations or YB-TServer failures. A YB-TServer must hold a valid lease from the YB-Master leader to serve any YSQL DMLs or DDLs.
+
+You can enable the lease feature using the `--enable_ysql_operation_lease` flag on [YB-Master](../../../reference/configuration/yb-master/#enable-ysql-operation-lease) and [YB-TServer](../../../reference/configuration/yb-master/#enable-ysql-operation-lease). Additional flags you can use are as follows:
+
+**YB-Master**
+
+- [--master_ysql_operation_lease_ttl_ms](../../../reference/configuration/yb-master/#master-ysql-operation-lease-ttl-ms)
+- [--ysql_operation_lease_ttl_client_buffer_ms](../../../reference/configuration/yb-master/#ysql-operation-lease-ttl-client-buffer-ms)
+
+**YB-TServer**
+
+- [--ysql_lease_refresher_interval_ms](../../../reference/configuration/yb-tserver/#ysql-lease-refresher-interval-ms)
+
+With the YSQL lease feature enabled, a YB-TServer node will only accept PostgreSQL connections after establishing a lease with the YB-Master leader. If a YB-TServer is unable to refresh its lease before it expires, it will terminate all PostgreSQL sessions it hosts.
+When a YB-TServer loses its lease, clients connected to that YB-TServer will encounter specific error messages such as "server closed the connection unexpectedly" or "Object Lock Manager Shutdown".
+
+### Lease persistence and YB-Master failover
+
+YSQL leases held by YB-TServer are respected by a new YB-Master leader after a failover. When a YB-TServer first acquires a YSQL lease, the YB-Master persists this to the system catalog. If a YB-TServer's lease expires, the entry is removed. After a YB-Master leader failover, the new YB-Master leader treats every YB-TServer with an active YSQL lease entry in its persisted state as having a live lease, with the remaining TTL being the full YSQL lease duration. This design ensures that YB-TServers do not unnecessarily terminate connections during a YB-Master failover, contributing to higher availability.
