@@ -353,6 +353,7 @@ class PgClientSessionLocker {
   std::unique_lock<std::mutex> lock_;
 };
 
+using LockInfoWithCounter = std::pair<ObjectLockInfoPB, size_t>;
 using SessionInfoPtr = std::shared_ptr<SessionInfo>;
 using RemoteTabletServerPtr = std::shared_ptr<client::internal::RemoteTabletServer>;
 using client::internal::RemoteTabletPtr;
@@ -395,9 +396,21 @@ struct OldTxnMetadataPtrVariantVisitor {
   }
 };
 
-auto MakeSharedOldTxnMetadataVariant(OldTxnMetadataVariant&& txn_meta_variant) {
+std::optional<OldTxnMetadataPtrVariant> MakeSharedOldTxnMetadataVariant(
+    OldTxnMetadataVariant&& txn_meta_variant,
+    const std::unordered_set<TransactionId>& object_lock_txn_ids) {
   OldTxnMetadataPtrVariant shared_txn_meta;
   if (auto txn_meta_pb_ptr = std::get_if<OldTransactionMetadataPB>(&txn_meta_variant)) {
+    if (txn_meta_pb_ptr->tablets().empty()) {
+      auto txn_id_or_status = FullyDecodeTransactionId(txn_meta_pb_ptr->transaction_id());
+      if (!txn_id_or_status.ok()) {
+        LOG(WARNING) << "Failed to decode txn id: " << txn_id_or_status.status();
+        return std::nullopt;
+      }
+      if (object_lock_txn_ids.find(*txn_id_or_status) == object_lock_txn_ids.end()) {
+        return std::nullopt;
+      }
+    }
     shared_txn_meta = std::make_shared<OldTransactionMetadataPB>(std::move(*txn_meta_pb_ptr));
   } else {
     auto meta_pb_ptr = std::get_if<OldSingleShardWaiterMetadataPB>(&txn_meta_variant);
@@ -1067,7 +1080,16 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       lock_status_req.add_transaction_ids(req.transaction_id());
       return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
-    RETURN_NOT_OK(GetObjectLockStatus(remote_tservers, resp));
+
+    std::unordered_map<ObjectLockContext, LockInfoWithCounter> object_lock_info_map;
+    RETURN_NOT_OK(GetObjectLockStatus(remote_tservers, resp, &object_lock_info_map));
+    // Create a map to filter transactions from transaction coordinator for object locks
+    // The bool value indicates whether this txn_id can be exposed to pg_locks.
+    std::unordered_set<TransactionId> object_lock_txn_ids;
+    for (const auto& [context, _] : object_lock_info_map) {
+       object_lock_txn_ids.insert(context.txn_id);
+    }
+
     const auto& min_txn_age_ms = req.min_txn_age_ms();
     const auto& max_num_txns = req.max_num_txns();
     RSTATUS_DCHECK(max_num_txns > 0, InvalidArgument,
@@ -1137,8 +1159,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
         status_tablet_ids.erase(res->status_tablet_id);
         for (auto& old_txn : old_txns_resp->txn()) {
-          auto old_txn_ptr = MakeSharedOldTxnMetadataVariant(std::move(old_txn));
-          old_txns_pq.push(std::move(old_txn_ptr));
+          auto old_txn_ptr =
+              MakeSharedOldTxnMetadataVariant(std::move(old_txn), object_lock_txn_ids);
+          if (!old_txn_ptr) {
+            continue;
+          }
+          old_txns_pq.push(std::move(*old_txn_ptr));
           while (old_txns_pq.size() > max_num_txns) {
             VLOG(4) << "Dropping old transaction with metadata "
                     << std::visit([](auto&& arg) {
@@ -1166,6 +1192,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
     uint64_t max_single_shard_waiter_start_time = 0;
     bool include_single_shard_waiters = false;
+    std::unordered_set<TransactionId> allowed_txn_ids;
     while (!old_txns_pq.empty()) {
       auto& old_txn = old_txns_pq.top();
       std::visit(OldTxnMetadataPtrVariantVisitor {
@@ -1194,10 +1221,25 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             transaction->set_id(txn_id);
             transaction->mutable_aborted()->Swap(arg->mutable_aborted_subtxn_set());
           }
+          auto decoded_txn_id_or_status = FullyDecodeTransactionId(txn_id);
+          if (!decoded_txn_id_or_status.ok()) {
+            LOG(WARNING) << "Failed to decode txn id: " << decoded_txn_id_or_status.status();
+            return;
+          }
+          allowed_txn_ids.insert(*decoded_txn_id_or_status);
         }
       }, old_txn);
       old_txns_pq.pop();
     }
+
+    // Populate the response with consolidated object locks info.
+    for (auto& [context, object_lock_info] : object_lock_info_map) {
+      if (allowed_txn_ids.contains(context.txn_id)) {
+        resp->add_object_lock_infos()->Swap(&object_lock_info.first);
+      }
+    }
+    VLOG(4) << "Added " << resp->object_lock_infos_size() << " object locks to response";
+
     if (include_single_shard_waiters) {
       lock_status_req.set_max_single_shard_waiter_start_time_us(max_single_shard_waiter_start_time);
     }
@@ -1229,13 +1271,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   // or if any participant is missing, the global lock is treated as WAITING.
   Status GetObjectLockStatus(
       const std::vector<RemoteTabletServerPtr>& remote_tservers,
-      PgGetLockStatusResponsePB* resp) {
+      PgGetLockStatusResponsePB* resp,
+      std::unordered_map<ObjectLockContext, LockInfoWithCounter>* object_lock_info_map) {
     if (!FLAGS_enable_object_locking_for_table_locks) {
       return Status::OK();
     }
-
-    using LockInfoWithCounter = std::pair<ObjectLockInfoPB, size_t>;
-    std::unordered_map<ObjectLockContext, LockInfoWithCounter> object_lock_info_map;
 
     // Collect object lock infos from all tservers.
     GetObjectLockStatusRequestPB req;
@@ -1288,7 +1328,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       for (int j = 0; j < node_resp->object_lock_infos_size(); j++) {
         auto* lock_infos = node_resp->mutable_object_lock_infos(j);
         auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
-        auto [it, inserted] = object_lock_info_map.try_emplace(
+        auto [it, inserted] = object_lock_info_map->try_emplace(
           ObjectLockContext{
             txn_id,
             lock_infos->subtransaction_id(),
@@ -1336,7 +1376,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     for (int i = 0; i < master_resp.object_lock_infos_size(); i++) {
       auto* lock_infos = master_resp.mutable_object_lock_infos(i);
       auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
-      auto [it, inserted] = object_lock_info_map.try_emplace(
+      auto [it, inserted] = object_lock_info_map->try_emplace(
         ObjectLockContext{
           txn_id,
           lock_infos->subtransaction_id(),
@@ -1359,13 +1399,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       lock_infos->set_lock_state(ObjectLockState::WAITING);
       existing_lock_info.Swap(lock_infos);
     }
-
-    // Populate the response with consolidated lock info.
-    for (auto& [_, object_lock_info] : object_lock_info_map) {
-      resp->add_object_lock_infos()->Swap(&object_lock_info.first);
-    }
-
-    VLOG(4) << "Added " << resp->object_lock_infos_size() << " object locks to response";
 
     return Status::OK();
   }

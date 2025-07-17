@@ -1196,6 +1196,7 @@ class TransactionProvider {
     // next_plain_ would be ready at this point i.e status tablet picked.
     auto txn_meta_res = next_plain_->metadata();
     if (txn_meta_res.ok()) {
+      next_plain_->SetStartTimeIfNecessary();
       return txn_meta_res;
     }
     VLOG_WITH_FUNC(1) << "transaction already failed";
