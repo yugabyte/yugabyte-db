@@ -77,22 +77,22 @@ yugabyte=# SELECT * FROM yb_local_tablets ORDER BY table_name, partition_key_sta
 ```
 
 ```output
-            tablet_id             |             table_id             | table_type | namespace_name  | ysql_schema_name |       table_name        |  partition_key_start   |   partition_key_end
-----------------------------------+----------------------------------+------------+-----------------+------------------+-------------------------+------------------------+------------------------
- 230de13ea3f045c2bc817046c96bfb9e | db82083fb39e47b0976b99f3612fa144 | YCQL       | ybdemo_keyspace |                  | cassandrakeyvalue       |                        | \x8000
- cb8ef7044b094709870d421fccd568a4 | db82083fb39e47b0976b99f3612fa144 | YCQL       | ybdemo_keyspace |                  | cassandrakeyvalue       | \x8000                 |
- 76010b63fc714389ab97b432d9db78ac | 000033c1000030008000000000004000 | YSQL       | postgres        | public           | postgresqlkeyvalue      |                        | \x8000
- a5913f11706c4d8a80d74b7001dfe157 | 000033c1000030008000000000004000 | YSQL       | postgres        | public           | postgresqlkeyvalue      | \x8000                 |
- 110ae7c832e7418bbfb56222a3e6a7ca | 000033c3000030008000000000004006 | YSQL       | yugabyte        | public           | range_partitioned_table |                        | \x48800000015361000021
- 746f84ac4a894b9c914fd4a89d5f89fc | 000033c3000030008000000000004006 | YSQL       | yugabyte        | public           | range_partitioned_table | \x48800000015361000021 | \x48800000025362000021
- f584ca3aa57e43278fd4b5042ab116be | 000033c3000030008000000000004006 | YSQL       | yugabyte        | public           | range_partitioned_table | \x48800000025362000021 | \x48800000035363000021
- 6d566b767f0347879934338e1642f58e | 000033c3000030008000000000004006 | YSQL       | yugabyte        | public           | range_partitioned_table | \x48800000035363000021 |
- bc90fa993cc340458d7d4500213e5aed | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            |                        | \x2000
- d106f1c5039a4127bf1bee83c5c3fec8 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \x2000                 | \x4000
- 045af4a5aa744e1fb06e41f4af134ee0 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \x4000                 | \x6000
- 0f63fe4806824a4ab17b0fd9cf144b8a | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \x6000                 | \x8000
- a7251899b197456fbec72f7cc64cc7ad | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \x8000                 | \xa000
- 46035a0bc4144f8ea372c93dc5d3a8b6 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \xa000                 | \xc000
- 1a13e5b16aa841608390c56e63deab20 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \xc000                 | \xe000
- 5b452227726444a78d1c84aaaf44f5c0 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \xe000                 |
+            tablet_id             |             table_id             | table_type | namespace_name  | ysql_schema_name |       table_name        |  partition_key_start   |   partition_key_end    |       state
+----------------------------------+----------------------------------+------------+-----------------+------------------+-------------------------+------------------------+------------------------+-------------------
+ 230de13ea3f045c2bc817046c96bfb9e | db82083fb39e47b0976b99f3612fa144 | YCQL       | ybdemo_keyspace |                  | cassandrakeyvalue       |                        | \x8000                 | TABLET_DATA_READY
+ cb8ef7044b094709870d421fccd568a4 | db82083fb39e47b0976b99f3612fa144 | YCQL       | ybdemo_keyspace |                  | cassandrakeyvalue       | \x8000                 |                        | TABLET_DATA_READY
+ 76010b63fc714389ab97b432d9db78ac | 000033c1000030008000000000004000 | YSQL       | postgres        | public           | postgresqlkeyvalue      |                        | \x8000                 | TABLET_DATA_READY
+ a5913f11706c4d8a80d74b7001dfe157 | 000033c1000030008000000000004000 | YSQL       | postgres        | public           | postgresqlkeyvalue      | \x8000                 |                        | TABLET_DATA_READY
+ 110ae7c832e7418bbfb56222a3e6a7ca | 000033c3000030008000000000004006 | YSQL       | yugabyte        | public           | range_partitioned_table |                        | \x48800000015361000021 | TABLET_DATA_READY
+ 746f84ac4a894b9c914fd4a89d5f89fc | 000033c3000030008000000000004006 | YSQL       | yugabyte        | public           | range_partitioned_table | \x48800000015361000021 | \x48800000025362000021 | TABLET_DATA_READY
+ f584ca3aa57e43278fd4b5042ab116be | 000033c3000030008000000000004006 | YSQL       | yugabyte        | public           | range_partitioned_table | \x48800000025362000021 | \x48800000035363000021 | TABLET_DATA_READY
+ 6d566b767f0347879934338e1642f58e | 000033c3000030008000000000004006 | YSQL       | yugabyte        | public           | range_partitioned_table | \x48800000035363000021 |                        | TABLET_DATA_READY
+ bc90fa993cc340458d7d4500213e5aed | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            |                        | \x2000                 | TABLET_DATA_READY
+ d106f1c5039a4127bf1bee83c5c3fec8 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \x2000                 | \x4000                 | TABLET_DATA_READY
+ 045af4a5aa744e1fb06e41f4af134ee0 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \x4000                 | \x6000                 | TABLET_DATA_READY
+ 0f63fe4806824a4ab17b0fd9cf144b8a | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \x6000                 | \x8000                 | TABLET_DATA_READY
+ a7251899b197456fbec72f7cc64cc7ad | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \x8000                 | \xa000                 | TABLET_DATA_READY
+ 46035a0bc4144f8ea372c93dc5d3a8b6 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \xa000                 | \xc000                 | TABLET_DATA_READY
+ 1a13e5b16aa841608390c56e63deab20 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \xc000                 | \xe000                 | TABLET_DATA_READY
+ 5b452227726444a78d1c84aaaf44f5c0 | 4c9c54fb3fcc47dcb29e58899afc5e21 | System     | system          |                  | transactions            | \xe000                 |                        | TABLET_DATA_READY
 ```
