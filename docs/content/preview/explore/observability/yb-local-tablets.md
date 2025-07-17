@@ -29,6 +29,18 @@ The columns of the `yb_local_tablets` view are described in the following table.
 | table_name | text | Name of the table which the tablet is part of. |
 | partition_key_start| bytea | Start key of the partition (inclusive). |
 | partition_key_end  | bytea | End key of the partition (exclusive).|
+| state | text | State of the tablet. Check the next section for possible values. |
+
+### Possible tablet states
+
+The `state` column can have the following values:
+
+- **TABLET_DATA_COPYING**: The tablet is doing remote bootstrap.
+- **TABLET_DATA_READY**: Fresh empty tablets or successfully remote bootstrapped tablets.
+- **TABLET_DATA_DELETED**: The tablet replica has been deleted from this particular node because tablet has been deleted from the table.
+- **TABLET_DATA_TOMBSTONED**: The tablet replica has been deleted from this particular node but the tablet itself is still part of the table and might have data on other nodes.
+- **TABLET_DATA_SPLIT_COMPLETED**: The tablet split has been completed.
+- **TABLET_DATA_INIT_STARTED**: The tablet has been initialized as a subtablet of another tablet undergoing a split.
 
 ## Examples
 
