@@ -2287,11 +2287,13 @@ class PgClientSession::Impl {
     auto track_guard = wait_state ? TrackSharedMemoryPgPerform(wait_state) : std::nullopt;
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
-    PgTablesQueryResult result;
-    auto listener = std::make_shared<SharedMemoryPerformListener>();
+    auto listener_and_result = std::make_shared<
+        std::pair<SharedMemoryPerformListener, PgTablesQueryResult>>();
+    auto listener = SharedField(listener_and_result, &listener_and_result->first);
+    auto result = SharedField(listener_and_result, &listener_and_result->second);
     table_cache().GetTables(table_ids, {}, result, listener);
     RETURN_NOT_OK(listener->Wait(deadline));
-    return DoPerform(result, data, deadline);
+    return DoPerform(*result, data, deadline);
   }
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size) {
