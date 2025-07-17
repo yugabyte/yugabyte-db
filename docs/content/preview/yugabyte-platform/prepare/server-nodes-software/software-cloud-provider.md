@@ -47,7 +47,7 @@ Take the time now to prepare the Linux disk image.
 
 ## Custom Linux version without Internet connectivity
 
-If you choose to provide your own custom Linux version and your VMs don't have connectivity to the public Internet, you must provide to YBA a Linux OS disk image with the following pre-installed:
+If you choose to provide your own custom Linux version and your VMs don't have connectivity to the public Internet (airgapped), you must provide to YBA a Linux OS disk image with the following pre-installed:
 
 - [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YBA uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
 - [Additional software](../#additional-software)
